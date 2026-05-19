@@ -1,0 +1,785 @@
+:root {
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  color: #f7f2ea;
+  background: #070707;
+  font-synthesis: none;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 320px;
+  height: 100%;
+  margin: 0;
+}
+
+button {
+  font: inherit;
+}
+
+.landing {
+  position: relative;
+  min-height: 100svh;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 50% 44%, rgba(255, 236, 190, 0.2), transparent 26rem),
+    radial-gradient(circle at 15% 78%, rgba(125, 82, 48, 0.28), transparent 24rem),
+    linear-gradient(135deg, #020202 0%, #11120f 48%, #030303 100%);
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -3;
+  overflow: hidden;
+}
+
+.orbital,
+.silk,
+.ribbon,
+.light-beam,
+.spotlight,
+.grain,
+.ambient-border {
+  position: absolute;
+  pointer-events: none;
+}
+
+.orbital {
+  width: 58vmax;
+  height: 58vmax;
+  border: 1px solid rgba(246, 228, 190, 0.13);
+  border-radius: 50%;
+  opacity: 0.9;
+  transform-origin: center;
+}
+
+.orbital::before,
+.orbital::after {
+  position: absolute;
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #fff1c9;
+  box-shadow: 0 0 28px rgba(255, 238, 199, 0.85);
+}
+
+.orbital::before {
+  top: 8%;
+  left: 50%;
+}
+
+.orbital::after {
+  right: 14%;
+  bottom: 18%;
+  width: 5px;
+  height: 5px;
+  opacity: 0.72;
+}
+
+.orbital-a {
+  left: 17%;
+  top: -17%;
+  animation: orbitalSpin 32s linear infinite;
+}
+
+.orbital-b {
+  right: -19%;
+  bottom: -22%;
+  width: 72vmax;
+  height: 72vmax;
+  border-color: rgba(113, 148, 140, 0.16);
+  animation: orbitalSpin 42s linear infinite reverse;
+}
+
+.silk {
+  width: 82vmax;
+  height: 82vmax;
+  border-radius: 42% 58% 55% 45%;
+  filter: blur(14px);
+  opacity: 0.8;
+  mix-blend-mode: screen;
+}
+
+.silk-a {
+  left: -24vmax;
+  top: -18vmax;
+  background:
+    radial-gradient(circle at 40% 40%, rgba(250, 234, 194, 0.26), transparent 0 28%),
+    conic-gradient(from 120deg, transparent, rgba(158, 132, 88, 0.36), transparent, rgba(50, 77, 78, 0.3), transparent);
+  animation: silkDrift 14s ease-in-out infinite alternate;
+}
+
+.silk-b {
+  right: -22vmax;
+  bottom: -24vmax;
+  background:
+    radial-gradient(circle at 56% 52%, rgba(232, 219, 196, 0.22), transparent 0 25%),
+    conic-gradient(from 280deg, transparent, rgba(91, 97, 99, 0.34), transparent, rgba(181, 154, 104, 0.28), transparent);
+  animation: silkDriftReverse 17s ease-in-out infinite alternate;
+}
+
+.silk-c {
+  left: 20%;
+  top: 18%;
+  width: 54vmax;
+  height: 54vmax;
+  opacity: 0.36;
+  background:
+    radial-gradient(circle at 48% 52%, rgba(255, 248, 230, 0.24), transparent 0 22%),
+    conic-gradient(from 24deg, transparent, rgba(196, 168, 107, 0.28), transparent, rgba(87, 113, 108, 0.2), transparent);
+  animation: silkPulse 11s ease-in-out infinite alternate;
+}
+
+.ribbon {
+  width: 130vw;
+  height: 34vh;
+  left: -15vw;
+  border-radius: 50%;
+  filter: blur(22px);
+  mix-blend-mode: screen;
+  opacity: 0.34;
+}
+
+.ribbon-a {
+  top: 14vh;
+  background: linear-gradient(90deg, transparent, rgba(239, 217, 166, 0.4), rgba(90, 120, 116, 0.18), transparent);
+  transform: rotate(-13deg);
+  animation: ribbonSweep 10s ease-in-out infinite alternate;
+}
+
+.ribbon-b {
+  bottom: 10vh;
+  background: linear-gradient(90deg, transparent, rgba(114, 83, 55, 0.34), rgba(246, 228, 190, 0.24), transparent);
+  transform: rotate(11deg);
+  animation: ribbonSweep 13s ease-in-out infinite alternate-reverse;
+}
+
+.light-beam {
+  inset: auto;
+  width: 1px;
+  height: 145vh;
+  top: -18vh;
+  background: linear-gradient(to bottom, transparent, rgba(255, 246, 224, 0.68), transparent);
+  filter: blur(1px);
+  opacity: 0.4;
+  transform: rotate(28deg);
+}
+
+.beam-a {
+  left: 24%;
+  animation: beamTravel 12s ease-in-out infinite;
+}
+
+.beam-b {
+  right: 30%;
+  animation: beamTravel 15s ease-in-out infinite reverse;
+}
+
+.spotlight {
+  inset: -15%;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse at var(--light-x, 50%) var(--light-y, 50%), rgba(255, 241, 204, 0.18), transparent 28%),
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+  mix-blend-mode: screen;
+  animation: spotlightMove 9s ease-in-out infinite alternate;
+}
+
+.grain {
+  inset: -50%;
+  z-index: 1;
+  opacity: 0.18;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 3px 3px;
+  transform: rotate(2deg);
+  animation: grainShift 1.4s steps(2) infinite;
+}
+
+.ambient-border {
+  inset: clamp(18px, 3vw, 38px);
+  z-index: -1;
+  border: 1px solid rgba(245, 231, 204, 0.22);
+  box-shadow:
+    inset 0 0 80px rgba(255, 255, 255, 0.03),
+    0 0 120px rgba(185, 161, 112, 0.08);
+  animation: borderBreathe 6s ease-in-out infinite alternate;
+}
+
+.hero {
+  display: grid;
+  min-height: 100svh;
+  place-items: center;
+  align-content: center;
+  gap: clamp(18px, 2.4vw, 30px);
+  padding: clamp(36px, 8vw, 96px);
+  text-align: center;
+}
+
+.kicker {
+  margin: 0;
+  color: rgba(247, 242, 234, 0.68);
+  font-size: clamp(0.68rem, 1.3vw, 0.78rem);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  color: #f7f2ea;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(4.8rem, 15vw, 13.4rem);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 0.86;
+  text-transform: lowercase;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.25),
+    0 18px 38px rgba(0, 0, 0, 0.88),
+    0 0 64px rgba(218, 190, 125, 0.18);
+  animation: titleFloat 7s ease-in-out infinite alternate;
+}
+
+.subcopy {
+  width: min(31rem, 82vw);
+  margin: 0;
+  color: rgba(247, 242, 234, 0.7);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1rem, 1.6vw, 1.25rem);
+  line-height: 1.55;
+}
+
+.enter-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 132px;
+  min-height: 44px;
+  gap: 10px;
+  padding: 0 20px;
+  border: 1px solid rgba(247, 242, 234, 0.45);
+  border-radius: 0;
+  color: #f7f2ea;
+  background: rgba(8, 8, 8, 0.32);
+  backdrop-filter: blur(18px);
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  transition:
+    color 220ms ease,
+    background 220ms ease,
+    border-color 220ms ease,
+    transform 220ms ease,
+    box-shadow 220ms ease;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.36);
+}
+
+.enter-button:hover,
+.enter-button:focus-visible {
+  color: #0a0a0a;
+  border-color: #f7f2ea;
+  background: #f7f2ea;
+  transform: translateY(-2px);
+  box-shadow: 0 22px 80px rgba(239, 217, 166, 0.24);
+  outline: none;
+}
+
+.enter-button svg {
+  flex: 0 0 auto;
+}
+
+.law-search-shell {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  height: 100svh;
+  min-height: 100svh;
+  overflow: hidden;
+  padding: 28px;
+  color: #dfeee8;
+  background:
+    radial-gradient(circle at 18% 14%, rgba(14, 151, 110, 0.28), transparent 24rem),
+    radial-gradient(circle at 92% 8%, rgba(196, 160, 92, 0.18), transparent 20rem),
+    linear-gradient(145deg, #08100f 0%, #101c1a 48%, #18211d 100%);
+}
+
+.law-search-header {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: center;
+  gap: 16px;
+  max-width: 1280px;
+  margin: 0 auto 22px;
+}
+
+.law-search-header h1,
+.law-search-hero h2,
+.law-content h3 {
+  margin: 0;
+  color: #edf8f3;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.12;
+  text-shadow: none;
+  animation: none;
+  text-transform: none;
+}
+
+.law-search-header h1 {
+  font-size: 1.22rem;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: #8ba9a0;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.icon-button,
+.header-status,
+.search-bar,
+.pipeline-grid article,
+.law-menu,
+.law-content,
+.law-item-card {
+  border: 1px solid rgba(42, 64, 57, 0.12);
+  background: rgba(13, 25, 23, 0.74);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.26);
+  backdrop-filter: blur(18px);
+}
+
+.icon-button {
+  display: inline-grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 8px;
+  color: #dcebe5;
+  cursor: pointer;
+}
+
+.icon-button:hover,
+.icon-button:focus-visible {
+  border-color: rgba(65, 205, 151, 0.48);
+  color: #65dcae;
+  outline: none;
+}
+
+.header-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: #e7c27a;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.law-search-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 520px);
+  gap: 22px;
+  align-items: end;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 34px 0 20px;
+}
+
+.law-search-hero h2 {
+  max-width: 780px;
+  font-size: clamp(1.58rem, 2.72vw, 2.55rem);
+}
+
+.search-bar {
+  display: grid;
+  grid-template-columns: 24px 1fr 74px;
+  align-items: center;
+  gap: 8px;
+  min-height: 58px;
+  padding: 8px 8px 8px 18px;
+  border-radius: 8px;
+}
+
+.search-bar input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  color: #d9eae4;
+  background: transparent;
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.search-bar button {
+  height: 42px;
+  border: 0;
+  border-radius: 6px;
+  color: rgba(6, 16, 14, 0.78);
+  background: #66d8aa;
+  font-size: 0.9rem;
+}
+
+.pipeline-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  max-width: 1280px;
+  margin: 0 auto 18px;
+}
+
+.pipeline-grid article {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 4px 10px;
+  min-height: 86px;
+  padding: 16px;
+  border-radius: 8px;
+}
+
+.pipeline-grid svg {
+  grid-row: span 2;
+  color: #65dcae;
+}
+
+.pipeline-grid strong {
+  color: #edf8f3;
+  font-size: 0.84rem;
+}
+
+.pipeline-grid span {
+  color: #9db5ad;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.law-browser {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 18px;
+  max-width: 1280px;
+  min-height: 0;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.law-menu,
+.law-content {
+  border-radius: 8px;
+}
+
+.law-menu {
+  display: grid;
+  align-content: start;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+}
+
+.law-menu-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 14px;
+  color: #dfeee8;
+  font-weight: 800;
+}
+
+.law-menu-item {
+  display: grid;
+  grid-template-columns: 1fr 18px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 72px;
+  padding: 12px;
+  border: 0;
+  border-radius: 7px;
+  color: #deeee8;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.law-menu-item:hover,
+.law-menu-item:focus-visible,
+.law-menu-item.active {
+  background: rgba(70, 210, 158, 0.13);
+  outline: none;
+}
+
+.law-menu-item.active {
+  color: #65dcae;
+}
+
+.law-menu-item span {
+  min-width: 0;
+}
+
+.law-menu-item strong,
+.law-menu-item small {
+  display: block;
+}
+
+.law-menu-item strong {
+  font-size: 0.92rem;
+}
+
+.law-menu-item small {
+  margin-top: 4px;
+  color: #91aaa2;
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.law-content {
+  min-height: 0;
+  overflow: auto;
+  padding: 28px;
+}
+
+.law-content-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.law-content-heading svg {
+  color: #65dcae;
+}
+
+.law-content h3 {
+  font-size: 1.78rem;
+}
+
+.law-content-description {
+  max-width: 720px;
+  margin: 0 0 24px;
+  color: #9fb8b0;
+  line-height: 1.65;
+  font-size: 0.92rem;
+}
+
+.law-item-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.law-item-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 64px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  color: #edf8f3;
+  text-align: left;
+  cursor: pointer;
+}
+
+.law-item-card:hover,
+.law-item-card:focus-visible {
+  border-color: rgba(101, 220, 174, 0.46);
+  outline: none;
+}
+
+.law-item-card span {
+  font-weight: 800;
+  font-size: 0.92rem;
+}
+
+.law-item-card small {
+  flex: 0 0 auto;
+  color: #e7c27a;
+  font-size: 0.7rem;
+}
+
+@keyframes silkDrift {
+  from {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+  to {
+    transform: translate3d(12vw, 9vh, 0) rotate(24deg) scale(1.12);
+  }
+}
+
+@keyframes silkDriftReverse {
+  from {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1.04);
+  }
+  to {
+    transform: translate3d(-11vw, -9vh, 0) rotate(-26deg) scale(0.92);
+  }
+}
+
+@keyframes silkPulse {
+  from {
+    transform: translate3d(-4vw, 1vh, 0) rotate(0deg) scale(0.84);
+    opacity: 0.2;
+  }
+  to {
+    transform: translate3d(5vw, -5vh, 0) rotate(36deg) scale(1.18);
+    opacity: 0.46;
+  }
+}
+
+@keyframes ribbonSweep {
+  from {
+    transform: translateX(-8vw) rotate(-13deg) scaleY(0.8);
+  }
+  to {
+    transform: translateX(10vw) rotate(-7deg) scaleY(1.15);
+  }
+}
+
+@keyframes orbitalSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes beamTravel {
+  0%,
+  100% {
+    transform: translateX(-12vw) rotate(28deg);
+    opacity: 0.08;
+  }
+  48% {
+    opacity: 0.36;
+  }
+  50% {
+    transform: translateX(18vw) rotate(28deg);
+    opacity: 0.42;
+  }
+}
+
+@keyframes grainShift {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(2deg);
+  }
+  100% {
+    transform: translate3d(-3px, 2px, 0) rotate(2deg);
+  }
+}
+
+@keyframes spotlightMove {
+  0% {
+    --light-x: 38%;
+    --light-y: 42%;
+    transform: translate3d(-4vw, 0, 0);
+  }
+  100% {
+    --light-x: 62%;
+    --light-y: 56%;
+    transform: translate3d(5vw, -2vh, 0);
+  }
+}
+
+@keyframes borderBreathe {
+  from {
+    border-color: rgba(245, 231, 204, 0.14);
+    transform: scale(1);
+  }
+  to {
+    border-color: rgba(245, 231, 204, 0.32);
+    transform: scale(0.992);
+  }
+}
+
+@keyframes titleFloat {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-8px);
+  }
+}
+
+@media (max-width: 720px) {
+  .ambient-border {
+    inset: 16px;
+  }
+
+  .hero {
+    gap: 24px;
+    padding: 32px 22px;
+  }
+
+  .kicker {
+    max-width: 14rem;
+    line-height: 1.7;
+  }
+
+  h1 {
+    font-size: clamp(4rem, 22vw, 7.5rem);
+  }
+
+  .law-search-shell {
+    padding: 18px;
+  }
+
+  .law-search-header {
+    grid-template-columns: 44px 1fr;
+  }
+
+  .header-status {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .law-search-hero,
+  .pipeline-grid,
+  .law-browser,
+  .law-item-list {
+    grid-template-columns: 1fr;
+  }
+
+  .law-menu {
+    max-height: none;
+  }
+
+  .law-content {
+    min-height: 420px;
+    padding: 22px;
+  }
+
+  .search-bar {
+    grid-template-columns: 24px 1fr;
+  }
+
+  .search-bar button {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+}
