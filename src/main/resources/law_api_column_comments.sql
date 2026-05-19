@@ -1,0 +1,92 @@
+ALTER TABLE user_account
+    MODIFY user_id BIGINT NOT NULL AUTO_INCREMENT COMMENT '사용자 내부 식별자',
+    MODIFY login_id VARCHAR(50) NOT NULL COMMENT '로그인 아이디',
+    MODIFY password VARCHAR(255) NOT NULL COMMENT '암호화된 비밀번호',
+    MODIFY user_name VARCHAR(100) NOT NULL COMMENT '사용자 이름',
+    MODIFY email VARCHAR(255) NULL COMMENT '사용자 이메일',
+    MODIFY enabled BOOLEAN NOT NULL DEFAULT TRUE COMMENT '계정 활성 여부',
+    MODIFY created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시',
+    MODIFY updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일시';
+
+ALTER TABLE law_api_documents
+    MODIFY document_id BIGINT NOT NULL AUTO_INCREMENT COMMENT '문서 내부 식별자',
+    MODIFY target VARCHAR(30) NOT NULL COMMENT '국가법령 API target 값(law, admrul, prec 등)',
+    MODIFY external_id VARCHAR(100) NOT NULL COMMENT '국가법령 API 원본 식별자',
+    MODIFY title VARCHAR(500) NOT NULL COMMENT '문서 제목',
+    MODIFY agency_name VARCHAR(255) NULL COMMENT '소관기관 또는 담당기관명',
+    MODIFY category_name VARCHAR(100) NULL COMMENT '법령/행정규칙/판례 등 원본 분류명',
+    MODIFY source_date VARCHAR(20) NULL COMMENT '원본 기준일자(시행일자, 발령일자, 공포일자 등)',
+    MODIFY detail_link VARCHAR(1000) NULL COMMENT '국가법령 API 상세 조회 링크',
+    MODIFY raw_json LONGTEXT NOT NULL COMMENT '검색 목록 API 원본 JSON',
+    MODIFY content_hash CHAR(64) NULL COMMENT '원본 JSON 변경 감지용 SHA-256 해시',
+    MODIFY sync_status VARCHAR(30) NOT NULL DEFAULT 'SYNCED' COMMENT '동기화 상태',
+    MODIFY last_error_message TEXT NULL COMMENT '마지막 동기화 오류 메시지',
+    MODIFY fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'API에서 마지막으로 가져온 일시',
+    MODIFY use_yn CHAR(1) NOT NULL DEFAULT 'Y' COMMENT '사용 여부(Y/N)',
+    MODIFY created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시',
+    MODIFY updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일시';
+
+ALTER TABLE law_api_document_details
+    MODIFY detail_id BIGINT NOT NULL AUTO_INCREMENT COMMENT '상세 정보 내부 식별자',
+    MODIFY document_id BIGINT NOT NULL COMMENT '연결된 문서 식별자',
+    MODIFY detail_title VARCHAR(500) NULL COMMENT '상세 화면 제목',
+    MODIFY meta_json LONGTEXT NULL COMMENT '상세 메타데이터 JSON',
+    MODIFY sections_json LONGTEXT NULL COMMENT '화면 표시용 섹션 JSON',
+    MODIFY raw_json LONGTEXT NOT NULL COMMENT '상세 API 원본 JSON 또는 변환 JSON',
+    MODIFY content_hash CHAR(64) NULL COMMENT '상세 원본 변경 감지용 SHA-256 해시',
+    MODIFY sync_status VARCHAR(30) NOT NULL DEFAULT 'SYNCED' COMMENT '상세 동기화 상태',
+    MODIFY last_error_message TEXT NULL COMMENT '마지막 상세 동기화 오류 메시지',
+    MODIFY fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '상세 API에서 마지막으로 가져온 일시',
+    MODIFY use_yn CHAR(1) NOT NULL DEFAULT 'Y' COMMENT '사용 여부(Y/N)',
+    MODIFY created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시',
+    MODIFY updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일시';
+
+ALTER TABLE law_api_document_chunks
+    MODIFY chunk_id BIGINT NOT NULL AUTO_INCREMENT COMMENT '청크 내부 식별자',
+    MODIFY document_id BIGINT NOT NULL COMMENT '연결된 문서 식별자',
+    MODIFY detail_id BIGINT NULL COMMENT '연결된 상세 정보 식별자',
+    MODIFY chunk_type VARCHAR(50) NOT NULL COMMENT '청크 유형(article, paragraph, supplement, appendix, form 등)',
+    MODIFY chunk_no VARCHAR(100) NULL COMMENT '조문번호, 부칙번호, 별표번호 등 원본 번호',
+    MODIFY chunk_title VARCHAR(500) NULL COMMENT '청크 제목',
+    MODIFY chunk_text LONGTEXT NOT NULL COMMENT 'AI 검색 기준 원문 텍스트',
+    MODIFY source_path VARCHAR(500) NULL COMMENT '원본 JSON 경로 또는 정규화된 출처 위치',
+    MODIFY source_url VARCHAR(1000) NULL COMMENT '청크 출처 URL',
+    MODIFY sort_order INT NOT NULL DEFAULT 0 COMMENT '문서 내 표시 및 색인 순서',
+    MODIFY content_hash CHAR(64) NULL COMMENT '청크 텍스트 변경 감지용 SHA-256 해시',
+    MODIFY indexed_at DATETIME NULL COMMENT '검색/벡터 인덱스에 마지막으로 반영한 일시',
+    MODIFY index_status VARCHAR(30) NOT NULL DEFAULT 'PENDING' COMMENT '검색/벡터 인덱싱 상태',
+    MODIFY last_error_message TEXT NULL COMMENT '마지막 청크 처리 오류 메시지',
+    MODIFY use_yn CHAR(1) NOT NULL DEFAULT 'Y' COMMENT '사용 여부(Y/N)',
+    MODIFY created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시',
+    MODIFY updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일시';
+
+ALTER TABLE law_api_assets
+    MODIFY asset_id BIGINT NOT NULL AUTO_INCREMENT COMMENT '파일/이미지 자산 내부 식별자',
+    MODIFY document_id BIGINT NOT NULL COMMENT '연결된 문서 식별자',
+    MODIFY detail_id BIGINT NULL COMMENT '연결된 상세 정보 식별자',
+    MODIFY asset_type VARCHAR(50) NOT NULL COMMENT '자산 유형(image, pdf, hwp, doc, file, link 등)',
+    MODIFY source_url VARCHAR(1000) NOT NULL COMMENT '국가법령 원본 파일 또는 이미지 URL',
+    MODIFY proxy_url VARCHAR(1000) NULL COMMENT '우리 서버 프록시 URL',
+    MODIFY file_name VARCHAR(500) NULL COMMENT '파일명',
+    MODIFY file_extension VARCHAR(20) NULL COMMENT '파일 확장자',
+    MODIFY mime_type VARCHAR(100) NULL COMMENT 'MIME 타입',
+    MODIFY alt_text VARCHAR(500) NULL COMMENT '이미지 대체 텍스트 또는 파일 설명',
+    MODIFY raw_json LONGTEXT NULL COMMENT '자산 관련 원본 JSON',
+    MODIFY sort_order INT NOT NULL DEFAULT 0 COMMENT '문서 내 자산 표시 순서',
+    MODIFY use_yn CHAR(1) NOT NULL DEFAULT 'Y' COMMENT '사용 여부(Y/N)',
+    MODIFY created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시',
+    MODIFY updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일시';
+
+ALTER TABLE law_api_sync_history
+    MODIFY sync_history_id BIGINT NOT NULL AUTO_INCREMENT COMMENT '동기화 이력 내부 식별자',
+    MODIFY sync_type VARCHAR(50) NOT NULL COMMENT '동기화 유형(search, detail, chunk, asset, full-sync 등)',
+    MODIFY target VARCHAR(30) NULL COMMENT '국가법령 API target 값',
+    MODIFY external_id VARCHAR(100) NULL COMMENT '국가법령 API 원본 식별자',
+    MODIFY document_id BIGINT NULL COMMENT '연결된 문서 식별자',
+    MODIFY status VARCHAR(30) NOT NULL COMMENT '동기화 처리 상태',
+    MODIFY request_json LONGTEXT NULL COMMENT 'API 요청 또는 내부 처리 요청 JSON',
+    MODIFY response_json LONGTEXT NULL COMMENT 'API 응답 또는 내부 처리 결과 JSON',
+    MODIFY error_message TEXT NULL COMMENT '동기화 실패 오류 메시지',
+    MODIFY started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '동기화 시작일시',
+    MODIFY finished_at DATETIME NULL COMMENT '동기화 종료일시',
+    MODIFY created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시';

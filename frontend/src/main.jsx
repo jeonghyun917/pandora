@@ -144,13 +144,25 @@ function sanitizeText(value) {
 }
 
 function normalizeDetail(payload, fallbackTitle) {
+  if (payload?.htmlDetail) {
+    return {
+      title: payload.title || fallbackTitle,
+      meta: ['HTML 원문 변환'],
+      sections: payload.sections?.length ? payload.sections : [{
+        title: '원문 내용',
+        body: '표시할 원문 텍스트를 찾지 못했습니다.',
+      }],
+      htmlDetail: true,
+    };
+  }
+
   if (payload?.unsupported) {
     return {
       title: fallbackTitle,
       meta: ['원문 보기 필요'],
       sections: [{
         title: '원문',
-        body: '국가법령정보센터 원문을 아래 영역에 표시합니다.',
+        body: '이 항목은 현재 텍스트로 변환할 수 없는 원문 형식입니다.',
       }],
       unsupported: true,
     };
@@ -185,15 +197,34 @@ function normalizeDetail(payload, fallbackTitle) {
 }
 
 function collectDetailSections(root) {
+  const adminRuleArticles = asArray(root?.조문내용)
+    .map(getText)
+    .map((text) => text.trim())
+    .filter(Boolean)
+    .slice(0, 20)
+    .map((body, index) => ({
+      title: extractArticleTitle(body) || `조문 ${index + 1}`,
+      body,
+    }));
+  if (adminRuleArticles.length > 0) {
+    return [
+      ...adminRuleArticles,
+      ...collectSupplementSections(root),
+      ...collectAttachedFormSections(root),
+    ];
+  }
+
   const articleUnits = asArray(root?.조문?.조문단위)
     .filter((unit) => unit.조문여부 === '조문' && unit.조문내용)
-    .slice(0, 12)
     .map((unit) => ({
       title: unit.조문제목 ? `제${unit.조문번호}조 ${unit.조문제목}` : `제${unit.조문번호}조`,
       body: [unit.조문내용, ...asArray(unit.항).map((항) => 항.항내용)].filter(Boolean).join('\n'),
     }));
   if (articleUnits.length > 0) {
-    return articleUnits;
+    return [
+      ...articleUnits,
+      ...collectLawSupplementSections(root),
+    ];
   }
 
   const caseBody = root?.판례내용 ?? root?.판시사항 ?? root?.판결요지 ?? root?.이유;
@@ -206,8 +237,9 @@ function collectDetailSections(root) {
 }
 
 function findFirstLongText(value) {
-  if (typeof value === 'string' && value.length > 40) {
-    return value;
+  if (typeof value === 'string') {
+    const normalized = value.replace(/\s+/g, ' ').trim();
+    return normalized.length > 40 ? value.trim() : '';
   }
   if (Array.isArray(value)) {
     return value.map(findFirstLongText).find(Boolean);
@@ -216,6 +248,57 @@ function findFirstLongText(value) {
     return Object.values(value).map(findFirstLongText).find(Boolean);
   }
   return '';
+}
+
+function extractArticleTitle(value) {
+  return value.match(/^(제\d+조(?:의\d+)?(?:\([^)]+\))?)/)?.[1] ?? '';
+}
+
+function collectSupplementSections(root) {
+  const numbers = asArray(root?.부칙?.부칙공포번호);
+  const dates = asArray(root?.부칙?.부칙공포일자);
+  return asArray(root?.부칙?.부칙내용)
+    .map(getText)
+    .map((body, index) => ({
+      title: ['부칙', numbers[index], formatDate(String(dates[index] ?? ''))].filter(Boolean).join(' · '),
+      body,
+    }))
+    .filter((section) => section.body.trim())
+    .slice(0, 5);
+}
+
+function collectLawSupplementSections(root) {
+  const supplementUnits = asArray(root?.부칙?.부칙단위);
+  if (supplementUnits.length > 0) {
+    return supplementUnits
+      .map((unit, index) => ({
+        title: unit.부칙공포번호
+          ? `부칙 · ${unit.부칙공포번호}${unit.부칙공포일자 ? ` · ${formatDate(String(unit.부칙공포일자))}` : ''}`
+          : `부칙 ${index + 1}`,
+        body: getText(unit.부칙내용 ?? unit),
+      }))
+      .filter((section) => section.body.trim());
+  }
+
+  const numbers = asArray(root?.부칙?.부칙공포번호);
+  const dates = asArray(root?.부칙?.부칙공포일자);
+  return asArray(root?.부칙?.부칙내용)
+    .map(getText)
+    .map((body, index) => ({
+      title: ['부칙', numbers[index], formatDate(String(dates[index] ?? ''))].filter(Boolean).join(' · '),
+      body,
+    }))
+    .filter((section) => section.body.trim());
+}
+
+function collectAttachedFormSections(root) {
+  return asArray(root?.별표?.별표단위)
+    .map((unit) => ({
+      title: unit.별표제목 || `${unit.별표구분 ?? '별표'} ${unit.별표번호 ?? ''}`.trim(),
+      body: getText(unit.별표내용),
+    }))
+    .filter((section) => section.body.replace(/\s+/g, '').length > 0)
+    .slice(0, 5);
 }
 
 function asArray(value) {
@@ -359,13 +442,22 @@ function LawSearchPage({ onBack }) {
     }
   }
 
-  function getProxyUrl(link) {
-    return `/api/law-data/proxy?${new URLSearchParams({ link }).toString()}`;
-  }
-
   function submitSearch(event) {
     event.preventDefault();
-    void loadResults(query, selectedMenus);
+    const formData = new FormData(event.currentTarget);
+    const nextQuery = String(formData.get('query') ?? query);
+    setQuery(nextQuery);
+    void loadResults(nextQuery, selectedMenus);
+  }
+
+  function handleSearchKeyDown(event) {
+    const isComposing = event.nativeEvent.isComposing || event.keyCode === 229;
+    if (event.key === 'Enter' && !isComposing) {
+      event.preventDefault();
+      const nextQuery = event.currentTarget.value;
+      setQuery(nextQuery);
+      void loadResults(nextQuery, selectedMenus);
+    }
   }
 
   if (selectedItem) {
@@ -390,20 +482,21 @@ function LawSearchPage({ onBack }) {
           {detail && (
             <>
               {detail.meta.length > 0 && <p className="detail-meta">{detail.meta.join(' · ')}</p>}
-              {detail.unsupported && selectedItem.detailLink ? (
-                <div className="source-frame-wrap">
-                  <iframe className="source-frame" title={`${selectedItem.title} 원문`} src={getProxyUrl(selectedItem.detailLink)} />
-                </div>
-              ) : (
-                <div className="detail-section-list detail-page-sections">
-                  {detail.sections.map((section, index) => (
-                    <article className="detail-section" key={`${section.title}-${index}`}>
-                      <strong>{section.title}</strong>
-                      <p>{section.body}</p>
-                    </article>
-                  ))}
-                </div>
-              )}
+              <div className="detail-section-list detail-page-sections">
+                {detail.sections.map((section, index) => (
+                  <article className={detail.htmlDetail ? 'detail-section html-detail-section' : 'detail-section'} key={`${section.title}-${index}`}>
+                    <strong>{section.title}</strong>
+                    <p>{section.body}</p>
+                    {section.images?.length > 0 && (
+                      <div className="detail-image-list">
+                        {section.images.map((image, imageIndex) => (
+                          <img src={image.src} alt={image.alt || `${section.title} ${imageIndex + 1}`} key={`${image.src}-${imageIndex}`} />
+                        ))}
+                      </div>
+                    )}
+                  </article>
+                ))}
+              </div>
             </>
           )}
         </section>
@@ -431,7 +524,14 @@ function LawSearchPage({ onBack }) {
         <h2 id="law-search-title" className="visually-hidden">법령 검색</h2>
         <form className="search-bar" role="search" onSubmit={submitSearch}>
           <Search aria-hidden="true" size={18} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} type="search" placeholder="법령, 규칙, 지침을 검색하세요" />
+          <input
+            value={query}
+            name="query"
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            type="search"
+            placeholder="법령, 규칙, 지침을 검색하세요"
+          />
           <button type="submit" disabled={loading}>
             검색
           </button>
