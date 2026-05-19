@@ -2,6 +2,8 @@ HELP.md
 target/
 frontend/node_modules/
 frontend/dist/
+src/main/resources/application-local.properties
+*.log
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
