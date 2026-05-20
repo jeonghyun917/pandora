@@ -6,6 +6,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -15,9 +16,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class LawOpenApiController {
 
 	private final LawOpenApiService lawOpenApiService;
+	private final LawOpenApiSyncService lawOpenApiSyncService;
+	private final LawDatabaseQueryService lawDatabaseQueryService;
 
-	public LawOpenApiController(LawOpenApiService lawOpenApiService) {
+	public LawOpenApiController(
+		LawOpenApiService lawOpenApiService,
+		LawOpenApiSyncService lawOpenApiSyncService,
+		LawDatabaseQueryService lawDatabaseQueryService
+	) {
 		this.lawOpenApiService = lawOpenApiService;
+		this.lawOpenApiSyncService = lawOpenApiSyncService;
+		this.lawDatabaseQueryService = lawDatabaseQueryService;
 	}
 
 	@GetMapping("/search")
@@ -29,14 +38,14 @@ public class LawOpenApiController {
 	) {
 		return ResponseEntity.ok()
 			.contentType(MediaType.APPLICATION_JSON)
-			.body(lawOpenApiService.search(target, query, page, display));
+			.body(lawDatabaseQueryService.search(target, query, page, display));
 	}
 
 	@GetMapping("/detail")
 	public ResponseEntity<String> detail(@RequestParam String link) {
 		return ResponseEntity.ok()
 			.contentType(MediaType.APPLICATION_JSON)
-			.body(lawOpenApiService.detail(link));
+			.body(lawDatabaseQueryService.detail(link));
 	}
 
 	@GetMapping("/proxy")
@@ -50,6 +59,17 @@ public class LawOpenApiController {
 			responseBuilder.header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition);
 		}
 		return responseBuilder.body(upstream.getBody());
+	}
+
+	@PostMapping("/sync")
+	public LawOpenApiSyncService.SyncResult sync(
+		@RequestParam(defaultValue = "law") String target,
+		@RequestParam(defaultValue = "*") String query,
+		@RequestParam(defaultValue = "1") int page,
+		@RequestParam(defaultValue = "10") int display,
+		@RequestParam(defaultValue = "true") boolean fetchDetails
+	) {
+		return lawOpenApiSyncService.syncLaws(target, query, page, display, fetchDetails);
 	}
 
 	@ExceptionHandler(IllegalArgumentException.class)

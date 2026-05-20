@@ -145,9 +145,11 @@ function sanitizeText(value) {
 
 function normalizeDetail(payload, fallbackTitle) {
   if (payload?.htmlDetail) {
+    const meta = splitDetailMeta(payload.meta);
     return {
       title: payload.title || fallbackTitle,
-      meta: ['HTML 원문 변환'],
+      meta: meta.lawMeta,
+      contacts: meta.contacts,
       sections: payload.sections?.length ? payload.sections : [{
         title: '원문 내용',
         body: '표시할 원문 텍스트를 찾지 못했습니다.',
@@ -160,6 +162,7 @@ function normalizeDetail(payload, fallbackTitle) {
     return {
       title: fallbackTitle,
       meta: ['원문 보기 필요'],
+      contacts: [],
       sections: [{
         title: '원문',
         body: '이 항목은 현재 텍스트로 변환할 수 없는 원문 형식입니다.',
@@ -192,7 +195,16 @@ function normalizeDetail(payload, fallbackTitle) {
   return {
     title,
     meta,
+    contacts: [],
     sections: collectDetailSections(root),
+  };
+}
+
+function splitDetailMeta(meta) {
+  const values = Array.isArray(meta) ? meta.filter(Boolean) : [];
+  return {
+    lawMeta: values.slice(0, 2),
+    contacts: values.slice(2),
   };
 }
 
@@ -470,7 +482,17 @@ function LawSearchPage({ onBack }) {
           <div>
             <p className="eyebrow">{selectedItem.category}</p>
             <h1>{selectedItem.title}</h1>
+            {detail?.meta?.length > 0 && (
+              <div className="detail-header-meta">
+                {detail.meta.map((item, index) => <span key={`${item}-${index}`}>[{item}]</span>)}
+              </div>
+            )}
           </div>
+          {detail?.contacts?.length > 0 && (
+            <div className="detail-contact-meta">
+              {detail.contacts.map((item, index) => <span key={`${item}-${index}`}>{item}</span>)}
+            </div>
+          )}
           <button type="button" className="detail-close" onClick={() => setSelectedItem(null)} aria-label="상세 닫기">
             <X aria-hidden="true" size={16} />
           </button>
@@ -481,12 +503,18 @@ function LawSearchPage({ onBack }) {
           {detailError && <p className="error-message">{detailError}</p>}
           {detail && (
             <>
-              {detail.meta.length > 0 && <p className="detail-meta">{detail.meta.join(' · ')}</p>}
               <div className="detail-section-list detail-page-sections">
                 {detail.sections.map((section, index) => (
-                  <article className={detail.htmlDetail ? 'detail-section html-detail-section' : 'detail-section'} key={`${section.title}-${index}`}>
-                    <strong>{section.title}</strong>
-                    <p>{section.body}</p>
+                  <article
+                    className={[
+                      'detail-section',
+                      detail.htmlDetail ? 'html-detail-section' : '',
+                      section.body ? 'article-section' : 'chapter-section',
+                    ].filter(Boolean).join(' ')}
+                    key={`${section.title}-${index}`}
+                  >
+                    {section.title && <strong>{section.title}</strong>}
+                    {section.body && <p>{section.body}</p>}
                     {section.images?.length > 0 && (
                       <div className="detail-image-list">
                         {section.images.map((image, imageIndex) => (
