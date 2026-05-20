@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.kaces.pandora.law.mapper.LawDocumentMapper">
+
+  <sql id="documentSearchWhere">
+    target = #{target}
+    AND use_yn = 'Y'
+    <if test="!searchAll">
+      AND (
+        title LIKE CONCAT('%', #{query}, '%')
+        OR agency_name LIKE CONCAT('%', #{query}, '%')
+        OR category_name LIKE CONCAT('%', #{query}, '%')
+      )
+    </if>
+  </sql>
+
+  <select id="countDocuments" resultType="int">
+    SELECT COUNT(*)
+    FROM law_api_documents
+    WHERE <include refid="documentSearchWhere"/>
+  </select>
+
+  <select id="searchDocuments" resultType="com.kaces.pandora.law.mapper.LawDocumentRow">
+    SELECT
+      document_id AS documentId,
+      target,
+      external_id AS externalId,
+      title,
+      agency_name AS agencyName,
+      category_name AS categoryName,
+      source_date AS sourceDate,
+      detail_link AS detailLink
+    FROM law_api_documents
+    WHERE <include refid="documentSearchWhere"/>
+    ORDER BY title, external_id
+    LIMIT #{limit} OFFSET #{offset}
+  </select>
+
+  <insert id="upsertDocument">
+    INSERT INTO law_api_documents (
+      target, external_id, title, agency_name, category_name, source_date,
+      detail_link, raw_json, content_hash, sync_status, last_error_message, fetched_at
+    )
+    VALUES (
+      #{document.target}, #{document.externalId}, #{document.title}, #{document.agencyName}, #{document.categoryName}, #{document.sourceDate},
+      #{document.detailLink}, #{document.rawJson}, #{contentHash}, 'SYNCED', NULL, CURRENT_TIMESTAMP
+    )
+    ON DUPLICATE KEY UPDATE
+      title = VALUES(title),
+      agency_name = VALUES(agency_name),
+      category_name = VALUES(category_name),
+      source_date = VALUES(source_date),
+      detail_link = VALUES(detail_link),
+      raw_json = VALUES(raw_json),
+      content_hash = VALUES(content_hash),
+      sync_status = 'SYNCED',
+      last_error_message = NULL,
+      fetched_at = CURRENT_TIMESTAMP
+  </insert>
+
+  <select id="findDocumentId" resultType="long">
+    SELECT document_id
+    FROM law_api_documents
+    WHERE target = #{target}
+      AND external_id = #{externalId}
+  </select>
+
+</mapper>

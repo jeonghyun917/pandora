@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.kaces.pandora.law.mapper.LawSyncHistoryMapper">
+
+  <insert id="insertSyncHistory">
+    INSERT INTO law_api_sync_history (sync_type, target, status, request_json)
+    VALUES ('full-sync', #{target}, 'RUNNING', #{requestJson})
+  </insert>
+
+  <select id="lastInsertId" resultType="long">
+    SELECT LAST_INSERT_ID()
+  </select>
+
+  <update id="markSyncSuccess">
+    UPDATE law_api_sync_history
+    SET status = 'SUCCESS', response_json = #{responseJson}, finished_at = CURRENT_TIMESTAMP
+    WHERE sync_history_id = #{historyId}
+  </update>
+
+  <update id="markSyncFailure">
+    UPDATE law_api_sync_history
+    SET status = 'FAILED', error_message = #{errorMessage}, finished_at = CURRENT_TIMESTAMP
+    WHERE sync_history_id = #{historyId}
+  </update>
+
+</mapper>

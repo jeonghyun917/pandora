@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.kaces.pandora.law.mapper.LawAssetMapper">
+
+  <delete id="deleteAssets">
+    DELETE FROM law_api_assets
+    WHERE document_id = #{documentId}
+  </delete>
+
+  <insert id="insertAsset">
+    INSERT INTO law_api_assets (
+      document_id, detail_id, asset_type, source_url, proxy_url, file_name,
+      file_extension, mime_type, alt_text, raw_json, sort_order
+    )
+    VALUES (
+      #{asset.documentId}, #{asset.detailId}, #{asset.assetType}, #{asset.sourceUrl}, #{asset.proxyUrl}, #{asset.fileName},
+      #{asset.fileExtension}, #{asset.mimeType}, #{asset.altText}, #{asset.rawJson}, #{asset.sortOrder}
+    )
+  </insert>
+
+</mapper>

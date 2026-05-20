@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.kaces.pandora.law.mapper.LawDetailMapper">
+
+  <select id="findDetail" resultType="com.kaces.pandora.law.mapper.LawDetailRow">
+    SELECT
+      d.document_id AS documentId,
+      doc.title AS title,
+      doc.agency_name AS agencyName,
+      doc.source_date AS sourceDate,
+      d.detail_title AS detailTitle,
+      d.sections_json AS sectionsJson,
+      d.raw_json AS rawJson
+    FROM law_api_document_details d
+    JOIN law_api_documents doc ON doc.document_id = d.document_id
+    WHERE d.document_id = #{documentId}
+  </select>
+
+  <insert id="upsertDetail">
+    INSERT INTO law_api_document_details (
+      document_id, detail_title, meta_json, sections_json, raw_json,
+      content_hash, sync_status, last_error_message, fetched_at
+    )
+    VALUES (
+      #{detail.documentId}, #{detail.detailTitle}, #{detail.metaJson}, #{detail.sectionsJson}, #{detail.rawJson},
+      #{detail.contentHash}, 'SYNCED', NULL, CURRENT_TIMESTAMP
+    )
+    ON DUPLICATE KEY UPDATE
+      detail_title = VALUES(detail_title),
+      meta_json = VALUES(meta_json),
+      sections_json = VALUES(sections_json),
+      raw_json = VALUES(raw_json),
+      content_hash = VALUES(content_hash),
+      sync_status = 'SYNCED',
+      last_error_message = NULL,
+      fetched_at = CURRENT_TIMESTAMP
+  </insert>
+
+  <select id="findDetailId" resultType="long">
+    SELECT detail_id
+    FROM law_api_document_details
+    WHERE document_id = #{documentId}
+  </select>
+
+</mapper>

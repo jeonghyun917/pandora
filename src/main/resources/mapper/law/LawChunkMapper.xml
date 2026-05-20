@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.kaces.pandora.law.mapper.LawChunkMapper">
+
+  <delete id="deleteChunks">
+    DELETE FROM law_api_document_chunks
+    WHERE document_id = #{documentId}
+  </delete>
+
+  <insert id="insertChunk">
+    INSERT INTO law_api_document_chunks (
+      document_id, detail_id, chunk_type, chunk_no, chunk_title, chunk_text,
+      source_path, source_url, sort_order, content_hash, index_status
+    )
+    VALUES (
+      #{chunk.documentId}, #{chunk.detailId}, #{chunk.chunkType}, #{chunk.chunkNo}, #{chunk.chunkTitle}, #{chunk.chunkText},
+      #{chunk.sourcePath}, #{chunk.sourceUrl}, #{chunk.sortOrder}, #{chunk.contentHash}, 'PENDING'
+    )
+  </insert>
+
+</mapper>
