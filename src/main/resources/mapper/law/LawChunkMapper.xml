@@ -3,13 +3,13 @@
   PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
   "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.kaces.pandora.law.mapper.LawChunkMapper">
-
+<mapper namespace="com.kaces.pandora.lawdata.persistence.LawChunkMapper">
+  <!-- 특정 문서의 기존 검색 청크를 모두 삭제합니다. -->
   <delete id="deleteChunks">
     DELETE FROM law_api_document_chunks
     WHERE document_id = #{documentId}
   </delete>
-
+  <!-- 상세 본문에서 추출한 검색/색인 청크를 저장합니다. -->
   <insert id="insertChunk">
     INSERT INTO law_api_document_chunks (
       document_id, detail_id, chunk_type, chunk_no, chunk_title, chunk_text,
@@ -20,5 +20,281 @@
       #{chunk.sourcePath}, #{chunk.sourceUrl}, #{chunk.sortOrder}, #{chunk.contentHash}, 'PENDING'
     )
   </insert>
+  <!-- 위치 기반 청크 본문 검색에서 일치하는 전체 건수를 조회합니다. -->
+  <select id="countChunkSearch" resultType="int">
+    SELECT COUNT(*)
+    FROM law_api_document_chunks c
+    JOIN law_api_documents doc ON doc.document_id = c.document_id
+    WHERE doc.target = #{target}
+      AND doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND (
+        c.chunk_text LIKE CONCAT('%', #{query}, '%')
+        OR c.chunk_title LIKE CONCAT('%', #{query}, '%')
+        OR c.chunk_no LIKE CONCAT('%', #{query}, '%')
+        OR doc.title LIKE CONCAT('%', #{query}, '%')
+      )
+  </select>
+  <!-- 위치 기반 청크 본문 검색 결과를 페이지 단위로 조회합니다. -->
+  <select id="searchChunks" resultType="com.kaces.pandora.lawdata.chunk.LawChunkSearchRow">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.target AS target,
+      doc.external_id AS externalId,
+      doc.title AS title,
+      doc.agency_name AS agencyName,
+      doc.category_name AS categoryName,
+      doc.source_date AS sourceDate,
+      c.chunk_type AS chunkType,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      c.source_path AS sourcePath,
+      c.source_url AS sourceUrl,
+      c.sort_order AS sortOrder
+    FROM law_api_document_chunks c
+    JOIN law_api_documents doc ON doc.document_id = c.document_id
+    WHERE doc.target = #{target}
+      AND doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND (
+        c.chunk_text LIKE CONCAT('%', #{query}, '%')
+        OR c.chunk_title LIKE CONCAT('%', #{query}, '%')
+        OR c.chunk_no LIKE CONCAT('%', #{query}, '%')
+        OR doc.title LIKE CONCAT('%', #{query}, '%')
+      )
+    ORDER BY
+      CASE
+        WHEN c.chunk_text LIKE CONCAT(#{query}, '%') THEN 0
+        WHEN c.chunk_text LIKE CONCAT('%', #{query}, '%') THEN 1
+        WHEN c.chunk_title LIKE CONCAT('%', #{query}, '%') THEN 2
+        ELSE 3
+      END,
+      doc.title,
+      c.sort_order
+    LIMIT #{limit} OFFSET #{offset}
+  </select>
+
+  <select id="findSemanticIndexCandidates" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.target AS target,
+      doc.external_id AS externalId,
+      doc.title AS title,
+      doc.agency_name AS agencyName,
+      doc.category_name AS categoryName,
+      doc.source_date AS sourceDate,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      NULL AS pageNo,
+      c.source_path AS sourcePath,
+      c.source_url AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash
+    FROM law_api_document_chunks c
+    JOIN law_api_documents doc ON doc.document_id = c.document_id
+    LEFT JOIN law_api_chunk_embeddings e
+      ON e.chunk_id = c.chunk_id
+      AND e.embedding_model = #{model}
+      AND e.vector_store = #{vectorStore}
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND (#{target} = '' OR doc.target = #{target})
+      AND (
+        #{query} = ''
+        OR doc.title LIKE CONCAT('%', #{query}, '%')
+        OR doc.agency_name LIKE CONCAT('%', #{query}, '%')
+        OR doc.category_name LIKE CONCAT('%', #{query}, '%')
+        OR c.chunk_no LIKE CONCAT('%', #{query}, '%')
+        OR c.chunk_title LIKE CONCAT('%', #{query}, '%')
+        OR c.chunk_text LIKE CONCAT('%', #{query}, '%')
+      )
+      AND (
+        e.chunk_id IS NULL
+        OR e.status IN ('FAILED', 'ERROR')
+        OR COALESCE(e.content_hash, '') != COALESCE(c.content_hash, '')
+      )
+    ORDER BY
+      CASE
+        WHEN #{query} != '' AND doc.title = #{query} THEN 0
+        WHEN #{query} != '' AND doc.title LIKE CONCAT('%', #{query}, '%') THEN 1
+        WHEN #{query} != '' AND c.chunk_title LIKE CONCAT('%', #{query}, '%') THEN 2
+        WHEN #{query} != '' AND c.chunk_text LIKE CONCAT('%', #{query}, '%') THEN 3
+        ELSE 4
+      END,
+      doc.target,
+      c.chunk_id
+    LIMIT #{limit}
+  </select>
+
+  <select id="findSemanticChunksByIds" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.target AS target,
+      doc.external_id AS externalId,
+      doc.title AS title,
+      doc.agency_name AS agencyName,
+      doc.category_name AS categoryName,
+      doc.source_date AS sourceDate,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      NULL AS pageNo,
+      c.source_path AS sourcePath,
+      c.source_url AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash
+    FROM law_api_document_chunks c
+    JOIN law_api_documents doc ON doc.document_id = c.document_id
+    WHERE c.chunk_id IN
+    <foreach collection="chunkIds" item="chunkId" open="(" separator="," close=")">
+      #{chunkId}
+    </foreach>
+  </select>
+
+  <select id="findSemanticChunksByText" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.target AS target,
+      doc.external_id AS externalId,
+      doc.title AS title,
+      doc.agency_name AS agencyName,
+      doc.category_name AS categoryName,
+      doc.source_date AS sourceDate,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      NULL AS pageNo,
+      c.source_path AS sourcePath,
+      c.source_url AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash
+    FROM law_api_document_chunks c
+    JOIN law_api_documents doc ON doc.document_id = c.document_id
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      <if test="targets != null and targets.size() > 0">
+        AND doc.target IN
+        <foreach collection="targets" item="target" open="(" separator="," close=")">
+          #{target}
+        </foreach>
+      </if>
+      <if test="keywords != null and keywords.size() > 0">
+        AND (
+        <foreach collection="keywords" item="keyword" separator=" OR ">
+          c.chunk_text LIKE CONCAT('%', #{keyword}, '%')
+          OR c.chunk_title LIKE CONCAT('%', #{keyword}, '%')
+          OR doc.title LIKE CONCAT('%', #{keyword}, '%')
+        </foreach>
+        )
+      </if>
+    ORDER BY
+      CASE
+      <foreach collection="keywords" item="keyword">
+        WHEN c.chunk_title LIKE CONCAT('%', #{keyword}, '%') THEN 0
+        WHEN doc.title LIKE CONCAT('%', #{keyword}, '%') THEN 1
+        WHEN c.chunk_text LIKE CONCAT('%', #{keyword}, '%') THEN 2
+      </foreach>
+        ELSE 3
+      END,
+      doc.target,
+      doc.title,
+      c.sort_order
+    LIMIT #{limit}
+  </select>
+
+  <select id="findSemanticChunksByDocumentTitle" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.target AS target,
+      doc.external_id AS externalId,
+      doc.title AS title,
+      doc.agency_name AS agencyName,
+      doc.category_name AS categoryName,
+      doc.source_date AS sourceDate,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      NULL AS pageNo,
+      c.source_path AS sourcePath,
+      c.source_url AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash
+    FROM law_api_documents doc
+    JOIN law_api_document_chunks c ON c.document_id = doc.document_id
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      <if test="targets != null and targets.size() > 0">
+        AND doc.target IN
+        <foreach collection="targets" item="target" open="(" separator="," close=")">
+          #{target}
+        </foreach>
+      </if>
+      <if test="keywords != null and keywords.size() > 0">
+        AND (
+        <foreach collection="keywords" item="keyword" separator=" OR ">
+          doc.title LIKE CONCAT('%', #{keyword}, '%')
+        </foreach>
+        )
+      </if>
+    ORDER BY
+      CASE
+      <foreach collection="keywords" item="keyword">
+        WHEN doc.title = #{keyword} THEN 0
+        WHEN doc.title LIKE CONCAT(#{keyword}, '%') THEN 1
+        WHEN doc.title LIKE CONCAT('%', #{keyword}, '%') THEN 2
+      </foreach>
+        ELSE 3
+      END,
+      doc.target,
+      doc.title,
+      c.sort_order
+    LIMIT #{limit}
+  </select>
+
+  <insert id="upsertEmbeddingStatus">
+    INSERT INTO law_api_chunk_embeddings (
+      chunk_id, embedding_model, vector_store, vector_point_id, content_hash,
+      status, embedded_at, last_error_message
+    )
+    VALUES (
+      #{chunkId}, #{model}, #{vectorStore}, #{vectorPointId}, #{contentHash},
+      #{status}, NOW(), #{errorMessage}
+    )
+    ON DUPLICATE KEY UPDATE
+      vector_point_id = VALUES(vector_point_id),
+      content_hash = VALUES(content_hash),
+      status = VALUES(status),
+      embedded_at = VALUES(embedded_at),
+      last_error_message = VALUES(last_error_message)
+  </insert>
+
+  <update id="recoverStaleSubmittedEmbeddings">
+    UPDATE law_api_chunk_embeddings e
+    JOIN law_api_document_chunks c ON c.chunk_id = e.chunk_id
+    JOIN law_api_documents doc ON doc.document_id = c.document_id
+    SET e.status = 'FAILED',
+        e.last_error_message = 'Recovered stale BATCH_SUBMITTED without active batch job.',
+        e.updated_at = NOW()
+    WHERE e.embedding_model = #{model}
+      AND e.vector_store = #{vectorStore}
+      AND e.status = 'BATCH_SUBMITTED'
+      AND TIMESTAMPDIFF(MINUTE, e.embedded_at, NOW()) &gt;= #{staleMinutes}
+      AND (#{target} = '' OR doc.target = #{target})
+      AND NOT EXISTS (
+        SELECT 1
+        FROM semantic_batch_job_chunks bjc
+        JOIN semantic_batch_jobs bj ON bj.batch_job_id = bjc.batch_job_id
+        WHERE bjc.chunk_id = e.chunk_id
+          AND bj.target = doc.target
+          AND bj.status IN ('validating', 'in_progress', 'finalizing')
+      )
+  </update>
 
 </mapper>

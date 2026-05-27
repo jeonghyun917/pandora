@@ -3,13 +3,13 @@
   PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
   "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.kaces.pandora.law.mapper.LawAssetMapper">
-
+<mapper namespace="com.kaces.pandora.lawdata.persistence.LawAssetMapper">
+  <!-- 특정 문서에 연결된 기존 첨부/이미지 자산을 모두 삭제합니다. -->
   <delete id="deleteAssets">
     DELETE FROM law_api_assets
     WHERE document_id = #{documentId}
   </delete>
-
+  <!-- 상세 원문에서 추출한 첨부/이미지 자산 정보를 저장합니다. -->
   <insert id="insertAsset">
     INSERT INTO law_api_assets (
       document_id, detail_id, asset_type, source_url, proxy_url, file_name,

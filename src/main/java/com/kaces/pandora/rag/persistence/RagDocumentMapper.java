@@ -1,0 +1,127 @@
+package com.kaces.pandora.rag.persistence;
+
+
+import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
+import com.kaces.pandora.lawdata.chunk.LawChunkSearchRow;
+import com.kaces.pandora.lawdata.persistence.LawDocumentRow;
+import com.kaces.pandora.rag.document.RagDocumentChunkRow;
+import com.kaces.pandora.rag.document.RagDocumentRow;
+import com.kaces.pandora.rag.importing.RagImportJobKey;
+import java.util.List;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+
+@Mapper
+public interface RagDocumentMapper {
+	void insertImportJob(
+		@Param("job") RagImportJobKey job,
+		@Param("path") String path,
+		@Param("documentType") String documentType
+	);
+
+	void finishImportJob(
+		@Param("importJobId") long importJobId,
+		@Param("status") String status,
+		@Param("discoveredCount") int discoveredCount,
+		@Param("importedCount") int importedCount,
+		@Param("skippedCount") int skippedCount,
+		@Param("failedCount") int failedCount,
+		@Param("indexedCount") int indexedCount,
+		@Param("lastErrorMessage") String lastErrorMessage
+	);
+
+	RagDocumentRow findDocumentByHash(@Param("fileHash") String fileHash);
+
+	void upsertDocument(
+		@Param("documentType") String documentType,
+		@Param("title") String title,
+		@Param("sourceOrg") String sourceOrg,
+		@Param("documentCategory") String documentCategory,
+		@Param("documentTopic") String documentTopic,
+		@Param("publishedDate") String publishedDate,
+		@Param("version") String version,
+		@Param("trustLevel") int trustLevel,
+		@Param("fileName") String fileName,
+		@Param("filePath") String filePath,
+		@Param("fileHash") String fileHash,
+		@Param("mimeType") String mimeType,
+		@Param("sourceUrl") String sourceUrl,
+		@Param("importStatus") String importStatus,
+		@Param("lastErrorMessage") String lastErrorMessage
+	);
+
+	long findDocumentIdByHash(@Param("fileHash") String fileHash);
+
+	RagDocumentRow findDocumentById(@Param("documentId") long documentId);
+
+	int countDocuments(
+		@Param("documentType") String documentType,
+		@Param("query") String query,
+		@Param("searchAll") boolean searchAll
+	);
+
+	List<LawDocumentRow> searchDocuments(
+		@Param("documentType") String documentType,
+		@Param("query") String query,
+		@Param("searchAll") boolean searchAll,
+		@Param("limit") int limit,
+		@Param("offset") int offset
+	);
+
+	int countChunkSearch(
+		@Param("documentType") String documentType,
+		@Param("query") String query
+	);
+
+	List<LawChunkSearchRow> searchChunks(
+		@Param("documentType") String documentType,
+		@Param("query") String query,
+		@Param("limit") int limit,
+		@Param("offset") int offset
+	);
+
+	void deleteChunks(@Param("documentId") long documentId);
+
+	void insertChunk(@Param("chunk") RagDocumentChunkRow chunk);
+
+	List<LawSemanticChunkRow> findSemanticChunksByDocumentId(@Param("documentId") long documentId);
+
+	List<LawSemanticChunkRow> findSemanticIndexCandidates(
+		@Param("target") String target,
+		@Param("query") String query,
+		@Param("model") String model,
+		@Param("vectorStore") String vectorStore,
+		@Param("limit") int limit
+	);
+
+	List<LawSemanticChunkRow> findSemanticChunksByIds(@Param("chunkIds") List<Long> chunkIds);
+
+	List<LawSemanticChunkRow> findSemanticChunksByText(
+		@Param("documentTypes") List<String> documentTypes,
+		@Param("keywords") List<String> keywords,
+		@Param("limit") int limit
+	);
+
+	void upsertEmbeddingStatus(
+		@Param("chunkId") long chunkId,
+		@Param("model") String model,
+		@Param("vectorStore") String vectorStore,
+		@Param("vectorPointId") String vectorPointId,
+		@Param("contentHash") String contentHash,
+		@Param("status") String status,
+		@Param("errorMessage") String errorMessage
+	);
+
+	int markFullyIndexedDocuments(
+		@Param("documentType") String documentType,
+		@Param("model") String model,
+		@Param("vectorStore") String vectorStore
+	);
+
+	int recoverStaleSubmittedEmbeddings(
+		@Param("documentType") String documentType,
+		@Param("model") String model,
+		@Param("vectorStore") String vectorStore,
+		@Param("staleMinutes") int staleMinutes
+	);
+}

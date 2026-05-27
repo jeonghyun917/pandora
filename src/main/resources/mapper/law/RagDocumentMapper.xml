@@ -1,0 +1,472 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.kaces.pandora.rag.persistence.RagDocumentMapper">
+
+  <insert id="insertImportJob">
+    <selectKey keyProperty="job.importJobId" resultType="long" order="AFTER">
+      SELECT LAST_INSERT_ID()
+    </selectKey>
+    INSERT INTO rag_import_jobs (import_path, document_type, status)
+    VALUES (#{path}, #{documentType}, 'RUNNING')
+  </insert>
+
+  <update id="finishImportJob">
+    UPDATE rag_import_jobs
+    SET status = #{status},
+        discovered_count = #{discoveredCount},
+        imported_count = #{importedCount},
+        skipped_count = #{skippedCount},
+        failed_count = #{failedCount},
+        indexed_count = #{indexedCount},
+        last_error_message = #{lastErrorMessage},
+        finished_at = NOW()
+    WHERE import_job_id = #{importJobId}
+  </update>
+
+  <select id="findDocumentByHash" resultType="com.kaces.pandora.rag.document.RagDocumentRow">
+    SELECT
+      document_id AS documentId,
+      document_type AS documentType,
+      title,
+      source_org AS sourceOrg,
+      document_category AS documentCategory,
+      document_topic AS documentTopic,
+      published_date AS publishedDate,
+      version,
+      trust_level AS trustLevel,
+      file_name AS fileName,
+      file_path AS filePath,
+      file_hash AS fileHash,
+      mime_type AS mimeType,
+      source_url AS sourceUrl,
+      import_status AS importStatus
+    FROM rag_documents
+    WHERE file_hash = #{fileHash}
+  </select>
+
+  <select id="findDocumentById" resultType="com.kaces.pandora.rag.document.RagDocumentRow">
+    SELECT
+      document_id AS documentId,
+      document_type AS documentType,
+      title,
+      source_org AS sourceOrg,
+      document_category AS documentCategory,
+      document_topic AS documentTopic,
+      published_date AS publishedDate,
+      version,
+      trust_level AS trustLevel,
+      file_name AS fileName,
+      file_path AS filePath,
+      file_hash AS fileHash,
+      mime_type AS mimeType,
+      source_url AS sourceUrl,
+      import_status AS importStatus
+    FROM rag_documents
+    WHERE document_id = #{documentId}
+      AND use_yn = 'Y'
+  </select>
+
+  <sql id="documentSearchWhere">
+    document_type = #{documentType}
+    AND use_yn = 'Y'
+    <if test="!searchAll">
+      AND (
+        title LIKE CONCAT('%', #{query}, '%')
+        OR source_org LIKE CONCAT('%', #{query}, '%')
+        OR document_category LIKE CONCAT('%', #{query}, '%')
+        OR document_topic LIKE CONCAT('%', #{query}, '%')
+        OR file_name LIKE CONCAT('%', #{query}, '%')
+      )
+    </if>
+  </sql>
+
+  <select id="countDocuments" resultType="int">
+    SELECT COUNT(*)
+    FROM rag_documents
+    WHERE <include refid="documentSearchWhere"/>
+  </select>
+
+  <select id="searchDocuments" resultType="com.kaces.pandora.lawdata.persistence.LawDocumentRow">
+    SELECT
+      document_id AS documentId,
+      document_type AS target,
+      CAST(document_id AS CHAR) AS externalId,
+      title,
+      source_org AS agencyName,
+      CASE
+        WHEN document_type = 'official_doc' THEN '공식 가이드 문서'
+        WHEN document_type = 'internal_doc' THEN '내부 지침/매뉴얼'
+        WHEN document_type = 'reference_doc' THEN '참고자료'
+        ELSE document_type
+      END AS categoryName,
+      published_date AS sourceDate,
+      CONCAT('rag:', document_id) AS detailLink
+    FROM rag_documents
+    WHERE <include refid="documentSearchWhere"/>
+    ORDER BY COALESCE(published_date, ''), title, document_id
+    LIMIT #{limit} OFFSET #{offset}
+  </select>
+
+  <select id="countChunkSearch" resultType="int">
+    SELECT COUNT(*)
+    FROM rag_document_chunks c
+    JOIN rag_documents doc ON doc.document_id = c.document_id
+    WHERE doc.document_type = #{documentType}
+      AND doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND (
+        c.chunk_text LIKE CONCAT('%', #{query}, '%')
+        OR c.chunk_title LIKE CONCAT('%', #{query}, '%')
+        OR c.chunk_no LIKE CONCAT('%', #{query}, '%')
+        OR doc.title LIKE CONCAT('%', #{query}, '%')
+        OR doc.source_org LIKE CONCAT('%', #{query}, '%')
+      )
+  </select>
+
+  <select id="searchChunks" resultType="com.kaces.pandora.lawdata.chunk.LawChunkSearchRow">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.document_type AS target,
+      CAST(doc.document_id AS CHAR) AS externalId,
+      doc.title AS title,
+      doc.source_org AS agencyName,
+      CASE
+        WHEN doc.document_type = 'official_doc' THEN '공식 가이드 문서'
+        WHEN doc.document_type = 'internal_doc' THEN '내부 지침/매뉴얼'
+        WHEN doc.document_type = 'reference_doc' THEN '참고자료'
+        ELSE doc.document_type
+      END AS categoryName,
+      doc.published_date AS sourceDate,
+      'document' AS chunkType,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      c.source_path AS sourcePath,
+      COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
+      c.sort_order AS sortOrder
+    FROM rag_document_chunks c
+    JOIN rag_documents doc ON doc.document_id = c.document_id
+    WHERE doc.document_type = #{documentType}
+      AND doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND (
+        c.chunk_text LIKE CONCAT('%', #{query}, '%')
+        OR c.chunk_title LIKE CONCAT('%', #{query}, '%')
+        OR c.chunk_no LIKE CONCAT('%', #{query}, '%')
+        OR doc.title LIKE CONCAT('%', #{query}, '%')
+        OR doc.source_org LIKE CONCAT('%', #{query}, '%')
+      )
+    ORDER BY
+      CASE
+        WHEN c.chunk_title LIKE CONCAT('%', #{query}, '%') THEN 0
+        WHEN c.chunk_text LIKE CONCAT(#{query}, '%') THEN 1
+        WHEN c.chunk_text LIKE CONCAT('%', #{query}, '%') THEN 2
+        WHEN doc.title LIKE CONCAT('%', #{query}, '%') THEN 3
+        ELSE 4
+      END,
+      doc.title,
+      c.sort_order
+    LIMIT #{limit} OFFSET #{offset}
+  </select>
+
+  <insert id="upsertDocument">
+    INSERT INTO rag_documents (
+      document_type, title, source_org, document_category, document_topic,
+      published_date, version, trust_level, file_name, file_path, file_hash,
+      mime_type, source_url, import_status, last_error_message, imported_at
+    )
+    VALUES (
+      #{documentType}, #{title}, #{sourceOrg}, #{documentCategory}, #{documentTopic},
+      #{publishedDate}, #{version}, #{trustLevel}, #{fileName}, #{filePath}, #{fileHash},
+      #{mimeType}, #{sourceUrl}, #{importStatus}, #{lastErrorMessage}, NOW()
+    )
+    ON DUPLICATE KEY UPDATE
+      document_type = VALUES(document_type),
+      title = VALUES(title),
+      source_org = VALUES(source_org),
+      document_category = VALUES(document_category),
+      document_topic = VALUES(document_topic),
+      published_date = VALUES(published_date),
+      version = VALUES(version),
+      trust_level = VALUES(trust_level),
+      file_name = VALUES(file_name),
+      file_path = VALUES(file_path),
+      mime_type = VALUES(mime_type),
+      source_url = VALUES(source_url),
+      import_status = VALUES(import_status),
+      last_error_message = VALUES(last_error_message),
+      use_yn = 'Y',
+      imported_at = VALUES(imported_at)
+  </insert>
+
+  <select id="findDocumentIdByHash" resultType="long">
+    SELECT document_id
+    FROM rag_documents
+    WHERE file_hash = #{fileHash}
+  </select>
+
+  <delete id="deleteChunks">
+    DELETE FROM rag_document_chunks
+    WHERE document_id = #{documentId}
+  </delete>
+
+  <insert id="insertChunk">
+    INSERT INTO rag_document_chunks (
+      document_id, chunk_no, chunk_title, chunk_text, page_no,
+      source_path, source_url, sort_order, content_hash, index_status
+    )
+    VALUES (
+      #{chunk.documentId}, #{chunk.chunkNo}, #{chunk.chunkTitle}, #{chunk.chunkText}, #{chunk.pageNo},
+      #{chunk.sourcePath}, #{chunk.sourceUrl}, #{chunk.sortOrder}, #{chunk.contentHash}, 'PENDING'
+    )
+  </insert>
+
+  <select id="findSemanticChunksByIds" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.document_type AS target,
+      CAST(doc.document_id AS CHAR) AS externalId,
+      doc.title AS title,
+      doc.source_org AS agencyName,
+      CASE
+        WHEN doc.document_type = 'official_doc' THEN '공식 가이드 문서'
+        WHEN doc.document_type = 'internal_doc' THEN '내부 지침/매뉴얼'
+        WHEN doc.document_type = 'reference_doc' THEN '참고자료'
+        ELSE doc.document_type
+      END AS categoryName,
+      doc.published_date AS sourceDate,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      c.page_no AS pageNo,
+      c.source_path AS sourcePath,
+      COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash
+    FROM rag_document_chunks c
+    JOIN rag_documents doc ON doc.document_id = c.document_id
+    WHERE c.chunk_id IN
+    <foreach collection="chunkIds" item="chunkId" open="(" separator="," close=")">
+      #{chunkId}
+    </foreach>
+      AND doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+  </select>
+
+  <select id="findSemanticChunksByDocumentId" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.document_type AS target,
+      CAST(doc.document_id AS CHAR) AS externalId,
+      doc.title AS title,
+      doc.source_org AS agencyName,
+      CASE
+        WHEN doc.document_type = 'official_doc' THEN '공식 가이드 문서'
+        WHEN doc.document_type = 'internal_doc' THEN '내부 지침/매뉴얼'
+        WHEN doc.document_type = 'reference_doc' THEN '참고자료'
+        ELSE doc.document_type
+      END AS categoryName,
+      doc.published_date AS sourceDate,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      c.page_no AS pageNo,
+      c.source_path AS sourcePath,
+      COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash
+    FROM rag_document_chunks c
+    JOIN rag_documents doc ON doc.document_id = c.document_id
+    WHERE c.document_id = #{documentId}
+      AND doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+    ORDER BY c.sort_order
+  </select>
+
+  <select id="findSemanticIndexCandidates" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.document_type AS target,
+      CAST(doc.document_id AS CHAR) AS externalId,
+      doc.title AS title,
+      doc.source_org AS agencyName,
+      CASE
+        WHEN doc.document_type = 'official_doc' THEN '공식 가이드 문서'
+        WHEN doc.document_type = 'internal_doc' THEN '내부 지침/매뉴얼'
+        WHEN doc.document_type = 'reference_doc' THEN '참고자료'
+        ELSE doc.document_type
+      END AS categoryName,
+      doc.published_date AS sourceDate,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      c.page_no AS pageNo,
+      c.source_path AS sourcePath,
+      COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash
+    FROM rag_document_chunks c
+    JOIN rag_documents doc ON doc.document_id = c.document_id
+    LEFT JOIN rag_chunk_embeddings e
+      ON e.chunk_id = c.chunk_id
+      AND e.embedding_model = #{model}
+      AND e.vector_store = #{vectorStore}
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND (#{target} = '' OR doc.document_type = #{target})
+      AND (
+        #{query} = ''
+        OR doc.title LIKE CONCAT('%', #{query}, '%')
+        OR doc.source_org LIKE CONCAT('%', #{query}, '%')
+        OR doc.document_category LIKE CONCAT('%', #{query}, '%')
+        OR doc.document_topic LIKE CONCAT('%', #{query}, '%')
+        OR c.chunk_no LIKE CONCAT('%', #{query}, '%')
+        OR c.chunk_title LIKE CONCAT('%', #{query}, '%')
+        OR c.chunk_text LIKE CONCAT('%', #{query}, '%')
+      )
+      AND (
+        e.chunk_id IS NULL
+        OR e.status IN ('FAILED', 'ERROR')
+        OR COALESCE(e.content_hash, '') != COALESCE(c.content_hash, '')
+      )
+    ORDER BY
+      CASE
+        WHEN #{query} != '' AND doc.title = #{query} THEN 0
+        WHEN #{query} != '' AND doc.title LIKE CONCAT('%', #{query}, '%') THEN 1
+        WHEN #{query} != '' AND c.chunk_title LIKE CONCAT('%', #{query}, '%') THEN 2
+        WHEN #{query} != '' AND c.chunk_text LIKE CONCAT('%', #{query}, '%') THEN 3
+        ELSE 4
+      END,
+      doc.document_type,
+      c.chunk_id
+    LIMIT #{limit}
+  </select>
+
+  <select id="findSemanticChunksByText" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.document_type AS target,
+      CAST(doc.document_id AS CHAR) AS externalId,
+      doc.title AS title,
+      doc.source_org AS agencyName,
+      CASE
+        WHEN doc.document_type = 'official_doc' THEN '공식 가이드 문서'
+        WHEN doc.document_type = 'internal_doc' THEN '내부 지침/매뉴얼'
+        WHEN doc.document_type = 'reference_doc' THEN '참고자료'
+        ELSE doc.document_type
+      END AS categoryName,
+      doc.published_date AS sourceDate,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      c.page_no AS pageNo,
+      c.source_path AS sourcePath,
+      COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash
+    FROM rag_document_chunks c
+    JOIN rag_documents doc ON doc.document_id = c.document_id
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      <if test="documentTypes != null and documentTypes.size() > 0">
+        AND doc.document_type IN
+        <foreach collection="documentTypes" item="documentType" open="(" separator="," close=")">
+          #{documentType}
+        </foreach>
+      </if>
+      <if test="keywords != null and keywords.size() > 0">
+        AND (
+        <foreach collection="keywords" item="keyword" separator=" OR ">
+          c.chunk_text LIKE CONCAT('%', #{keyword}, '%')
+          OR c.chunk_title LIKE CONCAT('%', #{keyword}, '%')
+          OR doc.title LIKE CONCAT('%', #{keyword}, '%')
+        </foreach>
+        )
+      </if>
+    ORDER BY
+      CASE
+      <foreach collection="keywords" item="keyword">
+        WHEN c.chunk_title LIKE CONCAT('%', #{keyword}, '%') THEN 0
+        WHEN c.chunk_text LIKE CONCAT('%', #{keyword}, '%') THEN 1
+        WHEN doc.title LIKE CONCAT('%', #{keyword}, '%') THEN 2
+      </foreach>
+        ELSE 3
+      END,
+      doc.document_type,
+      doc.title,
+      c.sort_order
+    LIMIT #{limit}
+  </select>
+
+  <insert id="upsertEmbeddingStatus">
+    INSERT INTO rag_chunk_embeddings (
+      chunk_id, embedding_model, vector_store, vector_point_id, content_hash,
+      status, embedded_at, last_error_message
+    )
+    VALUES (
+      #{chunkId}, #{model}, #{vectorStore}, #{vectorPointId}, #{contentHash},
+      #{status}, NOW(), #{errorMessage}
+    )
+    ON DUPLICATE KEY UPDATE
+      vector_point_id = VALUES(vector_point_id),
+      content_hash = VALUES(content_hash),
+      status = VALUES(status),
+      embedded_at = VALUES(embedded_at),
+      last_error_message = VALUES(last_error_message)
+  </insert>
+
+  <update id="markFullyIndexedDocuments">
+    UPDATE rag_documents doc
+    SET import_status = 'INDEXED',
+        last_error_message = NULL,
+        imported_at = NOW()
+    WHERE doc.document_type = #{documentType}
+      AND doc.use_yn = 'Y'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM rag_document_chunks c
+        LEFT JOIN rag_chunk_embeddings e
+          ON e.chunk_id = c.chunk_id
+          AND e.embedding_model = #{model}
+          AND e.vector_store = #{vectorStore}
+        WHERE c.document_id = doc.document_id
+          AND c.use_yn = 'Y'
+          AND (
+            e.chunk_id IS NULL
+            OR e.status != 'INDEXED'
+            OR COALESCE(e.content_hash, '') != COALESCE(c.content_hash, '')
+          )
+      )
+  </update>
+
+  <update id="recoverStaleSubmittedEmbeddings">
+    UPDATE rag_chunk_embeddings e
+    JOIN rag_document_chunks c ON c.chunk_id = e.chunk_id
+    JOIN rag_documents doc ON doc.document_id = c.document_id
+    SET e.status = 'FAILED',
+        e.last_error_message = 'Recovered stale BATCH_SUBMITTED without active batch job.',
+        e.updated_at = NOW()
+    WHERE e.embedding_model = #{model}
+      AND e.vector_store = #{vectorStore}
+      AND e.status = 'BATCH_SUBMITTED'
+      AND TIMESTAMPDIFF(MINUTE, e.embedded_at, NOW()) &gt;= #{staleMinutes}
+      AND (#{documentType} = '' OR doc.document_type = #{documentType})
+      AND NOT EXISTS (
+        SELECT 1
+        FROM semantic_batch_job_chunks bjc
+        JOIN semantic_batch_jobs bj ON bj.batch_job_id = bjc.batch_job_id
+        WHERE bjc.chunk_id = e.chunk_id
+          AND bj.target = doc.document_type
+          AND bj.status IN ('validating', 'in_progress', 'finalizing')
+      )
+  </update>
+
+</mapper>

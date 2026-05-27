@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.kaces.pandora.semantic.batch.persistence.LawSemanticBatchJobMapper">
+
+  <insert id="insertJob">
+    INSERT INTO semantic_batch_jobs (
+      openai_batch_id, input_file_id, status, target, query_text,
+      embedding_model, vector_store, input_file_path, requested_count, submitted_count
+    )
+    VALUES (
+      #{openaiBatchId}, #{inputFileId}, #{status}, #{target}, #{queryText},
+      #{embeddingModel}, #{vectorStore}, #{inputFilePath}, #{requestedCount}, #{submittedCount}
+    )
+  </insert>
+
+  <select id="lastInsertId" resultType="long">
+    SELECT LAST_INSERT_ID()
+  </select>
+
+  <select id="findByOpenaiBatchId" resultType="com.kaces.pandora.semantic.batch.persistence.LawSemanticBatchJobRow">
+    SELECT
+      batch_job_id AS batchJobId,
+      openai_batch_id AS openaiBatchId,
+      input_file_id AS inputFileId,
+      output_file_id AS outputFileId,
+      error_file_id AS errorFileId,
+      status,
+      target,
+      query_text AS queryText,
+      embedding_model AS embeddingModel,
+      vector_store AS vectorStore,
+      input_file_path AS inputFilePath,
+      output_file_path AS outputFilePath,
+      requested_count AS requestedCount,
+      submitted_count AS submittedCount,
+      completed_count AS completedCount,
+      failed_count AS failedCount,
+      ingested_count AS ingestedCount,
+      last_error_message AS lastErrorMessage
+    FROM semantic_batch_jobs
+    WHERE openai_batch_id = #{openaiBatchId}
+  </select>
+
+  <select id="findAllJobs" resultType="com.kaces.pandora.semantic.batch.persistence.LawSemanticBatchJobRow">
+    SELECT
+      batch_job_id AS batchJobId,
+      openai_batch_id AS openaiBatchId,
+      input_file_id AS inputFileId,
+      output_file_id AS outputFileId,
+      error_file_id AS errorFileId,
+      status,
+      target,
+      query_text AS queryText,
+      embedding_model AS embeddingModel,
+      vector_store AS vectorStore,
+      input_file_path AS inputFilePath,
+      output_file_path AS outputFilePath,
+      requested_count AS requestedCount,
+      submitted_count AS submittedCount,
+      completed_count AS completedCount,
+      failed_count AS failedCount,
+      ingested_count AS ingestedCount,
+      last_error_message AS lastErrorMessage
+    FROM semantic_batch_jobs
+    ORDER BY batch_job_id
+  </select>
+
+  <select id="findActiveJobs" resultType="com.kaces.pandora.semantic.batch.persistence.LawSemanticBatchJobRow">
+    SELECT
+      batch_job_id AS batchJobId,
+      openai_batch_id AS openaiBatchId,
+      input_file_id AS inputFileId,
+      output_file_id AS outputFileId,
+      error_file_id AS errorFileId,
+      status,
+      target,
+      query_text AS queryText,
+      embedding_model AS embeddingModel,
+      vector_store AS vectorStore,
+      input_file_path AS inputFilePath,
+      output_file_path AS outputFilePath,
+      requested_count AS requestedCount,
+      submitted_count AS submittedCount,
+      completed_count AS completedCount,
+      failed_count AS failedCount,
+      ingested_count AS ingestedCount,
+      last_error_message AS lastErrorMessage
+    FROM semantic_batch_jobs
+    WHERE status IN ('validating', 'in_progress', 'finalizing', 'completed')
+    ORDER BY submitted_at
+  </select>
+
+  <update id="updateStatus">
+    UPDATE semantic_batch_jobs
+    SET status = #{status},
+        output_file_id = #{outputFileId},
+        error_file_id = #{errorFileId},
+        completed_count = #{completedCount},
+        failed_count = #{failedCount},
+        completed_at = CASE WHEN #{status} = 'completed' THEN COALESCE(completed_at, CURRENT_TIMESTAMP) ELSE completed_at END
+    WHERE openai_batch_id = #{openaiBatchId}
+  </update>
+
+  <update id="markIngested">
+    UPDATE semantic_batch_jobs
+    SET status = 'INGESTED',
+        output_file_path = #{outputFilePath},
+        ingested_count = #{ingestedCount},
+        ingested_at = CURRENT_TIMESTAMP,
+        last_error_message = NULL
+    WHERE openai_batch_id = #{openaiBatchId}
+  </update>
+
+  <update id="markFailed">
+    UPDATE semantic_batch_jobs
+    SET status = #{status},
+        last_error_message = #{lastErrorMessage}
+    WHERE openai_batch_id = #{openaiBatchId}
+  </update>
+
+  <update id="recordLocalError">
+    UPDATE semantic_batch_jobs
+    SET last_error_message = #{lastErrorMessage}
+    WHERE openai_batch_id = #{openaiBatchId}
+  </update>
+
+</mapper>

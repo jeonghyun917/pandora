@@ -3,9 +3,9 @@
   PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
   "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.kaces.pandora.law.mapper.LawDetailMapper">
-
-  <select id="findDetail" resultType="com.kaces.pandora.law.mapper.LawDetailRow">
+<mapper namespace="com.kaces.pandora.lawdata.persistence.LawDetailMapper">
+  <!-- 문서 ID로 상세 원문과 문서 기본 메타데이터를 함께 조회합니다. -->
+  <select id="findDetail" resultType="com.kaces.pandora.lawdata.persistence.LawDetailRow">
     SELECT
       d.document_id AS documentId,
       doc.title AS title,
@@ -18,7 +18,7 @@
     JOIN law_api_documents doc ON doc.document_id = d.document_id
     WHERE d.document_id = #{documentId}
   </select>
-
+  <!-- 문서별 상세 원문을 신규 저장하거나 기존 상세 레코드를 최신 값으로 갱신합니다. -->
   <insert id="upsertDetail">
     INSERT INTO law_api_document_details (
       document_id, detail_title, meta_json, sections_json, raw_json,
@@ -38,11 +38,28 @@
       last_error_message = NULL,
       fetched_at = CURRENT_TIMESTAMP
   </insert>
-
+  <!-- 문서 ID에 연결된 내부 상세 ID를 조회합니다. -->
   <select id="findDetailId" resultType="long">
     SELECT detail_id
     FROM law_api_document_details
     WHERE document_id = #{documentId}
+  </select>
+  <!-- 저장된 상세 원문에서 검색 청크를 다시 만들 대상 문서를 조회합니다. -->
+  <select id="findChunkRebuildRows" resultType="com.kaces.pandora.lawdata.chunk.LawChunkRebuildRow">
+    SELECT
+      d.document_id AS documentId,
+      d.detail_id AS detailId,
+      doc.target AS target,
+      doc.title AS title,
+      d.detail_title AS detailTitle,
+      d.raw_json AS rawJson
+    FROM law_api_document_details d
+    JOIN law_api_documents doc ON doc.document_id = d.document_id
+    WHERE doc.use_yn = 'Y'
+      AND d.use_yn = 'Y'
+      AND doc.target = #{target}
+    ORDER BY d.document_id
+    LIMIT #{limit} OFFSET #{offset}
   </select>
 
 </mapper>

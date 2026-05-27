@@ -1,0 +1,307 @@
+package com.kaces.pandora.ai.answer;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
+
+class EvidenceJudgeTests {
+
+	// 메소드 설명: EvidenceJudge 처리 흐름을 수행합니다.
+	private final EvidenceJudge judge = new EvidenceJudge();
+
+	@Test
+	// 메소드 설명: promotesDirectHardwareExclusionEvidenceOverLooseSoftwareMatches 처리 흐름을 수행합니다.
+	void promotesDirectHardwareExclusionEvidenceOverLooseSoftwareMatches() {
+		LawSemanticChunkRow looseMatch = chunk(
+			1,
+			"상용소프트웨어 직접구매 가이드",
+			"상용소프트웨어 직접구매 대상 소프트웨어와 구매 절차를 설명한다."
+		);
+		LawSemanticChunkRow directEvidence = chunk(
+			2,
+			"공공소프트웨어사업 과업심의 가이드",
+			"단순 H/W(Appliance 포함) 도입 설치, 네트워크 등 인프라 수수료와 같이 소프트웨어사업으로 볼 수 없는 경우는 비대상이다."
+		);
+		LawSemanticChunkRow supportingEvidence = chunk(
+			3,
+			"공공SW사업 법제도 관리감독 및 지원 가이드",
+			"국가기관등의 장이 발주하는 소프트웨어사업 중 단순 H/W 도입 설치는 소프트웨어사업으로 볼 수 없는 경우로 비대상이다."
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		EvidenceJudge.Result result = judge.judge(
+			"공공소프트웨어사업에서 단순 하드웨어 구매는 소프트웨어사업에 포함되나요?",
+			List.of(looseMatch, directEvidence, supportingEvidence),
+			Map.of("official_doc:1", 0.9, "official_doc:2", 0.3, "official_doc:3", 0.4),
+			8
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		assertThat(result.chunks().get(0)).isIn(directEvidence, supportingEvidence);
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		assertThat(result.chunks()).doesNotContain(looseMatch);
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		assertThat(result.scoreByChunkId().get("official_doc:2"))
+			.isGreaterThan(result.scoreByChunkId().get("official_doc:1"));
+	}
+
+	@Test
+	// 메소드 설명: promotesRfpRequiredItemsEvidence 처리 흐름을 수행합니다.
+	void promotesRfpRequiredItemsEvidence() {
+		LawSemanticChunkRow requiredItems = chunk(
+			1,
+			"공공정보화사업 유형별 제안요청서 작성 가이드",
+			"제안요청서에는 다음 각 호의 사항을 명시하여야 한다. 1. 과업내용, 요구사항 2. 계약조건 3. 평가요소, 평가방법"
+		);
+		LawSemanticChunkRow submissionSchedule = chunk(
+			2,
+			"공공정보화사업 유형별 제안요청서 작성 가이드",
+			"입찰에 참여하는 제안사가 제출하여야 하는 각종 서류와 제출일정 및 제출방법을 기재한다."
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		EvidenceJudge.Result result = judge.judge(
+			"공공기관 제안요청서 작성할때 필수요소가 있나?",
+			List.of(submissionSchedule, requiredItems),
+			Map.of("official_doc:1", 0.4, "official_doc:2", 0.7),
+			8
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		assertThat(result.chunks()).first().isEqualTo(requiredItems);
+	}
+
+	@Test
+	// 메소드 설명: keepsOnlyDirectTargetEvidenceWhenTargetQuestionHasAnswerLikeChunks 처리 흐름을 수행합니다.
+	void keepsOnlyDirectTargetEvidenceWhenTargetQuestionHasAnswerLikeChunks() {
+		LawSemanticChunkRow directTarget = chunk(
+			1,
+			"공공소프트웨어사업 과업심의 가이드",
+			"적용 대상 사업은 국가기관 등이 발주하는 모든 SW사업이다."
+		);
+		LawSemanticChunkRow adjacentPage = chunk(
+			2,
+			"공공소프트웨어사업 과업심의 가이드",
+			"위원의 직접 이해관계 해석범위와 대상 사업 예시를 설명한다."
+		);
+		LawSemanticChunkRow wrongConcept = chunk(
+			3,
+			"공공SW사업 법제도 관리감독 및 지원 가이드",
+			"SW영향평가 적용 대상 사업과 적용 제외 사업을 설명한다."
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		EvidenceJudge.Result result = judge.judge(
+			"과업심의 대상은?",
+			List.of(adjacentPage, wrongConcept, directTarget),
+			Map.of("official_doc:1", 0.4, "official_doc:2", 0.9, "official_doc:3", 0.95),
+			8
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		assertThat(result.chunks()).containsExactly(directTarget);
+	}
+
+	@Test
+	// 메소드 설명: targetQuestionPrefersScopeEvidenceOverReviewItemEvidence 처리 흐름을 수행합니다.
+	void targetQuestionPrefersScopeEvidenceOverReviewItemEvidence() {
+		LawSemanticChunkRow directTarget = chunk(
+			1,
+			"공공SW사업 법제도 관리감독 및 지원 가이드",
+			"대상사업 : 국가기관등의 장이 발주하는 소프트웨어사업. 대상사업은 SW개발, 제작, 생산, 유통, 운영 및 유지관리 등과 소프트웨어와 관련된 서비스를 포함한다."
+		);
+		LawSemanticChunkRow reviewItems = chunk(
+			2,
+			"공공소프트웨어사업 과업심의 가이드",
+			"과업내용의 적정성 검토, 과업내용과 비용 산정의 적정성, 적정사업기간의 산정, SW영향평가의 재평가를 심의한다."
+		);
+		LawSemanticChunkRow exceptionOnly = chunk(
+			3,
+			"공공소프트웨어사업 과업심의 가이드",
+			"과업심의 대상 - 총 사업금액 1억 이하, 상용SW 또는 타기관 표준 정보시스템 구매사업, 기존 과업심의를 거쳤던 사업."
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		EvidenceJudge.Result result = judge.judge(
+			"과업심의 대상은?",
+			List.of(reviewItems, exceptionOnly, directTarget),
+			Map.of("official_doc:1", 0.4, "official_doc:2", 0.95, "official_doc:3", 0.9),
+			8
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		assertThat(result.chunks()).containsExactly(directTarget);
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		assertThat(result.chunks()).doesNotContain(reviewItems, exceptionOnly);
+	}
+
+	@Test
+	// 메소드 설명: keepsOnlyDirectPreConsultationTargetEvidence 처리 흐름을 수행합니다.
+	void keepsOnlyDirectPreConsultationTargetEvidence() {
+		LawSemanticChunkRow directTarget = chunk(
+			1,
+			"2024년 정보화사업 사전협의 안내자료",
+			"사전협의의 대상사업은 예산과목 및 계약방식과 관계없이 대상기관이 추진하는 모든 정보화사업이다."
+		);
+		LawSemanticChunkRow adjacentPage = chunk(
+			2,
+			"사전협의 사전협의 개요",
+			"대상시스템을 연속성 있게 성과관리하기 위하여 사업명칭 부여 기준을 제시한다."
+		);
+		LawSemanticChunkRow procedurePage = chunk(
+			3,
+			"사전협의 사전협의 개요",
+			"유사 시스템 식별 단계에서 대상사업의 행정서비스 업무기능과 데이터 수요자 측면을 검색한다."
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		EvidenceJudge.Result result = judge.judge(
+			"기타공공기관 사전협의 대상 알려줘",
+			List.of(adjacentPage, procedurePage, directTarget),
+			Map.of("official_doc:1", 0.4, "official_doc:2", 0.9, "official_doc:3", 0.8),
+			8
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		assertThat(result.chunks()).containsExactly(directTarget);
+	}
+
+	@Test
+	// 메소드 설명: securityReviewTargetQuestionRejectsGenericSystemTargetEvidence 처리 흐름을 수행합니다.
+	void securityReviewTargetQuestionRejectsGenericSystemTargetEvidence() {
+		LawSemanticChunkRow directTarget = chunk(
+			1,
+			"(붙임2) 2026년 정보화사업 보안성 검토 가이드",
+			"대상 사업 및 시기. 국가정보원 검토 대상은 비밀 대외비를 유통 관리하기 위한 정보통신망 또는 정보시스템 구축, 주요 데이터베이스 구축 등이다."
+		);
+		LawSemanticChunkRow genericDbManual = chunk(
+			2,
+			"공공데이터베이스 표준화 관리 매뉴얼",
+			"관리대상 DB와 폐기 대상 DB, 정보시스템 DB 적용 제외 기준을 설명한다."
+		);
+		LawSemanticChunkRow securityItemOnly = chunk(
+			3,
+			"(붙임2) 2026년 정보화사업 보안성 검토 가이드",
+			"AI모델 대상 적대적 모의공격 수행, AI시스템 통신구간 보호 등 보안위협 예시와 대책을 설명한다."
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		EvidenceJudge.Result result = judge.judge(
+			"보안성검토 대상 시스템은?",
+			List.of(genericDbManual, securityItemOnly, directTarget),
+			Map.of("official_doc:1", 0.4, "official_doc:2", 0.95, "official_doc:3", 0.9),
+			8
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		assertThat(result.chunks()).containsExactly(directTarget);
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		assertThat(result.chunks()).doesNotContain(genericDbManual, securityItemOnly);
+	}
+
+	@Test
+	// 메소드 설명: securityReviewTargetQuestionRejectsAdministrativeEntryInstructions 처리 흐름을 수행합니다.
+	void securityReviewTargetQuestionRejectsAdministrativeEntryInstructions() {
+		LawSemanticChunkRow directTarget = chunk(
+			1,
+			"국가정보보안기본지침",
+			"국가정보원 검토 대상은 비밀ㆍ대외비를 유통ㆍ관리하기 위한 정보통신망 또는 정보시스템 구축, 주요 데이터베이스 구축 등이다."
+		);
+		LawSemanticChunkRow entryInstruction = chunk(
+			2,
+			"2025년 정보화사업 사전협의 안내서",
+			"발주정보 등록 화면에서 사업명, 예산, 사전협의 대상, 보안성검토 대상 등을 입력한다."
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		EvidenceJudge.Result result = judge.judge(
+			"보안성검토 대상 시스템은?",
+			List.of(entryInstruction, directTarget),
+			Map.of("official_doc:1", 0.4, "official_doc:2", 0.95),
+			8
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		assertThat(result.chunks()).containsExactly(directTarget);
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		assertThat(result.chunks()).doesNotContain(entryInstruction);
+	}
+
+	@Test
+	// 메소드 설명: conceptQuestionDoesNotFallbackToUnrelatedCandidatesWhenOnlyOneDirectMatchExists 처리 흐름을 수행합니다.
+	void conceptQuestionDoesNotFallbackToUnrelatedCandidatesWhenOnlyOneDirectMatchExists() {
+		LawSemanticChunkRow directTarget = chunk(
+			1,
+			"데이터표준화 지침",
+			"데이터표준화 대상은 기관이 구축ㆍ운영하는 주요 데이터와 관련 시스템이다."
+		);
+		LawSemanticChunkRow genericTarget = chunk(
+			2,
+			"정보화사업 보안성 검토 가이드",
+			"보안성 검토 대상 사업은 정보통신망 또는 정보시스템 구축 사업이다."
+		);
+		LawSemanticChunkRow genericSystem = chunk(
+			3,
+			"공공데이터베이스 표준화 관리 매뉴얼",
+			"관리 대상 시스템과 제외 대상을 설명한다."
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		EvidenceJudge.Result result = judge.judge(
+			"데이터표준화 대상은?",
+			List.of(genericTarget, genericSystem, directTarget),
+			Map.of("official_doc:1", 0.4, "official_doc:2", 0.95, "official_doc:3", 0.9),
+			8
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		assertThat(result.chunks()).containsExactly(directTarget);
+	}
+
+	@Test
+	// 메소드 설명: keepsCandidatesWhenNoReliableJudgmentExists 처리 흐름을 수행합니다.
+	void keepsCandidatesWhenNoReliableJudgmentExists() {
+		LawSemanticChunkRow candidate = chunk(
+			1,
+			"임의 문서",
+			"질문과 일부 관련될 수 있는 일반 설명 문장이다."
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		EvidenceJudge.Result result = judge.judge(
+			"새로운 유형의 질문",
+			List.of(candidate),
+			Map.of("official_doc:1", 0.5),
+			8
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		assertThat(result.chunks()).containsExactly(candidate);
+	}
+
+	// 메소드 설명: chunk 처리 흐름을 수행합니다.
+	// 메소드 설명: chunk 처리 흐름을 수행합니다.
+	private LawSemanticChunkRow chunk(long id, String title, String text) {
+		return new LawSemanticChunkRow(
+			id,
+			1,
+			"official_doc",
+			String.valueOf(id),
+			title,
+			"기관",
+			"공식 가이드 문서",
+			null,
+			"page " + id,
+			"p." + id,
+			text,
+			(int) id,
+			null,
+			null,
+			(int) id,
+			"hash-" + id
+		);
+	}
+}

@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.kaces.pandora.semantic.batch.persistence.LawSemanticBatchJobChunkMapper">
+
+  <insert id="insertChunks">
+    INSERT INTO semantic_batch_job_chunks (
+      batch_job_id, openai_batch_id, target, chunk_id, custom_id,
+      status, error_code, error_message
+    )
+    VALUES
+    <foreach collection="chunks" item="chunk" separator=",">
+      (
+        #{chunk.batchJobId}, #{chunk.openaiBatchId}, #{chunk.target}, #{chunk.chunkId}, #{chunk.customId},
+        #{chunk.status}, #{chunk.errorCode}, #{chunk.errorMessage}
+      )
+    </foreach>
+    ON DUPLICATE KEY UPDATE
+      batch_job_chunk_id = batch_job_chunk_id
+  </insert>
+
+  <select id="countByBatchJobId" resultType="int">
+    SELECT COUNT(*)
+    FROM semantic_batch_job_chunks
+    WHERE batch_job_id = #{batchJobId}
+  </select>
+
+  <select id="countByStatus" resultType="int">
+    SELECT COUNT(*)
+    FROM semantic_batch_job_chunks
+    WHERE batch_job_id = #{batchJobId}
+      AND status = #{status}
+  </select>
+
+  <select id="findChunkIdsByStatus" resultType="long">
+    SELECT chunk_id
+    FROM semantic_batch_job_chunks
+    WHERE batch_job_id = #{batchJobId}
+      AND status = #{status}
+  </select>
+
+  <update id="markOutputReady">
+    UPDATE semantic_batch_job_chunks
+    SET status = CASE WHEN status = 'SUBMITTED' THEN 'OUTPUT_READY' ELSE status END,
+        output_ready_at = COALESCE(output_ready_at, CURRENT_TIMESTAMP)
+    WHERE batch_job_id = #{batchJobId}
+      AND custom_id = #{customId}
+  </update>
+
+  <update id="markIndexed">
+    UPDATE semantic_batch_job_chunks
+    SET status = 'INDEXED',
+        output_ready_at = COALESCE(output_ready_at, CURRENT_TIMESTAMP),
+        ingested_at = CURRENT_TIMESTAMP,
+        error_code = NULL,
+        error_message = NULL
+    WHERE batch_job_id = #{batchJobId}
+      AND chunk_id IN
+      <foreach collection="chunkIds" item="chunkId" open="(" separator="," close=")">
+        #{chunkId}
+      </foreach>
+  </update>
+
+  <update id="markFailed">
+    UPDATE semantic_batch_job_chunks
+    SET status = 'FAILED',
+        output_ready_at = COALESCE(output_ready_at, CURRENT_TIMESTAMP),
+        error_code = #{errorCode},
+        error_message = #{errorMessage}
+    WHERE batch_job_id = #{batchJobId}
+      AND custom_id = #{customId}
+  </update>
+
+  <update id="markIndexedFromEmbeddingStatus">
+    UPDATE semantic_batch_job_chunks bjc
+    JOIN law_api_chunk_embeddings e
+      ON e.chunk_id = bjc.chunk_id
+      AND e.embedding_model = #{model}
+      AND e.vector_store = #{vectorStore}
+      AND e.status = 'INDEXED'
+    SET bjc.status = 'INDEXED',
+        bjc.output_ready_at = COALESCE(bjc.output_ready_at, CURRENT_TIMESTAMP),
+        bjc.ingested_at = COALESCE(bjc.ingested_at, CURRENT_TIMESTAMP),
+        bjc.error_code = NULL,
+        bjc.error_message = NULL
+    WHERE bjc.batch_job_id = #{batchJobId}
+  </update>
+
+</mapper>

@@ -3,8 +3,8 @@
   PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
   "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
-<mapper namespace="com.kaces.pandora.law.mapper.LawDocumentMapper">
-
+<mapper namespace="com.kaces.pandora.lawdata.persistence.LawDocumentMapper">
+  <!-- 문서 검색과 건수 조회에서 공통으로 사용하는 target/use_yn/키워드 조건입니다. -->
   <sql id="documentSearchWhere">
     target = #{target}
     AND use_yn = 'Y'
@@ -16,14 +16,14 @@
       )
     </if>
   </sql>
-
+  <!-- 검색 조건에 맞는 법령 문서 전체 건수를 조회합니다. -->
   <select id="countDocuments" resultType="int">
     SELECT COUNT(*)
     FROM law_api_documents
     WHERE <include refid="documentSearchWhere"/>
   </select>
-
-  <select id="searchDocuments" resultType="com.kaces.pandora.law.mapper.LawDocumentRow">
+  <!-- 검색 조건에 맞는 법령 문서 목록을 페이지 단위로 조회합니다. -->
+  <select id="searchDocuments" resultType="com.kaces.pandora.lawdata.persistence.LawDocumentRow">
     SELECT
       document_id AS documentId,
       target,
@@ -38,7 +38,7 @@
     ORDER BY title, external_id
     LIMIT #{limit} OFFSET #{offset}
   </select>
-
+  <!-- 외부 API 검색 문서를 신규 저장하거나 동일 target/external_id 문서를 최신 값으로 갱신합니다. -->
   <insert id="upsertDocument">
     INSERT INTO law_api_documents (
       target, external_id, title, agency_name, category_name, source_date,
@@ -60,7 +60,7 @@
       last_error_message = NULL,
       fetched_at = CURRENT_TIMESTAMP
   </insert>
-
+  <!-- target과 외부 원본 ID로 내부 document_id를 조회합니다. -->
   <select id="findDocumentId" resultType="long">
     SELECT document_id
     FROM law_api_documents
