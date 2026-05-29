@@ -1,0 +1,376 @@
+const fs = require("fs");
+const path = require("path");
+const { execFileSync } = require("child_process");
+
+const workspace = path.resolve(__dirname, "..");
+const logDir = path.join(workspace, "logs");
+const logPath = path.join(logDir, "admrul-batch-monitor.log");
+const reportPath = path.join(logDir, "admrul-batch-report-latest.md");
+const lockPath = path.join(process.env.TEMP || workspace, "pandora-admrul-batch-monitor.lock");
+const mysql = "C:\\Program Files\\MariaDB 12.2\\bin\\mariadb.exe";
+const baseUrl = "http://localhost:8080";
+const qdrantUrl = "http://localhost:6333/collections/law_chunks";
+const model = "text-embedding-3-small";
+const vectorStore = "law_chunks";
+
+fs.mkdirSync(logDir, { recursive: true });
+
+function nowLine() {
+  const date = new Date();
+  const pad = (value) => String(value).padStart(2, "0");
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absOffset = Math.abs(offsetMinutes);
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())} ${sign}${pad(Math.floor(absOffset / 60))}:${pad(absOffset % 60)}`;
+}
+
+function log(message) {
+  fs.appendFileSync(logPath, `${nowLine()} ${message}\n`, "utf8");
+}
+
+function db(sql) {
+  const output = execFileSync(mysql, [
+    "--ssl=0",
+    "-upandora",
+    "-ppandora",
+    "--batch",
+    "--skip-column-names",
+    "pandora",
+    "-e",
+    sql,
+  ], { cwd: workspace, encoding: "utf8", windowsHide: true });
+  return output.trim().split(/\r?\n/).filter(Boolean);
+}
+
+async function api(method, apiPath, timeoutMs = 120000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${baseUrl}${apiPath}`, { method, signal: controller.signal });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} ${text.slice(0, 300)}`);
+    }
+    return text;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function getJson(url, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} ${text.slice(0, 300)}`);
+    }
+    return JSON.parse(text);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function splitRow(row) {
+  return row.split("\t");
+}
+
+function buildReport(context) {
+  const {
+    springStatus,
+    qdrantStatus,
+    qdrantPoints,
+    jobs,
+    summary,
+    fill,
+    recoveryActions,
+    risks,
+  } = context;
+  const status = Object.fromEntries(summary.map((line) => {
+    const [key, value] = line.split("=");
+    return [key, value];
+  }));
+  const active = status.active || "0";
+  const indexed = status.INDEXED || "0";
+  const submitted = status.BATCH_SUBMITTED || "0";
+  const failed = status.FAILED || "0";
+  const noEmbed = status.NO_EMBED || "0";
+  const docsAndChunks = db(`
+SELECT CONCAT('documents=', COUNT(DISTINCT doc.document_id))
+FROM law_api_documents doc
+WHERE doc.target = 'admrul' AND doc.use_yn = 'Y'
+UNION ALL
+SELECT CONCAT('chunks=', COUNT(*))
+FROM law_api_document_chunks c
+JOIN law_api_documents doc ON doc.document_id = c.document_id
+WHERE doc.target = 'admrul' AND c.use_yn = 'Y' AND doc.use_yn = 'Y'
+`);
+  const total = Object.fromEntries(docsAndChunks.map((line) => {
+    const [key, value] = line.split("=");
+    return [key, value];
+  }));
+
+  const jobLines = jobs.map((row) => {
+    const [id, openaiId, state, requested, submittedCount, completed, failedCount, ingested, updatedAt] = splitRow(row);
+    const batch = `${Number(completed).toLocaleString()}/${Number(submittedCount).toLocaleString()}`;
+    const ingest = ingested === "0" ? `대기 ${Number(ingested).toLocaleString()}` : `INDEXED ${Number(ingested).toLocaleString()}`;
+    return `| ${id} | ${state} | ${batch} | ${ingest} | failed ${failedCount}, ${updatedAt}, ${openaiId} |`;
+  }).join("\n");
+
+  return `# admrul batch monitor latest
+
+- 현재 시각: ${nowLine()}
+- Spring 8080: ${springStatus}
+- Qdrant law_chunks: ${qdrantStatus}, points=${Number(qdrantPoints || 0).toLocaleString()}
+- 전체 admrul 문서/청크: ${Number(total.documents || 0).toLocaleString()} / ${Number(total.chunks || 0).toLocaleString()}
+- INDEXED / BATCH_SUBMITTED / FAILED / NO_EMBED: ${Number(indexed).toLocaleString()} / ${Number(submitted).toLocaleString()} / ${Number(failed).toLocaleString()} / ${Number(noEmbed).toLocaleString()}
+- active OpenAI job 수: ${active}
+- 새 batch 제출 여부: ${fill ? "fill-queue 실행" : "없음"}
+- 수행한 복구 조치: ${recoveryActions.length ? recoveryActions.join("; ") : "없음"}
+- 남은 위험: ${risks.length ? risks.join("; ") : "없음"}
+
+| Job | 상태 | Batch 완료 | Ingest/Index 상태 | 비고 |
+| --- | --- | --- | --- | --- |
+${jobLines || "| - | - | - | - | - |"}
+`;
+}
+
+function buildReportReadable(context) {
+  const {
+    springStatus,
+    qdrantStatus,
+    qdrantPoints,
+    jobs,
+    summary,
+    fill,
+    recoveryActions,
+    risks,
+  } = context;
+  const status = Object.fromEntries(summary.map((line) => {
+    const [key, value] = line.split("=");
+    return [key, value];
+  }));
+  const active = status.active || "0";
+  const indexed = status.INDEXED || "0";
+  const submitted = status.BATCH_SUBMITTED || "0";
+  const failed = status.FAILED || "0";
+  const noEmbed = status.NO_EMBED || "0";
+  const docsAndChunks = db(`
+SELECT CONCAT('documents=', COUNT(DISTINCT doc.document_id))
+FROM law_api_documents doc
+WHERE doc.target = 'admrul' AND doc.use_yn = 'Y'
+UNION ALL
+SELECT CONCAT('chunks=', COUNT(*))
+FROM law_api_document_chunks c
+JOIN law_api_documents doc ON doc.document_id = c.document_id
+WHERE doc.target = 'admrul' AND c.use_yn = 'Y' AND doc.use_yn = 'Y'
+`);
+  const total = Object.fromEntries(docsAndChunks.map((line) => {
+    const [key, value] = line.split("=");
+    return [key, value];
+  }));
+  const indexedPercent = Number(total.chunks || 0) === 0
+    ? "0.00"
+    : ((Number(indexed) / Number(total.chunks)) * 100).toFixed(2);
+  const jobLines = jobs.map((row) => {
+    const [id, openaiId, state, requested, submittedCount, completed, failedCount, ingested, updatedAt] = splitRow(row);
+    const batch = `${Number(completed).toLocaleString()}/${Number(submittedCount).toLocaleString()}`;
+    const ingest = ingested === "0"
+      ? `SUBMITTED/WAIT ${Number(ingested).toLocaleString()}`
+      : `INDEXED ${Number(ingested).toLocaleString()}`;
+    const note = Number(failedCount) > 0 ? `failed ${failedCount}` : "완료/진행";
+    return `| ${id} | ${state} | ${batch} | ${ingest} | ${note}, ${updatedAt}, ${openaiId} |`;
+  }).join("\n");
+
+  return `# admrul 배치 모니터링 보고
+
+최신 상태 파일 기준 시각은 ${nowLine()} 입니다.
+
+| Job | 상태 | Batch 완료 | Ingest/Index | 비고 |
+| --- | --- | --- | --- | --- |
+${jobLines || "| - | - | - | - | - |"}
+
+전체 상태:
+
+- 전체 문서/청크: ${Number(total.documents || 0).toLocaleString()} / ${Number(total.chunks || 0).toLocaleString()}
+- INDEXED: ${Number(indexed).toLocaleString()} (${indexedPercent}%)
+- BATCH_SUBMITTED: ${Number(submitted).toLocaleString()}
+- FAILED: ${Number(failed).toLocaleString()}
+- NO_EMBED: ${Number(noEmbed).toLocaleString()}
+- active OpenAI jobs: ${active} / 2
+- Qdrant: ${qdrantStatus}, points ${Number(qdrantPoints || 0).toLocaleString()}
+- Spring: ${springStatus}
+- 새 batch 제출: ${fill ? "fill-queue 실행" : "없음"}
+- 복구 조치: ${recoveryActions.length ? recoveryActions.join("; ") : "없음"}
+- 남은 위험: ${risks.length ? risks.join("; ") : "없음"}
+`;
+}
+
+async function main() {
+  if (fs.existsSync(lockPath)) {
+    const ageMinutes = (Date.now() - fs.statSync(lockPath).mtimeMs) / 60000;
+    if (ageMinutes < 20) {
+      log("skip: previous monitor run still active");
+      return;
+    }
+  }
+  fs.writeFileSync(lockPath, String(process.pid));
+  const recoveryActions = [];
+  const risks = [];
+  let fill = "";
+  try {
+    process.chdir(workspace);
+    log("start admrul monitor node");
+
+    const springResponse = await fetch(`${baseUrl}/`);
+    const springStatus = springResponse.status;
+    log(`spring status=${springStatus}`);
+
+    const qdrant = await getJson(qdrantUrl);
+    const qdrantStatus = qdrant.result?.status || "unknown";
+    const qdrantPoints = qdrant.result?.points_count || 0;
+    log(`qdrant status=${qdrantStatus} points=${qdrantPoints}`);
+
+    const recover = await api("POST", "/api/law-data/semantic/batches/recover-stale?target=admrul", 120000);
+    log(`recover-stale ${recover}`);
+    recoveryActions.push(`recover-stale ${recover}`);
+
+    const poll = await api("POST", "/api/law-data/semantic/batches/poll", 180000);
+    log(`poll ${poll}`);
+
+    const completedJobs = db(`
+SELECT openai_batch_id
+FROM semantic_batch_jobs
+WHERE target = 'admrul'
+  AND status = 'completed'
+  AND ingested_count = 0
+ORDER BY batch_job_id
+`);
+
+    for (const batchId of completedJobs) {
+      if (!batchId.trim()) {
+        continue;
+      }
+      log(`ingest ${batchId}`);
+      try {
+        const ingest = await api("POST", `/api/law-data/semantic/batches/${batchId}/ingest`, 900000);
+        log(`ingest-result ${ingest}`);
+        recoveryActions.push(`ingest ${batchId} 성공`);
+      } catch (error) {
+        log(`ingest-error batch=${batchId} ${error.message}`);
+        risks.push(`ingest 실패 ${batchId}: ${error.message.slice(0, 160)}`);
+      }
+    }
+
+    try {
+      fill = await api("POST", "/api/law-data/semantic/batches/fill-queue?target=admrul&maxActiveJobs=2", 600000);
+      log(`fill-queue ${fill}`);
+    } catch (error) {
+      log(`fill-queue-error ${error.message}`);
+      risks.push(`fill-queue 실패: ${error.message.slice(0, 160)}`);
+    }
+
+    const statusAges = db(`
+SELECT CONCAT(
+  'job=', batch_job_id,
+  ',status=', status,
+  ',completed=', completed_count, '/', submitted_count,
+  ',failed=', failed_count,
+  ',updated_age_min=', TIMESTAMPDIFF(MINUTE, updated_at, NOW()),
+  ',submitted_age_min=', TIMESTAMPDIFF(MINUTE, submitted_at, NOW()),
+  ',decision=',
+  CASE
+    WHEN status IN ('validating','in_progress') AND completed_count = 0 AND TIMESTAMPDIFF(MINUTE, submitted_at, NOW()) >= 30
+      THEN 'completed_zero_over_30m_needs_cancel_retry_review'
+    WHEN status = 'in_progress'
+      AND completed_count > 0
+      AND submitted_count > 0
+      AND completed_count >= submitted_count * 0.95
+      AND TIMESTAMPDIFF(MINUTE, updated_at, NOW()) >= 240
+      THEN 'tail_stall_over_4h_cancel_or_partial_recovery_review'
+    WHEN status = 'in_progress'
+      AND completed_count > 0
+      AND submitted_count > 0
+      AND completed_count >= submitted_count * 0.95
+      AND TIMESTAMPDIFF(MINUTE, updated_at, NOW()) >= 120
+      THEN 'tail_stall_over_2h_attention'
+    WHEN status = 'in_progress'
+      AND completed_count > 0
+      AND submitted_count > 0
+      AND completed_count >= submitted_count * 0.95
+      AND TIMESTAMPDIFF(MINUTE, updated_at, NOW()) >= 30
+      THEN 'tail_stall_over_30m_watch'
+    WHEN status = 'finalizing' AND TIMESTAMPDIFF(MINUTE, updated_at, NOW()) >= 240
+      THEN 'finalizing_over_4h_strong_abnormal_manual_cancel_review'
+    WHEN status = 'finalizing' AND TIMESTAMPDIFF(MINUTE, updated_at, NOW()) >= 60
+      THEN 'finalizing_over_1h_long_running'
+    WHEN status = 'finalizing' AND TIMESTAMPDIFF(MINUTE, updated_at, NOW()) >= 30
+      THEN 'finalizing_over_30m_watch'
+    ELSE 'normal_watch'
+  END
+)
+FROM semantic_batch_jobs
+WHERE target = 'admrul'
+  AND status IN ('validating','in_progress','finalizing','completed')
+ORDER BY batch_job_id DESC
+`);
+    log(`status-ages ${statusAges.join("; ")}`);
+    for (const row of statusAges) {
+      if (row.includes("finalizing_over_") || row.includes("completed_zero_over_30m") || row.includes("tail_stall_over_")) {
+        risks.push(row);
+      }
+    }
+
+    const summary = db(`
+SELECT CONCAT('active=', COUNT(*))
+FROM semantic_batch_jobs
+WHERE target = 'admrul' AND status IN ('validating','in_progress','finalizing')
+UNION ALL
+SELECT CONCAT(COALESCE(e.status,'NO_EMBED'), '=', COUNT(*))
+FROM law_api_document_chunks c
+JOIN law_api_documents doc ON doc.document_id = c.document_id
+LEFT JOIN law_api_chunk_embeddings e
+  ON e.chunk_id = c.chunk_id
+  AND e.embedding_model = '${model}'
+  AND e.vector_store = '${vectorStore}'
+WHERE doc.target = 'admrul'
+  AND c.use_yn = 'Y'
+  AND doc.use_yn = 'Y'
+GROUP BY COALESCE(e.status,'NO_EMBED')
+`);
+    log(`summary ${summary.join("; ")}`);
+
+    const jobs = db(`
+SELECT batch_job_id, openai_batch_id, status, requested_count, submitted_count, completed_count, failed_count, ingested_count, updated_at
+FROM semantic_batch_jobs
+WHERE target = 'admrul'
+ORDER BY
+  CASE WHEN status = 'INGESTED' THEN 1 ELSE 0 END,
+  batch_job_id DESC
+LIMIT 10
+`);
+    fs.writeFileSync(reportPath, buildReportReadable({
+      springStatus,
+      qdrantStatus,
+      qdrantPoints,
+      jobs,
+      summary,
+      fill,
+      recoveryActions,
+      risks,
+    }), "utf8");
+    log("codex chat report prepared only");
+    log("finish admrul monitor node");
+  } catch (error) {
+    log(`error ${error.message}`);
+    throw error;
+  } finally {
+    fs.rmSync(lockPath, { force: true });
+  }
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

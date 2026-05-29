@@ -410,7 +410,7 @@ public class LawAiAnswerService {
 				vectorScoreByChunkId,
 				keywordScoreByChunkId,
 				baseScoreByChunkId,
-				"현재 DB에서 질문과 관련된 근거 문서를 찾지 못했습니다. 법령명이나 상황을 조금 더 구체적으로 입력해 주세요.",
+				noCandidateMessage(hits.size(), vectorChunks.size(), lexicalChunks.size(), targets),
 				List.of()
 			);
 		}
@@ -434,14 +434,22 @@ public class LawAiAnswerService {
 		List<LawSemanticChunkRow> orderedChunks = diversifyChunks(evidenceChunks.stream()
 			.filter(this::hasUsefulText)
 			.toList(), normalized.display());
-		if (orderedChunks.isEmpty() && !judgedEvidence.directEvidenceRequired()) {
+		if (orderedChunks.isEmpty()
+			&& !judgedEvidence.directEvidenceRequired()
+			&& !judgedEvidence.conceptEvidenceRequired()) {
 			orderedChunks = diversifyChunks(judgeCandidateChunks, normalized.display());
 		}
 		List<LawAiAnswerGround> grounds = toGrounds(orderedChunks, finalScoreByChunkId, normalized.query());
 		if (grounds.isEmpty()) {
-			String noGroundMessage = judgedEvidence.directEvidenceRequired() && !judgedEvidence.directEvidenceFound()
-				? "후보 문서는 찾았지만 질문에 직접 답하는 근거를 확정하지 못했습니다. 질문 범위나 문서 종류를 조금 더 구체적으로 지정해 주세요."
-				: "관련 벡터 검색 결과는 있었지만 DB에서 근거 본문을 찾지 못했습니다. 인덱스를 다시 생성해 주세요.";
+			String noGroundMessage = noGroundDiagnosticMessage(
+				judgedEvidence,
+				searchedChunks,
+				rankedChunks,
+				intentFilteredChunks,
+				judgeCandidateChunks,
+				evidenceChunks,
+				orderedChunks
+			);
 			return new RetrievalResult(
 				"NO_GROUNDS",
 				normalized.target(),
@@ -494,6 +502,70 @@ public class LawAiAnswerService {
 	}
 
 	// 메소드 설명: toDebugResponse 처리 흐름을 수행합니다.
+	private String noCandidateMessage(int qdrantHitCount, int vectorChunkCount, int lexicalChunkCount, List<String> targets) {
+		String scope = targets == null || targets.isEmpty() ? "선택한 전체 문서 범위" : String.join(", ", targets);
+		if (qdrantHitCount == 0 && lexicalChunkCount == 0) {
+			return "진단: 후보 문서가 0건입니다.\n"
+				+ "선택 범위(" + scope + ") 안에 관련 문서가 아직 업로드/인덱싱되지 않았거나, 질문 표현과 문서 표현이 너무 달라 후보 검색에 걸리지 않았습니다.\n"
+				+ "확인: DEBUG 화면에서 vector와 keyword 후보가 모두 0건인지 보면 실제 문서 부재 가능성을 판단할 수 있습니다.";
+		}
+		if (qdrantHitCount > 0 && vectorChunkCount == 0 && lexicalChunkCount == 0) {
+			return "진단: Qdrant 후보는 " + qdrantHitCount + "건 있었지만 DB chunk 본문 조회가 0건입니다.\n"
+				+ "이 경우 문서가 없는 문제가 아니라 Qdrant 인덱스와 DB chunk 매핑이 어긋났을 가능성이 큽니다.\n"
+				+ "확인: 인덱스 재생성 또는 chunk_id/document_id 매핑을 점검해야 합니다.";
+		}
+		return "진단: 일부 후보는 있었지만 최종 근거로 사용할 본문을 만들지 못했습니다.\n"
+			+ "vector 후보 " + vectorChunkCount + "건, keyword 후보 " + lexicalChunkCount + "건이었고, 병합 후 사용할 근거가 비었습니다.\n"
+			+ "확인: DEBUG 화면에서 후보 문서가 어느 단계에서 사라졌는지 확인할 수 있습니다.";
+	}
+
+	private String noGroundDiagnosticMessage(
+		EvidenceJudge.Result judgedEvidence,
+		List<LawSemanticChunkRow> searchedChunks,
+		List<LawSemanticChunkRow> rankedChunks,
+		List<LawSemanticChunkRow> intentFilteredChunks,
+		List<LawSemanticChunkRow> judgeCandidateChunks,
+		List<LawSemanticChunkRow> evidenceChunks,
+		List<LawSemanticChunkRow> orderedChunks
+	) {
+		int mergedCount = searchedChunks == null ? 0 : searchedChunks.size();
+		int rankedCount = rankedChunks == null ? 0 : rankedChunks.size();
+		int intentCount = intentFilteredChunks == null ? 0 : intentFilteredChunks.size();
+		int judgeCandidateCount = judgeCandidateChunks == null ? 0 : judgeCandidateChunks.size();
+		int judgedCount = evidenceChunks == null ? 0 : evidenceChunks.size();
+		int usefulCount = orderedChunks == null ? 0 : orderedChunks.size();
+
+		String reason;
+		if (mergedCount == 0) {
+			reason = "후보 문서가 없습니다. 실제로 등록/인덱싱된 관련 문서가 없을 가능성이 큽니다.";
+		} else if (rankedCount == 0) {
+			reason = "후보 " + mergedCount + "건은 찾았지만 랭킹 단계에서 사용할 후보가 남지 않았습니다. 랭킹/중복제거 로직 점검 대상입니다.";
+		} else if (intentCount == 0) {
+			reason = "후보 " + rankedCount + "건은 찾았지만 질문 의도 필터에서 0건이 됐습니다. 질문 의도 분류나 키워드 정규화 문제일 가능성이 큽니다.";
+		} else if (judgedCount == 0) {
+			if (judgedEvidence.directEvidenceRequired() && !judgedEvidence.directEvidenceFound()) {
+				reason = "후보 " + intentCount + "건은 있었지만 Evidence Judge가 질문에 직접 답하는 근거를 확정하지 못했습니다. 문서가 있을 수도 있지만 직접근거 판정 규칙이나 표현 매칭을 점검해야 합니다.";
+			} else if (judgedEvidence.conceptEvidenceRequired() && !judgedEvidence.conceptEvidenceFound()) {
+				reason = "후보 " + intentCount + "건은 있었지만 질문의 핵심 개념어를 포함한 근거가 확인되지 않았습니다. 문서 부재 또는 검색어/청크 품질 문제일 수 있습니다.";
+			} else {
+				reason = "Judge 후보 " + judgeCandidateCount + "건이 모두 탈락했습니다. Evidence Judge 기준이 과도하게 엄격하거나 후보 랭킹이 엉뚱한 문서를 올렸을 수 있습니다.";
+			}
+		} else if (usefulCount == 0) {
+			reason = "Evidence Judge 통과 후보 " + judgedCount + "건은 있었지만 본문 품질/중복/유효텍스트 필터에서 모두 제외됐습니다. 청크 품질 또는 본문 추출 상태를 점검해야 합니다.";
+		} else {
+			reason = "근거 후보는 있었지만 UI에 반환할 근거 목록 생성에 실패했습니다. 근거 변환 로직을 점검해야 합니다.";
+		}
+
+		return "진단: " + reason + "\n"
+			+ "단계별 건수: 후보 " + mergedCount
+			+ "건 / 랭킹 " + rankedCount
+			+ "건 / 의도필터 " + intentCount
+			+ "건 / Judge후보 " + judgeCandidateCount
+			+ "건 / Judge통과 " + judgedCount
+			+ "건 / 최종근거 " + usefulCount + "건\n"
+			+ "확인: 우측 상단 DEBUG에서 각 단계의 후보 문서와 점수를 보면 '문서가 정말 없는지'와 '검색·랭킹·판정 로직 문제인지'를 구분할 수 있습니다.";
+	}
+
 	private LawAiDebugResponse toDebugResponse(RetrievalResult retrieval, LawAiTiming timing) {
 		Set<String> selectedKeys = retrieval.answerChunks().stream()
 			.map(chunk -> scoreKey(chunk.target(), chunk.chunkId()))
@@ -780,6 +852,9 @@ public class LawAiAnswerService {
 	// 메소드 설명: answerFocusInstruction 처리 흐름을 수행합니다.
 	private String answerFocusInstruction(String query) {
 		String normalized = normalizeForMatch(query);
+		if (isTemporalQuestion(normalized)) {
+			return "- 질문 의도는 시기, 기간 또는 기한입니다. 평가기간, 제출기한, 완료기한처럼 날짜나 기간을 직접 말하는 근거를 먼저 답하세요.";
+		}
 		if (normalized.contains("대상")) {
 			if (isSecurityReviewQuestion(queryTerms(query))) {
 				return """
@@ -834,7 +909,7 @@ public class LawAiAnswerService {
 			|| normalized.contains("요소")
 			|| normalized.contains("예외")
 			|| normalized.contains("금액")
-			|| normalized.contains("기한");
+			|| isTemporalQuestion(normalized);
 		if (narrowQuestion && !broadQuestion) {
 			return 4;
 		}
@@ -946,6 +1021,9 @@ public class LawAiAnswerService {
 		}
 		if (normalized.contains("하드웨어")) {
 			cues.addAll(List.of("소프트웨어사업으로 볼 수 없는", "단순 H/W", "비대상", "하드웨어", "상용소프트웨어", "소프트웨어사업"));
+		}
+		if (isTemporalQuestion(normalized)) {
+			cues.addAll(List.of("평가기간", "성과측정 기간", "기간 내", "월말까지", "기한 내", "2025.12", "2026.10"));
 		}
 		return cues;
 	}
@@ -1488,6 +1566,55 @@ public class LawAiAnswerService {
 			));
 			focusedLookup = true;
 		}
+		String normalizedQuery = normalizeForMatch(query);
+		if (normalizedQuery.contains("업무성과계획")
+			&& (normalizedQuery.contains("대상") || normalizedQuery.contains("제외"))
+			&& !ragTargets.isEmpty()) {
+			chunks.addAll(ragDocumentMapper.findSemanticChunksByText(
+				ragTargets,
+				List.of(
+					"업무성과계획 수립 대상 제외",
+					"업무성과계획 수립 대상",
+					"정보자원관리시스템(IRM)에 등록되어 운영 중인 정보시스템",
+					"업무성과계획을 등록 해야 함"
+				),
+				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
+			));
+			focusedLookup = true;
+		}
+		if (normalizedQuery.contains("성과측정")
+			&& (normalizedQuery.contains("완료") || normalizedQuery.contains("여부") || normalizedQuery.contains("확인"))
+			&& !ragTargets.isEmpty()) {
+			chunks.addAll(ragDocumentMapper.findSemanticChunksByText(
+				ragTargets,
+				List.of(
+					"성과측정 완료 여부",
+					"측정을 완료",
+					"측정완료",
+					"성과측정을 완료"
+				),
+				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
+			));
+			focusedLookup = true;
+		}
+		if (normalizedQuery.contains("성과측정")
+			&& isTemporalQuestion(normalizedQuery)
+			&& !ragTargets.isEmpty()) {
+			chunks.addAll(ragDocumentMapper.findSemanticChunksByText(
+				ragTargets,
+				List.of(
+					"성과측정 기간",
+					"성과측정대상",
+					"성과측정 결과",
+					"평가기간",
+					"2025.12.~2026.10.",
+					"2026.4.~2026.10.",
+					"월말까지"
+				),
+				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
+			));
+			focusedLookup = true;
+		}
 		List<String> genericKeywords = focusedLookup ? genericLexicalKeywords(query) : keywords;
 		if (!ragTargets.isEmpty() && !genericKeywords.isEmpty()) {
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
@@ -1570,16 +1697,43 @@ public class LawAiAnswerService {
 				"하드웨어 구매"
 			));
 		}
+		if (normalized.contains("업무성과계획")
+			&& (normalized.contains("대상") || normalized.contains("제외"))) {
+			keywords.addAll(List.of(
+				"업무성과계획 수립 대상 제외",
+				"업무성과계획 수립 대상",
+				"업무성과계획을 등록 해야 함"
+			));
+		}
+		if (normalized.contains("성과측정")
+			&& (normalized.contains("완료") || normalized.contains("여부") || normalized.contains("확인"))) {
+			keywords.addAll(List.of(
+				"성과측정 완료 여부",
+				"측정을 완료",
+				"측정완료",
+				"성과측정을 완료"
+			));
+		}
+		if (normalized.contains("성과측정") && isTemporalQuestion(normalized)) {
+			keywords.addAll(List.of(
+				"성과측정 기간",
+				"성과측정대상",
+				"성과측정 결과",
+				"평가기간",
+				"2025.12.~2026.10.",
+				"2026.4.~2026.10.",
+				"월말까지"
+			));
+		}
 		for (String token : String.valueOf(query).split("\\s+")) {
-			String cleaned = token.replaceAll("[^\\p{IsHangul}\\p{Alnum}]", "").trim();
+			String cleaned = normalizeQueryTerm(token);
 			if (cleaned.length() >= 2 && !isWeakQueryToken(cleaned)) {
 				keywords.add(cleaned);
 			}
 		}
-		String compact = String.valueOf(query)
-			.replaceAll("\\s+", "")
-			.replaceAll("[^\\p{IsHangul}\\p{Alnum}]", "");
-		if (compact.length() >= 4) {
+		String compact = normalizeQueryTerm(String.valueOf(query).replaceAll("\\s+", ""));
+		List<String> usefulTerms = queryTerms(query);
+		if (!usefulTerms.isEmpty() && usefulTerms.size() <= 1 && compact.length() >= 4) {
 			keywords.add(compact);
 		}
 		return keywords.stream()
@@ -1593,6 +1747,7 @@ public class LawAiAnswerService {
 	// 메소드 설명: genericLexicalKeywords 처리 흐름을 수행합니다.
 	private List<String> genericLexicalKeywords(String query) {
 		List<String> keywords = queryTerms(query).stream()
+			.map(this::stripIntentSuffix)
 			.map(this::stripTrailingJosa)
 			.map(this::stripIntentSuffix)
 			.filter(term -> term.length() >= 2)
@@ -1600,8 +1755,8 @@ public class LawAiAnswerService {
 			.filter(term -> !isIntentLikeTerm(term))
 			.distinct()
 			.collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
-		if (keywords.size() <= 1) {
-			String compact = stripIntentSuffix(stripTrailingJosa(normalizeForMatch(query)));
+		if (!keywords.isEmpty() && keywords.size() <= 1) {
+			String compact = normalizeQueryTerm(query);
 			if (compact.length() >= 3 && compact.length() <= 18
 				&& !isWeakQueryToken(compact)
 				&& !isIntentLikeTerm(compact)
@@ -1639,6 +1794,17 @@ public class LawAiAnswerService {
 			"무엇",
 			"뭐야",
 			"뭔가요",
+			"이란",
+			"정의",
+			"한걸",
+			"하는게",
+			"확인",
+			"확인하는게",
+			"확인해",
+			"확인하나",
+			"확인하나요",
+			"확인하는지",
+			"여부",
 			"있나",
 			"있나요",
 			"있어",
@@ -1687,8 +1853,7 @@ public class LawAiAnswerService {
 	// 메소드 설명: queryTerms 처리 흐름을 수행합니다.
 	private List<String> queryTerms(String query) {
 		return List.of(String.valueOf(query).split("\\s+")).stream()
-			.map(this::normalizeForMatch)
-			.map(this::stripTrailingJosa)
+			.map(this::normalizeQueryTerm)
 			.filter(term -> term.length() >= 2)
 			.filter(term -> !isWeakQueryToken(term))
 			.distinct()
@@ -1701,6 +1866,7 @@ public class LawAiAnswerService {
 			return List.of();
 		}
 		return terms.stream()
+			.map(this::stripIntentSuffix)
 			.map(this::stripTrailingJosa)
 			.map(this::stripIntentSuffix)
 			.filter(term -> term.length() >= 3)
@@ -1740,14 +1906,42 @@ public class LawAiAnswerService {
 			"될까",
 			"작성",
 			"작성할때",
-			"내용"
+			"내용",
+			"정의",
+			"이란"
 		).contains(term);
+	}
+
+	private boolean isTemporalQuestion(String normalized) {
+		String value = normalizeForMatch(normalized);
+		return value.contains("언제")
+			|| value.contains("시기")
+			|| value.contains("일정")
+			|| value.contains("기한")
+			|| value.contains("기간")
+			|| value.contains("마감")
+			|| value.contains("몇월")
+			|| value.contains("몇일")
+			|| value.contains("며칠")
+			|| value.contains("까지");
+	}
+
+	private String normalizeQueryTerm(String term) {
+		return stripIntentSuffix(stripTrailingJosa(stripIntentSuffix(normalizeForMatch(term))));
 	}
 
 	// 메소드 설명: stripTrailingJosa 처리 흐름을 수행합니다.
 	private String stripTrailingJosa(String term) {
 		if (term == null || term.length() < 3) {
 			return term;
+		}
+		for (String protectedTerm : List.of("과업심의", "사전협의")) {
+			if (term.equals(protectedTerm)) {
+				return term;
+			}
+			if (term.length() == protectedTerm.length() + 1 && term.startsWith(protectedTerm)) {
+				return protectedTerm;
+			}
 		}
 		for (String suffix : List.of("으로", "에서", "에게", "까지", "부터", "하고", "하면", "은", "는", "이", "가", "을", "를", "에", "의", "와", "과", "도")) {
 			if (term.endsWith(suffix) && term.length() > suffix.length() + 1) {
@@ -1762,7 +1956,7 @@ public class LawAiAnswerService {
 		if (term == null || term.length() < 4) {
 			return term;
 		}
-		for (String suffix : List.of("대상사업", "대상시스템", "대상기관", "적용대상", "필수요소", "검토내용", "추진절차", "신청방법", "제출서류", "대상", "시스템", "사업", "기관", "요소", "항목", "절차", "방법", "서류")) {
+		for (String suffix : List.of("대상사업", "대상시스템", "대상기관", "적용대상", "필수요소", "검토내용", "추진절차", "신청방법", "제출서류", "대상", "시스템", "사업", "기관", "요소", "항목", "절차", "방법", "서류", "인가요", "인가", "인지", "일까요", "일까", "건가요", "건가", "하는게", "한걸", "정의", "이란", "란")) {
 			if (term.endsWith(suffix) && term.length() > suffix.length() + 2) {
 				return term.substring(0, term.length() - suffix.length());
 			}

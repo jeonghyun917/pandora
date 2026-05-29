@@ -262,6 +262,204 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	// 메소드 설명: definitionQuestionRequiresSpecificConceptTerm 처리 흐름을 수행합니다.
+	void definitionQuestionRequiresSpecificConceptTerm() {
+		LawSemanticChunkRow irmOnly = chunk(
+			1,
+			"IRM 정보자원 등록관리 업무 담당자 기본 교육자료",
+			"IRM 사업관리 메뉴에서 정보화사업을 등록하고 발주정보를 선택하는 절차를 설명한다."
+		);
+		LawSemanticChunkRow conceptEvidence = chunk(
+			2,
+			"전자정부 성과관리 기관 설명회 발표자료",
+			"정보자원 관리수준 지표는 정보자원 등록 충실성, 정보자원 품질 정합성, 정보등록 품질 최신성으로 구성된다."
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		EvidenceJudge.Result result = judge.judge(
+			"IRM 충실성 이란?",
+			List.of(irmOnly, conceptEvidence),
+			Map.of("official_doc:1", 0.95, "official_doc:2", 0.4),
+			8
+		);
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		assertThat(result.chunks()).containsExactly(conceptEvidence);
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		assertThat(result.scoreByChunkId().get("official_doc:2"))
+			.isGreaterThan(result.scoreByChunkId().get("official_doc:1"));
+	}
+
+	@Test
+	void tableOfContentsChunkIsNotUsedAsDirectEvidence() {
+		LawSemanticChunkRow toc = chunk(
+			1,
+			"정보화사업 보안성 검토 가이드",
+			"2 목 차 Ⅰ. 보안성 검토 개요 1 󰊲 대상 사업 및 시기 1 Ⅱ. 추진체계 및 역할 4"
+		);
+		LawSemanticChunkRow directTarget = chunk(
+			2,
+			"정보화사업 보안성 검토 가이드",
+			"보안성 검토 대상은 비밀ㆍ대외비를 유통ㆍ관리하기 위한 정보통신망 또는 정보시스템 구축 사업이다."
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"보안성검토 대상 시스템은?",
+			List.of(toc, directTarget),
+			Map.of("official_doc:1", 0.95, "official_doc:2", 0.4),
+			8
+		);
+
+		assertThat(result.chunks()).containsExactly(directTarget);
+		assertThat(result.scoreByChunkId().get("official_doc:2"))
+			.isGreaterThan(result.scoreByChunkId().get("official_doc:1"));
+	}
+
+	@Test
+	void relationQuestionStripsNaturalKoreanQuestionEndings() {
+		LawSemanticChunkRow genericIrmPlan = chunk(
+			1,
+			"업무성과계획관리 IRM 사용매뉴얼",
+			"정보자원관리시스템 IRM에서 업무성과계획을 등록하고 제출하는 화면 사용 방법을 설명한다."
+		);
+		LawSemanticChunkRow directRelation = chunk(
+			2,
+			"2026년 전자정부 성과관리 기관 설명회 발표자료",
+			"평가방법은 정보자원관리시스템 IRM 내 정보시스템별 업무성과계획 제출여부를 확인하고, 업무성과계획을 수립하여 기간 내 제출하였는지 확인하는 것이다. 차년도 성과측정 시 실적을 제출한다."
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"irm 업무성과계획을 수립 한걸 확인하는게 성과측정인가?",
+			List.of(genericIrmPlan, directRelation),
+			Map.of("official_doc:1", 0.95, "official_doc:2", 0.4),
+			8
+		);
+
+		assertThat(result.chunks()).containsExactly(directRelation);
+		assertThat(result.conceptEvidenceRequired()).isTrue();
+		assertThat(result.conceptEvidenceFound()).isTrue();
+	}
+
+	@Test
+	void workPerformancePlanExclusionQuestionRequiresExclusionEvidence() {
+		LawSemanticChunkRow genericPlan = chunk(
+			1,
+			"2026년 전자정부 성과관리 기관 설명회 발표자료",
+			"평가방법은 정보자원관리시스템 내 정보시스템별 업무성과계획 제출여부를 확인하고 업무성과계획을 수립하여 기간 내 제출하였는지 확인하는 것이다."
+		);
+		LawSemanticChunkRow exclusion = chunk(
+			2,
+			"업무성과계획관리 IRM 사용매뉴얼",
+			"업무성과계획 수립 대상 제외 기준을 설명한다. 일부 정보시스템은 업무성과계획 수립 대상에서 제외될 수 있다."
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"업무성과계획 수립 대상 제외는 뭐야?",
+			List.of(genericPlan, exclusion),
+			Map.of("official_doc:1", 0.95, "official_doc:2", 0.4),
+			8
+		);
+
+		assertThat(result.chunks()).containsExactly(exclusion);
+		assertThat(result.directEvidenceRequired()).isTrue();
+		assertThat(result.directEvidenceFound()).isTrue();
+	}
+
+	@Test
+	void completionStatusQuestionIgnoresConfirmationFillerWords() {
+		LawSemanticChunkRow unrelatedConfirmation = chunk(
+			1,
+			"유해특성을 확인해야하는 폐기물의 종류 및 발생업종에 관한 규정 고시",
+			"재활용 대상폐기물의 종류와 발생업종, 유해특성 해당여부를 확인하여야 한다."
+		);
+		LawSemanticChunkRow completionEvidence = chunk(
+			2,
+			"2026년 전자정부 성과관리 기관 설명회 발표자료",
+			"평가방법은 정보자원관리시스템 내 정보시스템 운영 성과측정 완료 여부를 확인하는 것이다. 성과측정을 완료하고 제공한 데이터와 증빙자료가 일치하는 경우 충족으로 판단한다."
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"성과측정 완료 여부는 어떻게 확인해?",
+			List.of(unrelatedConfirmation, completionEvidence),
+			Map.of("law:1", 0.95, "official_doc:2", 0.4),
+			8
+		);
+
+		assertThat(result.chunks()).containsExactly(completionEvidence);
+		assertThat(result.directEvidenceRequired()).isTrue();
+		assertThat(result.directEvidenceFound()).isTrue();
+	}
+
+	@Test
+	void projectReviewQuestionKeepsFullProtectedConceptTerm() {
+		LawSemanticChunkRow genericProjectReview = chunk(
+			1,
+			"공공소프트웨어사업 과업심의 가이드",
+			"과업심의위원회 구성 및 운영 방법을 설명한다."
+		);
+		LawSemanticChunkRow directTarget = chunk(
+			2,
+			"공공소프트웨어사업 과업심의 가이드",
+			"적용 대상 사업은 국가기관 등이 발주하는 모든 SW사업이며 소프트웨어와 관련된 서비스를 포함한다."
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"과업심의 대상은?",
+			List.of(genericProjectReview, directTarget),
+			Map.of("official_doc:1", 0.95, "official_doc:2", 0.4),
+			8
+		);
+
+		assertThat(result.chunks()).containsExactly(directTarget);
+		assertThat(result.directEvidenceRequired()).isTrue();
+		assertThat(result.directEvidenceFound()).isTrue();
+	}
+
+	@Test
+	void conceptQuestionDoesNotFallbackToSystemNameOnlyCandidate() {
+		LawSemanticChunkRow irmOnly = chunk(
+			1,
+			"IRM 정보자원 등록관리 업무 담당자 기본 교육자료",
+			"IRM 사업관리 메뉴에서 정보화사업을 등록하고 발주정보를 선택하는 절차를 설명한다."
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"IRM 충실성 이란?",
+			List.of(irmOnly),
+			Map.of("official_doc:1", 0.95),
+			8
+		);
+
+		assertThat(result.chunks()).isEmpty();
+		assertThat(result.conceptEvidenceRequired()).isTrue();
+		assertThat(result.conceptEvidenceFound()).isFalse();
+	}
+
+	@Test
+	void conceptQuestionRequiresCoreConceptInsteadOfGenericSubjectOnly() {
+		LawSemanticChunkRow genericSubject = chunk(
+			1,
+			"전자문서 업무 가이드",
+			"전자문서를 등록하고 조회하는 화면 사용 방법을 설명한다."
+		);
+		LawSemanticChunkRow directConcept = chunk(
+			2,
+			"전자문서 보존 지침",
+			"전자문서 보존 기준과 보존기간은 기록물 유형에 따라 산정한다."
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"전자문서 보존기간은?",
+			List.of(genericSubject, directConcept),
+			Map.of("official_doc:1", 0.95, "official_doc:2", 0.4),
+			8
+		);
+
+		assertThat(result.chunks()).containsExactly(directConcept);
+		assertThat(result.scoreByChunkId().get("official_doc:2")).isGreaterThan(0.9);
+	}
+
+	@Test
 	// 메소드 설명: keepsCandidatesWhenNoReliableJudgmentExists 처리 흐름을 수행합니다.
 	void keepsCandidatesWhenNoReliableJudgmentExists() {
 		LawSemanticChunkRow candidate = chunk(

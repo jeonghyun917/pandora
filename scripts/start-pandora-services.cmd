@@ -1,6 +1,6 @@
 @echo off
 setlocal
-cd /d C:\dev\workspace-egov\pandora
-start "pandora-qdrant" /min scripts\start-qdrant.cmd
+cd /d "%~dp0.."
+start "pandora-qdrant" /min "%~dp0start-qdrant.cmd"
 timeout /t 8 /nobreak > nul
-start "pandora-backend" /min scripts\start-backend.cmd
+start "pandora-backend" /min "%~dp0start-backend.cmd"

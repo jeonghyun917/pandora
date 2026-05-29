@@ -13,6 +13,12 @@ import { normalizeDetail, normalizeList } from '../domain/lawNormalize';
 import { LandingConstellation } from './LandingPage';
 
 const initialQuery = '';
+const starterQuestions = [
+  '개인정보 보호법은 어떤 것까지 해야 해?',
+  '공공소프트웨어사업에서 단순 하드웨어 구매는 포함되나요?',
+  '정보화사업 사전협의 대상은 어떻게 돼?',
+  '보안성검토 대상 시스템은?',
+];
 
 // 메소드 설명: LawSearchPage 처리 흐름을 수행합니다.
 export function LawSearchPage({ onBack, onDebug }) {
@@ -21,6 +27,7 @@ export function LawSearchPage({ onBack, onDebug }) {
   const [results, setResults] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [aiAnswer, setAiAnswer] = useState(null);
+  const [hasSearched, setHasSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
@@ -66,11 +73,13 @@ export function LawSearchPage({ onBack, onDebug }) {
     )
     : '';
   const documentViewerUrl = htmlViewerUrl || pdfViewerUrl;
-
-  // 주요 호출: API 또는 프레임워크 기능을 호출합니다.
-  useEffect(() => {
-    void loadResults(initialQuery, selectedMenus);
-  }, []);
+  const documentViewerKey = [
+    htmlViewerUrl ? 'html' : 'pdf',
+    detail?.originalFileName || selectedItem?.title || '',
+    targetPageNo || 1,
+    viewerFocus.pageNo || '',
+    viewerFocus.nonce,
+  ].join(':');
 
   // 주요 호출: API 또는 프레임워크 기능을 호출합니다.
   useEffect(() => {
@@ -101,7 +110,22 @@ export function LawSearchPage({ onBack, onDebug }) {
 
   // 메소드 설명: loadResults 처리 흐름을 수행합니다.
   async function loadResults(nextQuery = query, menus = selectedMenus) {
+    const trimmedQuery = String(nextQuery ?? '').trim();
+    if (!trimmedQuery) {
+      setHasSearched(false);
+      setLoading(false);
+      setError('');
+      setResults([]);
+      setTotalCount(0);
+      setAiAnswer(null);
+      setSelectedItem(null);
+      setDetailPayload(null);
+      setDetailError('');
+      return;
+    }
+
     if (menus.length === 0) {
+      setHasSearched(true);
       setResults([]);
       setTotalCount(0);
       setAiAnswer(null);
@@ -109,6 +133,7 @@ export function LawSearchPage({ onBack, onDebug }) {
       return;
     }
 
+    setHasSearched(true);
     setLoading(true);
     setError('');
     setAiAnswer(null);
@@ -116,7 +141,6 @@ export function LawSearchPage({ onBack, onDebug }) {
     setDetailPayload(null);
     setDetailError('');
     try {
-      const trimmedQuery = nextQuery.trim();
       if (trimmedQuery) {
         const primaryMenu = menus[0];
         // 메소드 설명: applyAnswerPayload 처리 흐름을 수행합니다.
@@ -183,9 +207,24 @@ export function LawSearchPage({ onBack, onDebug }) {
         ? current.filter((id) => id !== menuId)
         : [...current, menuId];
       const nextMenus = lawApiMenus.filter((menu) => nextIds.includes(menu.id));
-      void loadResults(query, nextMenus);
+      if (hasSearched) {
+        void loadResults(query, nextMenus);
+      }
       return nextIds;
     });
+  }
+
+  function runStarterQuestion(question) {
+    setQuery(question);
+    void loadResults(question, selectedMenus);
+  }
+
+  function handleQueryChange(event) {
+    const nextQuery = event.target.value;
+    setQuery(nextQuery);
+    if (!nextQuery.trim() && hasSearched && !loading) {
+      void loadResults('', selectedMenus);
+    }
   }
 
   // 메소드 설명: loadDetail 처리 흐름을 수행합니다.
@@ -296,6 +335,7 @@ export function LawSearchPage({ onBack, onDebug }) {
             <div className="pdf-detail-layout">
               <div className="pdf-viewer-shell">
                 <iframe
+                  key={documentViewerKey}
                   ref={documentViewerRef}
                   className={`pdf-viewer ${htmlViewerUrl ? 'html-document-viewer' : ''}`}
                   src={documentViewerUrl}
@@ -395,7 +435,7 @@ export function LawSearchPage({ onBack, onDebug }) {
           <input
             value={query}
             name="query"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={handleQueryChange}
             onKeyDown={handleSearchKeyDown}
             type="search"
             placeholder="예: 개인정보 보호법은 어떤 것까지 해야 해?"
@@ -423,8 +463,8 @@ export function LawSearchPage({ onBack, onDebug }) {
           <div className="law-content-heading">
             {aiAnswer ? <Bot aria-hidden="true" size={22} /> : <Gavel aria-hidden="true" size={22} />}
             <div>
-              <p className="eyebrow">{aiAnswer ? 'AI ANSWER' : '검색 결과'}</p>
-              <h3>{query || '전체 검색'}</h3>
+              <p className="eyebrow">{aiAnswer ? 'AI ANSWER' : hasSearched ? '검색 결과' : '검색 준비'}</p>
+              <h3>{hasSearched ? query : '질문을 시작해 보세요'}</h3>
             </div>
           </div>
 
@@ -441,18 +481,45 @@ export function LawSearchPage({ onBack, onDebug }) {
             </article>
           )}
 
-          <div className="result-summary">
-            <span className={loading ? 'loading-status' : ''}>
-              {loading && <span className="loading-spinner" aria-hidden="true" />}
-              {loading ? '답변 생성 중입니다' : `${totalCount.toLocaleString()}건의 근거 표시`}
-            </span>
-            <small>{aiAnswer ? '서버가 확정한 근거 목록' : selectedMenus.map((menu) => menu.title).join(', ') || '선택 없음'}</small>
-          </div>
+          {!hasSearched && !loading && !error && (
+            <div className="search-start-panel" aria-label="검색 시작">
+              <div className="starter-question-list">
+                {starterQuestions.map((question) => (
+                  <button
+                    className="starter-question-button"
+                    type="button"
+                    onClick={() => runStarterQuestion(question)}
+                    key={question}
+                  >
+                    {question}
+                  </button>
+                ))}
+              </div>
+              <div className="search-source-row">
+                {selectedMenus.map((menu) => (
+                  <span className={`result-source-badge result-source-badge-${normalizeSourceBadgeType(menu.target)}`} key={menu.id}>
+                    {menu.title}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(hasSearched || loading || error) && (
+            <div className="result-summary">
+              <span className={loading ? 'loading-status' : ''}>
+                {loading && <span className="loading-spinner" aria-hidden="true" />}
+                {loading ? '답변 생성 중입니다' : `${totalCount.toLocaleString()}건의 근거 표시`}
+              </span>
+              <small>{aiAnswer ? '서버가 확정한 근거 목록' : selectedMenus.map((menu) => menu.title).join(', ') || '선택 없음'}</small>
+            </div>
+          )}
 
           {error && <p className="error-message">{error}</p>}
 
-          <div className="law-result-list">
-            {results.map((item) => (
+          {(hasSearched || results.length > 0) && (
+            <div className="law-result-list">
+              {results.map((item) => (
               <article className="law-result-card" key={`${item.target}-${item.id}-${item.title}`}>
                 <span className="result-date">{item.date || '날짜 없음'}</span>
                 <div className="result-main">
@@ -481,9 +548,10 @@ export function LawSearchPage({ onBack, onDebug }) {
                   )}
                 </div>
               </article>
-            ))}
-            {!loading && !error && results.length === 0 && <p className="empty-message">검색 결과가 없습니다.</p>}
-          </div>
+              ))}
+              {!loading && !error && results.length === 0 && <p className="empty-message">검색 결과가 없습니다.</p>}
+            </div>
+          )}
         </div>
       </section>
     </main>
@@ -596,7 +664,17 @@ function buildPdfViewerUrl(url, pageNo, searchText, revision = 0) {
   const page = Number.isFinite(Number(pageNo)) && Number(pageNo) > 0 ? Number(pageNo) : 1;
   const search = extractPdfSearchText(searchText);
   const baseUrl = revision > 0 ? appendViewerRevision(url, revision) : url;
-  return search ? `${baseUrl}#page=${page}&search=${encodeURIComponent(search)}` : `${baseUrl}#page=${page}`;
+  const params = new URLSearchParams({
+    page: String(page),
+    zoom: 'page-fit',
+    view: 'FitH',
+    pagemode: 'none',
+    navpanes: '0',
+  });
+  if (search) {
+    params.set('search', search);
+  }
+  return `${baseUrl}#${params.toString()}`;
 }
 
 // 메소드 설명: appendViewerRevision 처리 흐름을 수행합니다.

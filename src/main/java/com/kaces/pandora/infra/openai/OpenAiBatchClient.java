@@ -7,6 +7,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Map;
@@ -95,22 +96,36 @@ public class OpenAiBatchClient {
 
 	// 메소드 설명: downloadFile 처리 흐름을 수행합니다.
 	public Path downloadFile(String fileId, Path destination) {
-		try {
-			HttpRequest request = HttpRequest.newBuilder()
-				.uri(URI.create("https://api.openai.com/v1/files/" + fileId + "/content"))
-				.header("Authorization", "Bearer " + apiKey())
-				.timeout(Duration.ofMinutes(10))
-				.GET()
-				.build();
-			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-			HttpResponse<Path> response = httpClient.send(request, HttpResponse.BodyHandlers.ofFile(destination));
-			if (response.statusCode() < 200 || response.statusCode() >= 300) {
+		Exception lastException = null;
+		for (int attempt = 1; attempt <= 5; attempt++) {
+			try {
+				Files.deleteIfExists(destination);
+				HttpRequest request = HttpRequest.newBuilder()
+					.uri(URI.create("https://api.openai.com/v1/files/" + fileId + "/content"))
+					.header("Authorization", "Bearer " + apiKey())
+					.timeout(Duration.ofMinutes(10))
+					.GET()
+					.build();
+				// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+				HttpResponse<Path> response = httpClient.send(request, HttpResponse.BodyHandlers.ofFile(destination));
+				if (response.statusCode() >= 200 && response.statusCode() < 300) {
+					return response.body();
+				}
+				Files.deleteIfExists(destination);
 				throw new IllegalStateException("OpenAI file download failed with HTTP " + response.statusCode());
+			} catch (Exception exception) {
+				lastException = exception;
+				try {
+					Files.deleteIfExists(destination);
+					if (attempt < 5) {
+						Thread.sleep(Duration.ofSeconds(10L * attempt).toMillis());
+					}
+				} catch (Exception cleanupException) {
+					exception.addSuppressed(cleanupException);
+				}
 			}
-			return response.body();
-		} catch (Exception exception) {
-			throw new IllegalStateException("OpenAI file download failed.", exception);
 		}
+		throw new IllegalStateException("OpenAI file download failed after retries.", lastException);
 	}
 
 	// 메소드 설명: toStatus 처리 흐름을 수행합니다.

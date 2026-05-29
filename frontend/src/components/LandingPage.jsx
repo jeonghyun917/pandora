@@ -11,6 +11,9 @@ void main() {
 }
 `;
 
+const RIPPLE_VISIBLE_SECONDS = 1.5;
+const MAX_SHADER_RIPPLES = 24;
+
 const FRAGMENT_SHADER = `
 precision highp float;
 
@@ -18,7 +21,7 @@ uniform vec2 u_resolution;
 uniform float u_time;
 uniform vec2 u_pointer;
 uniform float u_pointerActive;
-uniform vec4 u_ripples[8];
+uniform vec4 u_ripples[24];
 varying vec2 v_uv;
 
 float hash(vec2 p) {
@@ -54,21 +57,21 @@ void main() {
   float rippleLight = 0.0;
   float wakeLight = 0.0;
 
-  for (int i = 0; i < 8; i++) {
+  for (int i = 0; i < 24; i++) {
     vec4 r = u_ripples[i];
     float age = max(0.0, u_time - r.z);
-    float alive = step(0.0, r.z) * smoothstep(2.35, 0.0, age);
+    float alive = step(0.0, r.z) * smoothstep(1.5, 0.0, age);
     vec2 rp = r.xy / u_resolution;
     rp.y = 1.0 - rp.y;
     vec2 delta = (uv - rp) * aspect;
     float distanceToRipple = length(delta);
-    float wave = sin(distanceToRipple * 54.0 - age * 12.5);
-    float envelope = exp(-distanceToRipple * 5.4) * smoothstep(1.65, 0.0, age);
-    float ring = exp(-abs(distanceToRipple - age * 0.14) * 18.0);
+    float wave = sin(distanceToRipple * 48.0 - age * 10.8);
+    float envelope = exp(-distanceToRipple * 5.0) * smoothstep(1.5, 0.0, age);
+    float ring = exp(-abs(distanceToRipple - age * 0.13) * 15.0);
     float force = alive * r.w * envelope * wave;
-    displaced += normalize(delta + 0.0001) * force * 0.009;
-    rippleLight += alive * ring * (0.16 + r.w * 0.36);
-    wakeLight += alive * abs(force) * 0.82;
+    displaced += normalize(delta + 0.0001) * force * 0.0078;
+    rippleLight += alive * ring * (0.22 + r.w * 0.42);
+    wakeLight += alive * abs(force) * 0.96;
   }
 
   if (u_pointerActive > 0.5) {
@@ -146,10 +149,12 @@ function createProgram(gl) {
 // 메소드 설명: LandingConstellation 처리 흐름을 수행합니다.
 export function LandingConstellation({ interactive = true }) {
   const canvasRef = useRef(null);
+  const rippleLayerRef = useRef(null);
 
   // 주요 호출: API 또는 프레임워크 기능을 호출합니다.
   useEffect(() => {
     const canvas = canvasRef.current;
+    const rippleLayer = rippleLayerRef.current;
     const gl = canvas?.getContext('webgl', {
       alpha: true,
       antialias: true,
@@ -184,7 +189,7 @@ export function LandingConstellation({ interactive = true }) {
     const ripplesLocation = gl.getUniformLocation(program, 'u_ripples');
     const pointer = { x: 0, y: 0, lastX: 0, lastY: 0, active: false, moved: false };
     const ripples = [];
-    const rippleUniforms = new Float32Array(32);
+    const rippleUniforms = new Float32Array(MAX_SHADER_RIPPLES * 4);
     const start = performance.now();
     let animationFrame = 0;
     let width = 0;
@@ -203,15 +208,29 @@ export function LandingConstellation({ interactive = true }) {
 
     // 메소드 설명: addRipple 처리 흐름을 수행합니다.
     const addRipple = (x, y, force) => {
+      const now = (performance.now() - start) / 1000;
+      for (let index = ripples.length - 1; index >= 0; index -= 1) {
+        if (now - ripples[index].startTime > RIPPLE_VISIBLE_SECONDS) {
+          ripples.splice(index, 1);
+        }
+      }
+
       ripples.unshift({
         x,
         y,
-        startTime: (performance.now() - start) / 1000,
+        startTime: now,
         force,
       });
 
-      if (ripples.length > 8) {
-        ripples.length = 8;
+      if (rippleLayer) {
+        const ring = document.createElement('span');
+        ring.className = 'landing-ripple-ring';
+        ring.style.left = `${x / (canvas.width / width)}px`;
+        ring.style.top = `${y / (canvas.height / height)}px`;
+        ring.style.setProperty('--ripple-force', String(Math.max(0.4, force)));
+        ring.style.setProperty('--ripple-duration', `${RIPPLE_VISIBLE_SECONDS}s`);
+        rippleLayer.appendChild(ring);
+        window.setTimeout(() => ring.remove(), RIPPLE_VISIBLE_SECONDS * 1000);
       }
     };
 
@@ -223,18 +242,26 @@ export function LandingConstellation({ interactive = true }) {
       gl.enableVertexAttribArray(positionLocation);
       gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
 
+      for (let index = ripples.length - 1; index >= 0; index -= 1) {
+        if (elapsed - ripples[index].startTime > RIPPLE_VISIBLE_SECONDS) {
+          ripples.splice(index, 1);
+        }
+      }
+
       rippleUniforms.fill(-1);
-      for (let index = 0; index < 8; index += 1) {
-        const ripple = ripples[index];
+      const shaderRippleCount = Math.min(MAX_SHADER_RIPPLES, ripples.length);
+      const lastRippleIndex = Math.max(0, ripples.length - 1);
+      for (let index = 0; index < shaderRippleCount; index += 1) {
+        const sourceIndex =
+          shaderRippleCount <= 1
+            ? 0
+            : Math.round((index / (shaderRippleCount - 1)) * lastRippleIndex);
+        const ripple = ripples[sourceIndex];
         if (!ripple) {
           continue;
         }
 
         const age = elapsed - ripple.startTime;
-        if (age > 1.75) {
-          continue;
-        }
-
         const offset = index * 4;
         rippleUniforms[offset] = ripple.x;
         rippleUniforms[offset + 1] = ripple.y;
@@ -264,7 +291,7 @@ export function LandingConstellation({ interactive = true }) {
       pointer.active = true;
       pointer.moved = true;
 
-        if (distance > 16) {
+        if (distance > 20) {
         addRipple(
           nextX * (canvas.width / width),
           nextY * (canvas.height / height),
@@ -299,7 +326,12 @@ export function LandingConstellation({ interactive = true }) {
     };
   }, []);
 
-  return <canvas ref={canvasRef} className="landing-constellation" aria-hidden="true" />;
+  return (
+    <>
+      <canvas ref={canvasRef} className="landing-constellation" aria-hidden="true" />
+      <div ref={rippleLayerRef} className="landing-ripple-layer" aria-hidden="true" />
+    </>
+  );
 }
 
 // 메소드 설명: LandingPage 처리 흐름을 수행합니다.
