@@ -215,6 +215,10 @@ public class LawSemanticBatchJobService {
 			throw new IllegalArgumentException("Unknown batch id: " + batchId);
 		}
 		if (job.outputFileId() == null || job.outputFileId().isBlank()) {
+			if (job.completedCount() == 0 && job.failedCount() > 0 && job.errorFileId() != null && !job.errorFileId().isBlank()) {
+				ingestErrorOnly(job);
+				return toResponse(batchJobMapper.findByOpenaiBatchId(batchId));
+			}
 			throw new IllegalStateException("Batch output file is not ready.");
 		}
 		int ingested = ingestOutput(job);
@@ -380,6 +384,17 @@ public class LawSemanticBatchJobService {
 		return ingested;
 	}
 
+	private void ingestErrorOnly(LawSemanticBatchJobRow job) {
+		ensureDownloadedError(job);
+		transactionTemplate.executeWithoutResult(status -> {
+			markFailuresFromErrorFile(job);
+			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+			int indexedCount = batchJobChunkMapper.countByStatus(job.batchJobId(), "INDEXED");
+			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+			batchJobMapper.markIngested(job.openaiBatchId(), null, indexedCount);
+		});
+	}
+
 	// 메소드 설명: ensureDownloadedOutput 처리 흐름을 수행합니다.
 	private void ensureDownloadedOutput(LawSemanticBatchJobRow job, Path outputFile) {
 		ensureDownloadedError(job);
@@ -503,6 +518,7 @@ public class LawSemanticBatchJobService {
 		if (!Files.exists(errorFile)) {
 			return;
 		}
+		Map<Long, String> failedMessagesByChunkId = new LinkedHashMap<>();
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		try (BufferedReader reader = Files.newBufferedReader(errorFile, StandardCharsets.UTF_8)) {
 			String line;
@@ -511,10 +527,39 @@ public class LawSemanticBatchJobService {
 				if (embedding != null && !embedding.success()) {
 					// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 					batchJobChunkMapper.markFailed(job.batchJobId(), embedding.customId(), embedding.errorCode(), embedding.errorMessage());
+					Long chunkId = chunkIdFromCustomId(embedding.customId());
+					if (chunkId != null) {
+						failedMessagesByChunkId.put(chunkId, embedding.errorMessage());
+					}
+				}
+			}
+			if (!failedMessagesByChunkId.isEmpty()) {
+				for (LawSemanticChunkRow chunk : findSemanticChunksByIds(job.target(), new ArrayList<>(failedMessagesByChunkId.keySet()))) {
+					upsertEmbeddingStatus(
+						job.target(),
+						chunk.chunkId(),
+						job.embeddingModel(),
+						job.vectorStore(),
+						vectorPointId(chunk.target(), chunk.chunkId()),
+						chunk.contentHash(),
+						"FAILED",
+						failedMessagesByChunkId.get(chunk.chunkId())
+					);
 				}
 			}
 		} catch (Exception exception) {
 			throw new IllegalStateException("Failed to ingest OpenAI Batch error output.", exception);
+		}
+	}
+
+	private Long chunkIdFromCustomId(String customId) {
+		if (customId == null || !customId.startsWith("chunk:")) {
+			return null;
+		}
+		try {
+			return Long.parseLong(customId.substring("chunk:".length()));
+		} catch (NumberFormatException exception) {
+			return null;
 		}
 	}
 

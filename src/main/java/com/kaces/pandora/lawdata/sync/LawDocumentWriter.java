@@ -11,6 +11,7 @@ import com.kaces.pandora.lawdata.persistence.LawAssetMapper;
 import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
 import com.kaces.pandora.lawdata.persistence.LawDetailMapper;
 import com.kaces.pandora.lawdata.persistence.LawDocumentMapper;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
@@ -20,6 +21,7 @@ import org.springframework.util.StringUtils;
 public class LawDocumentWriter {
 
 	private static final int MAX_STORED_DETAIL_JSON_CHARS = 4_000_000;
+	private static final int MAX_EMBEDDING_CHUNK_CHARS = 6_000;
 
 	private final LawDocumentMapper lawDocumentMapper;
 	private final LawDetailMapper lawDetailMapper;
@@ -105,23 +107,77 @@ public class LawDocumentWriter {
 			if (!StringUtils.hasText(body)) {
 				continue;
 			}
-			
-			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-			lawChunkMapper.insertChunk(new StoredChunk(
-				documentId,
-				detailId,
-				section.type(),
-				emptyToNull(section.no()),
-				emptyToNull(section.title()),
-				body,
-				emptyToNull(section.sourcePath()),
-				emptyToNull(sourceUrl),
-				count,
-				sha256(body)
-			));
-			count++;
+			List<String> pieces = splitForEmbedding(body);
+			for (int index = 0; index < pieces.size(); index++) {
+				String piece = pieces.get(index);
+				String chunkNo = section.no();
+				String chunkTitle = section.title();
+				if (pieces.size() > 1) {
+					String suffix = " (" + (index + 1) + "/" + pieces.size() + ")";
+					chunkNo = appendSuffix(chunkNo, suffix);
+					chunkTitle = appendSuffix(chunkTitle, suffix);
+				}
+				
+				// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+				lawChunkMapper.insertChunk(new StoredChunk(
+					documentId,
+					detailId,
+					section.type(),
+					emptyToNull(chunkNo),
+					emptyToNull(chunkTitle),
+					piece,
+					emptyToNull(section.sourcePath()),
+					emptyToNull(sourceUrl),
+					count,
+					sha256(piece)
+				));
+				count++;
+			}
 		}
 		return count;
+	}
+
+	private List<String> splitForEmbedding(String text) {
+		String normalized = LawTextUtils.normalizeText(text);
+		if (normalized.length() <= MAX_EMBEDDING_CHUNK_CHARS) {
+			return List.of(normalized);
+		}
+		List<String> pieces = new ArrayList<>();
+		int start = 0;
+		while (start < normalized.length()) {
+			int end = Math.min(start + MAX_EMBEDDING_CHUNK_CHARS, normalized.length());
+			if (end < normalized.length()) {
+				int boundary = splitBoundary(normalized, start, end);
+				if (boundary > start) {
+					end = boundary;
+				}
+			}
+			String piece = normalized.substring(start, end).trim();
+			if (StringUtils.hasText(piece)) {
+				pieces.add(piece);
+			}
+			start = end;
+		}
+		return pieces;
+	}
+
+	private int splitBoundary(String text, int start, int preferredEnd) {
+		int min = start + Math.max(1, MAX_EMBEDDING_CHUNK_CHARS / 2);
+		for (int index = preferredEnd; index > min; index--) {
+			char value = text.charAt(index - 1);
+			if (value == '\n' || value == '.' || value == '。' || value == ';' || value == '；') {
+				return index;
+			}
+		}
+		int space = text.lastIndexOf(' ', preferredEnd);
+		return space > min ? space : preferredEnd;
+	}
+
+	private String appendSuffix(String value, String suffix) {
+		if (StringUtils.hasText(value)) {
+			return value + suffix;
+		}
+		return suffix.trim();
 	}
 
 	

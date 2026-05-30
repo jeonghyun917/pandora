@@ -21,4 +21,9 @@ public interface LawDetailMapper {
 		@Param("limit") int limit,
 		@Param("offset") int offset
 	);
+
+	List<LawChunkRebuildRow> findChunkRebuildRowsByDocumentIds(
+		@Param("target") String target,
+		@Param("documentIds") List<Long> documentIds
+	);
 }

@@ -1,5 +1,6 @@
 package com.kaces.pandora.lawdata.sync;
 
+import java.util.List;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -36,6 +37,14 @@ public class LawSyncController {
 		@RequestParam(defaultValue = "0") int offset
 	) {
 		return lawOpenApiSyncService.rebuildChunks(target, limit, offset);
+	}
+
+	@PostMapping("/chunks/rebuild-by-document-ids")
+	public LawOpenApiSyncService.ChunkRebuildResult rebuildChunksByDocumentIds(
+		@RequestParam(defaultValue = "law") String target,
+		@RequestParam List<Long> documentIds
+	) {
+		return lawOpenApiSyncService.rebuildChunksByDocumentIds(target, documentIds);
 	}
 
 }

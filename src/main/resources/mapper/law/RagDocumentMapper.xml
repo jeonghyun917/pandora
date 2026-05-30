@@ -333,7 +333,16 @@
       )
       AND (
         e.chunk_id IS NULL
-        OR e.status IN ('FAILED', 'ERROR')
+        OR (
+          e.status IN ('FAILED', 'ERROR')
+          AND (
+            SELECT COUNT(*)
+            FROM semantic_batch_job_chunks bjc
+            WHERE bjc.target = doc.document_type
+              AND bjc.chunk_id = c.chunk_id
+              AND bjc.status = 'FAILED'
+          ) &lt; 3
+        )
         OR COALESCE(e.content_hash, '') != COALESCE(c.content_hash, '')
       )
     ORDER BY

@@ -97,6 +97,30 @@ public class LawOpenApiSyncService {
 		return new ChunkRebuildResult(safeTarget, safeOffset, rebuiltDocuments, rebuiltChunks);
 	}
 
+	@Transactional
+	public ChunkRebuildResult rebuildChunksByDocumentIds(String target, List<Long> documentIds) {
+		String safeTarget = StringUtils.hasText(target) ? target.trim() : "law";
+		if (!List.of("law", "admrul").contains(safeTarget)) {
+			throw new IllegalArgumentException("Unsupported law data target: " + safeTarget);
+		}
+		List<Long> safeDocumentIds = documentIds == null ? List.of() : documentIds.stream()
+			.filter(id -> id != null && id > 0)
+			.distinct()
+			.toList();
+		if (safeDocumentIds.isEmpty()) {
+			return new ChunkRebuildResult(safeTarget, 0, 0, 0);
+		}
+		List<LawChunkRebuildRow> rows = lawDetailMapper.findChunkRebuildRowsByDocumentIds(safeTarget, safeDocumentIds);
+		int rebuiltDocuments = 0;
+		int rebuiltChunks = 0;
+		for (LawChunkRebuildRow row : rows) {
+			SyncDetailDocument detail = payloadParser.parseDetailDocument(row.rawJson(), row.detailTitle() == null ? row.title() : row.detailTitle());
+			rebuiltChunks += documentWriter.replaceChunks(row.documentId(), row.detailId(), detail.sections(), "db:" + row.documentId());
+			rebuiltDocuments++;
+		}
+		return new ChunkRebuildResult(safeTarget, 0, rebuiltDocuments, rebuiltChunks);
+	}
+
 	
 	// 메소드 설명: syncDocuments 처리 흐름을 수행합니다.
 	private SyncCounters syncDocuments(List<SearchDocument> documents, boolean fetchDetails) {

@@ -76,6 +76,18 @@ function splitRow(row) {
   return row.split("\t");
 }
 
+function submittedNewBatch(fill) {
+  if (!fill) {
+    return false;
+  }
+  try {
+    const rows = JSON.parse(fill);
+    return Array.isArray(rows) && rows.some((row) => row.batchJobId && row.batchJobId > 0 && row.openaiBatchId);
+  } catch (error) {
+    return true;
+  }
+}
+
 function buildReport(context) {
   const {
     springStatus,
@@ -96,6 +108,10 @@ function buildReport(context) {
   const submitted = status.BATCH_SUBMITTED || "0";
   const failed = status.FAILED || "0";
   const noEmbed = status.NO_EMBED || "0";
+  const reportRisks = [...risks];
+  if (Number(failed) > 0) {
+    reportRisks.push(`FAILED ${Number(failed).toLocaleString()}건은 반복 실패로 자동 재제출 제외됨`);
+  }
   const docsAndChunks = db(`
 SELECT CONCAT('documents=', COUNT(DISTINCT doc.document_id))
 FROM law_api_documents doc
@@ -111,10 +127,13 @@ WHERE doc.target = 'admrul' AND c.use_yn = 'Y' AND doc.use_yn = 'Y'
     return [key, value];
   }));
 
+  const filled = submittedNewBatch(fill);
   const jobLines = jobs.map((row) => {
     const [id, openaiId, state, requested, submittedCount, completed, failedCount, ingested, updatedAt] = splitRow(row);
     const batch = `${Number(completed).toLocaleString()}/${Number(submittedCount).toLocaleString()}`;
-    const ingest = ingested === "0" ? `대기 ${Number(ingested).toLocaleString()}` : `INDEXED ${Number(ingested).toLocaleString()}`;
+    const ingest = Number(failedCount) > 0 && Number(ingested) === 0
+      ? `FAILED ${Number(failedCount).toLocaleString()}`
+      : (ingested === "0" ? `대기 ${Number(ingested).toLocaleString()}` : `INDEXED ${Number(ingested).toLocaleString()}`);
     return `| ${id} | ${state} | ${batch} | ${ingest} | failed ${failedCount}, ${updatedAt}, ${openaiId} |`;
   }).join("\n");
 
@@ -126,9 +145,9 @@ WHERE doc.target = 'admrul' AND c.use_yn = 'Y' AND doc.use_yn = 'Y'
 - 전체 admrul 문서/청크: ${Number(total.documents || 0).toLocaleString()} / ${Number(total.chunks || 0).toLocaleString()}
 - INDEXED / BATCH_SUBMITTED / FAILED / NO_EMBED: ${Number(indexed).toLocaleString()} / ${Number(submitted).toLocaleString()} / ${Number(failed).toLocaleString()} / ${Number(noEmbed).toLocaleString()}
 - active OpenAI job 수: ${active}
-- 새 batch 제출 여부: ${fill ? "fill-queue 실행" : "없음"}
+- 새 batch 제출 여부: ${filled ? "제출됨" : "없음"}
 - 수행한 복구 조치: ${recoveryActions.length ? recoveryActions.join("; ") : "없음"}
-- 남은 위험: ${risks.length ? risks.join("; ") : "없음"}
+- 남은 위험: ${reportRisks.length ? reportRisks.join("; ") : "없음"}
 
 | Job | 상태 | Batch 완료 | Ingest/Index 상태 | 비고 |
 | --- | --- | --- | --- | --- |
@@ -156,6 +175,10 @@ function buildReportReadable(context) {
   const submitted = status.BATCH_SUBMITTED || "0";
   const failed = status.FAILED || "0";
   const noEmbed = status.NO_EMBED || "0";
+  const reportRisks = [...risks];
+  if (Number(failed) > 0) {
+    reportRisks.push(`FAILED ${Number(failed).toLocaleString()}건은 반복 실패로 자동 재제출 제외됨`);
+  }
   const docsAndChunks = db(`
 SELECT CONCAT('documents=', COUNT(DISTINCT doc.document_id))
 FROM law_api_documents doc
@@ -173,12 +196,15 @@ WHERE doc.target = 'admrul' AND c.use_yn = 'Y' AND doc.use_yn = 'Y'
   const indexedPercent = Number(total.chunks || 0) === 0
     ? "0.00"
     : ((Number(indexed) / Number(total.chunks)) * 100).toFixed(2);
+  const filled = submittedNewBatch(fill);
   const jobLines = jobs.map((row) => {
     const [id, openaiId, state, requested, submittedCount, completed, failedCount, ingested, updatedAt] = splitRow(row);
     const batch = `${Number(completed).toLocaleString()}/${Number(submittedCount).toLocaleString()}`;
-    const ingest = ingested === "0"
-      ? `SUBMITTED/WAIT ${Number(ingested).toLocaleString()}`
-      : `INDEXED ${Number(ingested).toLocaleString()}`;
+    const ingest = Number(failedCount) > 0 && Number(ingested) === 0
+      ? `FAILED ${Number(failedCount).toLocaleString()}`
+      : (ingested === "0"
+        ? `SUBMITTED/WAIT ${Number(ingested).toLocaleString()}`
+        : `INDEXED ${Number(ingested).toLocaleString()}`);
     const note = Number(failedCount) > 0 ? `failed ${failedCount}` : "완료/진행";
     return `| ${id} | ${state} | ${batch} | ${ingest} | ${note}, ${updatedAt}, ${openaiId} |`;
   }).join("\n");
@@ -201,9 +227,9 @@ ${jobLines || "| - | - | - | - | - |"}
 - active OpenAI jobs: ${active} / 2
 - Qdrant: ${qdrantStatus}, points ${Number(qdrantPoints || 0).toLocaleString()}
 - Spring: ${springStatus}
-- 새 batch 제출: ${fill ? "fill-queue 실행" : "없음"}
+- 새 batch 제출: ${filled ? "제출됨" : "없음"}
 - 복구 조치: ${recoveryActions.length ? recoveryActions.join("; ") : "없음"}
-- 남은 위험: ${risks.length ? risks.join("; ") : "없음"}
+- 남은 위험: ${reportRisks.length ? reportRisks.join("; ") : "없음"}
 `;
 }
 
