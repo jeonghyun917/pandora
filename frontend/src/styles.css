@@ -282,7 +282,7 @@ button {
 
 .ambient-border {
   inset: clamp(18px, 3vw, 38px);
-  z-index: -1;
+  z-index: 0;
   border: 1px solid rgba(245, 231, 204, 0.22);
   box-shadow:
     inset 0 0 80px rgba(255, 255, 255, 0.03),
@@ -460,17 +460,20 @@ button {
 .detail-header-meta {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: center;
   gap: 6px;
   margin-top: 8px;
   color: #74a9f5;
   font-size: 0.78rem;
-  line-height: 1.45;
+  line-height: 1;
   text-align: center;
 }
 
 .detail-header-meta span {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
 }
 
 .detail-contact-meta {
@@ -605,7 +608,7 @@ button {
 
 .search-bar {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 108px;
+  grid-template-columns: 28px auto minmax(0, 1fr) 108px;
   align-items: center;
   gap: 14px;
   width: min(1120px, 100%);
@@ -641,6 +644,153 @@ button {
 .search-bar svg {
   color: #83e9bf;
   filter: drop-shadow(0 0 12px rgba(101, 220, 174, 0.44));
+}
+
+.search-mode-switch {
+  --mode-option-width: 42px;
+  --mode-option-gap: 3px;
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--mode-option-gap);
+  padding: 3px;
+  border: 1px solid rgba(101, 220, 174, 0.22);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at var(--mode-glow-x, 26%) 50%, rgba(125, 240, 191, 0.24), transparent 34px),
+    rgba(5, 18, 15, 0.72);
+  box-shadow:
+    inset 0 0 18px rgba(101, 220, 174, 0.06),
+    0 0 0 rgba(101, 220, 174, 0);
+  transition: background-position 0.48s ease;
+}
+
+.search-mode-switch::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 3px;
+  left: 3px;
+  width: var(--mode-option-width);
+  height: 30px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 26% 24%, rgba(255, 255, 255, 0.82), transparent 9px),
+    linear-gradient(180deg, #9cffd2, #5ed6a8 68%, #46bd92);
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.52),
+    inset 0 -5px 12px rgba(4, 20, 15, 0.18),
+    0 0 18px rgba(101, 220, 174, 0.42),
+    0 0 36px rgba(101, 220, 174, 0.18);
+  transform: scale(1);
+  transition:
+    left 0.48s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.48s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.48s ease,
+    opacity 0.24s ease;
+  will-change: left, transform;
+}
+
+.search-mode-switch::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  top: 4px;
+  left: 3px;
+  width: 30px;
+  height: 28px;
+  border-radius: 999px;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.92),
+    rgba(255, 255, 255, 0.62),
+    transparent
+  );
+  filter: blur(0.4px);
+  transform: translateX(0) skewX(-18deg);
+}
+
+.search-mode-switch.is-ai {
+  --mode-glow-x: 26%;
+  animation: searchModeSwitchPulseAi 0.68s ease-out;
+}
+
+.search-mode-switch.is-db {
+  --mode-glow-x: 74%;
+  animation: searchModeSwitchPulseDb 0.68s ease-out;
+}
+
+.search-mode-switch.is-db::before {
+  left: calc(3px + var(--mode-option-width) + var(--mode-option-gap));
+}
+
+.search-mode-switch.is-ai::before {
+  animation: searchModeThumbSnapAi 0.54s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.search-mode-switch.is-db::before {
+  animation: searchModeThumbSnapDb 0.54s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.search-mode-switch.is-ai::after {
+  animation: searchModeGlintAi 0.58s ease-out;
+}
+
+.search-mode-switch.is-db::after {
+  animation: searchModeGlintDb 0.58s ease-out;
+}
+
+.search-mode-switch:active::before {
+  transform: scale(0.94);
+}
+
+.search-mode-option {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--mode-option-width);
+  height: 30px;
+  border-radius: 999px;
+  color: rgba(223, 245, 237, 0.72);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  cursor: pointer;
+  transition: color 0.22s ease, text-shadow 0.22s ease;
+}
+
+.search-mode-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.search-mode-option.active {
+  color: #061712;
+  text-shadow: 0 1px rgba(255, 255, 255, 0.22);
+}
+
+.search-mode-option.active span {
+  animation: searchModeTextPop 0.34s ease-out;
+}
+
+.search-mode-option:hover,
+.search-mode-option:focus-within {
+  color: #effff9;
+}
+
+.search-mode-option.active:hover,
+.search-mode-option.active:focus-within {
+  color: #061712;
 }
 
 .search-bar input {
@@ -1486,12 +1636,48 @@ button {
 }
 
 .result-date {
+  display: inline-grid;
+  gap: 6px;
   grid-row: span 4;
   align-self: start;
   padding-top: 2px;
   color: #e7c27a;
   font-size: 0.72rem;
   font-weight: 800;
+}
+
+.future-effective-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: max-content;
+  min-height: 22px;
+  padding: 0 7px;
+  border: 1px solid rgba(255, 196, 105, 0.58);
+  border-radius: 999px;
+  color: #ffe1a8;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.26), transparent 14px),
+    rgba(231, 194, 122, 0.16);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 0 20px rgba(231, 194, 122, 0.16);
+  font-size: 0.62rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.future-effective-badge-inline {
+  min-height: 20px;
+  padding: 0 6px;
+  font-size: 0.6rem;
+}
+
+.future-effective-badge-detail {
+  min-height: 18px;
+  padding: 0 6px;
+  font-size: 0.58rem;
 }
 
 .detail-panel {
@@ -1912,6 +2098,112 @@ button {
   }
 }
 
+@keyframes searchModeGlintAi {
+  0% {
+    opacity: 0;
+    transform: translateX(55px) skewX(-18deg) scaleY(0.76);
+  }
+  34% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-3px) skewX(-18deg) scaleY(1.16);
+  }
+}
+
+@keyframes searchModeGlintDb {
+  0% {
+    opacity: 0;
+    transform: translateX(-3px) skewX(-18deg) scaleY(0.76);
+  }
+  34% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(55px) skewX(-18deg) scaleY(1.16);
+  }
+}
+
+@keyframes searchModeSwitchPulseAi {
+  0% {
+    box-shadow:
+      inset 0 0 18px rgba(101, 220, 174, 0.06),
+      0 0 0 0 rgba(101, 220, 174, 0.42),
+      0 0 0 0 rgba(231, 194, 122, 0.24);
+  }
+  42% {
+    box-shadow:
+      inset 0 0 22px rgba(101, 220, 174, 0.16),
+      0 0 0 5px rgba(101, 220, 174, 0.2),
+      0 0 34px rgba(101, 220, 174, 0.3);
+  }
+  100% {
+    box-shadow:
+      inset 0 0 18px rgba(101, 220, 174, 0.06),
+      0 0 0 10px rgba(101, 220, 174, 0),
+      0 0 0 rgba(101, 220, 174, 0);
+  }
+}
+
+@keyframes searchModeSwitchPulseDb {
+  0% {
+    box-shadow:
+      inset 0 0 18px rgba(101, 220, 174, 0.06),
+      0 0 0 0 rgba(101, 220, 174, 0.42),
+      0 0 0 0 rgba(231, 194, 122, 0.24);
+  }
+  42% {
+    box-shadow:
+      inset 0 0 22px rgba(101, 220, 174, 0.16),
+      0 0 0 5px rgba(231, 194, 122, 0.18),
+      0 0 34px rgba(101, 220, 174, 0.3);
+  }
+  100% {
+    box-shadow:
+      inset 0 0 18px rgba(101, 220, 174, 0.06),
+      0 0 0 10px rgba(231, 194, 122, 0),
+      0 0 0 rgba(101, 220, 174, 0);
+  }
+}
+
+@keyframes searchModeThumbSnapAi {
+  0% {
+    transform: scaleX(1.18) scaleY(0.94);
+  }
+  55% {
+    transform: scaleX(0.92) scaleY(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes searchModeThumbSnapDb {
+  0% {
+    transform: scaleX(1.18) scaleY(0.94);
+  }
+  55% {
+    transform: scaleX(0.92) scaleY(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes searchModeTextPop {
+  0% {
+    transform: scale(0.92);
+  }
+  56% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 @keyframes landingRippleRing {
   0% {
     opacity: 0;
@@ -2000,6 +2292,14 @@ button {
     grid-template-columns: 24px 1fr;
   }
 
+  .search-mode-switch {
+    justify-self: start;
+  }
+
+  .search-bar input {
+    grid-column: 1 / -1;
+  }
+
   .search-bar button {
     grid-column: 1 / -1;
   }
@@ -2069,5 +2369,28 @@ button {
 
   .loading-spinner {
     animation: loadingSpin 760ms linear infinite !important;
+  }
+
+  .search-mode-switch::before {
+    animation-duration: 540ms !important;
+    transition-property: left, transform, box-shadow, opacity !important;
+    transition-duration: 480ms, 480ms, 480ms, 240ms !important;
+    transition-timing-function:
+      cubic-bezier(0.16, 1, 0.3, 1),
+      cubic-bezier(0.16, 1, 0.3, 1),
+      ease,
+      ease !important;
+  }
+
+  .search-mode-switch {
+    animation-duration: 680ms !important;
+  }
+
+  .search-mode-switch::after {
+    animation-duration: 580ms !important;
+  }
+
+  .search-mode-option.active span {
+    animation-duration: 340ms !important;
   }
 }

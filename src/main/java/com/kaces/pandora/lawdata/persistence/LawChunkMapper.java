@@ -11,6 +11,8 @@ import org.apache.ibatis.annotations.Param;
 @Mapper
 public interface LawChunkMapper {
 	
+	List<Long> findChunkIdsByDocumentId(@Param("documentId") long documentId);
+	
 	void deleteChunks(@Param("documentId") long documentId);
 	
 	void insertChunk(@Param("chunk") StoredChunk chunk);

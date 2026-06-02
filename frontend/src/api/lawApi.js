@@ -1,11 +1,14 @@
 // 메소드 설명: searchLawData 처리 흐름을 수행합니다.
-export async function searchLawData(menu, query) {
+export async function searchLawData(menu, query, options = {}) {
   const params = new URLSearchParams({
     target: menu.target,
     query: query || '*',
     display: '10',
   });
-  const endpoint = query?.trim() ? 'chunk-search' : 'search';
+  if (options.titleOnly) {
+    params.set('titleOnly', 'true');
+  }
+  const endpoint = options.titleOnly ? 'search' : query?.trim() ? 'chunk-search' : 'search';
   // 주요 호출: API 또는 프레임워크 기능을 호출합니다.
   const response = await fetch(`/api/law-data/${endpoint}?${params.toString()}`);
   if (!response.ok) {

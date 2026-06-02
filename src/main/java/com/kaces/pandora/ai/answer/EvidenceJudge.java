@@ -1,5 +1,6 @@
 package com.kaces.pandora.ai.answer;
 
+import com.kaces.pandora.common.text.KoreanQueryNormalizer;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import com.kaces.pandora.rag.common.HwpxTextCleaner;
 import java.util.ArrayList;
@@ -39,7 +40,7 @@ public class EvidenceJudge {
 			.toList();
 		boolean directEvidenceRequired = !profile.directEvidenceGroups().isEmpty();
 		List<JudgedChunk> directSupportingChunks = judgedChunks.stream()
-			.filter(chunk -> chunk.directEvidenceMatches() > 0)
+			.filter(chunk -> chunk.bodyDirectEvidenceMatches() > 0)
 			.toList();
 		boolean directEvidenceFound = !directEvidenceChunks.isEmpty()
 			|| countCoveredGroups(directSupportingChunks, profile.directEvidenceGroups()) >= profile.requiredDirectEvidenceMatches();
@@ -69,31 +70,44 @@ public class EvidenceJudge {
 	// 메소드 설명: judgeChunk 처리 흐름을 수행합니다.
 	private JudgedChunk judgeChunk(QuestionProfile profile, LawSemanticChunkRow chunk, double baseScore) {
 		String body = normalize(chunk.chunkText());
-		String title = normalize(chunk.title() + " " + chunk.chunkTitle());
+		String documentTitle = normalize(chunk.title());
+		String chunkHeading = normalize(chunk.chunkTitle());
+		String title = documentTitle + chunkHeading;
 		String text = title + body;
 
 		int conceptMatches = countMatchedGroups(text, profile.conceptGroups());
 		int intentMatches = countMatchedGroups(text, profile.intentGroups());
 		int directEvidenceMatches = countMatchedGroups(text, profile.directEvidenceGroups());
+		int bodyDirectEvidenceMatches = countMatchedGroups(body, profile.directEvidenceGroups());
+		int bodyDirectEvidenceTermMatches = countMatchedTerms(body, flattenGroups(profile.directEvidenceGroups()));
 		int termMatches = countMatchedTerms(text, profile.terms());
 		int titleMatches = countMatchedTerms(title, profile.terms());
 		boolean tableOfContents = isTableOfContentsLike(chunk);
+		boolean committeeQuestion = profile.committeeQuestion();
 
 		boolean conceptOk = profile.conceptGroups().isEmpty()
 			|| conceptMatches >= profile.requiredConceptMatches();
 		boolean directEvidence = !profile.directEvidenceGroups().isEmpty()
 			&& directEvidenceMatches >= profile.requiredDirectEvidenceMatches()
+			&& bodyDirectEvidenceMatches > 0
 			&& conceptOk
 			&& !tableOfContents;
 		boolean intentOk = profile.definitionQuestion()
 			|| profile.intentGroups().isEmpty()
 			|| intentMatches > 0
 			|| termMatches >= Math.min(3, profile.terms().size());
-		boolean hasAnySignal = termMatches > 0 || conceptMatches + intentMatches >= 2;
-		boolean relevant = !tableOfContents && (directEvidence || (conceptOk && intentOk && hasAnySignal));
+		boolean hasAnySignal = termMatches > 0
+			|| conceptMatches + intentMatches >= 2
+			|| (profile.definitionQuestion() && conceptMatches > 0);
+		boolean definitionSignal = !profile.definitionQuestion()
+			|| directEvidence
+			|| hasDefinitionSignal(profile, body, documentTitle, chunkHeading);
+		boolean relevant = !tableOfContents && (directEvidence || (conceptOk && intentOk && hasAnySignal && definitionSignal));
 
 		double score = baseScore
-			+ (directEvidenceMatches * 0.72)
+			+ (directEvidenceMatches * 0.34)
+			+ (bodyDirectEvidenceMatches * 0.48)
+			+ (bodyDirectEvidenceTermMatches * 0.08)
 			+ (conceptMatches * 0.26)
 			+ (intentMatches * 0.18)
 			+ (termMatches * 0.035)
@@ -103,11 +117,25 @@ public class EvidenceJudge {
 			&& conceptMatches > profile.requiredConceptMatches()) {
 			score += (conceptMatches - profile.requiredConceptMatches()) * 0.18;
 		}
+		if (profile.definitionQuestion() && committeeQuestion) {
+			if (body.contains("이하위원회라한다") || body.contains("위원회라한다")) {
+				score += 0.52;
+			}
+			if ((body.contains("둔다") || body.contains("설치")) && (body.contains("심의의결") || body.contains("심의조정"))) {
+				score += 0.34;
+			}
+			if (title.contains("지원단") && !body.contains("이하위원회라한다")) {
+				score -= 0.28;
+			}
+		}
 		if (!conceptOk && !profile.conceptGroups().isEmpty()) {
 			score -= 0.55;
 		}
 		if (!intentOk && !profile.intentGroups().isEmpty()) {
 			score -= 0.25;
+		}
+		if (!definitionSignal) {
+			score -= 0.45;
 		}
 		if (body.length() < 80) {
 			score -= 0.04;
@@ -116,7 +144,114 @@ public class EvidenceJudge {
 			score -= 1.2;
 		}
 
-		return new JudgedChunk(chunk, score, relevant, directEvidence, directEvidenceMatches);
+		return new JudgedChunk(chunk, score, relevant, directEvidence, directEvidenceMatches, bodyDirectEvidenceMatches);
+	}
+
+	private boolean hasDefinitionSignal(
+		QuestionProfile profile,
+		String body,
+		String documentTitle,
+		String chunkHeading
+	) {
+		List<String> conceptTerms = flattenGroups(profile.conceptGroups());
+		if (conceptTerms.isEmpty()) {
+			conceptTerms = profile.terms();
+		}
+		if (conceptTerms.isEmpty()) {
+			return true;
+		}
+		if (conceptTerms.stream().anyMatch(term -> normalize(term).contains("보안성검토"))) {
+			return hasSecurityReviewDefinitionSignal(body, chunkHeading);
+		}
+		if (containsAny(chunkHeading, conceptTerms)) {
+			return true;
+		}
+		if (containsAny(documentTitle, conceptTerms)
+			&& containsAny(chunkHeading, List.of("개요", "목적", "대상", "정의", "운영계획"))) {
+			return true;
+		}
+		if (profile.committeeQuestion()
+			&& (body.contains("위원회라한다") || body.contains("이하위원회라한다") || body.contains("위원회를둔다"))) {
+			return true;
+		}
+		List<String> cues = List.of(
+			"정의",
+			"개요",
+			"목적",
+			"의미",
+			"말한다",
+			"라한다",
+			"대상",
+			"범위",
+			"기준",
+			"요건",
+			"지표",
+			"평가지표",
+			"평가항목",
+			"설치",
+			"둔다",
+			"실시",
+			"요청",
+			"심의",
+			"의결",
+			"검토대상",
+			"검토를거쳐",
+			"위하여",
+			"하는것",
+			"하는업무"
+		);
+		for (String term : conceptTerms) {
+			String normalizedTerm = normalize(term);
+			if (normalizedTerm.length() >= 2 && containsNearAny(body, normalizedTerm, cues, 64)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private boolean hasSecurityReviewDefinitionSignal(String body, String chunkHeading) {
+		String text = chunkHeading + body;
+		List<String> cues = List.of(
+			"추진개요",
+			"목적",
+			"근거",
+			"시기",
+			"대상사업",
+			"대상시스템",
+			"검토대상",
+			"검토절차",
+			"운영계획",
+			"실시",
+			"요청할수있다",
+			"검토를거쳐",
+			"생략대상",
+			"절차이행생략대상",
+			"제2장제2절보안성검토"
+		);
+		return containsNearAny(text, "보안성검토", cues, 96);
+	}
+
+	private boolean containsNearAny(String text, String term, List<String> values, int window) {
+		int start = text.indexOf(term);
+		while (start >= 0) {
+			int from = Math.max(0, start - window);
+			int to = Math.min(text.length(), start + term.length() + window);
+			String nearby = text.substring(from, to);
+			for (String value : values) {
+				if (nearby.contains(normalize(value))) {
+					return true;
+				}
+			}
+			start = text.indexOf(term, start + term.length());
+		}
+		return false;
+	}
+
+	private static List<String> flattenGroups(List<List<String>> groups) {
+		return groups.stream()
+			.flatMap(List::stream)
+			.distinct()
+			.toList();
 	}
 
 	private boolean isTableOfContentsLike(LawSemanticChunkRow chunk) {
@@ -200,7 +335,7 @@ public class EvidenceJudge {
 	}
 
 	private static String normalizeQuestionTerm(String term) {
-		return stripQuestionIntentSuffix(stripTrailingJosa(stripQuestionIntentSuffix(normalize(term))));
+		return KoreanQueryNormalizer.normalizeQueryTerm(term);
 	}
 
 	// 메소드 설명: isWeakTerm 처리 흐름을 수행합니다.
@@ -208,12 +343,19 @@ public class EvidenceJudge {
 		if (isTemporalQuestionTerm(term)) {
 			return true;
 		}
-		return Set.of(
+		return KoreanQueryNormalizer.isWeakQuestionTerm(term) || Set.of(
 			"알려줘",
 			"알수있어",
 			"알수있나요",
 			"어떻게",
 			"어떤",
+			"어디",
+			"어디까지",
+			"가능",
+			"가능해",
+			"가능한가",
+			"가능하나요",
+			"가능한지",
 			"무엇",
 			"뭐야",
 			"이란",
@@ -241,41 +383,12 @@ public class EvidenceJudge {
 
 	// 메소드 설명: stripQuestionIntentSuffix 처리 흐름을 수행합니다.
 	private static String stripQuestionIntentSuffix(String term) {
-		if (term == null || term.length() < 3) {
-			return term;
-		}
-		for (String suffix : List.of("언제하나요", "언제해요", "언제인지", "언제해", "언제", "시기", "기한", "기간")) {
-			if (term.endsWith(suffix) && term.length() > suffix.length() + 1) {
-				return term.substring(0, term.length() - suffix.length());
-			}
-		}
-		for (String suffix : List.of("인가요", "인가", "인지", "일까요", "일까", "건가요", "건가", "하는게", "한걸", "이란", "란", "무엇", "뭐야", "정의")) {
-			if (term.endsWith(suffix) && term.length() > suffix.length() + 1) {
-				return term.substring(0, term.length() - suffix.length());
-			}
-		}
-		return term;
+		return KoreanQueryNormalizer.stripQuestionSuffix(term);
 	}
 
 	// 메소드 설명: stripTrailingJosa 처리 흐름을 수행합니다.
 	private static String stripTrailingJosa(String term) {
-		if (term == null || term.length() < 3) {
-			return term;
-		}
-		for (String protectedTerm : List.of("과업심의", "사전협의")) {
-			if (term.equals(protectedTerm)) {
-				return term;
-			}
-			if (term.length() == protectedTerm.length() + 1 && term.startsWith(protectedTerm)) {
-				return protectedTerm;
-			}
-		}
-		for (String suffix : List.of("으로", "에서", "에게", "까지", "부터", "하고", "하면", "은", "는", "이", "가", "을", "를", "에", "의", "와", "과", "도")) {
-			if (term.endsWith(suffix) && term.length() > suffix.length() + 1) {
-				return term.substring(0, term.length() - suffix.length());
-			}
-		}
-		return term;
+		return KoreanQueryNormalizer.stripTrailingJosa(term);
 	}
 
 	// 메소드 설명: normalize 처리 흐름을 수행합니다.
@@ -292,9 +405,7 @@ public class EvidenceJudge {
 	}
 
 	private static String normalize(String value) {
-		return HwpxTextCleaner.clean(String.valueOf(value == null ? "" : value))
-			.replaceAll("[^\\p{IsHangul}\\p{Alnum}]", "")
-			.toLowerCase();
+		return KoreanQueryNormalizer.normalizeForMatch(HwpxTextCleaner.clean(String.valueOf(value == null ? "" : value)));
 	}
 
 	public record Result(
@@ -312,7 +423,8 @@ public class EvidenceJudge {
 		double score,
 		boolean relevant,
 		boolean directEvidence,
-		int directEvidenceMatches
+		int directEvidenceMatches,
+		int bodyDirectEvidenceMatches
 	) {
 	}
 
@@ -378,11 +490,21 @@ public class EvidenceJudge {
 			if (normalized.contains("금액") || normalized.contains("비용")) {
 				intentGroups.add(List.of("금액", "비용", "만원", "대가", "지급"));
 			}
+			if (isScopeQuestion(normalized)) {
+				intentGroups.add(List.of("범위", "한도", "어디까지", "가능", "가능하다", "할수있다", "허용", "인정", "대상", "포함", "제외", "비대상", "해당"));
+			}
+			if (normalized.contains("보호")) {
+				intentGroups.add(List.of("보호", "보호조치", "비밀보장", "신변보호", "보호지원", "불이익조치", "인적사항", "공개", "보도", "동의없이", "책임감면"));
+			}
 			if (isTemporalQuestion(normalized)) {
 				intentGroups.add(List.of("언제", "시기", "일정", "기한", "기간", "평가기간", "일이내", "까지", "월말", "마감"));
 			}
 			boolean definitionQuestion = normalized.contains("정의")
 				|| normalized.contains("무엇")
+				|| normalized.contains("무슨")
+				|| normalized.contains("뭐야")
+				|| normalized.contains("뭔지")
+				|| normalized.contains("뭔가")
 				|| normalized.contains("이란");
 			if (definitionQuestion) {
 				intentGroups.add(List.of("정의", "이란", "란"));
@@ -488,6 +610,21 @@ public class EvidenceJudge {
 					"2026.10"
 				));
 			}
+			if (normalized.contains("보호") && isScopeQuestion(normalized)) {
+				directEvidenceGroups.add(List.of(
+					"보호조치",
+					"비밀보장",
+					"신변보호",
+					"보호지원",
+					"불이익조치",
+					"책임감면",
+					"인적사항",
+					"공개또는보도",
+					"동의없이",
+					"공개해서는아니",
+					"보도해서는아니"
+				));
+			}
 
 			return new QuestionProfile(terms, conceptGroups, intentGroups, directEvidenceGroups, definitionQuestion);
 		}
@@ -506,6 +643,10 @@ public class EvidenceJudge {
 			return Math.min(2, directEvidenceGroups.size());
 		}
 
+		boolean committeeQuestion() {
+			return terms.stream().anyMatch(term -> term.endsWith("위원회") || term.endsWith("협의회"));
+		}
+
 		// 메소드 설명: isSecurityReviewQuestion 처리 흐름을 수행합니다.
 		private static boolean isSecurityReviewQuestion(String normalized) {
 			return normalized.contains("보안성검토")
@@ -514,6 +655,9 @@ public class EvidenceJudge {
 
 		// 메소드 설명: addSpecificConceptGroups 처리 흐름을 수행합니다.
 		private static boolean isTemporalQuestion(String normalized) {
+			if (normalized.contains("어디까지")) {
+				return false;
+			}
 			return normalized.contains("언제")
 				|| normalized.contains("시기")
 				|| normalized.contains("일정")
@@ -526,33 +670,41 @@ public class EvidenceJudge {
 				|| normalized.contains("까지");
 		}
 
+		private static boolean isScopeQuestion(String normalized) {
+			return normalized.contains("어디까지")
+				|| normalized.contains("범위")
+				|| normalized.contains("한도")
+				|| normalized.contains("어느정도")
+				|| normalized.contains("얼마나")
+				|| normalized.contains("가능");
+		}
+
 		private static void addSpecificConceptGroups(List<String> terms, List<List<String>> conceptGroups) {
 			for (String candidateTerm : terms) {
 				String term = stripIntentSuffix(candidateTerm);
 				if (term.length() < 3 || isShortLatinTerm(term) || isIntentLikeTerm(term)) {
 					continue;
 				}
-				boolean alreadyCovered = conceptGroups.stream()
-					.flatMap(List::stream)
-					.map(EvidenceJudge::normalize)
-					.anyMatch(value -> value.equals(term) || value.contains(term) || term.contains(value));
-				if (!alreadyCovered) {
-					conceptGroups.add(List.of(term));
+				for (List<String> group : KoreanQueryNormalizer.conceptGroupsForTerm(term)) {
+					if (!isConceptGroupCovered(conceptGroups, group)) {
+						conceptGroups.add(group);
+					}
 				}
 			}
 		}
 
+		private static boolean isConceptGroupCovered(List<List<String>> conceptGroups, List<String> group) {
+			return group.stream()
+				.map(EvidenceJudge::normalize)
+				.anyMatch(term -> conceptGroups.stream()
+					.flatMap(List::stream)
+					.map(EvidenceJudge::normalize)
+					.anyMatch(value -> value.equals(term)));
+		}
+
 		// 메소드 설명: stripIntentSuffix 처리 흐름을 수행합니다.
 		private static String stripIntentSuffix(String term) {
-			if (term == null || term.length() < 4) {
-				return term;
-			}
-			for (String suffix : List.of("대상사업", "대상시스템", "대상기관", "적용대상", "필수요소", "검토내용", "추진절차", "신청방법", "제출서류", "대상", "시스템", "사업", "기관", "요소", "항목", "절차", "방법", "서류", "인가요", "인가", "인지", "일까요", "일까", "건가요", "건가", "하는게", "한걸", "정의", "이란", "란")) {
-				if (term.endsWith(suffix) && term.length() > suffix.length() + 2) {
-					return term.substring(0, term.length() - suffix.length());
-				}
-			}
-			return term;
+			return KoreanQueryNormalizer.stripIntentSuffix(term);
 		}
 
 		// 메소드 설명: isShortLatinTerm 처리 흐름을 수행합니다.
@@ -583,6 +735,15 @@ public class EvidenceJudge {
 				"서류",
 				"기한",
 				"기간",
+				"범위",
+				"한도",
+				"어디",
+				"어디까지",
+				"가능",
+				"가능해",
+				"가능한가",
+				"가능하나요",
+				"가능한지",
 				"금액",
 				"비용",
 				"정의",

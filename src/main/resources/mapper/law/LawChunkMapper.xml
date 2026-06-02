@@ -4,6 +4,12 @@
   "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
 <mapper namespace="com.kaces.pandora.lawdata.persistence.LawChunkMapper">
+  <select id="findChunkIdsByDocumentId" resultType="long">
+    SELECT chunk_id
+    FROM law_api_document_chunks
+    WHERE document_id = #{documentId}
+  </select>
+
   <!-- 특정 문서의 기존 검색 청크를 모두 삭제합니다. -->
   <delete id="deleteChunks">
     DELETE FROM law_api_document_chunks
@@ -159,7 +165,9 @@
       c.content_hash AS contentHash
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
-    WHERE c.chunk_id IN
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND c.chunk_id IN
     <foreach collection="chunkIds" item="chunkId" open="(" separator="," close=")">
       #{chunkId}
     </foreach>

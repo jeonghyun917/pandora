@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
@@ -157,11 +159,13 @@ public class RagImportService {
 			null
 		);
 		long documentId = mapper.findDocumentIdByHash(fileHash);
+		List<Long> oldChunkIds = mapper.findChunkIdsByDocumentId(documentId);
 		mapper.deleteChunks(documentId);
 		List<RagDocumentChunkRow> chunks = chunker.chunk(documentId, extracted, meta.sourceUrl());
 		for (RagDocumentChunkRow chunk : chunks) {
 			mapper.insertChunk(chunk);
 		}
+		deleteOldQdrantPointsAfterCommit(oldChunkIds);
 		if (!indexNow) {
 			return new ImportOutcome(false, 0);
 		}
@@ -185,6 +189,22 @@ public class RagImportService {
 			null
 		);
 		return new ImportOutcome(false, indexed);
+	}
+
+	private void deleteOldQdrantPointsAfterCommit(List<Long> oldChunkIds) {
+		if (oldChunkIds == null || oldChunkIds.isEmpty()) {
+			return;
+		}
+		if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+			qdrantClient.deleteRagPointsBestEffort(oldChunkIds);
+			return;
+		}
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override
+			public void afterCommit() {
+				qdrantClient.deleteRagPointsBestEffort(oldChunkIds);
+			}
+		});
 	}
 
 	// 메소드 설명: indexDocumentChunks 처리 흐름을 수행합니다.

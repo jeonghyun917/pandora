@@ -23,6 +23,7 @@ const starterQuestions = [
 // 메소드 설명: LawSearchPage 처리 흐름을 수행합니다.
 export function LawSearchPage({ onBack, onDebug }) {
   const [query, setQuery] = useState(initialQuery);
+  const [searchMode, setSearchMode] = useState('ai');
   const [selectedMenuIds, setSelectedMenuIds] = useState(defaultSelectedMenuIds);
   const [results, setResults] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -109,7 +110,7 @@ export function LawSearchPage({ onBack, onDebug }) {
   }, [htmlViewerUrl, viewerFocus]);
 
   // 메소드 설명: loadResults 처리 흐름을 수행합니다.
-  async function loadResults(nextQuery = query, menus = selectedMenus) {
+  async function loadResults(nextQuery = query, menus = selectedMenus, mode = searchMode) {
     const trimmedQuery = String(nextQuery ?? '').trim();
     if (!trimmedQuery) {
       setHasSearched(false);
@@ -141,7 +142,7 @@ export function LawSearchPage({ onBack, onDebug }) {
     setDetailPayload(null);
     setDetailError('');
     try {
-      if (trimmedQuery) {
+      if (trimmedQuery && mode === 'ai') {
         const primaryMenu = menus[0];
         // 메소드 설명: applyAnswerPayload 처리 흐름을 수행합니다.
         const applyAnswerPayload = (answer) => {
@@ -186,7 +187,7 @@ export function LawSearchPage({ onBack, onDebug }) {
       }
 
       const responses = await Promise.all(
-        menus.map(async (menu) => normalizeList(await searchLawData(menu, nextQuery), menu)),
+        menus.map(async (menu) => normalizeList(await searchLawData(menu, trimmedQuery, { titleOnly: true }), menu)),
       );
       setResults(responses.flatMap((response) => response.rows));
       setTotalCount(responses.reduce((sum, response) => sum + response.total, 0));
@@ -208,7 +209,7 @@ export function LawSearchPage({ onBack, onDebug }) {
         : [...current, menuId];
       const nextMenus = lawApiMenus.filter((menu) => nextIds.includes(menu.id));
       if (hasSearched) {
-        void loadResults(query, nextMenus);
+        void loadResults(query, nextMenus, searchMode);
       }
       return nextIds;
     });
@@ -216,7 +217,15 @@ export function LawSearchPage({ onBack, onDebug }) {
 
   function runStarterQuestion(question) {
     setQuery(question);
-    void loadResults(question, selectedMenus);
+    void loadResults(question, selectedMenus, searchMode);
+  }
+
+  function handleSearchModeChange(nextMode) {
+    setSearchMode(nextMode);
+    setAiAnswer(null);
+    if (hasSearched && query.trim()) {
+      void loadResults(query, selectedMenus, nextMode);
+    }
   }
 
   function handleQueryChange(event) {
@@ -272,7 +281,7 @@ export function LawSearchPage({ onBack, onDebug }) {
     const formData = new FormData(event.currentTarget);
     const nextQuery = String(formData.get('query') ?? query);
     setQuery(nextQuery);
-    void loadResults(nextQuery, selectedMenus);
+    void loadResults(nextQuery, selectedMenus, searchMode);
   }
 
   // 메소드 설명: handleSearchKeyDown 처리 흐름을 수행합니다.
@@ -282,7 +291,7 @@ export function LawSearchPage({ onBack, onDebug }) {
       event.preventDefault();
       const nextQuery = event.currentTarget.value;
       setQuery(nextQuery);
-      void loadResults(nextQuery, selectedMenus);
+      void loadResults(nextQuery, selectedMenus, searchMode);
     }
   }
 
@@ -315,9 +324,12 @@ export function LawSearchPage({ onBack, onDebug }) {
           <div>
             <p className="eyebrow">{selectedItem.category}</p>
             <h1>{selectedItem.title}</h1>
-            {detail?.meta?.length > 0 && (
+            {(isFutureEffectiveItem(selectedItem) || detail?.meta?.length > 0) && (
               <div className="detail-header-meta">
-                {detail.meta.map((item, index) => <span key={`${item}-${index}`}>[{item}]</span>)}
+                {isFutureEffectiveItem(selectedItem) && (
+                  <span className="future-effective-badge future-effective-badge-detail">미래시행</span>
+                )}
+                {(detail?.meta ?? []).map((item, index) => <span key={`${item}-${index}`}>[{item}]</span>)}
               </div>
             )}
           </div>
@@ -432,6 +444,28 @@ export function LawSearchPage({ onBack, onDebug }) {
         <h2 id="law-search-title" className="visually-hidden">법령 AI 질문 검색</h2>
         <form className="search-bar" role="search" onSubmit={submitSearch}>
           <Search aria-hidden="true" size={18} />
+          <div className={`search-mode-switch ${searchMode === 'db' ? 'is-db' : 'is-ai'}`} aria-label="검색 방식">
+            <label className={searchMode === 'ai' ? 'search-mode-option active' : 'search-mode-option'}>
+              <input
+                type="radio"
+                name="searchMode"
+                value="ai"
+                checked={searchMode === 'ai'}
+                onChange={() => handleSearchModeChange('ai')}
+              />
+              <span>AI</span>
+            </label>
+            <label className={searchMode === 'db' ? 'search-mode-option active' : 'search-mode-option'}>
+              <input
+                type="radio"
+                name="searchMode"
+                value="db"
+                checked={searchMode === 'db'}
+                onChange={() => handleSearchModeChange('db')}
+              />
+              <span>DB</span>
+            </label>
+          </div>
           <input
             value={query}
             name="query"
@@ -441,7 +475,7 @@ export function LawSearchPage({ onBack, onDebug }) {
             placeholder="예: 개인정보 보호법은 어떤 것까지 해야 해?"
           />
           <button type="submit" disabled={loading}>
-            질문
+            {searchMode === 'ai' ? '질문' : '검색'}
           </button>
         </form>
         <div className="category-filter" aria-label="검색할 데이터 분류">
@@ -463,7 +497,7 @@ export function LawSearchPage({ onBack, onDebug }) {
           <div className="law-content-heading">
             {aiAnswer ? <Bot aria-hidden="true" size={22} /> : <Gavel aria-hidden="true" size={22} />}
             <div>
-              <p className="eyebrow">{aiAnswer ? 'AI ANSWER' : hasSearched ? '검색 결과' : '검색 준비'}</p>
+              <p className="eyebrow">{aiAnswer ? 'AI ANSWER' : hasSearched ? (searchMode === 'db' ? 'DB 검색 결과' : '검색 결과') : '검색 준비'}</p>
               <h3>{hasSearched ? query : '질문을 시작해 보세요'}</h3>
             </div>
           </div>
@@ -511,7 +545,7 @@ export function LawSearchPage({ onBack, onDebug }) {
                 {loading && <span className="loading-spinner" aria-hidden="true" />}
                 {loading ? '답변 생성 중입니다' : `${totalCount.toLocaleString()}건의 근거 표시`}
               </span>
-              <small>{aiAnswer ? '서버가 확정한 근거 목록' : selectedMenus.map((menu) => menu.title).join(', ') || '선택 없음'}</small>
+              <small>{aiAnswer ? '서버가 확정한 근거 목록' : searchMode === 'db' ? '문서 제목 DB 검색' : selectedMenus.map((menu) => menu.title).join(', ') || '선택 없음'}</small>
             </div>
           )}
 
@@ -521,10 +555,18 @@ export function LawSearchPage({ onBack, onDebug }) {
             <div className="law-result-list">
               {results.map((item) => (
               <article className="law-result-card" key={`${item.target}-${item.id}-${item.title}`}>
-                <span className="result-date">{item.date || '날짜 없음'}</span>
+                <span className="result-date">
+                  <span>{item.date || '날짜 없음'}</span>
+                  {isFutureEffectiveItem(item) && (
+                    <span className="future-effective-badge">미래시행</span>
+                  )}
+                </span>
                 <div className="result-main">
                   <div className="result-title-row">
                     {item.snippet && <span className="result-match-badge">{aiAnswer ? `근거 ${item.groundNumber}` : '본문 일치'}</span>}
+                    {isFutureEffectiveItem(item) && (
+                      <span className="future-effective-badge future-effective-badge-inline">미래시행</span>
+                    )}
                     <span className={`result-source-badge result-source-badge-${normalizeSourceBadgeType(item.target)}`}>
                       {item.category}
                     </span>
@@ -559,6 +601,48 @@ export function LawSearchPage({ onBack, onDebug }) {
 }
 
 // 메소드 설명: normalizeGround 처리 흐름을 수행합니다.
+const futureEffectiveTargets = new Set(['law', 'admrul']);
+
+// 메소드 설명: 법령/행정규칙 시행일이 오늘 이후인지 판정합니다.
+function isFutureEffectiveItem(item) {
+  if (!futureEffectiveTargets.has(item?.target)) {
+    return false;
+  }
+  const effectiveDate = parseEffectiveDate(item?.date || item?.raw?.sourceDate || item?.raw?.source_date);
+  if (!effectiveDate) {
+    return false;
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return effectiveDate.getTime() > today.getTime();
+}
+
+// 메소드 설명: yyyyMMdd, yyyy.MM.dd, yyyy. M. d 형태의 날짜를 파싱합니다.
+function parseEffectiveDate(value) {
+  const text = String(value ?? '').trim();
+  if (!text) {
+    return null;
+  }
+  const compactMatch = text.match(/^(\d{4})(\d{2})(\d{2})$/);
+  const separatedMatch = text.match(/^(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  const match = compactMatch || separatedMatch;
+  if (!match) {
+    return null;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null;
+  }
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    return null;
+  }
+  const date = new Date(year, month - 1, day);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
 function normalizeGround(ground, menu) {
   return {
     id: ground.chunkId,

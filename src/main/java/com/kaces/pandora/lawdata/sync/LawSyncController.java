@@ -23,10 +23,14 @@ public class LawSyncController {
 		@RequestParam(defaultValue = "*") String query,
 		@RequestParam(defaultValue = "1") int page,
 		@RequestParam(defaultValue = "10") int display,
-		@RequestParam(defaultValue = "true") boolean fetchDetails
+		@RequestParam(defaultValue = "true") boolean fetchDetails,
+		@RequestParam(defaultValue = "") String sort,
+		@RequestParam(defaultValue = "") String date,
+		@RequestParam(defaultValue = "") String efYd,
+		@RequestParam(defaultValue = "") String ancYd
 	) {
 		
-		return lawOpenApiSyncService.syncLaws(target, query, page, display, fetchDetails);
+		return lawOpenApiSyncService.syncLaws(target, query, page, display, fetchDetails, sort, date, efYd, ancYd);
 	}
 
 	
@@ -37,6 +41,19 @@ public class LawSyncController {
 		@RequestParam(defaultValue = "0") int offset
 	) {
 		return lawOpenApiSyncService.rebuildChunks(target, limit, offset);
+	}
+
+	@PostMapping("/sync/detail")
+	public LawOpenApiSyncService.SyncResult syncDetail(
+		@RequestParam(defaultValue = "law") String target,
+		@RequestParam String externalId,
+		@RequestParam(defaultValue = "") String title,
+		@RequestParam(defaultValue = "") String sourceDate,
+		@RequestParam(defaultValue = "") String agencyName,
+		@RequestParam(defaultValue = "") String categoryName,
+		@RequestParam(defaultValue = "") String detailLink
+	) {
+		return lawOpenApiSyncService.syncDetail(target, externalId, title, sourceDate, agencyName, categoryName, detailLink);
 	}
 
 	@PostMapping("/chunks/rebuild-by-document-ids")

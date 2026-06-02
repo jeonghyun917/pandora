@@ -480,9 +480,119 @@ class EvidenceJudgeTests {
 		assertThat(result.chunks()).containsExactly(candidate);
 	}
 
+	@Test
+	void protectionScopeQuestionKeepsConfidentialityAndProtectionEvidence() {
+		LawSemanticChunkRow unrelated = chunk(
+			1,
+			"공익신고 접수 통계",
+			"연도별 접수 건수와 처리 현황을 집계한 일반 통계 자료이다."
+		);
+		LawSemanticChunkRow purpose = chunk(
+			2,
+			"공익신고자 보호사무 운영지침",
+			"이 예규는 공익신고자등에 대한 보호 업무 절차를 정함으로써 보호와 지원 업무를 원활히 수행하게 하는 것을 목적으로 한다."
+		);
+		LawSemanticChunkRow confidentiality = chunk(
+			3,
+			"공익신고자 보호사무 운영지침",
+			"공익신고자등의 비밀보장: 동의 없이 공익신고자등의 인적사항이나 공익신고자등임을 미루어 알 수 있는 사항을 공개 또는 보도해서는 아니 된다."
+		);
+		LawSemanticChunkRow protectionAction = chunk(
+			4,
+			"공익신고자 보호사무 운영지침",
+			"공익신고자등은 신변보호조치의 요청 및 보호조치 신청을 통하여 불이익조치에 대한 보호를 받을 수 있다."
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"공익신고자 보호는 어디까지 가능해?",
+			List.of(unrelated, purpose, confidentiality, protectionAction),
+			Map.of("official_doc:1", 0.8, "official_doc:2", 0.5, "official_doc:3", 0.6, "official_doc:4", 0.7),
+			8
+		);
+
+		assertThat(result.chunks()).contains(confidentiality, protectionAction);
+		assertThat(result.chunks()).doesNotContain(unrelated);
+	}
+
+	@Test
+	void colloquialCommitteeDefinitionQuestionMatchesExpandedCommitteeName() {
+		LawSemanticChunkRow unrelated = chunk(
+			1,
+			"인공지능 활용 서비스 목록 관리",
+			"공공기관의 장은 인공지능 활용 서비스의 유형과 데이터 현황을 관리하여야 한다."
+		);
+		LawSemanticChunkRow committee = chunk(
+			2,
+			"인공지능 발전과 신뢰 기반 조성 등에 관한 기본법",
+			"국가인공지능전략위원회는 인공지능 발전 및 신뢰 기반 조성에 관한 주요 정책과 계획을 심의ㆍ조정하기 위하여 설치되는 위원회이다."
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"인공지능위원회라는건 뭐야?",
+			List.of(unrelated, committee),
+			Map.of("official_doc:1", 0.9, "official_doc:2", 0.5),
+			8
+		);
+
+		assertThat(result.chunks()).containsExactly(committee);
+	}
+
+	@Test
+	void definitionQuestionRejectsLooseMentionWithoutExplanationSignal() {
+		LawSemanticChunkRow looseMention = chunk(
+			1,
+			"2025년 정보화사업 사전협의 안내서",
+			"교육내용은 정보화사업 발주 관련 법과 제도, 사전협의 절차, 보안성 검토 등 관련 분야 교육 추진으로 구성된다."
+		);
+		LawSemanticChunkRow explanatoryEvidence = chunk(
+			2,
+			"국가정보보안기본지침",
+			"보안성 검토를 거쳐 완료한 정보화사업에 대하여 정보통신망 구성을 변경하지 아니하는 범위의 후속 운영과 유지보수는 생략할 수 있다."
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"보안성검토라는게 뭐야?",
+			List.of(looseMention, explanatoryEvidence),
+			Map.of("official_doc:1", 0.95, "official_doc:2", 0.4),
+			8
+		);
+
+		assertThat(result.chunks()).containsExactly(explanatoryEvidence);
+		assertThat(result.chunks()).doesNotContain(looseMention);
+	}
+
+	@Test
+	void definitionQuestionDoesNotAcceptDocumentTitleOnlyMatch() {
+		LawSemanticChunkRow loosePage = chunk(
+			1,
+			"(붙임2) 2026년 정보화사업 보안성 검토 가이드",
+			"p.5 서비스 공급업체는 기관 VPC 영역에서 보안관제를 수행할 수 있는 기반 제공",
+			"AI 정보화 사업은 보안성 검토에 장시간 소요될 수 있어 사전 협의 시 신속하게 진행할 수 있다는 안내이다."
+		);
+		LawSemanticChunkRow overviewPage = chunk(
+			2,
+			"(붙임1) 2026년 정보화사업 보안성 검토 운영계획",
+			"추진개요. 보안성 검토의 목적은 정보화 사업 계획 단계에서 보안대책의 적정성을 사전에 검토하여 정보보안을 강화하는 것이다."
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"보안성검토라는게 뭐야?",
+			List.of(loosePage, overviewPage),
+			Map.of("official_doc:1", 0.95, "official_doc:2", 0.4),
+			8
+		);
+
+		assertThat(result.chunks()).containsExactly(overviewPage);
+		assertThat(result.chunks()).doesNotContain(loosePage);
+	}
+
 	// 메소드 설명: chunk 처리 흐름을 수행합니다.
 	// 메소드 설명: chunk 처리 흐름을 수행합니다.
 	private LawSemanticChunkRow chunk(long id, String title, String text) {
+		return chunk(id, title, "p." + id, text);
+	}
+
+	private LawSemanticChunkRow chunk(long id, String title, String chunkTitle, String text) {
 		return new LawSemanticChunkRow(
 			id,
 			1,
@@ -493,7 +603,7 @@ class EvidenceJudgeTests {
 			"공식 가이드 문서",
 			null,
 			"page " + id,
-			"p." + id,
+			chunkTitle,
 			text,
 			(int) id,
 			null,

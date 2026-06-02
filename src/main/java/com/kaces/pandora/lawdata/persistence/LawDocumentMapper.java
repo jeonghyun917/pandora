@@ -11,13 +11,15 @@ public interface LawDocumentMapper {
 	int countDocuments(
 		@Param("target") String target,
 		@Param("query") String query,
-		@Param("searchAll") boolean searchAll
+		@Param("searchAll") boolean searchAll,
+		@Param("titleOnly") boolean titleOnly
 	);
 	
 	List<LawDocumentRow> searchDocuments(
 		@Param("target") String target,
 		@Param("query") String query,
 		@Param("searchAll") boolean searchAll,
+		@Param("titleOnly") boolean titleOnly,
 		@Param("limit") int limit,
 		@Param("offset") int offset
 	);
@@ -25,4 +27,6 @@ public interface LawDocumentMapper {
 	void upsertDocument(@Param("document") SearchDocument document, @Param("contentHash") String contentHash);
 	
 	long findDocumentId(@Param("target") String target, @Param("externalId") String externalId);
+
+	LawDocumentSyncState findSyncState(@Param("target") String target, @Param("externalId") String externalId);
 }

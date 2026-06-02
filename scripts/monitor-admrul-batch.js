@@ -12,6 +12,15 @@ const baseUrl = "http://localhost:8080";
 const qdrantUrl = "http://localhost:6333/collections/law_chunks";
 const model = "text-embedding-3-small";
 const vectorStore = "law_chunks";
+const syncTargets = csvEnv("PANDORA_SYNC_TARGETS", "law,admrul");
+const batchTargets = csvEnv("PANDORA_BATCH_TARGETS", syncTargets.join(","));
+const syncQuery = process.env.PANDORA_SYNC_QUERY || "*";
+const syncSort = process.env.PANDORA_SYNC_SORT || "efdes";
+const syncPages = positiveIntEnv("PANDORA_SYNC_PAGES", 1, 10);
+const syncDisplay = positiveIntEnv("PANDORA_SYNC_DISPLAY", 100, 100);
+const syncDate = process.env.PANDORA_SYNC_DATE || "";
+const syncEfYd = process.env.PANDORA_SYNC_EFYD || "";
+const syncAncYd = process.env.PANDORA_SYNC_ANCYD || recentDateRange(120);
 
 fs.mkdirSync(logDir, { recursive: true });
 
@@ -42,6 +51,38 @@ function db(sql) {
   return output.trim().split(/\r?\n/).filter(Boolean);
 }
 
+function csvEnv(name, fallback) {
+  return (process.env[name] || fallback)
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value === "law" || value === "admrul");
+}
+
+function positiveIntEnv(name, fallback, max) {
+  const value = Number(process.env[name] || fallback);
+  if (!Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+  return Math.min(Math.floor(value), max);
+}
+
+function formatYmd(date) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`;
+}
+
+function recentDateRange(days) {
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(start.getDate() - days);
+  return `${formatYmd(start)}~${formatYmd(end)}`;
+}
+
+function sqlTargets(targets) {
+  const safeTargets = targets.filter((target) => target === "law" || target === "admrul");
+  return safeTargets.length ? safeTargets.map((target) => `'${target}'`).join(",") : "'admrul'";
+}
+
 async function api(method, apiPath, timeoutMs = 120000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -70,6 +111,29 @@ async function getJson(url, timeoutMs = 15000) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function syncTarget(target, page) {
+  const params = new URLSearchParams({
+    target,
+    query: syncQuery,
+    page: String(page),
+    display: String(syncDisplay),
+    fetchDetails: "true",
+    sort: syncSort,
+  });
+  if (target === "law") {
+    if (syncDate) {
+      params.set("date", syncDate);
+    }
+    if (syncEfYd) {
+      params.set("efYd", syncEfYd);
+    }
+    if (syncAncYd) {
+      params.set("ancYd", syncAncYd);
+    }
+  }
+  return api("POST", `/api/law-data/sync?${params.toString()}`, 900000);
 }
 
 function splitRow(row) {
@@ -258,9 +322,24 @@ async function main() {
     const qdrantPoints = qdrant.result?.points_count || 0;
     log(`qdrant status=${qdrantStatus} points=${qdrantPoints}`);
 
-    const recover = await api("POST", "/api/law-data/semantic/batches/recover-stale?target=admrul", 120000);
-    log(`recover-stale ${recover}`);
-    recoveryActions.push(`recover-stale ${recover}`);
+    for (const target of syncTargets) {
+      for (let page = 1; page <= syncPages; page++) {
+        try {
+          const sync = await syncTarget(target, page);
+          log(`sync target=${target} page=${page} ${sync}`);
+          recoveryActions.push(`sync ${target} p${page} ${sync}`);
+        } catch (error) {
+          log(`sync-error target=${target} page=${page} ${error.message}`);
+          risks.push(`sync 실패 ${target} p${page}: ${error.message.slice(0, 160)}`);
+        }
+      }
+    }
+
+    for (const target of batchTargets) {
+      const recover = await api("POST", `/api/law-data/semantic/batches/recover-stale?target=${encodeURIComponent(target)}`, 120000);
+      log(`recover-stale target=${target} ${recover}`);
+      recoveryActions.push(`recover-stale ${target} ${recover}`);
+    }
 
     const poll = await api("POST", "/api/law-data/semantic/batches/poll", 180000);
     log(`poll ${poll}`);
@@ -268,7 +347,7 @@ async function main() {
     const completedJobs = db(`
 SELECT openai_batch_id
 FROM semantic_batch_jobs
-WHERE target = 'admrul'
+WHERE target IN (${sqlTargets(batchTargets)})
   AND status = 'completed'
   AND ingested_count = 0
 ORDER BY batch_job_id
@@ -289,13 +368,18 @@ ORDER BY batch_job_id
       }
     }
 
-    try {
-      fill = await api("POST", "/api/law-data/semantic/batches/fill-queue?target=admrul&maxActiveJobs=2", 600000);
-      log(`fill-queue ${fill}`);
-    } catch (error) {
-      log(`fill-queue-error ${error.message}`);
-      risks.push(`fill-queue 실패: ${error.message.slice(0, 160)}`);
+    const fillResults = [];
+    for (const target of batchTargets) {
+      try {
+        const targetFill = await api("POST", `/api/law-data/semantic/batches/fill-queue?target=${encodeURIComponent(target)}&maxActiveJobs=2`, 600000);
+        fillResults.push(targetFill);
+        log(`fill-queue target=${target} ${targetFill}`);
+      } catch (error) {
+        log(`fill-queue-error target=${target} ${error.message}`);
+        risks.push(`fill-queue 실패 ${target}: ${error.message.slice(0, 160)}`);
+      }
     }
+    fill = fillResults.join("\n");
 
     const statusAges = db(`
 SELECT CONCAT(

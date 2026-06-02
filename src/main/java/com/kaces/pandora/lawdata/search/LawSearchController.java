@@ -24,13 +24,14 @@ public class LawSearchController {
 		@RequestParam(defaultValue = "law") String target,
 		@RequestParam(defaultValue = "*") String query,
 		@RequestParam(defaultValue = "1") int page,
-		@RequestParam(defaultValue = "10") int display
+		@RequestParam(defaultValue = "10") int display,
+		@RequestParam(defaultValue = "false") boolean titleOnly
 	) {
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		return ResponseEntity.ok()
 			.contentType(MediaType.APPLICATION_JSON)
 			
-			.body(lawSearchService.search(target, query, page, display));
+			.body(lawSearchService.search(target, query, page, display, titleOnly));
 	}
 
 	

@@ -57,13 +57,15 @@ public interface RagDocumentMapper {
 	int countDocuments(
 		@Param("documentType") String documentType,
 		@Param("query") String query,
-		@Param("searchAll") boolean searchAll
+		@Param("searchAll") boolean searchAll,
+		@Param("titleOnly") boolean titleOnly
 	);
 
 	List<LawDocumentRow> searchDocuments(
 		@Param("documentType") String documentType,
 		@Param("query") String query,
 		@Param("searchAll") boolean searchAll,
+		@Param("titleOnly") boolean titleOnly,
 		@Param("limit") int limit,
 		@Param("offset") int offset
 	);
@@ -79,6 +81,8 @@ public interface RagDocumentMapper {
 		@Param("limit") int limit,
 		@Param("offset") int offset
 	);
+
+	List<Long> findChunkIdsByDocumentId(@Param("documentId") long documentId);
 
 	void deleteChunks(@Param("documentId") long documentId);
 

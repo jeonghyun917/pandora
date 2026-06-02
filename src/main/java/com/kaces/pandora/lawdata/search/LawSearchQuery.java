@@ -8,7 +8,8 @@ public record LawSearchQuery(
 	int page,
 	int display,
 	int offset,
-	boolean searchAll
+	boolean searchAll,
+	boolean titleOnly
 ) {
 	private static final java.util.Set<String> SUPPORTED_TARGETS = java.util.Set.of(
 		"law",
@@ -21,6 +22,10 @@ public record LawSearchQuery(
 	
 	// 메소드 설명: normalize 처리 흐름을 수행합니다.
 	public static LawSearchQuery normalize(String target, String query, int page, int display) {
+		return normalize(target, query, page, display, false);
+	}
+
+	public static LawSearchQuery normalize(String target, String query, int page, int display, boolean titleOnly) {
 		String safeTarget = StringUtils.hasText(target) ? target.trim() : "law";
 		if (!SUPPORTED_TARGETS.contains(safeTarget)) {
 			throw new IllegalArgumentException("Unsupported law data target: " + safeTarget);
@@ -35,7 +40,8 @@ public record LawSearchQuery(
 			safePage,
 			safeDisplay,
 			(safePage - 1) * safeDisplay,
-			"*".equals(safeQuery)
+			"*".equals(safeQuery),
+			titleOnly
 		);
 	}
 }

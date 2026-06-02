@@ -47,6 +47,14 @@ public class LawOpenApiService {
 	
 	// 메소드 설명: search 처리 흐름을 수행합니다.
 	public String search(String target, String query, int page, int display) {
+		return search(target, query, page, display, "");
+	}
+
+	public String search(String target, String query, int page, int display, String sort) {
+		return search(target, query, page, display, sort, "", "", "");
+	}
+
+	public String search(String target, String query, int page, int display, String sort, String date, String efYd, String ancYd) {
 		if (!StringUtils.hasText(properties.oc())) {
 			throw new IllegalStateException("Law Open API key is not configured.");
 		}
@@ -57,10 +65,14 @@ public class LawOpenApiService {
 		int safePage = Math.max(page, 1);
 		int safeDisplay = Math.min(Math.max(display, 1), 100);
 		String safeQuery = StringUtils.hasText(query) ? query.trim() : "*";
+		String safeSort = StringUtils.hasText(sort) ? sort.trim() : "";
+		String safeDate = StringUtils.hasText(date) ? date.trim() : "";
+		String safeEfYd = StringUtils.hasText(efYd) ? efYd.trim() : "";
+		String safeAncYd = StringUtils.hasText(ancYd) ? ancYd.trim() : "";
 		
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		byte[] responseBody = restClient.get()
-			.uri(uriBuilder -> buildSearchUri(uriBuilder, target, safeQuery, safePage, safeDisplay))
+			.uri(uriBuilder -> buildSearchUri(uriBuilder, target, safeQuery, safePage, safeDisplay, safeSort, safeDate, safeEfYd, safeAncYd))
 			.retrieve()
 			.body(byte[].class);
 
@@ -129,16 +141,28 @@ public class LawOpenApiService {
 	}
 	
 	// 메소드 설명: buildSearchUri 처리 흐름을 수행합니다.
-	private java.net.URI buildSearchUri(UriBuilder uriBuilder, String target, String query, int page, int display) {
-		return uriBuilder
+	private java.net.URI buildSearchUri(UriBuilder uriBuilder, String target, String query, int page, int display, String sort, String date, String efYd, String ancYd) {
+		UriBuilder builder = uriBuilder
 			.path("/lawSearch.do")
 			.queryParam("OC", properties.oc())
 			.queryParam("target", target)
 			.queryParam("type", "JSON")
 			.queryParam("query", query)
 			.queryParam("page", page)
-			.queryParam("display", display)
-			.build();
+			.queryParam("display", display);
+		if (StringUtils.hasText(sort)) {
+			builder.queryParam("sort", sort);
+		}
+		if (StringUtils.hasText(date)) {
+			builder.queryParam("date", date);
+		}
+		if (StringUtils.hasText(efYd)) {
+			builder.queryParam("efYd", efYd);
+		}
+		if (StringUtils.hasText(ancYd)) {
+			builder.queryParam("ancYd", ancYd);
+		}
+		return builder.build();
 	}
 	
 	// 메소드 설명: buildDetailUri 처리 흐름을 수행합니다.

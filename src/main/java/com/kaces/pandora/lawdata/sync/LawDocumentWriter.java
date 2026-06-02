@@ -7,14 +7,18 @@ import static com.kaces.pandora.common.text.LawHashUtils.sha256;
 import static com.kaces.pandora.common.text.LawTextUtils.emptyToNull;
 
 import com.kaces.pandora.common.json.LawJsonWriter;
+import com.kaces.pandora.infra.qdrant.QdrantClient;
 import com.kaces.pandora.lawdata.persistence.LawAssetMapper;
 import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
 import com.kaces.pandora.lawdata.persistence.LawDetailMapper;
 import com.kaces.pandora.lawdata.persistence.LawDocumentMapper;
+import com.kaces.pandora.lawdata.persistence.LawDocumentSyncState;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 @Component
@@ -28,6 +32,7 @@ public class LawDocumentWriter {
 	private final LawChunkMapper lawChunkMapper;
 	private final LawAssetMapper lawAssetMapper;
 	private final LawJsonWriter jsonWriter;
+	private final QdrantClient qdrantClient;
 
 	
 	public LawDocumentWriter(
@@ -35,13 +40,15 @@ public class LawDocumentWriter {
 		LawDetailMapper lawDetailMapper,
 		LawChunkMapper lawChunkMapper,
 		LawAssetMapper lawAssetMapper,
-		LawJsonWriter jsonWriter
+		LawJsonWriter jsonWriter,
+		QdrantClient qdrantClient
 	) {
 		this.lawDocumentMapper = lawDocumentMapper;
 		this.lawDetailMapper = lawDetailMapper;
 		this.lawChunkMapper = lawChunkMapper;
 		this.lawAssetMapper = lawAssetMapper;
 		this.jsonWriter = jsonWriter;
+		this.qdrantClient = qdrantClient;
 	}
 
 	
@@ -64,6 +71,10 @@ public class LawDocumentWriter {
 		
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		return lawDocumentMapper.findDocumentId(document.target(), document.externalId());
+	}
+
+	public LawDocumentSyncState findSyncState(String target, String externalId) {
+		return lawDocumentMapper.findSyncState(target, externalId);
 	}
 
 	
@@ -98,6 +109,8 @@ public class LawDocumentWriter {
 	
 	// 메소드 설명: replaceChunks 처리 흐름을 수행합니다.
 	public int replaceChunks(long documentId, long detailId, List<SyncDetailSection> sections, String sourceUrl) {
+		
+		List<Long> oldChunkIds = lawChunkMapper.findChunkIdsByDocumentId(documentId);
 		
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		lawChunkMapper.deleteChunks(documentId);
@@ -134,7 +147,24 @@ public class LawDocumentWriter {
 				count++;
 			}
 		}
+		deleteOldQdrantPointsAfterCommit(oldChunkIds);
 		return count;
+	}
+
+	private void deleteOldQdrantPointsAfterCommit(List<Long> oldChunkIds) {
+		if (oldChunkIds == null || oldChunkIds.isEmpty()) {
+			return;
+		}
+		if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+			qdrantClient.deleteLawPointsBestEffort(oldChunkIds);
+			return;
+		}
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override
+			public void afterCommit() {
+				qdrantClient.deleteLawPointsBestEffort(oldChunkIds);
+			}
+		});
 	}
 
 	private List<String> splitForEmbedding(String text) {

@@ -11,13 +11,17 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 @Component
 public class QdrantClient {
 	private static final long RAG_POINT_ID_OFFSET = 9_000_000_000_000_000L;
+	private static final Logger log = LoggerFactory.getLogger(QdrantClient.class);
 
 	private final LawAiProperties properties;
 	private final RestClient restClient;
@@ -118,6 +122,53 @@ public class QdrantClient {
 			.map(chunk -> vectorsByChunkId.get(chunk.chunkId()))
 			.toList();
 		upsert(orderedChunks, vectors);
+	}
+
+	public void deleteLawPoints(List<Long> chunkIds) {
+		deletePoints(chunkIds);
+	}
+
+	public void deleteLawPointsBestEffort(List<Long> chunkIds) {
+		deletePointsBestEffort(chunkIds, "law");
+	}
+
+	public void deleteRagPointsBestEffort(List<Long> chunkIds) {
+		List<Long> pointIds = chunkIds == null ? List.of() : chunkIds.stream()
+			.filter(id -> id != null && id > 0)
+			.map(QdrantClient::ragPointId)
+			.toList();
+		deletePointsBestEffort(pointIds, "rag");
+	}
+
+	private void deletePointsBestEffort(List<Long> pointIds, String label) {
+		try {
+			deletePoints(pointIds);
+		} catch (RestClientException exception) {
+			log.warn("Qdrant {} stale point cleanup failed. It can be retried later. count={} message={}",
+				label,
+				pointIds == null ? 0 : pointIds.size(),
+				exception.getMessage()
+			);
+		}
+	}
+
+	private void deletePoints(List<Long> pointIds) {
+		List<Long> ids = pointIds == null ? List.of() : pointIds.stream()
+			.filter(id -> id != null && id > 0)
+			.distinct()
+			.toList();
+		if (ids.isEmpty()) {
+			return;
+		}
+		int batchSize = 512;
+		for (int start = 0; start < ids.size(); start += batchSize) {
+			List<Long> batch = ids.subList(start, Math.min(start + batchSize, ids.size()));
+			restClient.post()
+				.uri("/collections/{collection}/points/delete?wait=true", properties.qdrant().collection())
+				.body(Map.of("points", batch))
+				.retrieve()
+				.toBodilessEntity();
+		}
 	}
 
 	// 메소드 설명: search 처리 흐름을 수행합니다.

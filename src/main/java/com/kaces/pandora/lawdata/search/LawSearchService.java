@@ -19,8 +19,12 @@ public class LawSearchService {
 	
 	// 메소드 설명: search 처리 흐름을 수행합니다.
 	public Map<String, LawSearchPayloadResponse> search(String target, String query, int page, int display) {
+		return search(target, query, page, display, false);
+	}
+
+	public Map<String, LawSearchPayloadResponse> search(String target, String query, int page, int display, boolean titleOnly) {
 		
-		LawSearchQuery normalizedQuery = LawSearchQuery.normalize(target, query, page, display);
+		LawSearchQuery normalizedQuery = LawSearchQuery.normalize(target, query, page, display, titleOnly);
 		
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		return responseAssembler.assemble(queryService.search(normalizedQuery));

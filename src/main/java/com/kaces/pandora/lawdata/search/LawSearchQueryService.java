@@ -31,12 +31,13 @@ public class LawSearchQueryService {
 	public LawSearchQueryResult search(LawSearchQuery query) {
 		if (isRagTarget(query.target())) {
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-			int total = ragDocumentMapper.countDocuments(query.target(), query.query(), query.searchAll());
+			int total = ragDocumentMapper.countDocuments(query.target(), query.query(), query.searchAll(), query.titleOnly());
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 			List<LawDocumentRow> rows = ragDocumentMapper.searchDocuments(
 				query.target(),
 				query.query(),
 				query.searchAll(),
+				query.titleOnly(),
 				query.display(),
 				query.offset()
 			);
@@ -45,13 +46,14 @@ public class LawSearchQueryService {
 
 		
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		int total = lawDocumentMapper.countDocuments(query.target(), query.query(), query.searchAll());
+		int total = lawDocumentMapper.countDocuments(query.target(), query.query(), query.searchAll(), query.titleOnly());
 		
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		List<LawDocumentRow> rows = lawDocumentMapper.searchDocuments(
 			query.target(),
 			query.query(),
 			query.searchAll(),
+			query.titleOnly(),
 			query.display(),
 			query.offset()
 		);

@@ -75,10 +75,12 @@
     <if test="!searchAll">
       AND (
         title LIKE CONCAT('%', #{query}, '%')
+        <if test="!titleOnly">
         OR source_org LIKE CONCAT('%', #{query}, '%')
         OR document_category LIKE CONCAT('%', #{query}, '%')
         OR document_topic LIKE CONCAT('%', #{query}, '%')
         OR file_name LIKE CONCAT('%', #{query}, '%')
+        </if>
       )
     </if>
   </sql>
@@ -171,6 +173,12 @@
       doc.title,
       c.sort_order
     LIMIT #{limit} OFFSET #{offset}
+  </select>
+
+  <select id="findChunkIdsByDocumentId" resultType="long">
+    SELECT chunk_id
+    FROM rag_document_chunks
+    WHERE document_id = #{documentId}
   </select>
 
   <insert id="upsertDocument">

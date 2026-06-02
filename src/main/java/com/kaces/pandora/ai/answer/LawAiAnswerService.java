@@ -1,5 +1,6 @@
 package com.kaces.pandora.ai.answer;
 
+import com.kaces.pandora.common.text.KoreanQueryNormalizer;
 import com.kaces.pandora.infra.openai.OpenAiAnswerClient;
 import com.kaces.pandora.infra.openai.OpenAiEmbeddingClient;
 import com.kaces.pandora.infra.qdrant.QdrantClient;
@@ -42,6 +43,7 @@ public class LawAiAnswerService {
 	private static final int FOCUSED_RAG_KEYWORD_FETCH_LIMIT = 120;
 	private static final int GENERIC_RAG_KEYWORD_FETCH_LIMIT = 45;
 	private static final int LAW_TITLE_KEYWORD_FETCH_LIMIT = 20;
+	private static final int LAW_TEXT_KEYWORD_FETCH_LIMIT = 40;
 	private static final int JUDGE_CANDIDATE_LIMIT = 30;
 	private static final int MAX_USEFUL_TEXT_CHECK_CHARS = 900;
 	private static final int MAX_ANSWER_CONTEXT_CHARS_PER_GROUND = 620;
@@ -418,7 +420,8 @@ public class LawAiAnswerService {
 		Map<String, Double> combinedScoreByChunkId = adjustedScoreMap(rankedChunks, normalized.query(), baseScoreByChunkId);
 		Map<String, Double> metadataScoreByChunkId = metadataScoreMap(rankedChunks, baseScoreByChunkId, combinedScoreByChunkId);
 		List<LawSemanticChunkRow> intentFilteredChunks = filterByQuestionIntent(rankedChunks, normalized.query());
-		List<LawSemanticChunkRow> judgeCandidateChunks = intentFilteredChunks.stream()
+		List<LawSemanticChunkRow> judgeSourceChunks = preferUsefulTextForJudgeCandidates(intentFilteredChunks);
+		List<LawSemanticChunkRow> judgeCandidateChunks = judgeSourceChunks.stream()
 			.limit(JUDGE_CANDIDATE_LIMIT)
 			.toList();
 		long judgeStart = System.nanoTime();
@@ -1625,6 +1628,14 @@ public class LawAiAnswerService {
 			));
 		}
 		if (!lawTargets.isEmpty() && !(guideFocusedQuestion && !ragTargets.isEmpty())) {
+			List<String> lawTextKeywords = lawTextKeywords(query);
+			if (!lawTextKeywords.isEmpty()) {
+				chunks.addAll(lawChunkMapper.findSemanticChunksByText(
+					lawTargets,
+					lawTextKeywords,
+					LAW_TEXT_KEYWORD_FETCH_LIMIT
+				));
+			}
 			List<String> lawTitleKeywords = lawTitleKeywords(query);
 			if (!lawTitleKeywords.isEmpty()) {
 				// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
@@ -1729,12 +1740,14 @@ public class LawAiAnswerService {
 			String cleaned = normalizeQueryTerm(token);
 			if (cleaned.length() >= 2 && !isWeakQueryToken(cleaned)) {
 				keywords.add(cleaned);
+				keywords.addAll(KoreanQueryNormalizer.expandSearchKeywords(cleaned));
 			}
 		}
 		String compact = normalizeQueryTerm(String.valueOf(query).replaceAll("\\s+", ""));
 		List<String> usefulTerms = queryTerms(query);
 		if (!usefulTerms.isEmpty() && usefulTerms.size() <= 1 && compact.length() >= 4) {
 			keywords.add(compact);
+			keywords.addAll(KoreanQueryNormalizer.expandSearchKeywords(compact));
 		}
 		return keywords.stream()
 			.map(String::trim)
@@ -1775,6 +1788,7 @@ public class LawAiAnswerService {
 		List<String> coreTerms = coreConceptTerms(queryTerms(query));
 		List<String> keywords = coreTerms.isEmpty() ? genericLexicalKeywords(query) : coreTerms;
 		return keywords.stream()
+			.flatMap(term -> KoreanQueryNormalizer.expandSearchKeywords(term).stream())
 			.filter(term -> term.length() >= 2)
 			.filter(term -> !isIntentLikeTerm(term))
 			.distinct()
@@ -1782,10 +1796,22 @@ public class LawAiAnswerService {
 			.toList();
 	}
 
+	private List<String> lawTextKeywords(String query) {
+		List<String> coreTerms = coreConceptTerms(queryTerms(query));
+		List<String> keywords = coreTerms.isEmpty() ? genericLexicalKeywords(query) : coreTerms;
+		return keywords.stream()
+			.flatMap(term -> KoreanQueryNormalizer.expandSearchKeywords(term).stream())
+			.filter(term -> term.length() >= 3)
+			.filter(term -> !isIntentLikeTerm(term))
+			.distinct()
+			.limit(8)
+			.toList();
+	}
+
 	// 메소드 설명: isWeakQueryToken 처리 흐름을 수행합니다.
 	private boolean isWeakQueryToken(String value) {
 		String normalized = normalizeForMatch(value);
-		return Set.of(
+		return KoreanQueryNormalizer.isWeakQuestionTerm(normalized) || Set.of(
 			"알려줘",
 			"알수있어",
 			"알수있나요",
@@ -1869,6 +1895,7 @@ public class LawAiAnswerService {
 			.map(this::stripIntentSuffix)
 			.map(this::stripTrailingJosa)
 			.map(this::stripIntentSuffix)
+			.flatMap(term -> KoreanQueryNormalizer.expandSearchKeywords(term).stream())
 			.filter(term -> term.length() >= 3)
 			.filter(term -> !isWeakQueryToken(term))
 			.filter(term -> !isIntentLikeTerm(term))
@@ -1927,41 +1954,17 @@ public class LawAiAnswerService {
 	}
 
 	private String normalizeQueryTerm(String term) {
-		return stripIntentSuffix(stripTrailingJosa(stripIntentSuffix(normalizeForMatch(term))));
+		return KoreanQueryNormalizer.normalizeQueryTerm(term);
 	}
 
 	// 메소드 설명: stripTrailingJosa 처리 흐름을 수행합니다.
 	private String stripTrailingJosa(String term) {
-		if (term == null || term.length() < 3) {
-			return term;
-		}
-		for (String protectedTerm : List.of("과업심의", "사전협의")) {
-			if (term.equals(protectedTerm)) {
-				return term;
-			}
-			if (term.length() == protectedTerm.length() + 1 && term.startsWith(protectedTerm)) {
-				return protectedTerm;
-			}
-		}
-		for (String suffix : List.of("으로", "에서", "에게", "까지", "부터", "하고", "하면", "은", "는", "이", "가", "을", "를", "에", "의", "와", "과", "도")) {
-			if (term.endsWith(suffix) && term.length() > suffix.length() + 1) {
-				return term.substring(0, term.length() - suffix.length());
-			}
-		}
-		return term;
+		return KoreanQueryNormalizer.stripTrailingJosa(term);
 	}
 
 	// 메소드 설명: stripIntentSuffix 처리 흐름을 수행합니다.
 	private String stripIntentSuffix(String term) {
-		if (term == null || term.length() < 4) {
-			return term;
-		}
-		for (String suffix : List.of("대상사업", "대상시스템", "대상기관", "적용대상", "필수요소", "검토내용", "추진절차", "신청방법", "제출서류", "대상", "시스템", "사업", "기관", "요소", "항목", "절차", "방법", "서류", "인가요", "인가", "인지", "일까요", "일까", "건가요", "건가", "하는게", "한걸", "정의", "이란", "란")) {
-			if (term.endsWith(suffix) && term.length() > suffix.length() + 2) {
-				return term.substring(0, term.length() - suffix.length());
-			}
-		}
-		return term;
+		return KoreanQueryNormalizer.stripIntentSuffix(term);
 	}
 
 	// 메소드 설명: isProjectReviewQuestion 처리 흐름을 수행합니다.
@@ -2015,9 +2018,7 @@ public class LawAiAnswerService {
 
 	// 메소드 설명: normalizeForMatch 처리 흐름을 수행합니다.
 	private String normalizeForMatch(String value) {
-		return String.valueOf(value == null ? "" : value)
-			.replaceAll("[^\\p{IsHangul}\\p{Alnum}]", "")
-			.toLowerCase();
+		return KoreanQueryNormalizer.normalizeForMatch(value);
 	}
 
 	// 메소드 설명: hasUsefulText 처리 흐름을 수행합니다.
@@ -2027,6 +2028,13 @@ public class LawAiAnswerService {
 			.replaceAll("\\d{4}\\.\\d+\\.\\d+>", "")
 			.replaceAll("[\\s.ㆍ·<>]", "");
 		return text.length() >= 20;
+	}
+
+	private List<LawSemanticChunkRow> preferUsefulTextForJudgeCandidates(List<LawSemanticChunkRow> chunks) {
+		List<LawSemanticChunkRow> usefulChunks = chunks.stream()
+			.filter(this::hasUsefulText)
+			.toList();
+		return usefulChunks.size() >= Math.min(6, Math.max(1, chunks.size())) ? usefulChunks : chunks;
 	}
 
 	// 메소드 설명: nullToEmpty 처리 흐름을 수행합니다.

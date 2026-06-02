@@ -11,8 +11,10 @@
     <if test="!searchAll">
       AND (
         title LIKE CONCAT('%', #{query}, '%')
+        <if test="!titleOnly">
         OR agency_name LIKE CONCAT('%', #{query}, '%')
         OR category_name LIKE CONCAT('%', #{query}, '%')
+        </if>
       )
     </if>
   </sql>
@@ -66,6 +68,24 @@
     FROM law_api_documents
     WHERE target = #{target}
       AND external_id = #{externalId}
+  </select>
+
+  <select id="findSyncState" resultType="com.kaces.pandora.lawdata.persistence.LawDocumentSyncState">
+    SELECT
+      doc.content_hash AS documentContentHash,
+      detail.content_hash AS detailContentHash,
+      detail.fetched_at AS detailFetchedAt,
+      COUNT(chunk.chunk_id) AS activeChunkCount
+    FROM law_api_documents doc
+    LEFT JOIN law_api_document_details detail
+      ON detail.document_id = doc.document_id
+      AND detail.use_yn = 'Y'
+    LEFT JOIN law_api_document_chunks chunk
+      ON chunk.document_id = doc.document_id
+      AND chunk.use_yn = 'Y'
+    WHERE doc.target = #{target}
+      AND doc.external_id = #{externalId}
+    GROUP BY doc.document_id, doc.content_hash, detail.content_hash, detail.fetched_at
   </select>
 
 </mapper>
