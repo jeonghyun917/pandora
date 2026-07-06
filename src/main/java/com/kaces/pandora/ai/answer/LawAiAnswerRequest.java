@@ -6,6 +6,10 @@ public record LawAiAnswerRequest(
 	String target,
 	List<String> targets,
 	String question,
-	Integer limit
+	Integer limit,
+	Boolean includeFuture
 ) {
+	public boolean includeFutureEnabled() {
+		return includeFuture == null || includeFuture;
+	}
 }

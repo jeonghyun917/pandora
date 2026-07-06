@@ -13,8 +13,15 @@ $promptPath = Join-Path $logDir "admrul-codex-report-prompt.txt"
 $mysql = "C:\Program Files\MariaDB 12.2\bin\mariadb.exe"
 $database = "pandora"
 $user = "pandora"
-$password = "pandora"
+$password = $env:PANDORA_DB_PASSWORD
+if (-not $password) {
+    $password = "pandora"
+}
 $qdrantUrl = "http://localhost:6333/collections/law_chunks"
+$baseUrl = $env:PANDORA_BASE_URL
+if (-not $baseUrl) {
+    $baseUrl = "http://localhost:18080"
+}
 $codexExe = "C:\Users\kaces\AppData\Local\OpenAI\Codex\bin\958d608b5e0546a5\codex.exe"
 $codexThreadId = "019e4d20-2dc1-7532-b8ba-c412faaea9c5"
 
@@ -79,7 +86,7 @@ $schedulerNextRun = "unknown"
 $schedulerLastResult = "unknown"
 
 try {
-    $spring = (Invoke-WebRequest -UseBasicParsing -Uri "http://localhost:8080/" -TimeoutSec 10).StatusCode
+    $spring = (Invoke-WebRequest -UseBasicParsing -Uri "$baseUrl/" -TimeoutSec 10).StatusCode
 } catch {
     $spring = "ERROR: $($_.Exception.Message)"
 }
@@ -207,7 +214,7 @@ $report = @"
 - remaining NO_EMBED: $remaining
 - OpenAI active jobs: $($activeJobs[0]) / 2
 - Qdrant law_chunks: $qdrantStatus, points=$qdrantPoints
-- Spring 8080: $spring
+- Spring ${baseUrl}: $spring
 - Windows scheduler: last_run=$schedulerLastRun, next_run=$schedulerNextRun, last_result=$schedulerLastResult
 - failures/cancels/request failures: FAILED jobs=$($failParts[0]), CANCELED jobs=$($failParts[1]), failed_count sum=$($failParts[2])
 

@@ -20,7 +20,11 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +35,7 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 public class RagImportService {
 	private static final List<String> SUPPORTED_EXTENSIONS = List.of(".pdf", ".docx", ".hwpx", ".txt", ".md");
+	private static final int ACTIVE_CHUNK_VERSION = RagChunker.V4_CHUNK_VERSION;
 	private static final Pattern DOCUMENT_DATE_PATTERN = Pattern.compile("^\\d{4}[.\\-/]\\s*\\d{1,2}(?:[.\\-/]\\s*\\d{1,2})?\\.?$");
 	private static final int TITLE_SCAN_LINE_LIMIT = 8;
 	private static final int TITLE_LINE_LIMIT = 3;
@@ -68,6 +73,10 @@ public class RagImportService {
 
 	// 메소드 설명: importFolder 처리 흐름을 수행합니다.
 	public RagImportResponse importFolder(String documentType, String pathValue, boolean indexNow) {
+		return importFolder(documentType, pathValue, indexNow, false);
+	}
+
+	public RagImportResponse importFolder(String documentType, String pathValue, boolean indexNow, boolean force) {
 		String requestedType = documentType == null || documentType.isBlank() ? "" : RagDocumentType.normalize(documentType);
 		Path root = resolveImportPath(requestedType, pathValue);
 		RagImportJobKey jobKey = new RagImportJobKey();
@@ -82,13 +91,19 @@ public class RagImportService {
 		String lastError = null;
 
 		try {
-			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-			Files.createDirectories(root);
-			List<Path> files = discoverFiles(root);
+			List<Path> candidateFiles;
+			if (Files.isRegularFile(root)) {
+				candidateFiles = isSupported(root) ? List.of(root) : List.of();
+			} else {
+				Files.createDirectories(root);
+				candidateFiles = discoverCandidateFiles(root);
+			}
+			List<Path> files = selectPreferredFiles(candidateFiles);
+			deactivateUnpreferredDuplicateDocuments(candidateFiles, files);
 			discovered = files.size();
 			for (Path file : files) {
 				try {
-					ImportOutcome outcome = importFile(file, requestedType, indexNow);
+					ImportOutcome outcome = importFile(file, requestedType, indexNow, force);
 					if (outcome.skipped()) {
 						skipped++;
 					} else {
@@ -110,6 +125,39 @@ public class RagImportService {
 		}
 	}
 
+	public RagImportResponse reimportExistingDocuments(String documentType, boolean indexNow, boolean force) {
+		String requestedType = documentType == null || documentType.isBlank() ? "" : RagDocumentType.normalize(documentType);
+		String importPath = "existing-db:" + (requestedType.isBlank() ? "all-rag-documents" : requestedType);
+		RagImportJobKey jobKey = new RagImportJobKey();
+		mapper.insertImportJob(jobKey, importPath, requestedType.isBlank() ? null : requestedType);
+		long jobId = jobKey.getImportJobId();
+
+		int imported = 0;
+		int skipped = 0;
+		int failed = 0;
+		int indexed = 0;
+		String lastError = null;
+		List<RagDocumentRow> documents = mapper.findDocumentsForReimport(requestedType);
+		for (RagDocumentRow document : documents) {
+			try {
+				String targetType = requestedType.isBlank() ? document.documentType() : requestedType;
+				ImportOutcome outcome = importFile(Path.of(document.filePath()), targetType, indexNow, force);
+				if (outcome.skipped()) {
+					skipped++;
+				} else {
+					imported++;
+					indexed += outcome.indexedCount();
+				}
+			} catch (Exception exception) {
+				failed++;
+				lastError = exception.getMessage();
+			}
+		}
+		String status = failed > 0 ? "PARTIAL_SUCCESS" : "SUCCESS";
+		mapper.finishImportJob(jobId, status, documents.size(), imported, skipped, failed, indexed, lastError);
+		return new RagImportResponse(jobId, status, importPath, requestedType, documents.size(), imported, skipped, failed, indexed, lastError);
+	}
+
 	@Transactional
 	// 메소드 설명: importFile 처리 흐름을 수행합니다.
 	protected ImportOutcome importFile(Path file, String requestedType) throws IOException {
@@ -119,10 +167,18 @@ public class RagImportService {
 	@Transactional
 	// 메소드 설명: importFile 처리 흐름을 수행합니다.
 	protected ImportOutcome importFile(Path file, String requestedType, boolean indexNow) throws IOException {
+		return importFile(file, requestedType, indexNow, false);
+	}
+
+	@Transactional
+	protected ImportOutcome importFile(Path file, String requestedType, boolean indexNow, boolean force) throws IOException {
 		String fileHash = sha256(file);
 		RagDocumentRow existing = mapper.findDocumentByHash(fileHash);
-		if (existing != null && "INDEXED".equals(existing.importStatus())) {
-			return new ImportOutcome(true, 0);
+		if (!force && existing != null) {
+			int activeChunkCount = mapper.countActiveChunksByDocumentIdAndVersion(existing.documentId(), ACTIVE_CHUNK_VERSION);
+			if (activeChunkCount > 0) {
+				return new ImportOutcome(true, 0);
+			}
 		}
 
 		RagDocumentMeta meta = readMeta(file);
@@ -160,16 +216,17 @@ public class RagImportService {
 		);
 		long documentId = mapper.findDocumentIdByHash(fileHash);
 		List<Long> oldChunkIds = mapper.findChunkIdsByDocumentId(documentId);
-		mapper.deleteChunks(documentId);
-		List<RagDocumentChunkRow> chunks = chunker.chunk(documentId, extracted, meta.sourceUrl());
+		markEmbeddingsSuperseded(oldChunkIds);
+		mapper.deactivateChunksByDocumentIdAndVersion(documentId, ACTIVE_CHUNK_VERSION);
+		List<RagDocumentChunkRow> chunks = chunker.chunkV4(documentId, extracted, meta.sourceUrl(), title);
 		for (RagDocumentChunkRow chunk : chunks) {
 			mapper.insertChunk(chunk);
 		}
-		deleteOldQdrantPointsAfterCommit(oldChunkIds);
 		if (!indexNow) {
 			return new ImportOutcome(false, 0);
 		}
 		int indexed = indexDocumentChunks(documentId);
+		deleteOldQdrantPointsAfterCommit(oldChunkIds);
 		mapper.upsertDocument(
 			documentType,
 			title,
@@ -210,12 +267,12 @@ public class RagImportService {
 	// 메소드 설명: indexDocumentChunks 처리 흐름을 수행합니다.
 	private int indexDocumentChunks(long documentId) {
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		qdrantClient.ensureCollection();
+		qdrantClient.ensureRagCollection();
 		String model = properties.openai().embeddingModel();
-		String vectorStore = properties.qdrant().collection();
+		String vectorStore = properties.qdrant().ragCollection();
 		int batchSize = properties.rag().importBatchSize();
 		int indexed = 0;
-		List<LawSemanticChunkRow> chunks = mapper.findSemanticChunksByDocumentId(documentId);
+		List<LawSemanticChunkRow> chunks = mapper.findSemanticIndexChunksByDocumentId(documentId, ACTIVE_CHUNK_VERSION);
 		for (int start = 0; start < chunks.size(); start += batchSize) {
 			int end = Math.min(chunks.size(), start + batchSize);
 			List<LawSemanticChunkRow> batch = chunks.subList(start, end);
@@ -251,7 +308,7 @@ public class RagImportService {
 	}
 
 	// 메소드 설명: discoverFiles 처리 흐름을 수행합니다.
-	private List<Path> discoverFiles(Path root) throws IOException {
+	private List<Path> discoverCandidateFiles(Path root) throws IOException {
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		try (var stream = Files.walk(root)) {
 			return stream
@@ -261,6 +318,92 @@ public class RagImportService {
 				.sorted(Comparator.comparing(Path::toString))
 				.toList();
 		}
+	}
+
+	static List<Path> selectPreferredFiles(List<Path> files) {
+		if (files == null || files.isEmpty()) {
+			return List.of();
+		}
+		Map<String, List<Path>> byDuplicateKey = new LinkedHashMap<>();
+		for (Path file : files) {
+			byDuplicateKey.computeIfAbsent(duplicateKey(file), ignored -> new ArrayList<>()).add(file);
+		}
+		return byDuplicateKey.values().stream()
+			.map(RagImportService::preferredFile)
+			.sorted(Comparator.comparing(RagImportService::absolutePathString))
+			.toList();
+	}
+
+	private void deactivateUnpreferredDuplicateDocuments(List<Path> candidates, List<Path> selected) {
+		if (candidates == null || candidates.isEmpty()) {
+			return;
+		}
+		Set<String> selectedPaths = selected == null ? Set.of() : selected.stream()
+			.map(RagImportService::absolutePathString)
+			.collect(java.util.stream.Collectors.toSet());
+		List<String> unpreferredPaths = candidates.stream()
+			.map(RagImportService::absolutePathString)
+			.filter(path -> !selectedPaths.contains(path))
+			.toList();
+		if (unpreferredPaths.isEmpty()) {
+			return;
+		}
+		List<Long> oldChunkIds = mapper.findActiveChunkIdsByFilePathsAndVersion(unpreferredPaths, ACTIVE_CHUNK_VERSION);
+		markEmbeddingsSuperseded(oldChunkIds);
+		mapper.deactivateChunksByFilePathsAndVersion(unpreferredPaths, ACTIVE_CHUNK_VERSION);
+		mapper.deactivateDocumentsByFilePaths(unpreferredPaths);
+		deleteOldQdrantPointsAfterCommit(oldChunkIds);
+	}
+
+	private void markEmbeddingsSuperseded(List<Long> chunkIds) {
+		if (chunkIds == null || chunkIds.isEmpty()) {
+			return;
+		}
+		mapper.markEmbeddingsSupersededByChunkIds(chunkIds);
+	}
+
+	private static Path preferredFile(List<Path> files) {
+		return files.stream()
+			.min(Comparator
+				.comparingInt(RagImportService::extensionPreference)
+				.thenComparing(RagImportService::absolutePathString))
+			.orElseThrow();
+	}
+
+	private static int extensionPreference(Path path) {
+		return switch (extensionOfPath(path)) {
+			case ".pdf" -> 0;
+			case ".docx" -> 1;
+			case ".hwpx" -> 2;
+			case ".txt" -> 3;
+			case ".md" -> 4;
+			default -> 9;
+		};
+	}
+
+	private static String duplicateKey(Path path) {
+		Path normalized = path.toAbsolutePath().normalize();
+		Path parent = normalized.getParent();
+		String fileName = normalized.getFileName().toString();
+		return String.valueOf(parent) + "|" + normalizeDuplicateBase(stripExtensionStatic(fileName));
+	}
+
+	private static String normalizeDuplicateBase(String value) {
+		return String.valueOf(value == null ? "" : value)
+			.replaceAll("\\s+\\(\\d+\\)$", "")
+			.replaceAll("\\s+", " ")
+			.trim()
+			.toLowerCase(Locale.ROOT);
+	}
+
+	private static String absolutePathString(Path path) {
+		return path.toAbsolutePath().normalize().toString();
+	}
+
+	private static String extensionOfPath(Path path) {
+		String fileName = path.getFileName().toString();
+		int extensionIndex = fileName.lastIndexOf('.');
+		return extensionIndex < 0 ? "" : fileName.substring(extensionIndex).toLowerCase(Locale.ROOT);
 	}
 
 	// 메소드 설명: isSupported 처리 흐름을 수행합니다.
@@ -304,13 +447,41 @@ public class RagImportService {
 	}
 
 	static String resolveTitle(RagDocumentMeta meta, ExtractedDocument extracted, String fileName) {
-		if (meta.title() != null && !meta.title().isBlank()) {
+		String fileTitle = stripExtensionStatic(fileName).trim();
+		if (shouldPreferFileNameTitle(meta, fileTitle)) {
+			return fileTitle;
+		}
+		if (meta != null && meta.title() != null && !meta.title().isBlank()) {
 			return meta.title().trim();
 		}
 		String extractedTitle = extractDisplayTitle(extracted);
 		return extractedTitle.isBlank() || isSuspiciousTitle(extractedTitle)
 			? stripExtensionStatic(fileName)
 			: extractedTitle;
+	}
+
+	private static boolean shouldPreferFileNameTitle(RagDocumentMeta meta, String fileTitle) {
+		if (meta == null || fileTitle == null || fileTitle.isBlank() || isGenericAttachmentTitle(fileTitle)) {
+			return false;
+		}
+		return isCollectedDocumentMeta(meta);
+	}
+
+	private static boolean isCollectedDocumentMeta(RagDocumentMeta meta) {
+		String category = String.valueOf(meta.documentCategory() == null ? "" : meta.documentCategory())
+			.toLowerCase(Locale.ROOT);
+		String topic = String.valueOf(meta.documentTopic() == null ? "" : meta.documentTopic())
+			.toLowerCase(Locale.ROOT);
+		return category.startsWith("ministry_doc")
+			|| topic.startsWith("rss ")
+			|| topic.startsWith("backfill ");
+	}
+
+	private static boolean isGenericAttachmentTitle(String title) {
+		String normalized = title.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
+		return normalized.matches("attachment\\d*")
+			|| normalized.matches("첨부\\d*")
+			|| normalized.matches("붙임\\d*");
 	}
 
 	// 메소드 설명: extractDisplayTitle 처리 흐름을 수행합니다.

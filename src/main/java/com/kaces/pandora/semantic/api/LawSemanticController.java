@@ -9,6 +9,7 @@ import com.kaces.pandora.semantic.indexing.LawSemanticIndexResult;
 import com.kaces.pandora.semantic.indexing.LawSemanticIndexService;
 import com.kaces.pandora.semantic.search.LawSemanticSearchResponse;
 import com.kaces.pandora.semantic.search.LawSemanticSearchService;
+import java.util.List;
 import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -55,6 +56,15 @@ public class LawSemanticController {
 		return ResponseEntity.ok(indexService.indexSample(target, query, limit));
 	}
 
+	@PostMapping("/index-documents")
+	public ResponseEntity<LawSemanticIndexResult> indexDocuments(
+		@RequestParam(defaultValue = "") String target,
+		@RequestParam List<Long> documentIds,
+		@RequestParam(defaultValue = "10000") int limit
+	) {
+		return ResponseEntity.ok(indexService.indexDocuments(target, documentIds, limit));
+	}
+
 	@PostMapping("/batch-file")
 	public ResponseEntity<LawSemanticBatchFileResult> createBatchFile(
 		@RequestParam(defaultValue = "") String target,
@@ -73,6 +83,15 @@ public class LawSemanticController {
 	) {
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		return ResponseEntity.ok(batchJobService.submitNextBatch(target, query, limit));
+	}
+
+	@PostMapping("/batches/submit-documents")
+	public ResponseEntity<LawSemanticBatchJobResponse> submitDocumentBatch(
+		@RequestParam(defaultValue = "law") String target,
+		@RequestParam List<Long> documentIds,
+		@RequestParam(defaultValue = "50000") int limit
+	) {
+		return ResponseEntity.ok(batchJobService.submitDocumentBatch(target, documentIds, limit));
 	}
 
 	@PostMapping("/batches/register")
@@ -165,12 +184,13 @@ public class LawSemanticController {
 	public ResponseEntity<Map<String, LawSemanticSearchResponse>> search(
 		@RequestParam(defaultValue = "law") String target,
 		@RequestParam String query,
-		@RequestParam(defaultValue = "10") int limit
+		@RequestParam(defaultValue = "10") int limit,
+		@RequestParam(defaultValue = "true") boolean includeFuture
 	) {
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		return ResponseEntity.ok()
 			.contentType(MediaType.APPLICATION_JSON)
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-			.body(searchService.search(target, query, limit));
+			.body(searchService.search(target, query, limit, includeFuture));
 	}
 }

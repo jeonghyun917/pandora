@@ -6,10 +6,16 @@ import static com.kaces.pandora.common.text.LawHashUtils.sha256;
 import static com.kaces.pandora.common.text.LawTextUtils.stripHtmlTags;
 
 import com.kaces.pandora.common.json.LawJsonWriter;
+import com.kaces.pandora.lawdata.version.LawVersionUtils;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import tools.jackson.databind.JsonNode;
@@ -18,12 +24,23 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class LawOpenApiPayloadParser {
 
+	private static final Pattern LAW_ARTICLE_NODE_PATH = Pattern.compile("^\\$\\.법령\\.조문\\.조문단위\\[[0-9]+]$");
+	private static final Pattern ARTICLE_NO_PREFIX = Pattern.compile("^(제\\d+조(?:의\\d+)?)");
+
+	private static final Pattern ARTICLE_HEADING_PREFIX = Pattern.compile("^(\\uC81C\\d+\\uC870(?:\\uC758\\d+)?\\([^\\n]{1,120}?\\))");
+	private static final String ARTICLE_EFFECTIVE_DATE_TEXT_KEY = "\uC870\uBB38\uC2DC\uD589\uC77C\uC790\uBB38\uC790\uC5F4";
+	private static final String REVISION_TEXT_PATH_TOKEN = ".\uAC1C\uC815\uBB38.";
+	private static final String REVISION_REASON_PATH_TOKEN = ".\uC81C\uAC1C\uC815\uC774\uC720.";
+	private static final String REVISION_REASON_ALT_PATH_TOKEN = ".\uAC1C\uC815\uC774\uC720.";
+
 	private final ObjectMapper objectMapper;
 	private final LawJsonWriter jsonWriter;
+	private final Clock clock;
 	// 메소드 설명: LawOpenApiPayloadParser 처리 흐름을 수행합니다.
 	public LawOpenApiPayloadParser(ObjectMapper objectMapper, LawJsonWriter jsonWriter) {
 		this.objectMapper = objectMapper;
 		this.jsonWriter = jsonWriter;
+		this.clock = Clock.system(ZoneId.of("Asia/Seoul"));
 	}
 	// 메소드 설명: parseSearchDocuments 처리 흐름을 수행합니다.
 	public List<SearchDocument> parseSearchDocuments(String target, String searchJson) {
@@ -98,11 +115,14 @@ public class LawOpenApiPayloadParser {
 		String agency = firstText(row, "소관부처명", "부처명", "기관명", "법원명", "자치단체명", "발령기관명");
 		String category = firstText(row, "법령구분명", "행정규칙종류", "자치법규종류", "구분", "분류");
 		String sourceDate = firstText(row, "시행일자", "공포일자", "발령일자", "선고일자", "의결일자", "자치법규시행일자");
+		String canonicalKey = LawVersionUtils.canonicalKey(target, title);
+		String effectiveDate = LawVersionUtils.normalizeEffectiveDate(sourceDate);
+		String effectiveStatus = LawVersionUtils.initialStatus(target, effectiveDate, clock);
 		String detailLink = findDetailLink(row);
 		if (!StringUtils.hasText(detailLink)) {
 			detailLink = buildFallbackDetailLink(target, externalId);
 		}
-		return new SearchDocument(target, externalId, title, agency, category, sourceDate, detailLink, toJson(row));
+		return new SearchDocument(target, externalId, title, agency, category, sourceDate, canonicalKey, effectiveDate, effectiveStatus, detailLink, toJson(row));
 	}
 	// 메소드 설명: buildFallbackDetailLink 처리 흐름을 수행합니다.
 	private String buildFallbackDetailLink(String target, String externalId) {
@@ -149,7 +169,14 @@ public class LawOpenApiPayloadParser {
 		if (node == null || node.isNull()) {
 			return;
 		}
+		if (node.isObject() && LAW_ARTICLE_NODE_PATH.matcher(path).matches()) {
+			collectLawArticleSections(node, path, sections);
+			return;
+		}
 		if (node.isTextual()) {
+			if (isExcludedLongTextPath(path)) {
+				return;
+			}
 			addTextSections(sections, "text", null, path, node.asText());
 			return;
 		}
@@ -161,9 +188,149 @@ public class LawOpenApiPayloadParser {
 			}
 			return;
 		}
-		node.properties().forEach(entry -> collectLongTextSections(entry.getValue(), entry.getKey(), sections));
+		node.properties().forEach(entry -> {
+			String nextPath = "$".equals(path) ? "$." + entry.getKey() : path + "." + entry.getKey();
+			collectLongTextSections(entry.getValue(), nextPath, sections);
+		});
+	}
+
+	private boolean isExcludedLongTextPath(String path) {
+		return StringUtils.hasText(path)
+			&& (path.endsWith("." + ARTICLE_EFFECTIVE_DATE_TEXT_KEY)
+				|| path.contains(REVISION_TEXT_PATH_TOKEN)
+				|| path.contains(REVISION_REASON_PATH_TOKEN)
+				|| path.contains(REVISION_REASON_ALT_PATH_TOKEN));
+	}
+
+	private void collectLawArticleSections(JsonNode article, String path, List<SyncDetailSection> sections) {
+		String articleBody = stripHtmlTags(firstText(article, "조문내용"));
+		String articleNo = articleNo(article, articleBody);
+		String articleTitle = articleTitle(article, articleBody, articleNo);
+		if (!hasLawUnits(article.get("항")) || !isHeadingOnlyArticleBody(articleBody, articleTitle)) {
+			addStructuredSection(sections, "article", articleNo, articleTitle, articleBody, path + ".조문내용", 0, 0);
+		}
+		collectLawUnits(article.get("항"), path + ".항", "항단위", "paragraph", "항내용", articleNo, articleTitle, sections);
+	}
+
+	private boolean hasLawUnits(JsonNode node) {
+		return node != null && !node.isNull() && !unitNodes(node, "", "항단위").isEmpty();
+	}
+
+	private boolean isHeadingOnlyArticleBody(String articleBody, String articleTitle) {
+		if (!StringUtils.hasText(articleBody)) {
+			return true;
+		}
+		if (!StringUtils.hasText(articleTitle)) {
+			return false;
+		}
+		String normalizedBody = stripHtmlTags(articleBody).trim();
+		String normalizedTitle = stripHtmlTags(articleTitle).trim();
+		return normalizedBody.equals(normalizedTitle);
+	}
+
+	private void collectLawUnits(
+		JsonNode node,
+		String path,
+		String wrapperName,
+		String type,
+		String contentField,
+		String articleNo,
+		String articleTitle,
+		List<SyncDetailSection> sections
+	) {
+		if (node == null || node.isNull()) {
+			return;
+		}
+		List<UnitNode> units = unitNodes(node, path, wrapperName);
+		for (int index = 0; index < units.size(); index++) {
+			UnitNode unit = units.get(index);
+			addStructuredSection(
+				sections,
+				type,
+				articleNo,
+				articleTitle,
+				firstText(unit.node(), contentField),
+				unit.path() + "." + contentField,
+				index + 1,
+				1
+			);
+			collectLawUnits(unit.node().get("호"), unit.path() + ".호", "호단위", "subparagraph", "호내용", articleNo, articleTitle, sections);
+			collectLawUnits(unit.node().get("목"), unit.path() + ".목", "목단위", "item", "목내용", articleNo, articleTitle, sections);
+		}
+	}
+
+	private List<UnitNode> unitNodes(JsonNode node, String path, String wrapperName) {
+		List<UnitNode> units = new ArrayList<>();
+		if (node.isArray()) {
+			for (int index = 0; index < node.size(); index++) {
+				units.add(new UnitNode(node.get(index), path + "[" + index + "]"));
+			}
+			return units;
+		}
+		JsonNode wrapped = node.get(wrapperName);
+		if (wrapped != null && wrapped.isArray()) {
+			for (int index = 0; index < wrapped.size(); index++) {
+				units.add(new UnitNode(wrapped.get(index), path + "." + wrapperName + "[" + index + "]"));
+			}
+			return units;
+		}
+		if (node.isObject()) {
+			units.add(new UnitNode(node, path));
+		}
+		return units;
+	}
+
+	private void addStructuredSection(List<SyncDetailSection> sections, String type, String no, String title, String body, String sourcePath, int paragraphNo, int lineNo) {
+		String normalized = stripHtmlTags(body);
+		if (!StringUtils.hasText(normalized)) {
+			return;
+		}
+		sections.add(new SyncDetailSection(type, no, title, normalized, sourcePath, paragraphNo, lineNo));
+	}
+
+	private String articleNo(JsonNode article, String articleBody) {
+		var matcher = ARTICLE_NO_PREFIX.matcher(articleBody.stripLeading());
+		if (matcher.find()) {
+			return matcher.group(1);
+		}
+		String number = firstText(article, "조문번호");
+		if (!StringUtils.hasText(number)) {
+			return "";
+		}
+		String branch = firstText(article, "조문가지번호");
+		if (StringUtils.hasText(branch) && !"0".equals(branch)) {
+			return "제" + number + "조의" + branch;
+		}
+		return "제" + number + "조";
+	}
+
+	private String articleTitle(JsonNode article, String articleBody, String articleNo) {
+		String body = articleBody.stripLeading();
+		String heading = articleHeading(body);
+		if (StringUtils.hasText(heading)) {
+			return heading;
+		}
+		String title = firstText(article, "조문제목");
+		if (StringUtils.hasText(articleNo) && StringUtils.hasText(title)) {
+			return articleNo + "(" + title + ")";
+		}
+		if (StringUtils.hasText(body)) {
+			return body;
+		}
+		return title;
 	}
 	// 메소드 설명: addTextSections 처리 흐름을 수행합니다.
+	private String articleHeading(String body) {
+		if (!StringUtils.hasText(body)) {
+			return "";
+		}
+		var matcher = ARTICLE_HEADING_PREFIX.matcher(body.stripLeading());
+		if (!matcher.find()) {
+			return "";
+		}
+		return matcher.group(1);
+	}
+
 	private void addTextSections(List<SyncDetailSection> sections, String type, String no, String title, String text) {
 		String normalized = stripHtmlTags(text);
 		if (normalized.length() < 80) {
@@ -173,7 +340,7 @@ public class LawOpenApiPayloadParser {
 		for (int start = 0; start < normalized.length(); start += chunkSize) {
 			int end = Math.min(start + chunkSize, normalized.length());
 			int chunkNo = (start / chunkSize) + 1;
-			sections.add(new SyncDetailSection(type, no, title + "#" + chunkNo, normalized.substring(start, end)));
+			sections.add(new SyncDetailSection(type, no, title + "#" + chunkNo, normalized.substring(start, end), title, 0, chunkNo));
 		}
 	}
 	// 메소드 설명: extractAssets 처리 흐름을 수행합니다.
@@ -203,7 +370,7 @@ public class LawOpenApiPayloadParser {
 			return;
 		}
 		String safeUrl = sourceUrl.startsWith("http") || sourceUrl.startsWith("/") ? sourceUrl : "/" + sourceUrl;
-		String proxyUrl = "/api/law-data/proxy?link=" + safeUrl;
+		String proxyUrl = "/api/law-data/proxy?link=" + URLEncoder.encode(safeUrl, StandardCharsets.UTF_8);
 		assets.putIfAbsent(safeUrl, new SyncAsset("file", safeUrl, proxyUrl, fileName(safeUrl), fileExtension(safeUrl), altText));
 	}
 	// 메소드 설명: findDetailLink 처리 흐름을 수행합니다.
@@ -267,5 +434,8 @@ public class LawOpenApiPayloadParser {
 		String fileName = fileName(sourceUrl);
 		int dot = fileName.lastIndexOf('.');
 		return dot >= 0 ? fileName.substring(dot + 1).toLowerCase() : "";
+	}
+
+	private record UnitNode(JsonNode node, String path) {
 	}
 }

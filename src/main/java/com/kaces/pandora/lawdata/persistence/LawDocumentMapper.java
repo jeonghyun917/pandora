@@ -12,7 +12,8 @@ public interface LawDocumentMapper {
 		@Param("target") String target,
 		@Param("query") String query,
 		@Param("searchAll") boolean searchAll,
-		@Param("titleOnly") boolean titleOnly
+		@Param("titleOnly") boolean titleOnly,
+		@Param("includeFuture") boolean includeFuture
 	);
 	
 	List<LawDocumentRow> searchDocuments(
@@ -20,6 +21,7 @@ public interface LawDocumentMapper {
 		@Param("query") String query,
 		@Param("searchAll") boolean searchAll,
 		@Param("titleOnly") boolean titleOnly,
+		@Param("includeFuture") boolean includeFuture,
 		@Param("limit") int limit,
 		@Param("offset") int offset
 	);

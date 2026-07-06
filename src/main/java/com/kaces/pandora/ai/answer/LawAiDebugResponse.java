@@ -9,15 +9,23 @@ public record LawAiDebugResponse(
 	String target,
 	List<String> targets,
 	List<String> lexicalKeywords,
+	List<String> focusedKeywords,
+	List<String> expandedQueries,
+	List<String> clarificationQuestions,
 	List<Stage> stages,
 	List<Item> vectorHits,
 	List<Item> lexicalHits,
 	List<Item> merged,
 	List<Item> reranked,
 	List<Item> intentFiltered,
+	List<Item> judgeCandidates,
 	List<Item> judged,
 	List<Item> selected,
 	String message,
+	String failureType,
+	String failureStage,
+	boolean retryable,
+	boolean evalCandidate,
 	LawAiTiming timing
 ) {
 	public record Stage(

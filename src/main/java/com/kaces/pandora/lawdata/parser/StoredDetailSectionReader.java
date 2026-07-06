@@ -90,7 +90,8 @@ public class StoredDetailSectionReader {
 				stripHtmlTags(section.title()),
 				stripHtmlTags(section.body()),
 				section.pageNo(),
-				section.sourcePath()
+				section.sourcePath(),
+				section.chunkId()
 			))
 			.filter(section -> StringUtils.hasText(section.title()) || StringUtils.hasText(section.body()))
 			.toList();

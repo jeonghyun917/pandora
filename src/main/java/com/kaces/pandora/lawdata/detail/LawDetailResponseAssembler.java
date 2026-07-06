@@ -40,8 +40,13 @@ public class LawDetailResponseAssembler {
 			detail.documentId(),
 			firstNonBlank(detail.detailTitle(), detail.title()),
 			readDetailMeta(detail),
-			
-			sectionReader.readSections(detail.rawJson(), detail.sectionsJson())
+			sectionReader.readSections(detail.rawJson(), detail.sectionsJson()),
+			null,
+			null,
+			null,
+			null,
+			null,
+			detail.detailLink()
 		);
 	}
 

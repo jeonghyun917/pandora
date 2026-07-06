@@ -54,6 +54,8 @@ public interface RagDocumentMapper {
 
 	RagDocumentRow findDocumentById(@Param("documentId") long documentId);
 
+	List<RagDocumentRow> findDocumentsForReimport(@Param("documentType") String documentType);
+
 	int countDocuments(
 		@Param("documentType") String documentType,
 		@Param("query") String query,
@@ -86,9 +88,43 @@ public interface RagDocumentMapper {
 
 	void deleteChunks(@Param("documentId") long documentId);
 
+	List<Long> findActiveChunkIdsByDocumentIdAndVersion(
+		@Param("documentId") long documentId,
+		@Param("chunkVersion") int chunkVersion
+	);
+
+	List<Long> findActiveChunkIdsByFilePathsAndVersion(
+		@Param("filePaths") List<String> filePaths,
+		@Param("chunkVersion") int chunkVersion
+	);
+
+	int countActiveChunksByDocumentIdAndVersion(
+		@Param("documentId") long documentId,
+		@Param("chunkVersion") int chunkVersion
+	);
+
+	int deactivateChunksByDocumentIdAndVersion(
+		@Param("documentId") long documentId,
+		@Param("chunkVersion") int chunkVersion
+	);
+
+	int deactivateChunksByFilePathsAndVersion(
+		@Param("filePaths") List<String> filePaths,
+		@Param("chunkVersion") int chunkVersion
+	);
+
+	int markEmbeddingsSupersededByChunkIds(@Param("chunkIds") List<Long> chunkIds);
+
+	int deactivateDocumentsByFilePaths(@Param("filePaths") List<String> filePaths);
+
 	void insertChunk(@Param("chunk") RagDocumentChunkRow chunk);
 
 	List<LawSemanticChunkRow> findSemanticChunksByDocumentId(@Param("documentId") long documentId);
+
+	List<LawSemanticChunkRow> findSemanticIndexChunksByDocumentId(
+		@Param("documentId") long documentId,
+		@Param("chunkVersion") int chunkVersion
+	);
 
 	List<LawSemanticChunkRow> findSemanticIndexCandidates(
 		@Param("target") String target,
@@ -101,6 +137,39 @@ public interface RagDocumentMapper {
 	List<LawSemanticChunkRow> findSemanticChunksByIds(@Param("chunkIds") List<Long> chunkIds);
 
 	List<LawSemanticChunkRow> findSemanticChunksByText(
+		@Param("documentTypes") List<String> documentTypes,
+		@Param("keywords") List<String> keywords,
+		@Param("limit") int limit
+	);
+
+	List<LawSemanticChunkRow> findSemanticChunksByDocumentTitleAndText(
+		@Param("documentTypes") List<String> documentTypes,
+		@Param("titleKeywords") List<String> titleKeywords,
+		@Param("textKeywords") List<String> textKeywords,
+		@Param("limit") int limit
+	);
+
+	List<LawSemanticChunkRow> findSemanticChunksByDocumentTitleAndTextScoped(
+		@Param("documentTypes") List<String> documentTypes,
+		@Param("titleKeywords") List<String> titleKeywords,
+		@Param("textKeywords") List<String> textKeywords,
+		@Param("limit") int limit
+	);
+
+	List<LawSemanticChunkRow> findSemanticChunksByDocumentTitleScoped(
+		@Param("documentTypes") List<String> documentTypes,
+		@Param("titleKeywords") List<String> titleKeywords,
+		@Param("limit") int limit
+	);
+
+	List<LawSemanticChunkRow> findSemanticChunksByDocumentTitleWithTextHints(
+		@Param("documentTypes") List<String> documentTypes,
+		@Param("titleKeywords") List<String> titleKeywords,
+		@Param("textKeywords") List<String> textKeywords,
+		@Param("limit") int limit
+	);
+
+	List<LawSemanticChunkRow> findSemanticChunksByHeadingText(
 		@Param("documentTypes") List<String> documentTypes,
 		@Param("keywords") List<String> keywords,
 		@Param("limit") int limit

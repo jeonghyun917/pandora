@@ -18,6 +18,7 @@ const stageLabels = {
   merged: 'Merged',
   reranked: 'Rerank',
   intent: 'Intent',
+  judgeCandidates: 'Judge In',
   judge: 'Judge',
   selected: 'Selected',
 };
@@ -101,7 +102,7 @@ export function RagDebugPage({ onBack }) {
 
   return (
     <main className="law-search-shell rag-debug-shell">
-      <LandingConstellation interactive={false} />
+      <LandingConstellation interactive={false} showGrid={false} showTexture={false} />
       <header className="law-search-header">
         <button className="icon-button" type="button" onClick={onBack} aria-label="검색 화면으로 돌아가기" title="돌아가기">
           <ArrowLeft aria-hidden="true" size={18} />
@@ -175,6 +176,39 @@ export function RagDebugPage({ onBack }) {
                   <span key={keyword}>{keyword}</span>
                 ))}
               </div>
+            )}
+            {debugData?.focusedKeywords?.length > 0 && (
+              <div className="debug-query-block">
+                <strong>Focused keywords</strong>
+                <div className="debug-keyword-list compact">
+                  {debugData.focusedKeywords.map((keyword) => (
+                    <span key={keyword}>{keyword}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {debugData?.expandedQueries?.length > 0 && (
+              <div className="debug-query-block">
+                <strong>Expanded queries</strong>
+                <ul>
+                  {debugData.expandedQueries.map((query) => (
+                    <li key={query}>{query}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {debugData?.clarificationQuestions?.length > 0 && (
+              <div className="debug-query-block">
+                <strong>Clarification candidates</strong>
+                <ul>
+                  {debugData.clarificationQuestions.map((question) => (
+                    <li key={question}>{question}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {debugData?.message && (
+              <p className="debug-diagnostic-message">{debugData.message}</p>
             )}
             {timing && (
               <div className="debug-timing-grid" aria-label="검색 소요 시간">
@@ -253,6 +287,8 @@ export function RagDebugPage({ onBack }) {
               <span>total {evaluation.total}</span>
               <span>passed {evaluation.passed}</span>
               <span>failed {evaluation.failed}</span>
+              <span>gate {evaluation.gatePassed ? 'PASS' : 'FAIL'}</span>
+              <span>rate {Math.round((evaluation.passRate ?? 0) * 100)}%</span>
             </div>
           )}
           <div className="debug-eval-list">

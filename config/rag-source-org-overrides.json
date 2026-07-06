@@ -1,0 +1,14 @@
+[
+  {
+    "documentId": 16,
+    "titleContains": "국가정보보안기본지침",
+    "sourceOrg": "국가정보원",
+    "evidence": "cover/body text contains '국가정보원 지침' and '국가 정보보안 기본지침 2023. 1. 31'"
+  },
+  {
+    "documentId": 93,
+    "titleContains": "AI정부 인프라",
+    "sourceOrg": "국가인공지능전략위원회",
+    "evidence": "cover page contains 'AI정부 인프라 거버넌스･혁신 추진방향 2026. 2. 25. 국가인공지능전략위원회'"
+  }
+]

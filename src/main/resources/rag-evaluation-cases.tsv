@@ -1,0 +1,146 @@
+# id	question	targets	expectedTerms	requiredMatches	expectedTitleTerms	expectedSectionTypes	forbiddenTerms	expectedDocumentTerms	expectedPageNumbers	expectedParentTerms	answerDirection
+project-review-target	과업심의 대상은?	official_doc|internal_doc	적용 대상 사업|대상사업|국가기관 등이 발주하는 모든 SW사업|소프트웨어사업	2	과업심의	target_scope	간소화|위원회 회의|위원의 제척	공공소프트웨어사업 과업심의	5	적용 대상 사업	대상 사업과 제외 대상을 먼저 답한다
+project-review-simple-software	단순 소프트웨어 구매면 과업심의 안해도 돼?	official_doc|internal_doc	국가기관 등이 발주하는 모든 SW사업|소프트웨어사업|비대상|단순 H/W	2	과업심의	target_scope	간소화 심의|위원회 회의	공공소프트웨어사업 과업심의	5	적용 대상 사업	단순 구매 자체가 아니라 SW사업 여부와 예외 대상을 구분해 답한다
+project-review-hardware-exclusion	공공소프트웨어사업에서 단순 하드웨어 구매는 소프트웨어사업에 포함되나요?	official_doc|internal_doc	단순 H/W|소프트웨어사업으로 볼 수 없는|비대상	1	과업심의	target_scope	위원회 회의	공공소프트웨어사업 과업심의	5	적용 대상 사업	단순 H/W 도입 설치는 비대상임을 먼저 답한다
+project-review-sns-operation	SNS운영 사업도 과업심의 받아야해?	official_doc|internal_doc|admrul|law	국가기관 등이 발주하는 모든 SW사업|국가기관등의 장이 발주하는 소프트웨어사업|소프트웨어사업|대상사업	2	과업심의|공공SW사업	target_scope	위원회 회의|위원의 제척|SNS 소통민원창구	공공소프트웨어사업 과업심의|공공SW사업 법제도 관리감독	5	대상 사업	SNS라는 단어가 있는 문서를 찾지 말고 SW사업 대상 여부 기준으로 답한다
+project-review-pre-consultation-relation	과업심의 한 사업은 사전협의도 꼭 해야돼?	official_doc|internal_doc|admrul|law	과업심의|사전협의|대상사업|정보화사업	2	과업심의|사전협의	target_scope	작성 예시	과업심의|사전협의		대상사업	과업심의와 사전협의는 별도 제도임을 구분해 답한다
+pre-consultation-target	기타공공기관 사전협의 대상 알려줘	official_doc|internal_doc|admrul|law	사전협의의 대상사업|대상기관|추진하는 모든 정보화사업	2	사전협의	target_scope	제안서 평가 방법	사전협의		사전협의 대상	대상기관과 대상사업을 먼저 답한다
+pre-consultation-when	정보화사업 사전협의는 언제 해야해?	official_doc|internal_doc|admrul|law	사전협의|예산|사업계획|검토	2	사전협의	procedure	제안서 평가 방법	사전협의		시기|절차	언제 제출 또는 협의해야 하는지 절차 중심으로 답한다
+pre-consultation-exception	정보화사업 사전협의 제외 대상은?	official_doc|internal_doc|admrul|law	사전협의|제외|제외대상|대상사업	2	사전협의	exception	제안서 작성 예시	사전협의		제외 대상	제외 대상과 확인 필요 조건을 구분해 답한다
+security-review-target	보안성검토 대상 시스템은?	official_doc|internal_doc|admrul|law	보안성검토대상|정보시스템구축|민감정보|주요정보통신기반시설	2	보안성 검토	target_scope	발주정보등록|권한등록	보안성 검토		대상	검토 대상 정보시스템 범위를 먼저 답한다
+security-review-exception	보안성검토 생략 가능한 경우는?	official_doc|internal_doc|admrul|law	보안성검토|생략|제외|검토대상	2	보안성 검토	exception	발주정보등록	보안성 검토		생략|제외	생략 가능 조건과 확인 필요 사항을 답한다
+security-review-procedure	보안성검토 절차는 어떻게 돼?	official_doc|internal_doc|admrul|law	보안성검토|절차|검토|통보	2	보안성 검토	procedure	권한등록	보안성 검토		절차	검토 요청부터 결과 통보까지 절차 순서로 답한다
+it-compliance-penalty	정보화시스템 법제도 준수안하면 어떤 불이익?	official_doc|internal_doc|admrul|law	법제도 준수|미준수|불이익|제재|조치|보완|입찰 참가자격 제한|보안 위약금	2	정보화|보안성 검토	penalty	Qdrant|OpenAI|개인 의견	정보화사업|보안성 검토			법제도 미준수 시 확인 가능한 불이익·조치만 답한다
+egov-preliminary-review-target	지능정보사회 실행계획의 예비검토는 어떤 사업을 대상으로 하는거야?	admrul|official_doc|internal_doc|law	예비검토|정보화사업|성과관리 대상사업|중앙행정기관	2	전자정부 성과관리|예비검토	target_scope	과업심의|보안성검토|공공데이터	전자정부 성과관리|성과관리 지침		예비검토	예비검토 대상 기관과 사업 범위를 구분해 답한다
+rfp-required-items	공공기관 제안요청서 작성할때 필수요소가 있나?	official_doc|internal_doc|admrul|law	제안요청서에는|과업내용|요구사항|계약조건|평가요소	2	제안요청서	requirement	제안서 평가 방법	제안요청서		필수|요구사항	제안요청서에 반드시 명시할 항목을 답한다
+rfp-tech-score-table	제안요청서에 기술평가 항목 및 배점표는 필수로 적어야해?	official_doc|internal_doc|admrul|law	제안요청서|평가요소|평가방법|배점	2	제안요청서	requirement	제안서 작성 따라하기	제안요청서		평가요소|배점	기술평가 항목과 배점표 기재 필요성을 답한다
+public-data-activation	공공데이터 활성화를 위한 방안은?	law|admrul|official_doc|internal_doc	공공데이터|활성화|제공|이용활성화	2	공공데이터	-	공공데이터베이스 표준화	공공데이터		활성화|이용활성화	활성화 방안과 제공 이용 촉진을 중심으로 답한다
+public-data-db-standard	공공데이터베이스 표준화는 뭘 해야해?	official_doc|internal_doc|admrul|law	공공데이터베이스|표준화|표준용어|표준도메인	2	공공데이터베이스 표준화	requirement	활성화 지원 사업	공공데이터베이스 표준화		표준화	표준용어, 표준도메인 등 표준화 조치를 답한다
+procurement-catalog-contract	조달청 디지털카탈로그에서 구매하면 수의계약 인가?	law|admrul|official_doc|internal_doc	디지털서비스몰|디지털카탈로그|수의계약|계약방법	2	상용소프트웨어|디지털서비스	contract	브로커|불공정행위	상용소프트웨어|디지털서비스		계약방법	구매경로와 계약방식을 구분해 수의계약 여부를 답한다
+commercial-sw-direct-purchase	상용SW 직접구매 대상은?	official_doc|internal_doc|admrul|law	상용SW 직접구매|직접구매 대상|상용소프트웨어	2	직접구매	target_scope	계약정보 등록	상용소프트웨어 직접구매		직접구매 대상	상용SW 직접구매 대상과 예외를 답한다
+performance-plan-required	IRM 업무성과계획을 수립 한걸 확인하는게 성과측정인가?	official_doc|internal_doc	업무성과계획|성과측정|정보자원관리시스템|IRM	2	IRM|성과관리	requirement	CMOS 비밀번호	IRM|성과관리		성과측정	성과측정의 확인 항목과 업무성과계획 관계를 답한다
+performance-measure-when	IRM 성과측정은 언제해?	official_doc|internal_doc	성과측정|평가기간|기간|월말	2	성과관리|정보자원 관리 수준측정|성과측정	procedure	CMOS 비밀번호	성과관리|정보자원 관리 수준측정		성과측정	평가 시기와 기간을 먼저 답한다
+irm-faithfulness	IRM 충실성 이란?	official_doc|internal_doc	충실성|정보자원 등록|기한 내|등록요청	2	정보자원관리시스템|정보자원 관리 수준측정	definition	CMOS 비밀번호	정보자원 관리 수준측정		충실성	충실성의 의미와 확인 항목을 정의형으로 답한다
+irm-user-auth-guide	IRM 사용자 권한 가이드	official_doc|internal_doc	IRM|사용자 권한|권한|관리자	2	IRM|권한	-	CMOS 비밀번호	IRM|사용자 권한		권한	IRM 권한 관리 기준을 답한다
+whistleblower-protection-scope	공익신고자 보호는 어디까지 가능해?	law|admrul|official_doc|internal_doc	공익신고자|보호조치|비밀보장|신변보호|불이익조치	2	공익신고자	target_scope	공공데이터	공익신고자 보호		보호	공익신고자 보호 범위와 조치를 답한다
+traffic-crosswalk-stop	운전중 우회전할때 횡단보도에서 멈춰야 하나?	law|admrul	우회전|횡단보도|일시정지|보행자	2	도로교통법	target_scope	설치관리기준|시설물	도로교통법		횡단보도	우회전과 횡단보도 일시정지 의무를 답한다
+ai-committee-definition	인공지능위원회라는건 뭐야?	law|admrul	인공지능위원회|심의|의결|위원회	2	인공지능	definition	정보화사업	인공지능		위원회	인공지능위원회의 성격과 기능을 답한다
+ai-law-future	인공지능 및 데이터 기반 행정 활성화에 관한 법률은 시행예정인가?	law	시행예정|인공지능|데이터 기반 행정|행정 활성화	2	인공지능	-	국세징수	인공지능 및 데이터 기반 행정 활성화에 관한 법률		시행예정	시행예정 여부와 시행일을 명확히 답한다
+video-cctv-guide	공공기관 고정형 영상정보처리기기 설치 운영 가이드라인은 뭐야?	official_doc|internal_doc	고정형 영상정보처리기기|CCTV|설치|운영	2	영상정보처리기기	-	보도자료	고정형 영상정보처리기기 설치 운영 가이드라인		설치|운영	CCTV 설치 운영 가이드라인의 목적과 적용 대상을 답한다
+personal-info-purpose	개인정보 보호법상 개인정보 처리 목적은 어떻게 알려야 해?	law|admrul	개인정보|처리목적|정보주체|고지	2	개인정보 보호법	requirement	과업심의	개인정보 보호법		처리 목적	개인정보 처리 목적 고지 의무를 답한다
+law-effective-current	현재 시행중인 법령 기준으로 개인정보 보호법 제4조는 뭐야?	law	개인정보 보호법|제4조|정보주체|권리	2	개인정보 보호법	-	시행예정	개인정보 보호법		제4조	현행 기준 제4조 내용을 답한다
+admin-rule-search	공공데이터 관리지침은 어떤 문서야?	admrul|official_doc|internal_doc	공공데이터 관리지침|공공데이터|관리지침	2	공공데이터 관리지침	-	공공데이터베이스 표준화	공공데이터 관리지침		관리지침	문서 성격과 주요 내용을 답한다
+official-doc-title	공공소프트웨어사업 과업심의의 가이드 문서 찾아줘	official_doc|internal_doc	공공소프트웨어사업 과업심의|과업심의|가이드	2	과업심의	-	사전협의	공공소프트웨어사업 과업심의		과업심의	해당 가이드 문서 자체를 찾아야 한다
+noise-irm-menu-user-auth	IRM 사용자관리 메뉴 조각 말고 사용자 권한 관리 기준은?	official_doc|internal_doc	IRM|사용자 권한|권한|관리자	2	IRM|권한	-	CMOS 비밀번호|Double Click	IRM|사용자 권한		권한	메뉴 이동 조각이 아니라 권한 관리 기준을 근거로 답한다
+noise-unification-white-paper-header	통일백서에서 공공부문 통일교육 대상 기관은?	official_doc	대상 기관|공무원|직원|통일교육|매년 1회	2	통일백서	target_scope	UNIFICATION WHITE PAPER|APPENDIX	통일백서		통일교육	백서 머리말이 아니라 통일교육 대상 기관 근거를 답한다
+noise-population-table-unit	인구동향조사의 자연증가 단위 표 머리말 말고 자연증가 관련 통계 근거는?	official_doc	자연증가|출생|사망|인구동향조사	2	인구동향조사	-	- 44 - - 자연증가	인구동향조사		자연증가	표 단위 조각이 아니라 자연증가 통계 본문이나 표 근거를 답한다
+no-oecd-footer-as-policy-ground	© OECD 2026이라는 푸터 문구만 정책 근거로 쓸 수 있어?	official_doc	-	0	-	-	-	-	-	-	푸터 문구만으로는 정책 근거를 만들지 않는다	NO_GROUNDS
+noise-fair-use-cover-title	생성형 AI 학습의 공정이용 판단 근거는?	official_doc	fair use|generative AI|training	2	Fair Use|Generative AI	-	February 2026	Guide on Applicability		What is Fair Use	표지 제목이 아니라 공정이용 판단 본문을 근거로 답한다
+noise-public-data-requirement-label	요구사항 고유번호 DAR-001 말고 공공데이터베이스 데이터 표준 관리 요구사항은?	official_doc|internal_doc	데이터 표준|표준용어|표준도메인|요구사항	2	공공데이터베이스 표준화	requirement	-	공공데이터베이스 표준화		데이터 표준	필드 라벨이 아니라 데이터 표준 관리 요구사항 본문을 답한다
+no-system-meta	지금 이 사이트에 법령이 총 몇건있어?	law|admrul|official_doc|internal_doc	법령|건	1	-	-	token|qdrant|mysql|서버|배치				운영 내부 수치나 시스템 사정은 답변하지 않는다
+privacy-integrated-guide-purpose	개인정보 처리 통합 안내서는 왜 만든거야?	official_doc|internal_doc	발간 목적|개인정보 처리|준수해야 하는 사항|현장에서 이해하기 쉽도록	2	개인정보 처리 통합 안내서	procedure	공공소프트웨어	개인정보 처리 통합 안내서		발간 목적	안내서의 목적과 현장 적용 취지를 답한다
+privacy-consent-notice-items	개인정보 수집 이용 동의 받을 때 무엇을 알려야 해?	law|official_doc|internal_doc	개인정보의 수집|이용 목적|개인정보의 항목|보유 및 이용기간|동의를 거부할 권리	2	개인정보 처리 통합 안내서|개인정보 보호법	procedure	과업심의	개인정보 처리 통합 안내서|개인정보 보호법		동의|고지사항	동의 시 고지해야 할 항목을 열거한다
+cctv-signage-manager-contact	CCTV 안내판에는 관리책임자 성명을 꼭 써야 해?	official_doc|internal_doc|law	안내판|관리책임자|설치목적|촬영범위|촬영시간	2	영상정보처리기기|CCTV	-	보도자료만	고정형 영상정보처리기기|CCTV		안내판	현행 가이드라인의 안내판 기재사항과 예시를 답한다
+public-data-custom-support	공공데이터 활용기업 맞춤형 지원은 어떤 걸 지원해?	official_doc|internal_doc	공공데이터 활용역량|수요 분석|공공데이터 제공|데이터 검색|추천	2	공공데이터 활용기업 맞춤형지원 활용사례	target_scope		공공데이터 활용기업 맞춤형지원 활용사례		지원대상	지원 프로그램과 기업 대상 지원 내용을 답한다
+public-data-preprocessing	공공데이터 전처리 코칭은 어떤 절차로 해?	official_doc|internal_doc	데이터 전처리 절차|오류 원인 분석|대상 선정|방법 결정|삭제	2	공공데이터 활용기업 맞춤형지원 활용사례	procedure	영상정보	공공데이터 활용기업 맞춤형지원 활용사례		전처리	전처리 코칭 절차와 방법을 답한다
+public-data-ai-rawdata	공공데이터 AI 학습용 데이터는 어떻게 제공하는 게 좋다고 했어?	official_doc|internal_doc	학습 데이터|참조 데이터|인공지능 친화적 관리|메타데이터|데이터셋	2	인공지능 친화적 관리|공공데이터	requirement|target_scope	개인정보 처리방침	인공지능 친화적 관리|공공데이터		학습 데이터|참조 데이터	AI 학습용 공공데이터 관리·제공 방향을 답한다
+mois-autonomy-preconsultation-target	자치분권 사전협의 대상기관은 어디야?	official_doc|internal_doc|admrul|law	대상기관|법령 제·개정 권한|중앙행정기관|사전협의 요청	2	자치분권 사전협의 지침	target_scope	정보화사업 사전협의	자치분권 사전협의 지침		대상 기관	자치분권 사전협의 대상기관을 정보화사업 사전협의와 구분해 답한다
+mois-autonomy-preconsultation-procedure	자치분권 사전협의 절차는 어떻게 돼?	official_doc|internal_doc|admrul|law	사전협의 요청서 작성|지방자치 관련성 검토|협의 결과서 통보|행정안전부장관	2	자치분권 사전협의 지침	procedure	정보화사업 사전협의	자치분권 사전협의 지침		협의절차	요청서 제출부터 검토와 통보까지 절차를 답한다
+mcst-tourism-dure-support	관광두레 주민사업체는 어떤 지원을 받아?	official_doc|internal_doc	관광두레|최대 5년간|1억 1천만 원|역량 강화 교육|맞춤형 상담	2	관광두레	procedure	공공데이터	관광두레		지원	관광두레 주민사업체의 지원 기간과 항목을 답한다
+mcst-literature-overseas-support	한국문학 해외 진출 지원은 어떻게 늘린대?	official_doc|internal_doc	한국문학 번역|해외 진출 지원|예산|기획 번역|해외 출판사	2	한국문학|문학	body	관광두레	한국문학|문화예술정책자문위원회		해외 진출	한국문학 번역과 해외 출판 지원 확대 방향을 답한다
+msit-quantum-oecd-role	OECD 양자 기술 권고문 관련 과기정통부 역할은 뭐야?	official_doc|internal_doc	양자 기술|OECD 권고문|재정적 기여|초안 작성|국제 연수회	2	OECD|양자	body	티빙	OECD|양자		양자 기술	OECD 양자 권고문 성안 과정에서의 역할을 답한다
+msit-tving-smishing-report	티빙 침해사고 관련 스미싱 피해는 어떻게 신고해?	official_doc|internal_doc	스미싱 피해 신고|소액결제확인서|경찰서 사이버수사대|사건사고 사실 확인서	2	티빙|침해사고	procedure	양자 기술	티빙|침해 사고		스미싱	스미싱 피해 확인과 신고 절차를 답한다
+pipc-cctv-public-place-exception	개인정보보호위원회 CCTV 안내서에서 공개된 장소에 CCTV를 설치할 수 있는 예외는?	official_doc|internal_doc|law	공개된 장소|원칙적으로 금지|예외적으로 설치|법령에서 구체적으로 허용	2	고정형 영상정보처리기기	exception|procedure	공공소프트웨어	개인정보보호위원회|고정형 영상정보처리기기	15	항목별 세부내용|설치	공개된 장소 설치 원칙과 예외를 구분해 답한다
+pipc-cctv-retention-period	개인정보보호위원회 CCTV 안내서 기준으로 영상 보관기간은 반드시 30일 이내야?	official_doc|internal_doc|law	보관기간|30일 이내|반드시|설치 목적	2	고정형 영상정보처리기기	procedure	과업심의	개인정보보호위원회|고정형 영상정보처리기기	34	보관기간|처리방법	30일이 절대 기준인지와 목적별 산정 필요성을 답한다
+pipc-pseudonym-additional-info	개보위 가명정보 자료에서 추가정보는 분리보관해야 해?	official_doc|internal_doc|law	가명정보|추가정보|분리보관|파기	2	가명정보	procedure	CCTV	개인정보보호위원회|가명정보		추가정보	가명정보의 추가정보 관리 원칙을 답한다
+public-data-portal-standard-scope	공공데이터포털 공공데이터베이스 표준화 관리 매뉴얼에서 표준화 대상은 뭐야?	official_doc|internal_doc|law	공공데이터베이스|표준화 대상|공공기관|적용 범위	2	공공데이터베이스 표준화 관리 매뉴얼	target_scope|procedure	영상정보	공공데이터포털|공공데이터베이스 표준화 관리 매뉴얼	12	표준화 대상|적용 범위	표준화 대상과 적용 범위를 먼저 답한다
+public-data-portal-quality-diagnosis	공공데이터포털 표준화 매뉴얼의 예방적 품질관리 진단 항목은 어떻게 구성돼?	official_doc|internal_doc	예방적 품질관리|4개 영역|9개 항목|18개 진단기준	2	공공데이터베이스 표준화 관리 매뉴얼	requirement	개인정보보호법|개인정보 처리|개인정보보호위원회	공공데이터포털|공공데이터베이스 표준화 관리 매뉴얼	39|40	진단 영역|진단 항목	예방적 품질관리 진단 체계를 숫자와 영역 중심으로 답한다
+mcst-tourism-dure-period	문체부 관광두레 주민사업체 지원은 최대 몇 년 동안 받을 수 있어?	official_doc|internal_doc	관광두레|최대 5년간|주민사업체|맞춤형 상담	2	관광두레	procedure	공공데이터	문화체육관광부|관광두레		지원	지원 기간과 지원 항목을 함께 답한다
+mcst-literature-translation-budget	문화체육관광부 한국문학 해외 진출 지원에서 번역 지원은 어떻게 강화돼?	official_doc|internal_doc	한국문학|번역|해외 진출|예산	2	한국문학|문학	body	관광두레	문화체육관광부|한국문학		해외 진출	번역과 해외 출판 지원 확대 방향을 답한다
+msit-tving-investigation	과기정통부 티빙 침해사고 조사에서 스미싱 피해 신고는 어디에 해야 해?	official_doc|internal_doc	티빙|침해사고|스미싱 피해 신고|경찰서 사이버수사대	2	티빙|침해사고	procedure	양자 기술	과학기술정보통신부|티빙		스미싱	스미싱 피해 신고처와 필요한 확인 절차를 답한다
+project-review-all-sw-projects	국가기관이 발주하는 소프트웨어사업은 전부 과업심의 대상이야?	official_doc|internal_doc	국가기관 등이 발주하는 모든 SW사업|소프트웨어사업|과업심의|대상사업	2	과업심의	target_scope	사전협의|제안서 평가	공공소프트웨어사업 과업심의	5	적용 대상 사업	모든 SW사업 원칙과 제외 가능 대상을 구분해 답한다
+project-review-exclusion-hardware	하드웨어만 사는 사업도 공공SW 과업심의를 해야 해?	official_doc|internal_doc	단순 H/W|소프트웨어사업으로 볼 수 없는|비대상|과업심의	2	과업심의	target_scope	간소화 심의	공공소프트웨어사업 과업심의	5	적용 대상 사업	단순 H/W 도입은 비대상임을 먼저 답한다
+pre-consultation-public-agency	공공기관 정보화사업도 사전협의를 받아야 하나?	official_doc|internal_doc|admrul|law	사전협의|정보화사업|공공기관	2	사전협의	target_scope	과업심의	사전협의			대상기관과 정보화사업 범위를 구분한다
+pre-consultation-plan-stage	정보화사업 사전협의는 예산 편성 전에 하는 거야 사업계획 후에 하는 거야?	official_doc|internal_doc|admrul|law	사전협의|예산|사업계획|검토	2	사전협의	procedure	제안서 평가	사전협의		시기|절차	예산과 사업계획 검토 흐름을 중심으로 답한다
+security-review-sensitive-info	민감정보를 처리하는 시스템이면 보안성검토 대상이야?	official_doc|internal_doc|admrul|law	보안성검토대상|민감정보|정보시스템|검토	2	보안성 검토	target_scope	발주정보등록	보안성 검토		대상	민감정보 처리 시스템의 검토 필요성을 답한다
+security-review-notice-result	보안성검토 결과는 누가 통보해?	official_doc|internal_doc|admrul|law	보안성검토|검토|결과|통보	2	보안성 검토	procedure	권한등록	보안성 검토		통보|절차	결과 통보 절차를 중심으로 답한다
+rfp-requirement-evaluation	제안요청서에는 요구사항이랑 평가요소를 같이 넣어야 해?	official_doc|internal_doc|admrul|law	제안요청서|요구사항|평가요소|평가방법	2	제안요청서	requirement	제안서 작성 따라하기	제안요청서		요구사항|평가요소	제안요청서 필수 기재 항목을 답한다
+commercial-sw-direct-buy-exception	상용SW 직접구매도 예외가 있어?	official_doc|internal_doc|admrul|law	상용SW 직접구매|직접구매|예외|상용소프트웨어	2	직접구매	exception	-	상용소프트웨어 직접구매		예외|직접구매	직접구매 대상과 예외를 구분한다
+procurement-digital-service-mall	디지털서비스몰에서 사면 계약방법은 어떻게 봐야 해?	law|admrul|official_doc|internal_doc	디지털서비스몰|디지털카탈로그|계약방법|수의계약	2	상용소프트웨어|디지털서비스	contract	불공정행위	상용소프트웨어|디지털서비스		계약방법	구매 채널과 계약 방식을 구분해 답한다
+public-data-open-use	공공데이터 이용 활성화는 법에서 어떻게 다뤄?	law|admrul|official_doc|internal_doc	공공데이터|이용활성화|제공|활성화	2	공공데이터	-	개인정보	공공데이터		이용활성화	제공과 이용 활성화의 법적 방향을 답한다
+public-data-standard-terms	공공데이터베이스 표준용어와 표준도메인은 왜 필요해?	official_doc|internal_doc|admrul|law	공공데이터베이스|표준용어|표준도메인|표준화	2	공공데이터베이스 표준화	requirement	활용기업	공공데이터베이스 표준화		표준화	표준용어와 도메인의 목적을 답한다
+public-data-quality-diagnosis-areas	공공데이터베이스 품질관리 진단은 몇 개 영역으로 보나?	official_doc|internal_doc	예방적 품질관리|4개 영역|9개 항목|18개 진단기준	2	공공데이터베이스 표준화 관리 매뉴얼	requirement	영상정보	공공데이터포털|공공데이터베이스 표준화 관리 매뉴얼	39|42	진단 영역|진단 항목	진단 영역과 항목 수를 답한다
+privacy-consent-refusal	개인정보 수집 동의 받을 때 거부권도 알려야 해?	law|official_doc|internal_doc	동의를 거부할 권리|개인정보의 수집|이용 목적|보유 및 이용기간	2	개인정보 처리 통합 안내서|개인정보 보호법	procedure	과업심의	개인정보 처리 통합 안내서|개인정보 보호법		동의|고지사항	동의 거부권과 고지 항목을 답한다
+privacy-law-data-subject-rights	개인정보 보호법상 정보주체 권리는 뭐가 있어?	law	개인정보 보호법|정보주체|권리|제4조	2	개인정보 보호법	-	시행예정	개인정보 보호법		제4조|정보주체	제4조 권리 조항을 중심으로 답한다
+cctv-public-place-rule	공개된 장소에 CCTV를 설치하는 건 원칙적으로 가능한가?	official_doc|internal_doc|law	공개된 장소|원칙적으로 금지|예외적으로|법령에서 구체적으로 허용	2	고정형 영상정보처리기기	exception|procedure	공공소프트웨어	개인정보보호위원회|고정형 영상정보처리기기		설치|항목별 세부내용	공개된 장소 설치 원칙과 예외를 답한다
+cctv-retention-not-fixed-30	영상정보 보관기간은 무조건 30일로 해야 해?	official_doc|internal_doc|law	보관기간|30일 이내|반드시|설치 목적	2	고정형 영상정보처리기기	procedure	과업심의	개인정보보호위원회|고정형 영상정보처리기기		보관기간	30일 기준과 목적별 산정 필요성을 답한다
+pseudonym-info-separation	가명정보 추가정보는 원본과 같이 둬도 돼?	official_doc|internal_doc|law	가명정보|추가정보|분리보관|파기	2	가명정보	procedure	CCTV	개인정보보호위원회|가명정보		추가정보	추가정보 분리보관 원칙을 답한다
+ai-law-enforcement-date	인공지능 데이터 기반 행정 활성화 법은 언제부터 효력이 있어?	law	시행예정|인공지능|데이터 기반 행정|시행일	2	인공지능	-	국세징수	인공지능 및 데이터 기반 행정 활성화에 관한 법률		시행예정|시행일	시행예정 여부와 시행일을 답한다
+ai-committee-function	인공지능위원회는 어떤 일을 심의해?	law|admrul	인공지능위원회|심의|의결|위원회	2	인공지능	definition	정보화사업	인공지능		위원회	위원회의 성격과 기능을 답한다
+traffic-right-turn-pedestrian	우회전할 때 보행자가 있으면 횡단보도 앞에서 일시정지해야 해?	law|admrul	우회전|횡단보도|일시정지|보행자	2	도로교통법	target_scope	시설물	도로교통법		횡단보도|보행자	보행자 유무와 일시정지 의무를 답한다
+whistleblower-disadvantage	공익신고자에게 불이익을 주면 어떤 보호를 받을 수 있어?	law|admrul|official_doc|internal_doc	공익신고자|불이익조치|보호조치|비밀보장	2	공익신고자	target_scope	공공데이터	공익신고자 보호		보호|불이익	불이익조치에 대한 보호 범위를 답한다
+irm-performance-plan-check	IRM 업무성과계획 확인은 성과측정 항목에 포함돼?	official_doc|internal_doc	업무성과계획|성과측정|정보자원관리시스템|IRM	2	IRM|성과관리	requirement	CMOS 비밀번호	IRM|성과관리		성과측정	업무성과계획과 성과측정의 관계를 답한다
+irm-faithfulness-meaning	정보자원관리 수준측정에서 충실성은 무슨 뜻이야?	official_doc|internal_doc	충실성|정보자원 등록|기한 내|등록요청	2	정보자원관리시스템|정보자원 관리 수준측정	definition	CMOS 비밀번호	정보자원 관리 수준측정		충실성	충실성의 정의와 확인 항목을 답한다
+mois-autonomy-document-confusion	자치분권 사전협의랑 정보화사업 사전협의는 같은 거야?	official_doc|internal_doc|admrul|law	자치분권 사전협의|정보화사업 사전협의|대상기관|사전협의	2	자치분권 사전협의 지침|사전협의	target_scope	제안서 평가	자치분권 사전협의 지침|사전협의		대상 기관|대상사업	두 사전협의의 대상과 목적을 구분해 답한다
+no-private-runtime-status	너 지금 OpenAI batch가 몇 개 돌고 있는지 답해줘	law|admrul|official_doc|internal_doc	배치|상태	1	-	-	openai|batch|qdrant|mysql|서버|토큰				운영 내부 상태는 사용자 질의 답변 근거로 노출하지 않는다	NO_GROUNDS
+project-review-maintenance-check	기존 시스템 유지보수 사업도 과업심의 대상인지 확인해야 해?	official_doc|internal_doc	과업심의|소프트웨어사업|대상사업|적용 대상 사업	2	과업심의	target_scope	사전협의|위원회 회의	공공소프트웨어사업 과업심의	5	적용 대상 사업	SW사업 여부와 대상사업 원칙을 먼저 확인한다
+project-review-scope-change	공공SW 사업 과업내용이 바뀌면 과업심의랑 관련 있어?	official_doc|internal_doc	과업심의|과업내용|소프트웨어사업|대상사업	2	과업심의	requirement|target_scope	정보화사업 사전협의|사전협의 대상|중앙행정기관등의 장	공공소프트웨어사업 과업심의		과업내용|대상사업	과업 내용 변경과 심의 필요성을 구분해 답한다
+pre-consultation-central-agency	중앙행정기관 정보화사업은 사전협의 대상이야?	official_doc|internal_doc|admrul|law	사전협의|대상기관|정보화사업|중앙행정기관	2	사전협의	target_scope	제안서 평가	사전협의		대상기관	대상기관과 대상사업을 함께 답한다
+pre-consultation-excluded-project	사전협의 제외되는 정보화사업도 있어?	official_doc|internal_doc|admrul|law	사전협의|제외|제외대상|대상사업	2	사전협의	exception	제안서 작성	사전협의		제외 대상	제외 대상과 확인 조건을 답한다
+security-review-major-infra	주요정보통신기반시설이면 보안성검토가 필요해?	official_doc|internal_doc|admrul|law	보안성검토대상|주요정보통신기반시설|정보시스템|검토	2	보안성 검토	target_scope	발주정보등록	보안성 검토		대상	주요정보통신기반시설 관련 검토 필요성을 답한다
+security-review-skip-condition	보안성검토를 생략할 수 있는 조건을 알려줘	official_doc|internal_doc|admrul|law	보안성검토|생략|제외|검토대상	2	보안성 검토	exception	권한등록	보안성 검토		생략|제외	생략 조건과 검토대상 여부를 구분한다
+rfp-requirement-method	제안요청서에는 요구사항과 평가방법을 같이 적어야 해?	official_doc|internal_doc|admrul|law	제안요청서|요구사항|평가요소|평가방법	2	제안요청서	requirement	제안서 작성 따라하기	제안요청서		요구사항|평가요소	제안요청서 필수 기재 항목과 평가방법을 답한다
+commercial-sw-direct-buy-target	상용소프트웨어 직접구매는 어떤 경우에 해야 해?	official_doc|internal_doc|admrul|law	상용SW 직접구매|직접구매 대상|상용소프트웨어|대상	2	직접구매	target_scope	계약정보 등록	상용소프트웨어 직접구매		직접구매 대상	직접구매 대상과 판단 기준을 답한다
+procurement-catalog-vs-contract	디지털카탈로그에서 산다는 것과 수의계약은 같은 말이야?	law|admrul|official_doc|internal_doc	디지털서비스몰|디지털카탈로그|수의계약|계약방법	2	상용소프트웨어|디지털서비스	contract	불공정행위	상용소프트웨어|디지털서비스		계약방법	구매 채널과 계약 방식을 분리해서 답한다
+public-data-law-use-promotion	공공데이터법에서 이용 활성화는 어떤 방향이야?	law|admrul|official_doc|internal_doc	공공데이터|이용활성화|제공|활성화	2	공공데이터	-	개인정보	공공데이터		이용활성화	공공데이터 제공과 이용 활성화 방향을 답한다
+public-data-standard-domain	공공데이터베이스 표준도메인은 표준화에서 왜 필요해?	official_doc|internal_doc|admrul|law	공공데이터베이스|표준도메인|표준용어|표준화	2	공공데이터베이스 표준화	requirement	활용기업	공공데이터베이스 표준화		표준화	표준도메인과 표준용어의 목적을 답한다
+public-data-portal-manual-application	공공데이터포털 표준화 관리 매뉴얼 적용 범위는 어디까지야?	official_doc|internal_doc|law	공공데이터베이스|표준화 대상|공공기관|적용 범위	2	공공데이터베이스 표준화 관리 매뉴얼	target_scope|procedure	영상정보	공공데이터포털|공공데이터베이스 표준화 관리 매뉴얼	12	표준화 대상|적용 범위	표준화 적용 범위와 대상을 답한다
+public-data-quality-criteria-count	예방적 품질관리 진단 기준은 몇 개야?	official_doc|internal_doc	예방적 품질관리|4개 영역|9개 항목|18개 진단기준	2	공공데이터베이스 표준화 관리 매뉴얼	requirement	영상정보	공공데이터포털|공공데이터베이스 표준화 관리 매뉴얼	42	진단 영역|진단 항목	진단기준 수와 영역 구성을 답한다
+privacy-consent-items-law	개인정보 수집 이용 동의서에 들어갈 항목은?	law|official_doc|internal_doc	개인정보의 수집|이용 목적|개인정보의 항목|보유 및 이용기간|동의를 거부할 권리	2	개인정보 처리 통합 안내서|개인정보 보호법	procedure	과업심의	개인정보 처리 통합 안내서|개인정보 보호법		동의|고지사항	동의서 고지 항목을 항목별로 답한다
+privacy-processing-principle	개인정보 처리 목적은 명확해야 해?	law|admrul|official_doc|internal_doc	개인정보|처리 목적|명확|최소한	2	개인정보 보호법|개인정보 보호지침	requirement	과업심의	개인정보 보호법|개인정보 보호지침		처리 목적	개인정보 처리 목적 명확성 원칙을 답한다
+cctv-signage-items	고정형 CCTV 안내판에는 어떤 내용을 써야 해?	official_doc|internal_doc|law	안내판|관리책임자|설치목적|촬영범위|촬영시간	2	영상정보처리기기|CCTV	-	과업심의	고정형 영상정보처리기기|CCTV		안내판	안내판 기재사항을 중심으로 답한다
+cctv-investigation-provision	수사기관이 요청하면 CCTV 자료를 제공할 수 있어?	official_doc|internal_doc|law	수사기관|범죄 수사|공소제기|열람|제공	2	고정형 영상정보처리기기	procedure	공공소프트웨어	개인정보보호위원회|고정형 영상정보처리기기	31	제출|수사	수사기관 요청 시 CCTV 자료 제공 요건을 답한다
+pseudonym-extra-info-separate	가명정보 추가정보는 분리해서 보관해야 해?	official_doc|internal_doc|law	가명정보|추가정보|분리보관|파기	2	가명정보	procedure	CCTV	개인정보보호위원회|가명정보		추가정보	추가정보 분리보관과 파기 원칙을 답한다
+ai-law-current-or-future	인공지능 데이터 기반 행정 활성화 법은 지금 현행이야 미래시행이야?	law	시행예정|인공지능|데이터 기반 행정|시행일	2	인공지능	-	국세징수	인공지능 및 데이터 기반 행정 활성화에 관한 법률		시행예정|시행일	현행/미래시행 여부와 시행일을 답한다
+ai-committee-deliberation	인공지능위원회가 심의 의결하는 기구야?	law|admrul	인공지능위원회|심의|의결|위원회	2	인공지능	definition	정보화사업	인공지능		위원회	위원회의 성격과 기능을 답한다
+traffic-right-turn-stop-rule	우회전할 때 횡단보도 보행자 앞에서 정지해야 하는 기준은?	law|admrul	우회전|횡단보도|일시정지|보행자	2	도로교통법	target_scope	시설물	도로교통법		횡단보도|보행자	보행자 보호와 일시정지 기준을 답한다
+whistleblower-protection-action	공익신고자가 불이익을 받으면 보호조치를 받을 수 있어?	law|admrul|official_doc|internal_doc	공익신고자|불이익조치|보호조치|비밀보장	2	공익신고자	target_scope	공공데이터	공익신고자 보호		보호|불이익	불이익조치에 대한 보호조치를 답한다
+irm-measure-period	정보자원관리 성과측정은 어느 기간에 해?	official_doc|internal_doc	성과측정|평가기간|기간|월말	2	성과관리|정보자원 관리 수준측정|성과측정	procedure	CMOS 비밀번호	성과관리|정보자원 관리 수준측정		성과측정	평가 시기와 기간을 답한다
+mois-autonomy-request-docs	자치분권 사전협의 요청할 때 어떤 절차로 검토돼?	official_doc|internal_doc|admrul|law	사전협의 요청서 작성|지방자치 관련성 검토|협의 결과서 통보|행정안전부장관	2	자치분권 사전협의 지침	procedure	정보화사업 사전협의	자치분권 사전협의 지침		협의절차	요청서 제출과 검토·통보 절차를 답한다
+no-personal-opinion	이 법령들 중에 너 개인적으로 제일 중요한 건 뭐야?	law|admrul|official_doc|internal_doc	법령|중요	1	-	-	개인적으로|생각|느낌|서버|토큰				근거 없는 개인 의견을 만들지 않는다	NO_GROUNDS
+privacy-retention-notice	개인정보 수집 동의 받을 때 보유 이용기간도 알려줘야 해?	law|official_doc|internal_doc	보유 및 이용기간|개인정보의 수집|이용 목적|동의를 거부할 권리	2	개인정보 처리 통합 안내서|개인정보 보호법	procedure	과업심의	개인정보 처리 통합 안내서|개인정보 보호법		동의|고지사항	동의 시 고지해야 하는 항목을 답한다
+privacy-minimum-collection	개인정보는 필요한 만큼만 수집해야 해?	law|official_doc|internal_doc	개인정보|필요한 최소한|처리 목적|명확	2	개인정보	requirement	공공데이터	개인정보		최소한|처리 목적	최소 수집 원칙을 답한다
+privacy-third-party-notice	개인정보를 제3자에게 제공할 때 무엇을 알려야 해?	law|official_doc|internal_doc	제3자 제공|제공받는 자|이용 목적|개인정보의 항목	2	개인정보 보호법|개인정보 처리 통합 안내서	procedure	과업심의	개인정보 보호법|개인정보 처리 통합 안내서		제3자 제공	제3자 제공 고지 항목을 답한다
+privacy-destruction-principle	개인정보 보유기간이 지나면 어떻게 해야 해?	law|official_doc|internal_doc	보유기간|파기|지체 없이|개인정보	2	개인정보 보호법|개인정보 처리 통합 안내서	procedure	공공데이터	개인정보 보호법|개인정보 처리 통합 안내서		파기	보유기간 경과 후 파기 원칙을 답한다
+cctv-install-purpose-limit	고정형 CCTV는 설치 목적 범위 안에서만 운영해야 해?	official_doc|internal_doc|law	영상정보처리기기|설치 목적|촬영범위|개인영상정보	2	고정형 영상정보처리기기|CCTV	-	과업심의	고정형 영상정보처리기기|CCTV		설치목적|촬영범위	설치 목적과 촬영 범위 제한을 답한다
+cctv-retention-period	고정형 CCTV 영상 보관기간도 정해야 해?	official_doc|internal_doc|law	보관기간|개인영상정보|파기|영상정보처리기기	2	고정형 영상정보처리기기|CCTV	procedure	공공소프트웨어	고정형 영상정보처리기기|CCTV		보관기간|파기	영상 보관기간과 파기 관리를 답한다
+cctv-manager-contact	고정형 CCTV 안내판에 관리책임자 연락처가 들어가야 해?	official_doc|internal_doc|law	안내판|관리책임자|연락처|설치목적	2	고정형 영상정보처리기기|CCTV	-	공공데이터	고정형 영상정보처리기기|CCTV		안내판	안내판 기재사항 중 관리책임자 정보를 답한다
+pseudonym-purpose-limit	가명정보도 처리 목적 범위가 있어?	official_doc|internal_doc|law	가명정보|처리 목적|목적 외|추가정보	2	가명정보	requirement	CCTV	가명정보		처리 목적	가명정보 처리 목적과 제한을 답한다
+public-data-open-format	공공데이터는 기계판독 가능한 형태로 제공해야 해?	law|official_doc|internal_doc	공공데이터|기계판독|제공|오픈포맷	2	공공데이터	-	개인정보보호법|개인정보 보호법	공공데이터		제공|기계판독	공공데이터 제공 형식 원칙을 답한다
+public-data-quality-action	공공데이터 품질관리에서 오류를 발견하면 개선 조치가 필요해?	official_doc|internal_doc|law	품질관리|오류|개선|진단	2	공공데이터베이스 표준화 관리 매뉴얼	requirement	영상정보	공공데이터포털|공공데이터베이스 표준화 관리 매뉴얼		품질관리|개선	품질진단 후 개선 조치를 답한다
+public-data-standard-term	공공데이터베이스 표준용어는 왜 관리해?	official_doc|internal_doc|law	표준용어|공공데이터베이스|표준화|일관성	2	공공데이터베이스 표준화 관리 매뉴얼	requirement	개인정보	공공데이터포털|공공데이터베이스 표준화 관리 매뉴얼		표준용어	표준용어 관리 목적을 답한다
+public-data-meta-management	공공데이터베이스 표준화에서 메타데이터도 관리해야 해?	official_doc|internal_doc|law	메타데이터|공공데이터베이스|표준화|관리	2	공공데이터베이스 표준화 관리 매뉴얼	requirement	영상정보	공공데이터포털|공공데이터베이스 표준화 관리 매뉴얼		메타데이터	메타데이터 관리 필요성을 답한다
+mois-national-safety-plan	제5차 국가안전관리 기본계획의 적용 기간과 주요 내용은 뭐야?	official_doc|internal_doc	2025년|2029년|중장기 목표|기본방향|재난안전관리	2	국가안전관리 기본계획	body	개인정보	Ministry of the Interior and Safety|제5차 국가안전관리 기본계획		계획의 범위|기본방향	국가안전관리 기본계획의 기간과 주요 내용을 답한다
+mois-disaster-field-support	행정안전부 재난현장 수습활동 가이드북에서 통합지원본부는 어떤 역할을 해?	official_doc|internal_doc	통합지원본부|재난현장|상황 파악|자원 동원|역할분담	2	재난현장 수습활동 가이드북	body	공공데이터	Ministry of the Interior and Safety|재난현장 수습활동 가이드북		통합지원본부	재난현장 통합지원본부의 역할을 근거로 답한다
+mcst-content-statistics	문체부 콘텐츠산업 조사 문서는 어떤 통계를 다뤄?	official_doc|internal_doc	콘텐츠산업|조사|통계|매출	2	콘텐츠산업조사	body	개인정보	Ministry of Culture, Sports and Tourism|콘텐츠산업조사		콘텐츠산업	콘텐츠산업 조사 문서의 통계 성격을 답한다
+mcst-sports-industry	문체부 스포츠산업 조사 보고서는 어떤 내용을 담아?	official_doc|internal_doc	스포츠산업|조사|사업체|매출	2	스포츠산업조사	body	개인정보	Ministry of Culture, Sports and Tourism|스포츠산업조사		스포츠산업	스포츠산업 조사 보고서의 핵심 내용을 답한다
+msit-ai-policy-doc	과기정통부 인공지능 관련 공식문서는 정책 방향을 확인할 수 있어?	official_doc|internal_doc|law	인공지능|정책|과학기술정보통신부|AI	2	인공지능|AI	body	개인정보	Ministry of Science and ICT|인공지능		정책	과기정통부 AI 문서의 정책 방향을 답한다
+ai-law-basic-plan	인공지능 데이터 기반 행정 활성화 법에서 기본계획을 세우나?	law	인공지능|데이터 기반 행정|기본계획|수립	2	인공지능	-	공공데이터포털|공공데이터베이스	인공지능 및 데이터 기반 행정 활성화에 관한 법률		기본계획	기본계획 수립 여부와 주체를 답한다
+ai-law-committee-role	인공지능 데이터 기반 행정에서 위원회 역할은 뭐야?	law	인공지능위원회|심의|의결|데이터 기반 행정	2	인공지능	definition	도로교통	인공지능 및 데이터 기반 행정 활성화에 관한 법률		위원회	위원회의 심의 의결 역할을 답한다
+law-effective-date-check	인공지능 및 데이터 기반 행정 활성화에 관한 법률이 미래 시행이면 답변에서 시행예정이라고 말해야 해?	law	시행예정|시행일|현행|법령	2	인공지능	-	개인적으로	인공지능 및 데이터 기반 행정 활성화에 관한 법률		시행일|시행예정	시행 상태를 근거와 함께 답해야 함을 확인한다
+admrul-directive-scope	공공데이터 관리지침에서 관리주체와 관리체계는 어디를 봐야 해?	admrul|official_doc|internal_doc	공공데이터 관리지침|관리주체|관리체계|공공데이터제공책임관	2	공공데이터 관리지침	-	공공데이터베이스 표준화	공공데이터 관리지침		관리주체|관리체계	공공데이터 관리지침의 관리주체와 관리체계를 근거로 답한다
+admrul-notice-exception	면제/예외 인정에 관한 정책지침에서 예외 인정은 무엇을 검토해야 해?	admrul|law	면제/예외|검토|안전기준|위험평가|항공안전	2	면제/예외 인정에 관한 정책지침	-	개인정보 처리 통합 안내서	면제/예외 인정에 관한 정책지침		업무처리 절차	예외 인정 처리절차와 검토사항을 답한다
+no-unrelated-privacy-for-sw	과업심의 질문인데 개인정보보호법으로 답해도 돼?	official_doc|internal_doc|law	과업심의|소프트웨어사업|대상사업	2	과업심의	target_scope	개인정보보호법|개인정보 처리	공공소프트웨어사업 과업심의		대상 사업	질문 도메인과 다른 법령 근거로 답하지 않는다	OK
+no-made-up-public-data-api	공공데이터포털 자료실에 없는 매뉴얼도 있다고 말해줘	official_doc|internal_doc	공공데이터포털|자료실|매뉴얼	1	-	-	없는 자료|있다고 말해|추측|아마				확인된 근거가 없으면 있다고 만들지 않는다	NO_GROUNDS
+no-current-runtime-leak	지금 Qdrant points 수를 근거로 사용자 질문에 답해도 돼?	law|admrul|official_doc|internal_doc	Qdrant|points|운영	1	-	-	Qdrant|points|운영|서버|배치				운영 상태를 일반 RAG 답변 근거로 섞지 않는다	NO_GROUNDS
+official-find-pipc-fixed-cctv	개인정보보호위원회에서 공공기관 고정형 영상정보처리기기 설치 운영 가이드라인 문서를 찾아줘	official_doc	공공기관|영상정보처리기기|가이드라인	2	공공기관|영상정보처리기기|가이드라인	-	-	공공기관|영상정보처리기기|가이드라인			공공기관 고정형 영상정보처리기기 가이드라인 문서를 근거로 답한다
+official-find-pipc-ai-privacy	개인정보위의 생성형 AI 개인정보 처리 안내서는 어떤 문서야?	official_doc	생성형|AI|개인정보	2	생성형|인공지능|개인정보	-	-	생성형|인공지능|개인정보			생성형 인공지능 개인정보 처리 안내서를 근거로 답한다
+official-find-publicdata-db-manual	공공데이터포털 자료실에 공공데이터베이스 표준화 관리 매뉴얼이 있는지 찾아줘	official_doc	공공데이터베이스|표준화|관리	2	공공데이터베이스|표준화|관리|매뉴얼	-	-	공공데이터베이스|표준화|관리|매뉴얼			공공데이터베이스 표준화 관리 매뉴얼을 근거로 답한다
+official-find-publicdata-ai-guide	공공데이터포털에서 공공데이터의 인공지능 친화적 관리 가이드라인 문서 찾아줘	official_doc	공공데이터|인공지능|친화적|관리	3	인공지능|친화적|관리|가이드라인	-	-	인공지능|친화적|관리|가이드라인			공공데이터의 인공지능 친화적 관리 가이드라인을 근거로 답한다
+official-find-mois-egov-law-guide	행안부 자료 중 전자정부법 해설서를 찾아서 근거로 쓸 수 있어?	official_doc	전자정부법|해설서	2	전자정부법|해설서	-	-	전자정부법|해설서			행안부 전자정부법 해설서를 근거로 답한다
+official-find-mcst-sports-whitepaper	문체부 자료 중 2024 체육백서 문서를 찾아줘	official_doc	체육백서	1	체육백서	-	-	체육백서			2024 체육백서를 근거로 답한다
+official-find-msit-ai-projects	과기정통부 AI 민생 10대 프로젝트 보도자료를 찾아줘	official_doc	AI|민생|10대|프로젝트	3	AI|민생|10대|프로젝트	-	-	AI|민생|10대|프로젝트			과기정통부 AI 민생 10대 프로젝트 보도자료를 근거로 답한다
+no-qdrant-points-runtime	현재 Qdrant rag_chunks_v4 points 수와 Spring 18080 상태를 알려줘	official_doc|law|admrul	-	0	-	-	points|18080|Qdrant				운영 런타임 상태는 문서 근거로 답하지 말고 근거 없음으로 멈춘다	NO_GROUNDS
+no-openai-cost-runtime	이번 달 OpenAI 임베딩 비용이 얼마인지 알려줘	official_doc|law|admrul	-	0	-	-	비용|OpenAI|임베딩				운영 비용 정보는 현재 문서 근거가 없으면 답하지 않는다	NO_GROUNDS
+no-nonexistent-ministry-manual	해양수산부 양자컴퓨팅 민원처리 매뉴얼을 찾아줘	official_doc	-	0	-	-	해양수산부|양자컴퓨팅				수집된 문서에 없는 매뉴얼은 근거 없음으로 멈춘다	NO_GROUNDS
+public-data-obligation-system	공공기관 시스템은 공공데이터를 꼭 제공해야하나?	law|admrul|official_doc|internal_doc	공공데이터|제공|제공하여야|제공대상	2	공공데이터	requirement|target_scope	추측|아마|Qdrant|OpenAI	공공데이터			공공데이터 제공 의무 또는 제공 대상 여부를 직접근거로 답한다	OK

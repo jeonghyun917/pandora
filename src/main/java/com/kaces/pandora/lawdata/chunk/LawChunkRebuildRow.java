@@ -6,6 +6,9 @@ public record LawChunkRebuildRow(
 	String target,
 	String title,
 	String detailTitle,
-	String rawJson
+	String rawJson,
+	String detailLink,
+	int currentChunkCount,
+	int currentTinyChunkCount
 ) {
 }

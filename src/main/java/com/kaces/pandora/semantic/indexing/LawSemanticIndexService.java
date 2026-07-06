@@ -15,7 +15,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class LawSemanticIndexService {
@@ -23,6 +22,7 @@ public class LawSemanticIndexService {
 	private static final int EMBEDDING_BATCH_SIZE = 100;
 	private static final int MAX_DIRECT_INDEX_LIMIT = 10_000;
 	private static final int MAX_OPENAI_BATCH_INPUTS = 50_000;
+	private static final int STATUS_UPDATE_ATTEMPTS = 3;
 
 	private final LawChunkMapper lawChunkMapper;
 	private final LawAiProperties properties;
@@ -50,7 +50,6 @@ public class LawSemanticIndexService {
 		qdrantClient.ensureCollection();
 	}
 
-	@Transactional
 	// 메소드 설명: indexSample 처리 흐름을 수행합니다.
 	public LawSemanticIndexResult indexSample(String target, String query, int limit) {
 		int safeLimit = Math.max(1, Math.min(limit, MAX_DIRECT_INDEX_LIMIT));
@@ -67,6 +66,37 @@ public class LawSemanticIndexService {
 			safeLimit
 		);
 
+		return indexChunks(chunks, model, vectorStore, safeLimit);
+	}
+
+	public LawSemanticIndexResult indexDocuments(String target, List<Long> documentIds, int limit) {
+		int safeLimit = Math.max(1, Math.min(limit, MAX_DIRECT_INDEX_LIMIT));
+		String normalizedTarget = target == null ? "" : target.trim();
+		String model = properties.openai().embeddingModel();
+		String vectorStore = properties.qdrant().collection();
+		List<Long> safeDocumentIds = documentIds == null ? List.of() : documentIds.stream()
+			.filter(id -> id != null && id > 0)
+			.distinct()
+			.toList();
+		if (safeDocumentIds.isEmpty()) {
+			return new LawSemanticIndexResult(vectorStore, model, 0, 0);
+		}
+		List<LawSemanticChunkRow> chunks = lawChunkMapper.findSemanticIndexCandidatesByDocumentIds(
+			normalizedTarget,
+			safeDocumentIds,
+			model,
+			vectorStore,
+			safeLimit
+		);
+		return indexChunks(chunks, model, vectorStore, chunks.size());
+	}
+
+	private LawSemanticIndexResult indexChunks(
+		List<LawSemanticChunkRow> chunks,
+		String model,
+		String vectorStore,
+		int requested
+	) {
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		qdrantClient.ensureCollection();
 		int indexed = 0;
@@ -79,6 +109,18 @@ public class LawSemanticIndexService {
 			qdrantClient.upsert(batch, vectors);
 			for (LawSemanticChunkRow chunk : batch) {
 				// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+				markChunkIndexed(chunk, model, vectorStore);
+			}
+			indexed += batch.size();
+		}
+
+		return new LawSemanticIndexResult(vectorStore, model, requested, indexed);
+	}
+
+	private void markChunkIndexed(LawSemanticChunkRow chunk, String model, String vectorStore) {
+		RuntimeException lastException = null;
+		for (int attempt = 1; attempt <= STATUS_UPDATE_ATTEMPTS; attempt++) {
+			try {
 				lawChunkMapper.upsertEmbeddingStatus(
 					chunk.chunkId(),
 					model,
@@ -88,11 +130,33 @@ public class LawSemanticIndexService {
 					"INDEXED",
 					null
 				);
+				lawChunkMapper.updateChunkIndexStatus(chunk.chunkId(), "INDEXED", null);
+				return;
+			} catch (RuntimeException exception) {
+				lastException = exception;
+				if (attempt == STATUS_UPDATE_ATTEMPTS || !isConcurrentStatusUpdate(exception)) {
+					throw exception;
+				}
+				sleepBeforeStatusRetry(attempt);
 			}
-			indexed += batch.size();
 		}
+		throw lastException;
+	}
 
-		return new LawSemanticIndexResult(vectorStore, model, safeLimit, indexed);
+	private boolean isConcurrentStatusUpdate(RuntimeException exception) {
+		String message = String.valueOf(exception.getMessage()).toLowerCase();
+		return message.contains("record has changed since last read")
+			|| message.contains("deadlock")
+			|| message.contains("lock wait timeout");
+	}
+
+	private void sleepBeforeStatusRetry(int attempt) {
+		try {
+			Thread.sleep(150L * attempt);
+		} catch (InterruptedException exception) {
+			Thread.currentThread().interrupt();
+			throw new IllegalStateException("Interrupted while retrying semantic index status update.", exception);
+		}
 	}
 
 	// 메소드 설명: createBatchFile 처리 흐름을 수행합니다.

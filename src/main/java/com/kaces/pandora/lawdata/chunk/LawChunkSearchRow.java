@@ -9,6 +9,7 @@ public record LawChunkSearchRow(
 	String agencyName,
 	String categoryName,
 	String sourceDate,
+	String effectiveStatus,
 	String chunkType,
 	String chunkNo,
 	String chunkTitle,

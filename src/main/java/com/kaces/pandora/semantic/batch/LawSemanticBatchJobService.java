@@ -82,7 +82,7 @@ public class LawSemanticBatchJobService {
 		String normalizedTarget = target == null ? "" : target.trim();
 		String normalizedQuery = query == null ? "" : query.trim();
 		String model = properties.openai().embeddingModel();
-		String vectorStore = properties.qdrant().collection();
+		String vectorStore = vectorStoreForTarget(normalizedTarget);
 		List<LawSemanticChunkRow> chunks = findSemanticIndexCandidates(
 			normalizedTarget,
 			normalizedQuery,
@@ -90,8 +90,45 @@ public class LawSemanticBatchJobService {
 			vectorStore,
 			safeLimit
 		);
-		if (chunks.isEmpty()) {
+		return submitChunks(normalizedTarget, normalizedQuery, model, vectorStore, safeLimit, chunks);
+	}
+
+	public LawSemanticBatchJobResponse submitDocumentBatch(String target, List<Long> documentIds, int limit) {
+		int safeLimit = Math.max(1, Math.min(limit, MAX_OPENAI_BATCH_INPUTS));
+		String normalizedTarget = target == null ? "" : target.trim();
+		if (isRagTarget(normalizedTarget)) {
+			throw new IllegalArgumentException("Document-id scoped batch is only supported for law/admrul chunks.");
+		}
+		List<Long> safeDocumentIds = documentIds == null ? List.of() : documentIds.stream()
+			.filter(id -> id != null && id > 0)
+			.distinct()
+			.toList();
+		String normalizedQuery = documentIdsQuery(safeDocumentIds);
+		String model = properties.openai().embeddingModel();
+		String vectorStore = vectorStoreForTarget(normalizedTarget);
+		if (safeDocumentIds.isEmpty()) {
 			return new LawSemanticBatchJobResponse(0, null, "NO_CANDIDATES", null, null, null, normalizedTarget, normalizedQuery, null, null, safeLimit, 0, 0, 0, 0);
+		}
+		List<LawSemanticChunkRow> chunks = lawChunkMapper.findSemanticIndexCandidatesByDocumentIds(
+			normalizedTarget,
+			safeDocumentIds,
+			model,
+			vectorStore,
+			safeLimit
+		);
+		return submitChunks(normalizedTarget, normalizedQuery, model, vectorStore, safeLimit, chunks);
+	}
+
+	private LawSemanticBatchJobResponse submitChunks(
+		String normalizedTarget,
+		String normalizedQuery,
+		String model,
+		String vectorStore,
+		int requestedLimit,
+		List<LawSemanticChunkRow> chunks
+	) {
+		if (chunks.isEmpty()) {
+			return new LawSemanticBatchJobResponse(0, null, "NO_CANDIDATES", null, null, null, normalizedTarget, normalizedQuery, null, null, requestedLimit, 0, 0, 0, 0);
 		}
 
 		Path inputFile = writeInputFile(normalizedTarget, normalizedQuery, model, chunks);
@@ -109,7 +146,7 @@ public class LawSemanticBatchJobService {
 			model,
 			vectorStore,
 			inputFile.toAbsolutePath().toString(),
-			safeLimit,
+			requestedLimit,
 			chunks.size()
 		);
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
@@ -134,7 +171,7 @@ public class LawSemanticBatchJobService {
 		String normalizedTarget = target == null ? "" : target.trim();
 		String normalizedQuery = query == null ? "" : query.trim();
 		String model = properties.openai().embeddingModel();
-		String vectorStore = properties.qdrant().collection();
+		String vectorStore = vectorStoreForTarget(normalizedTarget);
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		LawSemanticBatchJobRow existing = batchJobMapper.findByOpenaiBatchId(batchId);
 		if (existing == null) {
@@ -250,6 +287,10 @@ public class LawSemanticBatchJobService {
 	@Scheduled(fixedDelayString = "${law-ai.batch.poll-delay-millis:60000}")
 	// 메소드 설명: scheduledPoll 처리 흐름을 수행합니다.
 	public void scheduledPoll() {
+		if (!properties.batch().schedulerEnabled()) {
+			schedulerStatus = LawSemanticBatchSchedulerStatus.idle();
+			return;
+		}
 		LocalDateTime startedAt = LocalDateTime.now();
 		schedulerStatus = new LawSemanticBatchSchedulerStatus(startedAt, schedulerStatus.lastFinishedAt(), true, "RUNNING", null);
 		try {
@@ -279,7 +320,7 @@ public class LawSemanticBatchJobService {
 	public Map<String, Integer> recoverStaleSubmittedEmbeddings(String target) {
 		String normalizedTarget = target == null ? "" : target.trim();
 		String model = properties.openai().embeddingModel();
-		String vectorStore = properties.qdrant().collection();
+		String vectorStore = vectorStoreForTarget(normalizedTarget);
 		if (isRagTarget(normalizedTarget)) {
 			return Map.of(
 				"law", 0,
@@ -311,7 +352,7 @@ public class LawSemanticBatchJobService {
 			batchJobMapper.updateStatus(job.openaiBatchId(), status.status(), status.outputFileId(), status.errorFileId(), status.completed(), status.failed());
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 			LawSemanticBatchJobRow updated = batchJobMapper.findByOpenaiBatchId(job.openaiBatchId());
-			if (properties.batch().autoEnabled() && "completed".equals(status.status()) && updated.ingestedCount() == 0 && status.outputFileId() != null) {
+			if (properties.batch().autoIngestEnabled() && "completed".equals(status.status()) && updated.ingestedCount() == 0 && status.outputFileId() != null) {
 				ingestOutput(updated);
 				// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 				updated = batchJobMapper.findByOpenaiBatchId(job.openaiBatchId());
@@ -575,8 +616,22 @@ public class LawSemanticBatchJobService {
 	private int flushVectors(Map<Long, List<Double>> vectors, LawSemanticBatchJobRow job, Set<Long> indexedChunkIds) {
 		List<Long> chunkIds = new ArrayList<>(vectors.keySet());
 		List<LawSemanticChunkRow> chunks = findSemanticChunksByIds(job.target(), chunkIds);
+		Set<Long> currentChunkIds = chunks.stream()
+			.map(LawSemanticChunkRow::chunkId)
+			.collect(java.util.stream.Collectors.toSet());
+		List<Long> staleChunkIds = chunkIds.stream()
+			.filter(chunkId -> !currentChunkIds.contains(chunkId))
+			.toList();
 		upsertVectors(job.target(), chunks, vectors);
 		transactionTemplate.executeWithoutResult(status -> {
+			for (Long staleChunkId : staleChunkIds) {
+				batchJobChunkMapper.markFailed(
+					job.batchJobId(),
+					"chunk:" + staleChunkId,
+					"STALE_CHUNK",
+					"Chunk was deleted or replaced before batch output ingest."
+				);
+			}
 			for (LawSemanticChunkRow chunk : chunks) {
 				if (vectors.containsKey(chunk.chunkId())) {
 					upsertEmbeddingStatus(
@@ -740,7 +795,7 @@ public class LawSemanticBatchJobService {
 		if (target == null || target.isBlank()) {
 			Map<String, LawSemanticChunkRow> combined = new LinkedHashMap<>();
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-			for (LawSemanticChunkRow chunk : lawChunkMapper.findSemanticChunksByIds(chunkIds)) {
+			for (LawSemanticChunkRow chunk : lawChunkMapper.findSemanticChunksByIdsForIndexing(chunkIds)) {
 				combined.put(scoreKey(chunk.target(), chunk.chunkId()), chunk);
 			}
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
@@ -750,7 +805,7 @@ public class LawSemanticBatchJobService {
 			return new ArrayList<>(combined.values());
 		}
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		return lawChunkMapper.findSemanticChunksByIds(chunkIds);
+		return lawChunkMapper.findSemanticChunksByIdsForIndexing(chunkIds);
 	}
 
 	// 메소드 설명: staleSubmittedMinutes 처리 흐름을 수행합니다.
@@ -764,6 +819,21 @@ public class LawSemanticBatchJobService {
 	}
 
 	// 메소드 설명: upsertVectors 처리 흐름을 수행합니다.
+	private String documentIdsQuery(List<Long> documentIds) {
+		if (documentIds == null || documentIds.isEmpty()) {
+			return "documentIds:";
+		}
+		String joined = documentIds.stream()
+			.limit(40)
+			.map(String::valueOf)
+			.collect(java.util.stream.Collectors.joining(","));
+		if (documentIds.size() > 40) {
+			joined = joined + ",...+" + (documentIds.size() - 40);
+		}
+		String query = "documentIds:" + joined;
+		return query.length() <= 500 ? query : query.substring(0, 500);
+	}
+
 	private void upsertVectors(String target, List<LawSemanticChunkRow> chunks, Map<Long, List<Double>> vectorsByChunkId) {
 		if (isRagTarget(target)) {
 			List<LawSemanticChunkRow> orderedChunks = chunks.stream()
@@ -797,6 +867,7 @@ public class LawSemanticBatchJobService {
 		}
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		lawChunkMapper.upsertEmbeddingStatus(chunkId, model, vectorStore, vectorPointId, contentHash, status, errorMessage);
+		lawChunkMapper.updateChunkIndexStatus(chunkId, status, errorMessage);
 	}
 
 	// 메소드 설명: vectorPointId 처리 흐름을 수행합니다.
@@ -807,6 +878,10 @@ public class LawSemanticBatchJobService {
 	// 메소드 설명: isRagTarget 처리 흐름을 수행합니다.
 	private boolean isRagTarget(String target) {
 		return "official_doc".equals(target) || "internal_doc".equals(target) || "reference_doc".equals(target);
+	}
+
+	private String vectorStoreForTarget(String target) {
+		return isRagTarget(target) ? properties.qdrant().ragCollection() : properties.qdrant().collection();
 	}
 
 	private void insertJobChunks(

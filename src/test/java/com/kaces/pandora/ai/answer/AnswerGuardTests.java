@@ -20,8 +20,9 @@ class AnswerGuardTests {
 		);
 
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		assertThat(answer).contains("[1]");
+		assertThat(answer).contains("첫 번째 근거는 유지합니다");
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		assertThat(answer).doesNotContain("[1]");
 		assertThat(answer).doesNotContain("[9]");
 	}
 
@@ -35,7 +36,7 @@ class AnswerGuardTests {
 		);
 
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		assertThat(answer).contains("[1, 3]");
+		assertThat(answer).doesNotContain("[1, 3]");
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		assertThat(answer).doesNotContain("99");
 	}
@@ -50,9 +51,9 @@ class AnswerGuardTests {
 		);
 
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		assertThat(answer).contains("[2]");
+		assertThat(answer).doesNotContain("[2]");
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		assertThat(answer).contains("[3]");
+		assertThat(answer).doesNotContain("[3]");
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		assertThat(answer).doesNotContain("근거 9");
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
@@ -68,7 +69,7 @@ class AnswerGuardTests {
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		assertThat(answer).contains("[별표 1]");
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		assertThat(answer).contains("[1]");
+		assertThat(answer).doesNotContain("[1]");
 	}
 
 	@Test
@@ -78,7 +79,7 @@ class AnswerGuardTests {
 		String answer = guard.guard("제공된 근거 기준으로는 신청 대상에 해당할 수 있습니다.", List.of(ground(1)));
 
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		assertThat(answer).endsWith("[1]");
+		assertThat(answer).doesNotEndWith("[1]");
 	}
 
 	@Test
@@ -112,9 +113,28 @@ class AnswerGuardTests {
 		String answer = guard.guard("대상으로 보지 않습니다 — 정보화사업이 아닌 경우입니다 [1].", List.of(ground(1)));
 
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		assertThat(answer).contains("대상으로 보지 않습니다. 정보화사업이 아닌 경우입니다 [1]");
+		assertThat(answer).contains("대상으로 보지 않습니다. 정보화사업이 아닌 경우입니다");
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		assertThat(answer).doesNotContain("—");
+		assertThat(answer).doesNotContain("[1]");
+	}
+
+	@Test
+	void removesInternalDiagnosticsFromPublicAnswer() {
+		String answer = guard.guard(
+			"""
+			진단: 후보 80건은 있었지만 Evidence Judge가 질문에 직접 답하는 근거를 확정하지 못했습니다.
+			단계별 건수: 후보 80건 / Judge후보 30건 / Judge통과 0건
+			DEBUG 화면에서 확인할 수 있습니다.
+			제공된 근거 기준으로는 대상 여부를 확인해야 합니다.
+			""",
+			List.of(ground(1))
+		);
+
+		assertThat(answer).doesNotContain("진단:");
+		assertThat(answer).doesNotContain("Judge");
+		assertThat(answer).doesNotContain("DEBUG");
+		assertThat(answer).contains("제공된 근거 기준으로는 대상 여부를 확인해야 합니다");
 	}
 
 	// 메소드 설명: ground 처리 흐름을 수행합니다.
@@ -128,6 +148,7 @@ class AnswerGuardTests {
 			"문서 " + number,
 			"기관",
 			"공식 가이드 문서",
+			null,
 			null,
 			"page " + number,
 			"p." + number,

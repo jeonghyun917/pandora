@@ -1,8 +1,6 @@
 package com.kaces.pandora.lawdata.sync;
 
 
-import com.kaces.pandora.common.text.LawHashUtils;
-import com.kaces.pandora.common.text.LawTextUtils;
 import static com.kaces.pandora.common.text.LawHashUtils.sha256;
 import static com.kaces.pandora.common.text.LawTextUtils.emptyToNull;
 
@@ -13,19 +11,17 @@ import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
 import com.kaces.pandora.lawdata.persistence.LawDetailMapper;
 import com.kaces.pandora.lawdata.persistence.LawDocumentMapper;
 import com.kaces.pandora.lawdata.persistence.LawDocumentSyncState;
-import java.util.ArrayList;
+import com.kaces.pandora.lawdata.version.LawVersionStatusService;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.util.StringUtils;
 
 @Component
 public class LawDocumentWriter {
 
 	private static final int MAX_STORED_DETAIL_JSON_CHARS = 4_000_000;
-	private static final int MAX_EMBEDDING_CHUNK_CHARS = 6_000;
 
 	private final LawDocumentMapper lawDocumentMapper;
 	private final LawDetailMapper lawDetailMapper;
@@ -33,6 +29,8 @@ public class LawDocumentWriter {
 	private final LawAssetMapper lawAssetMapper;
 	private final LawJsonWriter jsonWriter;
 	private final QdrantClient qdrantClient;
+	private final LawVersionStatusService lawVersionStatusService;
+	private final LawSemanticChunkPlanner chunkPlanner = new LawSemanticChunkPlanner();
 
 	
 	public LawDocumentWriter(
@@ -41,7 +39,8 @@ public class LawDocumentWriter {
 		LawChunkMapper lawChunkMapper,
 		LawAssetMapper lawAssetMapper,
 		LawJsonWriter jsonWriter,
-		QdrantClient qdrantClient
+		QdrantClient qdrantClient,
+		LawVersionStatusService lawVersionStatusService
 	) {
 		this.lawDocumentMapper = lawDocumentMapper;
 		this.lawDetailMapper = lawDetailMapper;
@@ -49,6 +48,7 @@ public class LawDocumentWriter {
 		this.lawAssetMapper = lawAssetMapper;
 		this.jsonWriter = jsonWriter;
 		this.qdrantClient = qdrantClient;
+		this.lawVersionStatusService = lawVersionStatusService;
 	}
 
 	
@@ -62,6 +62,9 @@ public class LawDocumentWriter {
 			emptyToNull(document.agencyName()),
 			emptyToNull(document.categoryName()),
 			emptyToNull(document.sourceDate()),
+			emptyToNull(document.canonicalKey()),
+			emptyToNull(document.effectiveDate()),
+			emptyToNull(document.effectiveStatus()),
 			emptyToNull(document.detailLink()),
 			document.rawJson()
 		);
@@ -70,7 +73,9 @@ public class LawDocumentWriter {
 		lawDocumentMapper.upsertDocument(normalized, sha256(document.rawJson()));
 		
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		return lawDocumentMapper.findDocumentId(document.target(), document.externalId());
+		long documentId = lawDocumentMapper.findDocumentId(document.target(), document.externalId());
+		lawVersionStatusService.refreshGroup(normalized.target(), normalized.canonicalKey());
+		return documentId;
 	}
 
 	public LawDocumentSyncState findSyncState(String target, String externalId) {
@@ -114,38 +119,23 @@ public class LawDocumentWriter {
 		
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		lawChunkMapper.deleteChunks(documentId);
+		List<PlannedLawChunk> plannedChunks = chunkPlanner.plan(sections);
 		int count = 0;
-		for (SyncDetailSection section : sections) {
-			String body = section.body();
-			if (!StringUtils.hasText(body)) {
-				continue;
-			}
-			List<String> pieces = splitForEmbedding(body);
-			for (int index = 0; index < pieces.size(); index++) {
-				String piece = pieces.get(index);
-				String chunkNo = section.no();
-				String chunkTitle = section.title();
-				if (pieces.size() > 1) {
-					String suffix = " (" + (index + 1) + "/" + pieces.size() + ")";
-					chunkNo = appendSuffix(chunkNo, suffix);
-					chunkTitle = appendSuffix(chunkTitle, suffix);
-				}
-				
-				// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-				lawChunkMapper.insertChunk(new StoredChunk(
-					documentId,
-					detailId,
-					section.type(),
-					emptyToNull(chunkNo),
-					emptyToNull(chunkTitle),
-					piece,
-					emptyToNull(section.sourcePath()),
-					emptyToNull(sourceUrl),
-					count,
-					sha256(piece)
-				));
-				count++;
-			}
+		for (PlannedLawChunk chunk : plannedChunks) {
+			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+			lawChunkMapper.insertChunk(new StoredChunk(
+				documentId,
+				detailId,
+				chunk.type(),
+				emptyToNull(chunk.no()),
+				emptyToNull(chunk.title()),
+				chunk.text(),
+				emptyToNull(chunk.sourcePath()),
+				emptyToNull(sourceUrl),
+				count,
+				sha256(chunk.text())
+			));
+			count++;
 		}
 		deleteOldQdrantPointsAfterCommit(oldChunkIds);
 		return count;
@@ -167,50 +157,6 @@ public class LawDocumentWriter {
 		});
 	}
 
-	private List<String> splitForEmbedding(String text) {
-		String normalized = LawTextUtils.normalizeText(text);
-		if (normalized.length() <= MAX_EMBEDDING_CHUNK_CHARS) {
-			return List.of(normalized);
-		}
-		List<String> pieces = new ArrayList<>();
-		int start = 0;
-		while (start < normalized.length()) {
-			int end = Math.min(start + MAX_EMBEDDING_CHUNK_CHARS, normalized.length());
-			if (end < normalized.length()) {
-				int boundary = splitBoundary(normalized, start, end);
-				if (boundary > start) {
-					end = boundary;
-				}
-			}
-			String piece = normalized.substring(start, end).trim();
-			if (StringUtils.hasText(piece)) {
-				pieces.add(piece);
-			}
-			start = end;
-		}
-		return pieces;
-	}
-
-	private int splitBoundary(String text, int start, int preferredEnd) {
-		int min = start + Math.max(1, MAX_EMBEDDING_CHUNK_CHARS / 2);
-		for (int index = preferredEnd; index > min; index--) {
-			char value = text.charAt(index - 1);
-			if (value == '\n' || value == '.' || value == '。' || value == ';' || value == '；') {
-				return index;
-			}
-		}
-		int space = text.lastIndexOf(' ', preferredEnd);
-		return space > min ? space : preferredEnd;
-	}
-
-	private String appendSuffix(String value, String suffix) {
-		if (StringUtils.hasText(value)) {
-			return value + suffix;
-		}
-		return suffix.trim();
-	}
-
-	
 	// 메소드 설명: replaceAssets 처리 흐름을 수행합니다.
 	public int replaceAssets(long documentId, long detailId, List<SyncAsset> assets) {
 		

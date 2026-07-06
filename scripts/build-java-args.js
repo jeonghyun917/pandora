@@ -36,6 +36,7 @@ fs.writeFileSync(
     "-Dspring.output.ansi.enabled=never",
     "-Dspring.devtools.restart.enabled=false",
     "-Dspring.devtools.add-properties=false",
+    "-Dspring.batch.job.enabled=false",
     "-cp",
     decodeXml(match[1]),
     "com.kaces.pandora.app.PandoraApplication",

@@ -7,8 +7,11 @@ import com.kaces.pandora.lawdata.chunk.LawChunkRebuildRow;
 import com.kaces.pandora.lawdata.persistence.LawDetailMapper;
 import com.kaces.pandora.lawdata.persistence.LawDocumentSyncState;
 import com.kaces.pandora.lawdata.persistence.LawSyncHistoryMapper;
+import com.kaces.pandora.lawdata.version.LawVersionUtils;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
@@ -18,6 +21,7 @@ import org.springframework.util.StringUtils;
 @Service
 public class LawOpenApiSyncService {
 	private static final Duration DETAIL_REVALIDATE_AFTER = Duration.ofHours(12);
+	private static final Clock VERSION_CLOCK = Clock.system(ZoneId.of("Asia/Seoul"));
 
 	private final LawOpenApiService lawOpenApiService;
 	private final LawOpenApiPayloadParser payloadParser;
@@ -25,6 +29,7 @@ public class LawOpenApiSyncService {
 	private final LawDetailMapper lawDetailMapper;
 	private final LawSyncHistoryMapper syncHistoryMapper;
 	private final LawJsonWriter jsonWriter;
+	private final LawSemanticChunkPlanner chunkPlanner = new LawSemanticChunkPlanner();
 
 	
 	public LawOpenApiSyncService(
@@ -115,10 +120,63 @@ public class LawOpenApiSyncService {
 		int rebuiltChunks = 0;
 		for (LawChunkRebuildRow row : rows) {
 			SyncDetailDocument detail = payloadParser.parseDetailDocument(row.rawJson(), row.detailTitle() == null ? row.title() : row.detailTitle());
-			rebuiltChunks += documentWriter.replaceChunks(row.documentId(), row.detailId(), detail.sections(), "db:" + row.documentId());
+			rebuiltChunks += documentWriter.replaceChunks(row.documentId(), row.detailId(), detail.sections(), sourceUrl(row));
 			rebuiltDocuments++;
 		}
 		return new ChunkRebuildResult(safeTarget, safeOffset, rebuiltDocuments, rebuiltChunks);
+	}
+
+	@Transactional(readOnly = true)
+	public ChunkRebuildPreviewResult previewRebuildChunks(String target, int limit, int offset) {
+		String safeTarget = StringUtils.hasText(target) ? target.trim() : "law";
+		if (!List.of("law", "admrul").contains(safeTarget)) {
+			throw new IllegalArgumentException("Unsupported law data target: " + safeTarget);
+		}
+		int safeLimit = Math.min(Math.max(limit, 1), 200);
+		int safeOffset = Math.max(offset, 0);
+		List<LawChunkRebuildRow> rows = lawDetailMapper.findChunkRebuildRows(safeTarget, safeLimit, safeOffset);
+		return previewRebuildRows(safeTarget, safeOffset, rows);
+	}
+
+	@Transactional(readOnly = true)
+	public ChunkRebuildPreviewResult previewRebuildChunksByDocumentIds(String target, List<Long> documentIds) {
+		String safeTarget = StringUtils.hasText(target) ? target.trim() : "law";
+		if (!List.of("law", "admrul").contains(safeTarget)) {
+			throw new IllegalArgumentException("Unsupported law data target: " + safeTarget);
+		}
+		List<Long> safeDocumentIds = documentIds == null ? List.of() : documentIds.stream()
+			.filter(id -> id != null && id > 0)
+			.distinct()
+			.toList();
+		if (safeDocumentIds.isEmpty()) {
+			return new ChunkRebuildPreviewResult(safeTarget, 0, 0, 0, 0, "0.0%", 0, 0, 0, List.of());
+		}
+		List<LawChunkRebuildRow> rows = lawDetailMapper.findChunkRebuildRowsByDocumentIds(safeTarget, safeDocumentIds);
+		return previewRebuildRows(safeTarget, 0, rows);
+	}
+
+	private ChunkRebuildPreviewResult previewRebuildRows(String safeTarget, int safeOffset, List<LawChunkRebuildRow> rows) {
+		List<ChunkRebuildPreviewItem> items = rows.stream()
+			.map(this::previewItem)
+			.toList();
+		int currentChunks = items.stream().mapToInt(ChunkRebuildPreviewItem::currentChunks).sum();
+		int projectedChunks = items.stream().mapToInt(ChunkRebuildPreviewItem::projectedChunks).sum();
+		int currentTinyChunks = items.stream().mapToInt(ChunkRebuildPreviewItem::currentTinyChunks).sum();
+		int projectedTinyChunks = items.stream().mapToInt(ChunkRebuildPreviewItem::projectedTinyChunks).sum();
+		int projectedShortChunks = items.stream().mapToInt(ChunkRebuildPreviewItem::projectedShortChunks).sum();
+		String projectedReduction = currentChunks == 0 ? "0.0%" : String.format(java.util.Locale.ROOT, "%.1f%%", 100.0 - (projectedChunks * 100.0 / currentChunks));
+		return new ChunkRebuildPreviewResult(
+			safeTarget,
+			safeOffset,
+			items.size(),
+			currentChunks,
+			projectedChunks,
+			projectedReduction,
+			currentTinyChunks,
+			projectedTinyChunks,
+			projectedShortChunks,
+			items
+		);
 	}
 
 	@Transactional
@@ -144,7 +202,22 @@ public class LawOpenApiSyncService {
 				"sourceDate", safeSourceDate,
 				"detailLink", safeDetailLink
 			));
-			SearchDocument document = new SearchDocument(safeTarget, safeExternalId, safeTitle, safeAgencyName, safeCategoryName, safeSourceDate, safeDetailLink, rawJson);
+			String canonicalKey = LawVersionUtils.canonicalKey(safeTarget, safeTitle);
+			String effectiveDate = LawVersionUtils.normalizeEffectiveDate(safeSourceDate);
+			String effectiveStatus = LawVersionUtils.initialStatus(safeTarget, effectiveDate, VERSION_CLOCK);
+			SearchDocument document = new SearchDocument(
+				safeTarget,
+				safeExternalId,
+				safeTitle,
+				safeAgencyName,
+				safeCategoryName,
+				safeSourceDate,
+				canonicalKey,
+				effectiveDate,
+				effectiveStatus,
+				safeDetailLink,
+				rawJson
+			);
 			SyncCounters counters = syncDocuments(List.of(document), true);
 			SyncResult result = new SyncResult(historyId, safeTarget, safeTitle, "", "", "", "", 1, counters.details(), counters.skippedDetails(), counters.chunks(), counters.assets());
 			markSyncSuccess(historyId, toJson(result));
@@ -173,10 +246,68 @@ public class LawOpenApiSyncService {
 		int rebuiltChunks = 0;
 		for (LawChunkRebuildRow row : rows) {
 			SyncDetailDocument detail = payloadParser.parseDetailDocument(row.rawJson(), row.detailTitle() == null ? row.title() : row.detailTitle());
-			rebuiltChunks += documentWriter.replaceChunks(row.documentId(), row.detailId(), detail.sections(), "db:" + row.documentId());
+			rebuiltChunks += documentWriter.replaceChunks(row.documentId(), row.detailId(), detail.sections(), sourceUrl(row));
 			rebuiltDocuments++;
 		}
 		return new ChunkRebuildResult(safeTarget, 0, rebuiltDocuments, rebuiltChunks);
+	}
+
+	private ChunkRebuildPreviewItem previewItem(LawChunkRebuildRow row) {
+		SyncDetailDocument detail = payloadParser.parseDetailDocument(row.rawJson(), row.detailTitle() == null ? row.title() : row.detailTitle());
+		List<PlannedLawChunk> planned = chunkPlanner.plan(detail.sections());
+		int projectedTinyChunks = (int) planned.stream()
+			.filter(chunk -> chunk.text() != null && chunk.text().length() < 80)
+			.count();
+		int projectedShortChunks = (int) planned.stream()
+			.filter(chunk -> chunk.text() != null && chunk.text().length() < 800)
+			.count();
+		List<String> projectedTinySamples = planned.stream()
+			.filter(chunk -> chunk.text() != null && chunk.text().length() < 80)
+			.map(chunk -> String.format(
+				java.util.Locale.ROOT,
+				"[%s/%s/%d] %s",
+				nullToDash(chunk.no()),
+				nullToDash(chunk.title()),
+				chunk.text().length(),
+				previewText(chunk.text())
+			))
+			.limit(5)
+			.toList();
+		int maxProjectedLength = planned.stream()
+			.map(PlannedLawChunk::text)
+			.filter(StringUtils::hasText)
+			.mapToInt(String::length)
+			.max()
+			.orElse(0);
+		return new ChunkRebuildPreviewItem(
+			row.documentId(),
+			row.target(),
+			row.title(),
+			row.currentChunkCount(),
+			planned.size(),
+			row.currentTinyChunkCount(),
+			projectedTinyChunks,
+			projectedShortChunks,
+			maxProjectedLength,
+			sourceUrl(row),
+			projectedTinySamples
+		);
+	}
+
+	private String nullToDash(String value) {
+		return StringUtils.hasText(value) ? value.trim() : "-";
+	}
+
+	private String previewText(String value) {
+		if (!StringUtils.hasText(value)) {
+			return "";
+		}
+		String normalized = value.replaceAll("\\s+", " ").trim();
+		return normalized.length() <= 120 ? normalized : normalized.substring(0, 117) + "...";
+	}
+
+	private String sourceUrl(LawChunkRebuildRow row) {
+		return StringUtils.hasText(row.detailLink()) ? row.detailLink() : "db:" + row.documentId();
 	}
 
 	
@@ -318,6 +449,35 @@ public class LawOpenApiSyncService {
 		int offset,
 		int documents,
 		int chunks
+	) {
+	}
+
+	public record ChunkRebuildPreviewResult(
+		String target,
+		int offset,
+		int documents,
+		int currentChunks,
+		int projectedChunks,
+		String projectedReduction,
+		int currentTinyChunks,
+		int projectedTinyChunks,
+		int projectedShortChunks,
+		List<ChunkRebuildPreviewItem> items
+	) {
+	}
+
+	public record ChunkRebuildPreviewItem(
+		long documentId,
+		String target,
+		String title,
+		int currentChunks,
+		int projectedChunks,
+		int currentTinyChunks,
+		int projectedTinyChunks,
+		int projectedShortChunks,
+		int maxProjectedLength,
+		String sourceUrl,
+		List<String> projectedTinySamples
 	) {
 	}
 }

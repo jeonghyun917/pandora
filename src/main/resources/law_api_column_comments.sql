@@ -66,7 +66,7 @@ ALTER TABLE law_api_assets
     MODIFY detail_id BIGINT NULL COMMENT '연결된 상세 정보 식별자',
     MODIFY asset_type VARCHAR(50) NOT NULL COMMENT '자산 유형(image, pdf, hwp, doc, file, link 등)',
     MODIFY source_url VARCHAR(1000) NOT NULL COMMENT '국가법령 원본 파일 또는 이미지 URL',
-    MODIFY proxy_url VARCHAR(1000) NULL COMMENT '우리 서버 프록시 URL',
+    MODIFY proxy_url TEXT NULL COMMENT '우리 서버 프록시 URL',
     MODIFY file_name VARCHAR(500) NULL COMMENT '파일명',
     MODIFY file_extension VARCHAR(20) NULL COMMENT '파일 확장자',
     MODIFY mime_type VARCHAR(100) NULL COMMENT 'MIME 타입',

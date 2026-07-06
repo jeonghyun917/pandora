@@ -43,6 +43,23 @@ public class LawSyncController {
 		return lawOpenApiSyncService.rebuildChunks(target, limit, offset);
 	}
 
+	@PostMapping("/chunks/rebuild-preview")
+	public LawOpenApiSyncService.ChunkRebuildPreviewResult previewRebuildChunks(
+		@RequestParam(defaultValue = "law") String target,
+		@RequestParam(defaultValue = "100") int limit,
+		@RequestParam(defaultValue = "0") int offset
+	) {
+		return lawOpenApiSyncService.previewRebuildChunks(target, limit, offset);
+	}
+
+	@PostMapping("/chunks/rebuild-preview-by-document-ids")
+	public LawOpenApiSyncService.ChunkRebuildPreviewResult previewRebuildChunksByDocumentIds(
+		@RequestParam(defaultValue = "law") String target,
+		@RequestParam List<Long> documentIds
+	) {
+		return lawOpenApiSyncService.previewRebuildChunksByDocumentIds(target, documentIds);
+	}
+
 	@PostMapping("/sync/detail")
 	public LawOpenApiSyncService.SyncResult syncDetail(
 		@RequestParam(defaultValue = "law") String target,

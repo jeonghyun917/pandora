@@ -95,4 +95,13 @@ class HwpxTextCleanerTests {
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		assertThat(HwpxTextCleaner.clean(value)).isEqualTo(value.trim());
 	}
+
+	@Test
+	// 메소드 설명: removesPdfExtractionControlGlyphs 처리 흐름을 수행합니다.
+	void removesPdfExtractionControlGlyphs() {
+		String cleaned = HwpxTextCleaner.clean("적용 대상 사업\n-\u0007소프트웨어의 운영·유지관리");
+
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		assertThat(cleaned).isEqualTo("적용 대상 사업\n-소프트웨어의 운영·유지관리");
+	}
 }

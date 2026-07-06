@@ -14,7 +14,8 @@ public record LawDetailResponse(
 	String originalFileName,
 	String originalMimeType,
 	String previewFileUrl,
-	String previewHtmlUrl
+	String previewHtmlUrl,
+	String detailLink
 ) {
 	public LawDetailResponse(
 		boolean htmlDetail,
@@ -24,7 +25,7 @@ public record LawDetailResponse(
 		List<String> meta,
 		List<LawDetailSectionResponse> sections
 	) {
-		this(htmlDetail, source, documentId, title, meta, sections, null, null, null, null, null);
+		this(htmlDetail, source, documentId, title, meta, sections, null, null, null, null, null, null);
 	}
 
 	public LawDetailResponse(
@@ -38,7 +39,7 @@ public record LawDetailResponse(
 		String originalFileName,
 		String originalMimeType
 	) {
-		this(htmlDetail, source, documentId, title, meta, sections, originalFileUrl, originalFileName, originalMimeType, null, null);
+		this(htmlDetail, source, documentId, title, meta, sections, originalFileUrl, originalFileName, originalMimeType, null, null, null);
 	}
 
 	public LawDetailResponse(
@@ -53,6 +54,6 @@ public record LawDetailResponse(
 		String originalMimeType,
 		String previewFileUrl
 	) {
-		this(htmlDetail, source, documentId, title, meta, sections, originalFileUrl, originalFileName, originalMimeType, previewFileUrl, null);
+		this(htmlDetail, source, documentId, title, meta, sections, originalFileUrl, originalFileName, originalMimeType, previewFileUrl, null, null);
 	}
 }

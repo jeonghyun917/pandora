@@ -5,6 +5,7 @@ public record LawDetailRow(
 	String title,
 	String agencyName,
 	String sourceDate,
+	String detailLink,
 	String detailTitle,
 	String sectionsJson,
 	String rawJson

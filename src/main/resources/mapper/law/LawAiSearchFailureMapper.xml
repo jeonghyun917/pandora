@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.kaces.pandora.ai.answer.LawAiSearchFailureMapper">
+
+  <resultMap id="FailureRowMap" type="com.kaces.pandora.ai.answer.LawAiSearchFailureRow">
+    <id property="failureId" column="failure_id"/>
+    <result property="question" column="question"/>
+    <result property="targets" column="targets"/>
+    <result property="intentTypes" column="intent_types"/>
+    <result property="entityIds" column="entity_ids"/>
+    <result property="lexicalKeywords" column="lexical_keywords"/>
+    <result property="expandedQueries" column="expanded_queries"/>
+    <result property="failureType" column="failure_type"/>
+    <result property="failureStage" column="failure_stage"/>
+    <result property="retryable" column="retryable"/>
+    <result property="evalCandidate" column="eval_candidate"/>
+    <result property="qdrantHitCount" column="qdrant_hit_count"/>
+    <result property="vectorChunkCount" column="vector_chunk_count"/>
+    <result property="lexicalChunkCount" column="lexical_chunk_count"/>
+    <result property="mergedCount" column="merged_count"/>
+    <result property="rankedCount" column="ranked_count"/>
+    <result property="intentFilteredCount" column="intent_filtered_count"/>
+    <result property="judgeCandidateCount" column="judge_candidate_count"/>
+    <result property="judgedCount" column="judged_count"/>
+    <result property="finalGroundCount" column="final_ground_count"/>
+    <result property="resultMsg" column="result_msg"/>
+    <result property="publicMessage" column="public_message"/>
+    <result property="diagnosticMessage" column="diagnostic_message"/>
+    <result property="reviewStatus" column="review_status"/>
+    <result property="promotedEvalCaseId" column="promoted_eval_case_id"/>
+    <result property="createdAt" column="created_at"/>
+  </resultMap>
+
+  <insert id="insertFailure">
+    INSERT INTO law_ai_search_failure_logs (
+      question,
+      targets,
+      intent_types,
+      entity_ids,
+      lexical_keywords,
+      expanded_queries,
+      failure_type,
+      failure_stage,
+      retryable,
+      eval_candidate,
+      qdrant_hit_count,
+      vector_chunk_count,
+      lexical_chunk_count,
+      merged_count,
+      ranked_count,
+      intent_filtered_count,
+      judge_candidate_count,
+      judged_count,
+      final_ground_count,
+      result_msg,
+      public_message,
+      diagnostic_message
+    ) VALUES (
+      #{failure.question},
+      #{failure.targets},
+      #{failure.intentTypes},
+      #{failure.entityIds},
+      #{failure.lexicalKeywords},
+      #{failure.expandedQueries},
+      #{failure.failureType},
+      #{failure.failureStage},
+      #{failure.retryable},
+      #{failure.evalCandidate},
+      #{failure.qdrantHitCount},
+      #{failure.vectorChunkCount},
+      #{failure.lexicalChunkCount},
+      #{failure.mergedCount},
+      #{failure.rankedCount},
+      #{failure.intentFilteredCount},
+      #{failure.judgeCandidateCount},
+      #{failure.judgedCount},
+      #{failure.finalGroundCount},
+      #{failure.resultMsg},
+      #{failure.publicMessage},
+      #{failure.diagnosticMessage}
+    )
+  </insert>
+
+  <select id="findRecentFailures" resultMap="FailureRowMap">
+    SELECT
+      failure_id,
+      question,
+      targets,
+      intent_types,
+      entity_ids,
+      lexical_keywords,
+      expanded_queries,
+      failure_type,
+      failure_stage,
+      retryable,
+      eval_candidate,
+      qdrant_hit_count,
+      vector_chunk_count,
+      lexical_chunk_count,
+      merged_count,
+      ranked_count,
+      intent_filtered_count,
+      judge_candidate_count,
+      judged_count,
+      final_ground_count,
+      result_msg,
+      public_message,
+      diagnostic_message,
+      review_status,
+      promoted_eval_case_id,
+      created_at
+    FROM law_ai_search_failure_logs
+    WHERE 1 = 1
+    <if test="evalCandidateOnly">
+      AND eval_candidate = 1
+    </if>
+    <if test="reviewStatus != null and reviewStatus != ''">
+      AND review_status = #{reviewStatus}
+    </if>
+    ORDER BY created_at DESC, failure_id DESC
+    LIMIT #{limit}
+  </select>
+
+  <select id="findById" resultMap="FailureRowMap">
+    SELECT
+      failure_id,
+      question,
+      targets,
+      intent_types,
+      entity_ids,
+      lexical_keywords,
+      expanded_queries,
+      failure_type,
+      failure_stage,
+      retryable,
+      eval_candidate,
+      qdrant_hit_count,
+      vector_chunk_count,
+      lexical_chunk_count,
+      merged_count,
+      ranked_count,
+      intent_filtered_count,
+      judge_candidate_count,
+      judged_count,
+      final_ground_count,
+      result_msg,
+      public_message,
+      diagnostic_message,
+      review_status,
+      promoted_eval_case_id,
+      created_at
+    FROM law_ai_search_failure_logs
+    WHERE failure_id = #{failureId}
+  </select>
+
+  <update id="markPromoted">
+    UPDATE law_ai_search_failure_logs
+    SET review_status = 'PROMOTED',
+        promoted_eval_case_id = #{caseId}
+    WHERE failure_id = #{failureId}
+  </update>
+</mapper>

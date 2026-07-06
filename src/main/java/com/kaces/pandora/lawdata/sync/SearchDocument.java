@@ -7,6 +7,9 @@ public record SearchDocument(
 	String agencyName,
 	String categoryName,
 	String sourceDate,
+	String canonicalKey,
+	String effectiveDate,
+	String effectiveStatus,
 	String detailLink,
 	String rawJson
 ) {

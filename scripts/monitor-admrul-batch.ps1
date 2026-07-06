@@ -3,13 +3,30 @@ $ErrorActionPreference = "Stop"
 $workspace = Split-Path -Parent $PSScriptRoot
 $logDir = Join-Path $workspace "logs"
 $logPath = Join-Path $logDir "admrul-batch-monitor.log"
+$skipFillQueuePath = Join-Path $logDir "admrul-skip-fill-queue.flag"
 $lockPath = Join-Path $env:TEMP "pandora-admrul-batch-monitor.lock"
+$monitorLockMinutes = 20
+$waveLockMaxMinutes = 360
 $mysql = "C:\Program Files\MariaDB 12.2\bin\mariadb.exe"
 $database = "pandora"
 $user = "pandora"
-$password = "pandora"
-$baseUrl = "http://localhost:8080"
+$password = $env:PANDORA_DB_PASSWORD
+if (-not $password) {
+    $password = "pandora"
+}
+$baseUrl = $env:PANDORA_BASE_URL
+if (-not $baseUrl) {
+    $baseUrl = "http://localhost:18080"
+}
 $qdrantUrl = "http://localhost:6333/collections/law_chunks"
+$batchFillLimit = 100
+if ($env:PANDORA_BATCH_FILL_LIMIT -and [int]::TryParse($env:PANDORA_BATCH_FILL_LIMIT, [ref] $batchFillLimit)) {
+    $batchFillLimit = [Math]::Min([Math]::Max($batchFillLimit, 1), 5000)
+}
+$batchMaxActiveJobs = 1
+if ($env:PANDORA_BATCH_MAX_ACTIVE_JOBS -and [int]::TryParse($env:PANDORA_BATCH_MAX_ACTIVE_JOBS, [ref] $batchMaxActiveJobs)) {
+    $batchMaxActiveJobs = [Math]::Min([Math]::Max($batchMaxActiveJobs, 1), 2)
+}
 
 function Write-Log {
     param([string] $Message)
@@ -39,13 +56,19 @@ New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
 if (Test-Path $lockPath) {
     $ageMinutes = ((Get-Date) - (Get-Item $lockPath).LastWriteTime).TotalMinutes
-    if ($ageMinutes -lt 20) {
+    $lockContent = Get-Content -Path $lockPath -Raw -ErrorAction SilentlyContinue
+    if ($lockContent -like "law-parent-child-wave*" -and $ageMinutes -lt $waveLockMaxMinutes) {
+        Write-Log "skip: law parent-child wave active age_min=$([Math]::Round($ageMinutes, 1))"
+        exit 0
+    }
+    if ($ageMinutes -lt $monitorLockMinutes) {
         Write-Log "skip: previous monitor run still active"
         exit 0
     }
+    Write-Log "stale monitor lock replaced age_min=$([Math]::Round($ageMinutes, 1))"
 }
 
-Set-Content -Path $lockPath -Value $PID
+Set-Content -Path $lockPath -Value "monitor pid=$PID started=$((Get-Date).ToString('o'))"
 
 try {
     Set-Location $workspace
@@ -84,8 +107,12 @@ ORDER BY batch_job_id
         }
     }
 
-    $fill = Invoke-Api -Method Post -Path "/api/law-data/semantic/batches/fill-queue?target=admrul&maxActiveJobs=2" -TimeoutSec 600
-    Write-Log "fill-queue $fill"
+    if (Test-Path $skipFillQueuePath) {
+        Write-Log "fill-queue skipped by admrul-skip-fill-queue.flag"
+    } else {
+        $fill = Invoke-Api -Method Post -Path "/api/law-data/semantic/batches/fill-queue?target=admrul&limit=$batchFillLimit&maxActiveJobs=$batchMaxActiveJobs" -TimeoutSec 600
+        Write-Log "fill-queue limit=$batchFillLimit maxActiveJobs=$batchMaxActiveJobs $fill"
+    }
 
     $statusAges = Invoke-DbRows @"
 SELECT CONCAT(

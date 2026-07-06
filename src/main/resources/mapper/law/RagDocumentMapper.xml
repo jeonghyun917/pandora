@@ -69,6 +69,31 @@
       AND use_yn = 'Y'
   </select>
 
+  <select id="findDocumentsForReimport" resultType="com.kaces.pandora.rag.document.RagDocumentRow">
+    SELECT
+      document_id AS documentId,
+      document_type AS documentType,
+      title,
+      source_org AS sourceOrg,
+      document_category AS documentCategory,
+      document_topic AS documentTopic,
+      published_date AS publishedDate,
+      version,
+      trust_level AS trustLevel,
+      file_name AS fileName,
+      file_path AS filePath,
+      file_hash AS fileHash,
+      mime_type AS mimeType,
+      source_url AS sourceUrl,
+      import_status AS importStatus
+    FROM rag_documents
+    WHERE use_yn = 'Y'
+      AND file_path IS NOT NULL
+      AND file_path != ''
+      AND (#{documentType} = '' OR document_type = #{documentType})
+    ORDER BY document_type, document_id
+  </select>
+
   <sql id="documentSearchWhere">
     document_type = #{documentType}
     AND use_yn = 'Y'
@@ -105,10 +130,20 @@
         ELSE document_type
       END AS categoryName,
       published_date AS sourceDate,
+      NULL AS effectiveStatus,
       CONCAT('rag:', document_id) AS detailLink
     FROM rag_documents
     WHERE <include refid="documentSearchWhere"/>
-    ORDER BY COALESCE(published_date, ''), title, document_id
+    ORDER BY
+      CASE
+        WHEN title = #{query} THEN 0
+        WHEN title LIKE CONCAT(#{query}, '%') THEN 1
+        WHEN title LIKE CONCAT('%', #{query}, '%') THEN 2
+        ELSE 3
+      END,
+      COALESCE(published_date, '') DESC,
+      title ASC,
+      document_id DESC
     LIMIT #{limit} OFFSET #{offset}
   </select>
 
@@ -119,9 +154,12 @@
     WHERE doc.document_type = #{documentType}
       AND doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND <include refid="latestActiveChunkVersionFilter"/>
       AND (
         c.chunk_text LIKE CONCAT('%', #{query}, '%')
         OR c.chunk_title LIKE CONCAT('%', #{query}, '%')
+        OR c.parent_section_title LIKE CONCAT('%', #{query}, '%')
+        OR c.embedding_text LIKE CONCAT('%', #{query}, '%')
         OR c.chunk_no LIKE CONCAT('%', #{query}, '%')
         OR doc.title LIKE CONCAT('%', #{query}, '%')
         OR doc.source_org LIKE CONCAT('%', #{query}, '%')
@@ -143,6 +181,7 @@
         ELSE doc.document_type
       END AS categoryName,
       doc.published_date AS sourceDate,
+      NULL AS effectiveStatus,
       'document' AS chunkType,
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
@@ -155,9 +194,12 @@
     WHERE doc.document_type = #{documentType}
       AND doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND <include refid="latestActiveChunkVersionFilter"/>
       AND (
         c.chunk_text LIKE CONCAT('%', #{query}, '%')
         OR c.chunk_title LIKE CONCAT('%', #{query}, '%')
+        OR c.parent_section_title LIKE CONCAT('%', #{query}, '%')
+        OR c.embedding_text LIKE CONCAT('%', #{query}, '%')
         OR c.chunk_no LIKE CONCAT('%', #{query}, '%')
         OR doc.title LIKE CONCAT('%', #{query}, '%')
         OR doc.source_org LIKE CONCAT('%', #{query}, '%')
@@ -165,6 +207,7 @@
     ORDER BY
       CASE
         WHEN c.chunk_title LIKE CONCAT('%', #{query}, '%') THEN 0
+        WHEN c.parent_section_title LIKE CONCAT('%', #{query}, '%') THEN 1
         WHEN c.chunk_text LIKE CONCAT(#{query}, '%') THEN 1
         WHEN c.chunk_text LIKE CONCAT('%', #{query}, '%') THEN 2
         WHEN doc.title LIKE CONCAT('%', #{query}, '%') THEN 3
@@ -222,16 +265,101 @@
     WHERE document_id = #{documentId}
   </delete>
 
+  <select id="findActiveChunkIdsByDocumentIdAndVersion" resultType="long">
+    SELECT chunk_id
+    FROM rag_document_chunks
+    WHERE document_id = #{documentId}
+      AND chunk_version = #{chunkVersion}
+      AND use_yn = 'Y'
+  </select>
+
+  <select id="findActiveChunkIdsByFilePathsAndVersion" resultType="long">
+    SELECT c.chunk_id
+    FROM rag_document_chunks c
+    JOIN rag_documents doc ON doc.document_id = c.document_id
+    WHERE doc.file_path IN
+    <foreach collection="filePaths" item="filePath" open="(" separator="," close=")">
+      #{filePath}
+    </foreach>
+      AND c.chunk_version = #{chunkVersion}
+      AND c.use_yn = 'Y'
+  </select>
+
+  <select id="countActiveChunksByDocumentIdAndVersion" resultType="int">
+    SELECT COUNT(*)
+    FROM rag_document_chunks
+    WHERE document_id = #{documentId}
+      AND chunk_version = #{chunkVersion}
+      AND use_yn = 'Y'
+  </select>
+
+  <update id="deactivateChunksByDocumentIdAndVersion">
+    UPDATE rag_document_chunks
+    SET use_yn = 'N',
+        index_status = 'SUPERSEDED',
+        updated_at = NOW()
+    WHERE document_id = #{documentId}
+      AND chunk_version = #{chunkVersion}
+      AND use_yn = 'Y'
+  </update>
+
+  <update id="deactivateChunksByFilePathsAndVersion">
+    UPDATE rag_document_chunks c
+    JOIN rag_documents doc ON doc.document_id = c.document_id
+    SET c.use_yn = 'N',
+        c.index_status = 'SUPERSEDED',
+        c.updated_at = NOW()
+    WHERE doc.file_path IN
+    <foreach collection="filePaths" item="filePath" open="(" separator="," close=")">
+      #{filePath}
+    </foreach>
+      AND c.chunk_version = #{chunkVersion}
+      AND c.use_yn = 'Y'
+  </update>
+
+  <update id="markEmbeddingsSupersededByChunkIds">
+    UPDATE rag_chunk_embeddings
+    SET status = 'SUPERSEDED',
+        last_error_message = 'Chunk superseded by duplicate/import cleanup.',
+        updated_at = NOW()
+    WHERE chunk_id IN
+    <foreach collection="chunkIds" item="chunkId" open="(" separator="," close=")">
+      #{chunkId}
+    </foreach>
+  </update>
+
+  <update id="deactivateDocumentsByFilePaths">
+    UPDATE rag_documents
+    SET use_yn = 'N',
+        imported_at = NOW()
+    WHERE file_path IN
+    <foreach collection="filePaths" item="filePath" open="(" separator="," close=")">
+      #{filePath}
+    </foreach>
+      AND use_yn = 'Y'
+  </update>
+
   <insert id="insertChunk">
     INSERT INTO rag_document_chunks (
-      document_id, chunk_no, chunk_title, chunk_text, page_no,
+      document_id, chunk_version, chunk_no, parent_section_title, chunk_title,
+      section_type, chunk_text, embedding_text, page_no,
       source_path, source_url, sort_order, content_hash, index_status
     )
     VALUES (
-      #{chunk.documentId}, #{chunk.chunkNo}, #{chunk.chunkTitle}, #{chunk.chunkText}, #{chunk.pageNo},
+      #{chunk.documentId}, #{chunk.chunkVersion}, #{chunk.chunkNo}, #{chunk.parentSectionTitle}, #{chunk.chunkTitle},
+      #{chunk.sectionType}, #{chunk.chunkText}, #{chunk.embeddingText}, #{chunk.pageNo},
       #{chunk.sourcePath}, #{chunk.sourceUrl}, #{chunk.sortOrder}, #{chunk.contentHash}, 'PENDING'
     )
   </insert>
+
+  <sql id="latestActiveChunkVersionFilter">
+    c.chunk_version = (
+      SELECT MAX(c2.chunk_version)
+      FROM rag_document_chunks c2
+      WHERE c2.document_id = c.document_id
+        AND c2.use_yn = 'Y'
+    )
+  </sql>
 
   <select id="findSemanticChunksByIds" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
     SELECT
@@ -248,6 +376,7 @@
         ELSE doc.document_type
       END AS categoryName,
       doc.published_date AS sourceDate,
+      NULL AS effectiveStatus,
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
       c.chunk_text AS chunkText,
@@ -255,7 +384,9 @@
       c.source_path AS sourcePath,
       COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
       c.sort_order AS sortOrder,
-      c.content_hash AS contentHash
+      c.content_hash AS contentHash,
+      c.parent_section_title AS parentSectionTitle,
+      c.section_type AS sectionType
     FROM rag_document_chunks c
     JOIN rag_documents doc ON doc.document_id = c.document_id
     WHERE c.chunk_id IN
@@ -264,6 +395,7 @@
     </foreach>
       AND doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND <include refid="latestActiveChunkVersionFilter"/>
   </select>
 
   <select id="findSemanticChunksByDocumentId" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
@@ -281,6 +413,7 @@
         ELSE doc.document_type
       END AS categoryName,
       doc.published_date AS sourceDate,
+      NULL AS effectiveStatus,
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
       c.chunk_text AS chunkText,
@@ -288,10 +421,48 @@
       c.source_path AS sourcePath,
       COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
       c.sort_order AS sortOrder,
-      c.content_hash AS contentHash
+      c.content_hash AS contentHash,
+      c.parent_section_title AS parentSectionTitle,
+      c.section_type AS sectionType
     FROM rag_document_chunks c
     JOIN rag_documents doc ON doc.document_id = c.document_id
     WHERE c.document_id = #{documentId}
+      AND doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND <include refid="latestActiveChunkVersionFilter"/>
+    ORDER BY c.sort_order
+  </select>
+
+  <select id="findSemanticIndexChunksByDocumentId" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.document_type AS target,
+      CAST(doc.document_id AS CHAR) AS externalId,
+      doc.title AS title,
+      doc.source_org AS agencyName,
+      CASE
+        WHEN doc.document_type = 'official_doc' THEN '공식 가이드 문서'
+        WHEN doc.document_type = 'internal_doc' THEN '내부 지침/매뉴얼'
+        WHEN doc.document_type = 'reference_doc' THEN '참고자료'
+        ELSE doc.document_type
+      END AS categoryName,
+      doc.published_date AS sourceDate,
+      NULL AS effectiveStatus,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      COALESCE(c.embedding_text, c.chunk_text) AS chunkText,
+      c.page_no AS pageNo,
+      c.source_path AS sourcePath,
+      COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash,
+      c.parent_section_title AS parentSectionTitle,
+      c.section_type AS sectionType
+    FROM rag_document_chunks c
+    JOIN rag_documents doc ON doc.document_id = c.document_id
+    WHERE c.document_id = #{documentId}
+      AND c.chunk_version = #{chunkVersion}
       AND doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
     ORDER BY c.sort_order
@@ -312,6 +483,7 @@
         ELSE doc.document_type
       END AS categoryName,
       doc.published_date AS sourceDate,
+      NULL AS effectiveStatus,
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
       c.chunk_text AS chunkText,
@@ -319,7 +491,9 @@
       c.source_path AS sourcePath,
       COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
       c.sort_order AS sortOrder,
-      c.content_hash AS contentHash
+      c.content_hash AS contentHash,
+      c.parent_section_title AS parentSectionTitle,
+      c.section_type AS sectionType
     FROM rag_document_chunks c
     JOIN rag_documents doc ON doc.document_id = c.document_id
     LEFT JOIN rag_chunk_embeddings e
@@ -328,6 +502,7 @@
       AND e.vector_store = #{vectorStore}
     WHERE doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND <include refid="latestActiveChunkVersionFilter"/>
       AND (#{target} = '' OR doc.document_type = #{target})
       AND (
         #{query} = ''
@@ -337,6 +512,8 @@
         OR doc.document_topic LIKE CONCAT('%', #{query}, '%')
         OR c.chunk_no LIKE CONCAT('%', #{query}, '%')
         OR c.chunk_title LIKE CONCAT('%', #{query}, '%')
+        OR c.parent_section_title LIKE CONCAT('%', #{query}, '%')
+        OR c.embedding_text LIKE CONCAT('%', #{query}, '%')
         OR c.chunk_text LIKE CONCAT('%', #{query}, '%')
       )
       AND (
@@ -358,7 +535,9 @@
         WHEN #{query} != '' AND doc.title = #{query} THEN 0
         WHEN #{query} != '' AND doc.title LIKE CONCAT('%', #{query}, '%') THEN 1
         WHEN #{query} != '' AND c.chunk_title LIKE CONCAT('%', #{query}, '%') THEN 2
-        WHEN #{query} != '' AND c.chunk_text LIKE CONCAT('%', #{query}, '%') THEN 3
+        WHEN #{query} != '' AND c.parent_section_title LIKE CONCAT('%', #{query}, '%') THEN 3
+        WHEN #{query} != '' AND c.embedding_text LIKE CONCAT('%', #{query}, '%') THEN 4
+        WHEN #{query} != '' AND c.chunk_text LIKE CONCAT('%', #{query}, '%') THEN 5
         ELSE 4
       END,
       doc.document_type,
@@ -366,7 +545,7 @@
     LIMIT #{limit}
   </select>
 
-  <select id="findSemanticChunksByText" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+  <select id="findSemanticChunksByText" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="3">
     SELECT
       c.chunk_id AS chunkId,
       c.document_id AS documentId,
@@ -381,6 +560,7 @@
         ELSE doc.document_type
       END AS categoryName,
       doc.published_date AS sourceDate,
+      NULL AS effectiveStatus,
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
       c.chunk_text AS chunkText,
@@ -388,11 +568,14 @@
       c.source_path AS sourcePath,
       COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
       c.sort_order AS sortOrder,
-      c.content_hash AS contentHash
+      c.content_hash AS contentHash,
+      c.parent_section_title AS parentSectionTitle,
+      c.section_type AS sectionType
     FROM rag_document_chunks c
     JOIN rag_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND <include refid="latestActiveChunkVersionFilter"/>
       <if test="documentTypes != null and documentTypes.size() > 0">
         AND doc.document_type IN
         <foreach collection="documentTypes" item="documentType" open="(" separator="," close=")">
@@ -404,19 +587,399 @@
         <foreach collection="keywords" item="keyword" separator=" OR ">
           c.chunk_text LIKE CONCAT('%', #{keyword}, '%')
           OR c.chunk_title LIKE CONCAT('%', #{keyword}, '%')
+          OR c.parent_section_title LIKE CONCAT('%', #{keyword}, '%')
+          OR c.embedding_text LIKE CONCAT('%', #{keyword}, '%')
           OR doc.title LIKE CONCAT('%', #{keyword}, '%')
         </foreach>
         )
       </if>
     ORDER BY
+      doc.document_type,
+      doc.title,
+      c.sort_order
+    LIMIT #{limit}
+  </select>
+
+  <select id="findSemanticChunksByDocumentTitleAndText" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="3">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.document_type AS target,
+      CAST(doc.document_id AS CHAR) AS externalId,
+      doc.title AS title,
+      doc.source_org AS agencyName,
       CASE
-      <foreach collection="keywords" item="keyword">
-        WHEN c.chunk_title LIKE CONCAT('%', #{keyword}, '%') THEN 0
-        WHEN c.chunk_text LIKE CONCAT('%', #{keyword}, '%') THEN 1
-        WHEN doc.title LIKE CONCAT('%', #{keyword}, '%') THEN 2
+        WHEN doc.document_type = 'official_doc' THEN '공식 가이드 문서'
+        WHEN doc.document_type = 'internal_doc' THEN '내부 지침/매뉴얼'
+        WHEN doc.document_type = 'reference_doc' THEN '참고자료'
+        ELSE doc.document_type
+      END AS categoryName,
+      doc.published_date AS sourceDate,
+      NULL AS effectiveStatus,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      c.page_no AS pageNo,
+      c.source_path AS sourcePath,
+      COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash,
+      c.parent_section_title AS parentSectionTitle,
+      c.section_type AS sectionType
+    FROM rag_document_chunks c
+    JOIN rag_documents doc ON doc.document_id = c.document_id
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND <include refid="latestActiveChunkVersionFilter"/>
+      <if test="documentTypes != null and documentTypes.size() > 0">
+        AND doc.document_type IN
+        <foreach collection="documentTypes" item="documentType" open="(" separator="," close=")">
+          #{documentType}
+        </foreach>
+      </if>
+      <if test="titleKeywords != null and titleKeywords.size() > 0">
+        AND (
+        <foreach collection="titleKeywords" item="keyword" separator=" OR ">
+          doc.title LIKE CONCAT('%', #{keyword}, '%')
+        </foreach>
+        )
+      </if>
+      <if test="textKeywords != null and textKeywords.size() > 0">
+        AND (
+        <foreach collection="textKeywords" item="keyword" separator=" OR ">
+          c.chunk_text LIKE CONCAT('%', #{keyword}, '%')
+          OR c.chunk_title LIKE CONCAT('%', #{keyword}, '%')
+          OR c.parent_section_title LIKE CONCAT('%', #{keyword}, '%')
+        </foreach>
+        )
+      </if>
+    ORDER BY
+      (
+      <foreach collection="textKeywords" item="keyword" separator=" + ">
+        (CASE WHEN c.chunk_text LIKE CONCAT('%', #{keyword}, '%') THEN 5 ELSE 0 END)
+        + (CASE WHEN c.chunk_title LIKE CONCAT('%', #{keyword}, '%') THEN 3 ELSE 0 END)
+        + (CASE WHEN c.parent_section_title LIKE CONCAT('%', #{keyword}, '%') THEN 2 ELSE 0 END)
       </foreach>
-        ELSE 3
-      END,
+      ) DESC,
+      (
+      <foreach collection="titleKeywords" item="keyword" separator=" + ">
+        (CASE WHEN doc.title = #{keyword} THEN 8 ELSE 0 END)
+        + (CASE WHEN doc.title LIKE CONCAT(#{keyword}, '%') THEN 5 ELSE 0 END)
+        + (CASE WHEN doc.title LIKE CONCAT('%', #{keyword}, '%') THEN 3 ELSE 0 END)
+      </foreach>
+      ) DESC,
+      doc.document_type,
+      doc.title,
+      c.sort_order
+    LIMIT #{limit}
+  </select>
+
+  <select id="findSemanticChunksByDocumentTitleAndTextScoped" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="3">
+    WITH matched_docs AS (
+      SELECT
+        doc.document_id,
+        doc.document_type,
+        doc.title,
+        doc.source_org,
+        doc.published_date,
+        doc.source_url,
+        doc.file_path
+      FROM rag_documents doc
+      WHERE doc.use_yn = 'Y'
+        <if test="documentTypes != null and documentTypes.size() > 0">
+          AND doc.document_type IN
+          <foreach collection="documentTypes" item="documentType" open="(" separator="," close=")">
+            #{documentType}
+          </foreach>
+        </if>
+        <if test="titleKeywords != null and titleKeywords.size() > 0">
+          AND (
+          <foreach collection="titleKeywords" item="keyword" separator=" OR ">
+            doc.title LIKE CONCAT('%', #{keyword}, '%')
+          </foreach>
+          )
+        </if>
+      ORDER BY
+        (
+        <foreach collection="titleKeywords" item="keyword" separator=" + ">
+          (CASE WHEN doc.title = #{keyword} THEN 8 ELSE 0 END)
+          + (CASE WHEN doc.title LIKE CONCAT(#{keyword}, '%') THEN 5 ELSE 0 END)
+          + (CASE WHEN doc.title LIKE CONCAT('%', #{keyword}, '%') THEN 3 ELSE 0 END)
+        </foreach>
+        ) DESC,
+        doc.document_type,
+        doc.title
+      LIMIT #{limit}
+    ),
+    latest_versions AS (
+      SELECT
+        c2.document_id,
+        MAX(c2.chunk_version) AS chunk_version
+      FROM rag_document_chunks c2
+      JOIN matched_docs md ON md.document_id = c2.document_id
+      WHERE c2.use_yn = 'Y'
+      GROUP BY c2.document_id
+    )
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.document_type AS target,
+      CAST(doc.document_id AS CHAR) AS externalId,
+      doc.title AS title,
+      doc.source_org AS agencyName,
+      doc.document_type AS categoryName,
+      doc.published_date AS sourceDate,
+      NULL AS effectiveStatus,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      c.page_no AS pageNo,
+      c.source_path AS sourcePath,
+      COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash,
+      c.parent_section_title AS parentSectionTitle,
+      c.section_type AS sectionType
+    FROM matched_docs doc
+    JOIN latest_versions latest ON latest.document_id = doc.document_id
+    JOIN rag_document_chunks c
+      ON c.document_id = doc.document_id
+      AND c.chunk_version = latest.chunk_version
+    WHERE c.use_yn = 'Y'
+      <if test="textKeywords != null and textKeywords.size() > 0">
+        AND (
+        <foreach collection="textKeywords" item="keyword" separator=" OR ">
+          c.chunk_text LIKE CONCAT('%', #{keyword}, '%')
+          OR c.chunk_title LIKE CONCAT('%', #{keyword}, '%')
+          OR c.parent_section_title LIKE CONCAT('%', #{keyword}, '%')
+        </foreach>
+        )
+      </if>
+    ORDER BY
+      (
+      <foreach collection="textKeywords" item="keyword" separator=" + ">
+        (CASE WHEN c.chunk_text LIKE CONCAT('%', #{keyword}, '%') THEN 5 ELSE 0 END)
+        + (CASE WHEN c.chunk_title LIKE CONCAT('%', #{keyword}, '%') THEN 3 ELSE 0 END)
+        + (CASE WHEN c.parent_section_title LIKE CONCAT('%', #{keyword}, '%') THEN 2 ELSE 0 END)
+      </foreach>
+      ) DESC,
+      doc.document_type,
+      doc.title,
+      c.sort_order
+    LIMIT #{limit}
+  </select>
+
+  <select id="findSemanticChunksByDocumentTitleScoped" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="2">
+    WITH matched_docs AS (
+      SELECT
+        doc.document_id,
+        doc.document_type,
+        doc.title,
+        doc.source_org,
+        doc.published_date,
+        doc.source_url,
+        doc.file_path,
+        (
+        <foreach collection="titleKeywords" item="keyword" separator=" + ">
+          (CASE WHEN doc.title = #{keyword} THEN 8 ELSE 0 END)
+          + (CASE WHEN doc.title LIKE CONCAT(#{keyword}, '%') THEN 5 ELSE 0 END)
+          + (CASE WHEN doc.title LIKE CONCAT('%', #{keyword}, '%') THEN 3 ELSE 0 END)
+        </foreach>
+        ) AS title_score
+      FROM rag_documents doc
+      WHERE doc.use_yn = 'Y'
+        <if test="documentTypes != null and documentTypes.size() > 0">
+          AND doc.document_type IN
+          <foreach collection="documentTypes" item="documentType" open="(" separator="," close=")">
+            #{documentType}
+          </foreach>
+        </if>
+        <if test="titleKeywords != null and titleKeywords.size() > 0">
+          AND (
+          <foreach collection="titleKeywords" item="keyword" separator=" OR ">
+            doc.title LIKE CONCAT('%', #{keyword}, '%')
+          </foreach>
+          )
+        </if>
+      ORDER BY title_score DESC, doc.document_type, doc.title
+      LIMIT 12
+    ),
+    latest_versions AS (
+      SELECT
+        c2.document_id,
+        MAX(c2.chunk_version) AS chunk_version
+      FROM rag_document_chunks c2
+      JOIN matched_docs md ON md.document_id = c2.document_id
+      WHERE c2.use_yn = 'Y'
+      GROUP BY c2.document_id
+    )
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.document_type AS target,
+      CAST(doc.document_id AS CHAR) AS externalId,
+      doc.title AS title,
+      doc.source_org AS agencyName,
+      doc.document_type AS categoryName,
+      doc.published_date AS sourceDate,
+      NULL AS effectiveStatus,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      c.page_no AS pageNo,
+      c.source_path AS sourcePath,
+      COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash,
+      c.parent_section_title AS parentSectionTitle,
+      c.section_type AS sectionType
+    FROM matched_docs doc
+    JOIN latest_versions latest ON latest.document_id = doc.document_id
+    JOIN rag_document_chunks c
+      ON c.document_id = doc.document_id
+      AND c.chunk_version = latest.chunk_version
+    WHERE c.use_yn = 'Y'
+    ORDER BY doc.title_score DESC, doc.document_type, doc.title, c.sort_order
+    LIMIT #{limit}
+  </select>
+
+  <select id="findSemanticChunksByDocumentTitleWithTextHints" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="2">
+    WITH matched_docs AS (
+      SELECT
+        doc.document_id,
+        doc.document_type,
+        doc.title,
+        doc.source_org,
+        doc.published_date,
+        doc.source_url,
+        doc.file_path,
+        (
+        <foreach collection="titleKeywords" item="keyword" separator=" + ">
+          (CASE WHEN doc.title = #{keyword} THEN 8 ELSE 0 END)
+          + (CASE WHEN doc.title LIKE CONCAT(#{keyword}, '%') THEN 5 ELSE 0 END)
+          + (CASE WHEN doc.title LIKE CONCAT('%', #{keyword}, '%') THEN 3 ELSE 0 END)
+        </foreach>
+        ) AS title_score
+      FROM rag_documents doc
+      WHERE doc.use_yn = 'Y'
+        <if test="documentTypes != null and documentTypes.size() > 0">
+          AND doc.document_type IN
+          <foreach collection="documentTypes" item="documentType" open="(" separator="," close=")">
+            #{documentType}
+          </foreach>
+        </if>
+        AND (
+        <foreach collection="titleKeywords" item="keyword" separator=" OR ">
+          doc.title LIKE CONCAT('%', #{keyword}, '%')
+        </foreach>
+        )
+      ORDER BY title_score DESC, doc.document_type, doc.title
+      LIMIT 12
+    ),
+    latest_versions AS (
+      SELECT
+        c2.document_id,
+        MAX(c2.chunk_version) AS chunk_version
+      FROM rag_document_chunks c2
+      JOIN matched_docs md ON md.document_id = c2.document_id
+      WHERE c2.use_yn = 'Y'
+      GROUP BY c2.document_id
+    )
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.document_type AS target,
+      CAST(doc.document_id AS CHAR) AS externalId,
+      doc.title AS title,
+      doc.source_org AS agencyName,
+      doc.document_type AS categoryName,
+      doc.published_date AS sourceDate,
+      NULL AS effectiveStatus,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      c.page_no AS pageNo,
+      c.source_path AS sourcePath,
+      COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash,
+      c.parent_section_title AS parentSectionTitle,
+      c.section_type AS sectionType
+    FROM matched_docs doc
+    JOIN latest_versions latest ON latest.document_id = doc.document_id
+    JOIN rag_document_chunks c
+      ON c.document_id = doc.document_id
+      AND c.chunk_version = latest.chunk_version
+    WHERE c.use_yn = 'Y'
+    ORDER BY
+      (
+      <foreach collection="textKeywords" item="keyword" separator=" + ">
+        (CASE WHEN c.chunk_text LIKE CONCAT('%', #{keyword}, '%') THEN 6 ELSE 0 END)
+        + (CASE WHEN c.chunk_title LIKE CONCAT('%', #{keyword}, '%') THEN 4 ELSE 0 END)
+        + (CASE WHEN c.parent_section_title LIKE CONCAT('%', #{keyword}, '%') THEN 3 ELSE 0 END)
+      </foreach>
+      ) DESC,
+      doc.title_score DESC,
+      doc.document_type,
+      doc.title,
+      c.sort_order
+    LIMIT #{limit}
+  </select>
+
+  <select id="findSemanticChunksByHeadingText" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="2">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.document_type AS target,
+      CAST(doc.document_id AS CHAR) AS externalId,
+      doc.title AS title,
+      doc.source_org AS agencyName,
+      CASE
+        WHEN doc.document_type = 'official_doc' THEN '공식 가이드 문서'
+        WHEN doc.document_type = 'internal_doc' THEN '내부 지침/매뉴얼'
+        WHEN doc.document_type = 'reference_doc' THEN '참고자료'
+        ELSE doc.document_type
+      END AS categoryName,
+      doc.published_date AS sourceDate,
+      NULL AS effectiveStatus,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      c.page_no AS pageNo,
+      c.source_path AS sourcePath,
+      COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash,
+      c.parent_section_title AS parentSectionTitle,
+      c.section_type AS sectionType
+    FROM (
+      SELECT doc2.document_id
+      FROM rag_documents doc2
+      WHERE doc2.use_yn = 'Y'
+        <if test="documentTypes != null and documentTypes.size() > 0">
+          AND doc2.document_type IN
+          <foreach collection="documentTypes" item="documentType" open="(" separator="," close=")">
+            #{documentType}
+          </foreach>
+        </if>
+        <if test="keywords != null and keywords.size() > 0">
+          AND (
+          <foreach collection="keywords" item="keyword" separator=" OR ">
+            doc2.title LIKE CONCAT('%', #{keyword}, '%')
+            OR doc2.source_org LIKE CONCAT('%', #{keyword}, '%')
+            OR doc2.document_category LIKE CONCAT('%', #{keyword}, '%')
+            OR doc2.document_topic LIKE CONCAT('%', #{keyword}, '%')
+          </foreach>
+          )
+        </if>
+      ORDER BY doc2.document_type, doc2.title
+      LIMIT 16
+    ) matched_doc
+    JOIN rag_documents doc ON doc.document_id = matched_doc.document_id
+    JOIN rag_document_chunks c ON c.document_id = doc.document_id
+    WHERE c.use_yn = 'Y'
+      AND <include refid="latestActiveChunkVersionFilter"/>
+    ORDER BY
       doc.document_type,
       doc.title,
       c.sort_order
@@ -456,6 +1019,7 @@
           AND e.vector_store = #{vectorStore}
         WHERE c.document_id = doc.document_id
           AND c.use_yn = 'Y'
+          AND <include refid="latestActiveChunkVersionFilter"/>
           AND (
             e.chunk_id IS NULL
             OR e.status != 'INDEXED'

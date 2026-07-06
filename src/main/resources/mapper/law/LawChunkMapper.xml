@@ -4,6 +4,46 @@
   "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
 <mapper namespace="com.kaces.pandora.lawdata.persistence.LawChunkMapper">
+  <sql id="effectiveSearchFilter">
+    AND (
+      doc.target NOT IN ('law', 'admrul')
+      OR doc.effective_status IS NULL
+      OR doc.effective_status IN ('CURRENT', 'UNKNOWN'
+        <if test="includeFuture">, 'FUTURE'</if>
+      )
+    )
+  </sql>
+
+  <sql id="parentSectionTitleExpression">
+    COALESCE(
+      NULLIF(TRIM(REGEXP_REPLACE(c.chunk_title, '\\s*문단\\s*[0-9]+.*$', '')), ''),
+      NULLIF(c.chunk_title, ''),
+      NULLIF(c.chunk_no, ''),
+      doc.title
+    )
+  </sql>
+
+  <sql id="sectionTypeExpression">
+    CASE
+      WHEN c.source_path LIKE '%개정문%' OR c.chunk_title LIKE '%개정문%' THEN 'revision_note'
+      WHEN c.chunk_text REGEXP '^삭제( &lt;[^>]+>)?$' THEN 'deleted'
+      WHEN c.chunk_text REGEXP '^&lt;[^>]*$|^[0-9]{4}\\.[0-9]{1,2}\\.[0-9]{1,2}.*>$' THEN 'revision_note'
+      WHEN c.source_path LIKE '%별표%' OR c.chunk_title LIKE '%별표%' THEN 'appendix'
+      WHEN c.chunk_text REGEXP '정의|뜻한다|라 한다|라한다|말한다|이하[[:space:]]+.*라 한다' THEN 'definition'
+      WHEN c.chunk_text REGEXP '제외|예외|생략|면제|아니한다|아니하다|제외대상|적용하지' THEN 'exception'
+      WHEN c.chunk_text REGEXP '계약|수의계약|디지털서비스몰|디지털카탈로그|계약방법'
+        OR c.chunk_title REGEXP '계약|수의계약|디지털서비스몰|디지털카탈로그|계약방법' THEN 'contract'
+      WHEN c.chunk_text REGEXP '절차|단계|신청|제출|요청|통보|협의|기간|월말|평가기간'
+        OR c.chunk_title REGEXP '절차|단계|신청|제출|요청|통보|협의|기간|월말|평가기간' THEN 'procedure'
+      WHEN c.chunk_text REGEXP '하여야|해야|의무|필수|금지|준수|명시|기재|등록|고지|통지|공개'
+        OR c.chunk_title REGEXP '하여야|해야|의무|필수|금지|준수|명시|기재|등록|고지|통지|공개' THEN 'requirement'
+      WHEN c.chunk_text REGEXP '대상|범위|적용|보호조치|신변보호|불이익조치|횡단보도|일시정지|고정형 영상정보처리기기'
+        OR c.chunk_title REGEXP '대상|범위|적용|보호조치|신변보호|불이익조치|횡단보도|일시정지|고정형 영상정보처리기기' THEN 'target_scope'
+      WHEN c.chunk_type IN ('article', 'paragraph', 'subparagraph', 'item', 'admin-rule-article') THEN 'provision'
+      ELSE COALESCE(c.chunk_type, 'body')
+    END
+  </sql>
+
   <select id="findChunkIdsByDocumentId" resultType="long">
     SELECT chunk_id
     FROM law_api_document_chunks
@@ -34,6 +74,7 @@
     WHERE doc.target = #{target}
       AND doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      <include refid="effectiveSearchFilter"/>
       AND (
         c.chunk_text LIKE CONCAT('%', #{query}, '%')
         OR c.chunk_title LIKE CONCAT('%', #{query}, '%')
@@ -52,6 +93,7 @@
       doc.agency_name AS agencyName,
       doc.category_name AS categoryName,
       doc.source_date AS sourceDate,
+      doc.effective_status AS effectiveStatus,
       c.chunk_type AS chunkType,
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
@@ -64,6 +106,7 @@
     WHERE doc.target = #{target}
       AND doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      <include refid="effectiveSearchFilter"/>
       AND (
         c.chunk_text LIKE CONCAT('%', #{query}, '%')
         OR c.chunk_title LIKE CONCAT('%', #{query}, '%')
@@ -92,6 +135,7 @@
       doc.agency_name AS agencyName,
       doc.category_name AS categoryName,
       doc.source_date AS sourceDate,
+      doc.effective_status AS effectiveStatus,
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
       c.chunk_text AS chunkText,
@@ -99,7 +143,9 @@
       c.source_path AS sourcePath,
       c.source_url AS sourceUrl,
       c.sort_order AS sortOrder,
-      c.content_hash AS contentHash
+      c.content_hash AS contentHash,
+      <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
+      <include refid="sectionTypeExpression"/> AS sectionType
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     LEFT JOIN law_api_chunk_embeddings e
@@ -121,7 +167,7 @@
       AND (
         e.chunk_id IS NULL
         OR (
-          e.status IN ('FAILED', 'ERROR')
+          e.status IN ('PENDING', 'NO_EMBED', 'FAILED', 'ERROR')
           AND (
             SELECT COUNT(*)
             FROM semantic_batch_job_chunks bjc
@@ -145,6 +191,49 @@
     LIMIT #{limit}
   </select>
 
+  <select id="findSemanticIndexCandidatesByDocumentIds" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.target AS target,
+      doc.external_id AS externalId,
+      doc.title AS title,
+      doc.agency_name AS agencyName,
+      doc.category_name AS categoryName,
+      doc.source_date AS sourceDate,
+      doc.effective_status AS effectiveStatus,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      NULL AS pageNo,
+      c.source_path AS sourcePath,
+      c.source_url AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash,
+      <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
+      <include refid="sectionTypeExpression"/> AS sectionType
+    FROM law_api_document_chunks c
+    JOIN law_api_documents doc ON doc.document_id = c.document_id
+    LEFT JOIN law_api_chunk_embeddings e
+      ON e.chunk_id = c.chunk_id
+      AND e.embedding_model = #{model}
+      AND e.vector_store = #{vectorStore}
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND (#{target} = '' OR doc.target = #{target})
+      AND c.document_id IN
+      <foreach collection="documentIds" item="documentId" open="(" separator="," close=")">
+        #{documentId}
+      </foreach>
+      AND (
+        e.chunk_id IS NULL
+        OR e.status IN ('PENDING', 'NO_EMBED', 'FAILED', 'ERROR')
+        OR COALESCE(e.content_hash, '') != COALESCE(c.content_hash, '')
+      )
+    ORDER BY doc.target, c.document_id, c.sort_order, c.chunk_id
+    LIMIT #{limit}
+  </select>
+
   <select id="findSemanticChunksByIds" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
     SELECT
       c.chunk_id AS chunkId,
@@ -155,6 +244,7 @@
       doc.agency_name AS agencyName,
       doc.category_name AS categoryName,
       doc.source_date AS sourceDate,
+      doc.effective_status AS effectiveStatus,
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
       c.chunk_text AS chunkText,
@@ -162,7 +252,41 @@
       c.source_path AS sourcePath,
       c.source_url AS sourceUrl,
       c.sort_order AS sortOrder,
-      c.content_hash AS contentHash
+      c.content_hash AS contentHash,
+      <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
+      <include refid="sectionTypeExpression"/> AS sectionType
+    FROM law_api_document_chunks c
+    JOIN law_api_documents doc ON doc.document_id = c.document_id
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      <include refid="effectiveSearchFilter"/>
+      AND c.chunk_id IN
+    <foreach collection="chunkIds" item="chunkId" open="(" separator="," close=")">
+      #{chunkId}
+    </foreach>
+  </select>
+
+  <select id="findSemanticChunksByIdsForIndexing" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.target AS target,
+      doc.external_id AS externalId,
+      doc.title AS title,
+      doc.agency_name AS agencyName,
+      doc.category_name AS categoryName,
+      doc.source_date AS sourceDate,
+      doc.effective_status AS effectiveStatus,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      NULL AS pageNo,
+      c.source_path AS sourcePath,
+      c.source_url AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash,
+      <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
+      <include refid="sectionTypeExpression"/> AS sectionType
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
@@ -173,7 +297,7 @@
     </foreach>
   </select>
 
-  <select id="findSemanticChunksByText" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+  <select id="findSemanticContextChunks" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="3">
     SELECT
       c.chunk_id AS chunkId,
       c.document_id AS documentId,
@@ -183,6 +307,7 @@
       doc.agency_name AS agencyName,
       doc.category_name AS categoryName,
       doc.source_date AS sourceDate,
+      doc.effective_status AS effectiveStatus,
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
       c.chunk_text AS chunkText,
@@ -190,11 +315,44 @@
       c.source_path AS sourcePath,
       c.source_url AS sourceUrl,
       c.sort_order AS sortOrder,
-      c.content_hash AS contentHash
+      c.content_hash AS contentHash,
+      <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
+      <include refid="sectionTypeExpression"/> AS sectionType
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND c.document_id = #{documentId}
+      AND c.sort_order BETWEEN #{sortOrder} - #{radius} AND #{sortOrder} + #{radius}
+    ORDER BY c.sort_order, c.chunk_id
+  </select>
+
+  <select id="findSemanticChunksByText" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="3">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.target AS target,
+      doc.external_id AS externalId,
+      doc.title AS title,
+      doc.agency_name AS agencyName,
+      doc.category_name AS categoryName,
+      doc.source_date AS sourceDate,
+      doc.effective_status AS effectiveStatus,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      NULL AS pageNo,
+      c.source_path AS sourcePath,
+      c.source_url AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash,
+      <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
+      <include refid="sectionTypeExpression"/> AS sectionType
+    FROM law_api_document_chunks c
+    JOIN law_api_documents doc ON doc.document_id = c.document_id
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      <include refid="effectiveSearchFilter"/>
       <if test="targets != null and targets.size() > 0">
         AND doc.target IN
         <foreach collection="targets" item="target" open="(" separator="," close=")">
@@ -211,6 +369,13 @@
         )
       </if>
     ORDER BY
+      (
+      <foreach collection="keywords" item="keyword" separator=" + ">
+        (CASE WHEN c.chunk_title LIKE CONCAT('%', #{keyword}, '%') THEN 4 ELSE 0 END)
+        + (CASE WHEN c.chunk_text LIKE CONCAT('%', #{keyword}, '%') THEN 3 ELSE 0 END)
+        + (CASE WHEN doc.title LIKE CONCAT('%', #{keyword}, '%') THEN 1 ELSE 0 END)
+      </foreach>
+      ) DESC,
       CASE
       <foreach collection="keywords" item="keyword">
         WHEN c.chunk_title LIKE CONCAT('%', #{keyword}, '%') THEN 0
@@ -219,7 +384,11 @@
       </foreach>
         ELSE 3
       END,
-      doc.target,
+      CASE doc.target
+        WHEN 'law' THEN 0
+        WHEN 'admrul' THEN 1
+        ELSE 2
+      END,
       doc.title,
       c.sort_order
     LIMIT #{limit}
@@ -235,6 +404,7 @@
       doc.agency_name AS agencyName,
       doc.category_name AS categoryName,
       doc.source_date AS sourceDate,
+      doc.effective_status AS effectiveStatus,
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
       c.chunk_text AS chunkText,
@@ -242,11 +412,49 @@
       c.source_path AS sourcePath,
       c.source_url AS sourceUrl,
       c.sort_order AS sortOrder,
-      c.content_hash AS contentHash
-    FROM law_api_documents doc
+      c.content_hash AS contentHash,
+      <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
+      <include refid="sectionTypeExpression"/> AS sectionType
+    FROM (
+      SELECT
+        doc.document_id,
+        doc.target,
+        doc.external_id,
+        doc.title,
+        doc.agency_name,
+        doc.category_name,
+        doc.source_date,
+        doc.effective_status
+      FROM law_api_documents doc
+      WHERE doc.use_yn = 'Y'
+        <include refid="effectiveSearchFilter"/>
+        <if test="targets != null and targets.size() > 0">
+          AND doc.target IN
+          <foreach collection="targets" item="target" open="(" separator="," close=")">
+            #{target}
+          </foreach>
+        </if>
+        <if test="keywords != null and keywords.size() > 0">
+          AND (
+          <foreach collection="keywords" item="keyword" separator=" OR ">
+            doc.title LIKE CONCAT('%', #{keyword}, '%')
+          </foreach>
+          )
+        </if>
+      ORDER BY
+        (
+        <foreach collection="keywords" item="keyword" separator=" + ">
+          (CASE WHEN doc.title = #{keyword} THEN 8 ELSE 0 END)
+          + (CASE WHEN doc.title LIKE CONCAT(#{keyword}, '%') THEN 5 ELSE 0 END)
+          + (CASE WHEN doc.title LIKE CONCAT('%', #{keyword}, '%') THEN 3 ELSE 0 END)
+        </foreach>
+        ) DESC,
+        doc.target,
+        doc.title
+      LIMIT #{limit}
+    ) doc
     JOIN law_api_document_chunks c ON c.document_id = doc.document_id
-    WHERE doc.use_yn = 'Y'
-      AND c.use_yn = 'Y'
+    WHERE c.use_yn = 'Y'
       <if test="targets != null and targets.size() > 0">
         AND doc.target IN
         <foreach collection="targets" item="target" open="(" separator="," close=")">
@@ -275,6 +483,108 @@
     LIMIT #{limit}
   </select>
 
+  <select id="findSemanticChunksByDocumentTitleAndText" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="3">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.target AS target,
+      doc.external_id AS externalId,
+      doc.title AS title,
+      doc.agency_name AS agencyName,
+      doc.category_name AS categoryName,
+      doc.source_date AS sourceDate,
+      doc.effective_status AS effectiveStatus,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      NULL AS pageNo,
+      c.source_path AS sourcePath,
+      c.source_url AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash,
+      <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
+      <include refid="sectionTypeExpression"/> AS sectionType
+    FROM (
+      SELECT
+        doc.document_id,
+        doc.target,
+        doc.external_id,
+        doc.title,
+        doc.agency_name,
+        doc.category_name,
+        doc.source_date,
+        doc.effective_status
+      FROM law_api_documents doc
+      WHERE doc.use_yn = 'Y'
+        <include refid="effectiveSearchFilter"/>
+        <if test="targets != null and targets.size() > 0">
+          AND doc.target IN
+          <foreach collection="targets" item="target" open="(" separator="," close=")">
+            #{target}
+          </foreach>
+        </if>
+        <if test="titleKeywords != null and titleKeywords.size() > 0">
+          AND (
+          <foreach collection="titleKeywords" item="keyword" separator=" OR ">
+            doc.title LIKE CONCAT('%', #{keyword}, '%')
+          </foreach>
+          )
+        </if>
+      ORDER BY
+        (
+        <foreach collection="titleKeywords" item="keyword" separator=" + ">
+          (CASE WHEN doc.title = #{keyword} THEN 8 ELSE 0 END)
+          + (CASE WHEN doc.title LIKE CONCAT(#{keyword}, '%') THEN 5 ELSE 0 END)
+          + (CASE WHEN doc.title LIKE CONCAT('%', #{keyword}, '%') THEN 3 ELSE 0 END)
+        </foreach>
+        ) DESC,
+        doc.target,
+        doc.title
+      LIMIT #{limit}
+    ) doc
+    JOIN law_api_document_chunks c ON c.document_id = doc.document_id
+    WHERE c.use_yn = 'Y'
+      <if test="targets != null and targets.size() > 0">
+        AND doc.target IN
+        <foreach collection="targets" item="target" open="(" separator="," close=")">
+          #{target}
+        </foreach>
+      </if>
+      <if test="titleKeywords != null and titleKeywords.size() > 0">
+        AND (
+        <foreach collection="titleKeywords" item="keyword" separator=" OR ">
+          doc.title LIKE CONCAT('%', #{keyword}, '%')
+        </foreach>
+        )
+      </if>
+      <if test="textKeywords != null and textKeywords.size() > 0">
+        AND (
+        <foreach collection="textKeywords" item="keyword" separator=" OR ">
+          c.chunk_text LIKE CONCAT('%', #{keyword}, '%')
+          OR c.chunk_title LIKE CONCAT('%', #{keyword}, '%')
+        </foreach>
+        )
+      </if>
+    ORDER BY
+      (
+      <foreach collection="textKeywords" item="keyword" separator=" + ">
+        (CASE WHEN c.chunk_text LIKE CONCAT('%', #{keyword}, '%') THEN 5 ELSE 0 END)
+        + (CASE WHEN c.chunk_title LIKE CONCAT('%', #{keyword}, '%') THEN 3 ELSE 0 END)
+      </foreach>
+      ) DESC,
+      (
+      <foreach collection="titleKeywords" item="keyword" separator=" + ">
+        (CASE WHEN doc.title = #{keyword} THEN 8 ELSE 0 END)
+        + (CASE WHEN doc.title LIKE CONCAT(#{keyword}, '%') THEN 5 ELSE 0 END)
+        + (CASE WHEN doc.title LIKE CONCAT('%', #{keyword}, '%') THEN 3 ELSE 0 END)
+      </foreach>
+      ) DESC,
+      doc.target,
+      doc.title,
+      c.sort_order
+    LIMIT #{limit}
+  </select>
+
   <insert id="upsertEmbeddingStatus">
     INSERT INTO law_api_chunk_embeddings (
       chunk_id, embedding_model, vector_store, vector_point_id, content_hash,
@@ -291,6 +601,15 @@
       embedded_at = VALUES(embedded_at),
       last_error_message = VALUES(last_error_message)
   </insert>
+
+  <update id="updateChunkIndexStatus">
+    UPDATE law_api_document_chunks
+    SET index_status = #{status},
+        indexed_at = CASE WHEN #{status} = 'INDEXED' THEN NOW() ELSE indexed_at END,
+        last_error_message = #{errorMessage},
+        updated_at = NOW()
+    WHERE chunk_id = #{chunkId}
+  </update>
 
   <update id="recoverStaleSubmittedEmbeddings">
     UPDATE law_api_chunk_embeddings e

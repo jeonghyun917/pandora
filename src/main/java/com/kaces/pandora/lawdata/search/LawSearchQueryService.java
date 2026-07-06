@@ -46,7 +46,7 @@ public class LawSearchQueryService {
 
 		
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		int total = lawDocumentMapper.countDocuments(query.target(), query.query(), query.searchAll(), query.titleOnly());
+		int total = lawDocumentMapper.countDocuments(query.target(), query.query(), query.searchAll(), query.titleOnly(), query.includeFuture());
 		
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		List<LawDocumentRow> rows = lawDocumentMapper.searchDocuments(
@@ -54,6 +54,7 @@ public class LawSearchQueryService {
 			query.query(),
 			query.searchAll(),
 			query.titleOnly(),
+			query.includeFuture(),
 			query.display(),
 			query.offset()
 		);
@@ -80,11 +81,12 @@ public class LawSearchQueryService {
 			return new LawChunkSearchQueryResult(query, total, rows);
 		}
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		int total = lawChunkMapper.countChunkSearch(query.target(), query.query());
+		int total = lawChunkMapper.countChunkSearch(query.target(), query.query(), query.includeFuture());
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		List<LawChunkSearchRow> rows = lawChunkMapper.searchChunks(
 			query.target(),
 			query.query(),
+			query.includeFuture(),
 			query.display(),
 			query.offset()
 		);

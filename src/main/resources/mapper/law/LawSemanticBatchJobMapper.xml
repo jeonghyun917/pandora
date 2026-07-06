@@ -89,17 +89,22 @@
       ingested_count AS ingestedCount,
       last_error_message AS lastErrorMessage
     FROM semantic_batch_jobs
-    WHERE status IN ('validating', 'in_progress', 'finalizing', 'completed')
+    WHERE status IN ('validating', 'in_progress', 'finalizing')
+       OR (status = 'completed' AND ingested_count = 0)
     ORDER BY submitted_at
   </select>
 
   <update id="updateStatus">
     UPDATE semantic_batch_jobs
-    SET status = #{status},
+    SET status = CASE
+          WHEN #{status} = 'completed' AND ingested_count > 0 THEN 'INGESTED'
+          ELSE #{status}
+        END,
         output_file_id = #{outputFileId},
         error_file_id = #{errorFileId},
         completed_count = #{completedCount},
         failed_count = #{failedCount},
+        last_error_message = NULL,
         completed_at = CASE WHEN #{status} = 'completed' THEN COALESCE(completed_at, CURRENT_TIMESTAMP) ELSE completed_at END
     WHERE openai_batch_id = #{openaiBatchId}
   </update>

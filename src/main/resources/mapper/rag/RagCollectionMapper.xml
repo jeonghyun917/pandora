@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.kaces.pandora.rag.collecting.RagCollectionMapper">
+
+  <insert id="insertDefaultSource">
+    INSERT INTO rag_collection_sources (
+      source_key, source_type, agency_code, agency_name, source_url, enabled
+    )
+    VALUES (
+      #{sourceKey}, #{sourceType}, #{agencyCode}, #{agencyName}, #{sourceUrl}, 'Y'
+    )
+    ON DUPLICATE KEY UPDATE
+      source_type = VALUES(source_type),
+      agency_code = VALUES(agency_code),
+      agency_name = VALUES(agency_name),
+      source_url = VALUES(source_url)
+  </insert>
+
+  <select id="findEnabledSources" resultType="com.kaces.pandora.rag.collecting.RagCollectionSourceRow">
+    SELECT
+      source_id AS sourceId,
+      source_key AS sourceKey,
+      source_type AS sourceType,
+      agency_code AS agencyCode,
+      agency_name AS agencyName,
+      source_url AS sourceUrl,
+      enabled,
+      DATE_FORMAT(last_checked_at, '%Y-%m-%d %H:%i:%s') AS lastCheckedAt,
+      DATE_FORMAT(last_success_at, '%Y-%m-%d %H:%i:%s') AS lastSuccessAt,
+      last_error_message AS lastErrorMessage
+    FROM rag_collection_sources
+    WHERE enabled = 'Y'
+      <if test="agencyCode != null and agencyCode != '' and agencyCode != 'ALL'">
+      AND agency_code = #{agencyCode}
+      </if>
+    ORDER BY agency_code, source_key
+  </select>
+
+  <select id="findSources" resultType="com.kaces.pandora.rag.collecting.RagCollectionSourceRow">
+    SELECT
+      source_id AS sourceId,
+      source_key AS sourceKey,
+      source_type AS sourceType,
+      agency_code AS agencyCode,
+      agency_name AS agencyName,
+      source_url AS sourceUrl,
+      enabled,
+      DATE_FORMAT(last_checked_at, '%Y-%m-%d %H:%i:%s') AS lastCheckedAt,
+      DATE_FORMAT(last_success_at, '%Y-%m-%d %H:%i:%s') AS lastSuccessAt,
+      last_error_message AS lastErrorMessage
+    FROM rag_collection_sources
+    ORDER BY agency_code, source_key
+  </select>
+
+  <update id="markSourceChecked">
+    UPDATE rag_collection_sources
+    SET last_checked_at = NOW(),
+        last_success_at = CASE WHEN #{success} THEN NOW() ELSE last_success_at END,
+        last_error_message = #{errorMessage}
+    WHERE source_id = #{sourceId}
+  </update>
+
+  <insert id="insertRun">
+    <selectKey keyProperty="run.runId" resultType="long" order="AFTER">
+      SELECT LAST_INSERT_ID()
+    </selectKey>
+    INSERT INTO rag_collection_runs (agency_code, status)
+    VALUES (#{agencyCode}, 'RUNNING')
+  </insert>
+
+  <update id="finishRun">
+    UPDATE rag_collection_runs
+    SET status = #{status},
+        discovered_articles = #{discoveredArticles},
+        new_articles = #{newArticles},
+        attachments_discovered = #{attachmentsDiscovered},
+        downloaded_count = #{downloadedCount},
+        imported_count = #{importedCount},
+        skipped_count = #{skippedCount},
+        failed_count = #{failedCount},
+        submitted_batches = #{submittedBatches},
+        last_error_message = #{lastErrorMessage},
+        finished_at = NOW()
+    WHERE run_id = #{runId}
+  </update>
+
+  <insert id="upsertArticle">
+    <selectKey keyProperty="key.articleId" resultType="long" order="AFTER">
+      SELECT article_id
+      FROM rag_source_articles
+      WHERE source_id = #{sourceId}
+        AND external_id = #{externalId}
+      LIMIT 1
+    </selectKey>
+    INSERT INTO rag_source_articles (
+      source_id, external_id, title, link, published_at, detail_hash, status, fetched_at
+    )
+    VALUES (
+      #{sourceId}, #{externalId}, #{title}, #{link}, #{publishedAt}, #{detailHash}, 'DISCOVERED', NOW()
+    )
+    ON DUPLICATE KEY UPDATE
+      title = VALUES(title),
+      link = VALUES(link),
+      published_at = VALUES(published_at),
+      detail_hash = VALUES(detail_hash),
+      fetched_at = NOW()
+  </insert>
+
+  <select id="findArticleId" resultType="long">
+    SELECT article_id
+    FROM rag_source_articles
+    WHERE source_id = #{sourceId}
+      AND external_id = #{externalId}
+    LIMIT 1
+  </select>
+
+  <update id="updateArticleStatus">
+    UPDATE rag_source_articles
+    SET status = #{status},
+        last_error_message = #{errorMessage},
+        fetched_at = NOW()
+    WHERE article_id = #{articleId}
+  </update>
+
+  <insert id="upsertAttachment">
+    INSERT INTO rag_source_attachments (
+      article_id, url, file_name, extension, mime_type, file_hash, local_path, document_id, status, last_error_message
+    )
+    VALUES (
+      #{articleId}, #{url}, #{fileName}, #{extension}, #{mimeType}, #{fileHash}, #{localPath}, #{documentId}, #{status}, #{errorMessage}
+    )
+    ON DUPLICATE KEY UPDATE
+      file_name = VALUES(file_name),
+      extension = VALUES(extension),
+      mime_type = VALUES(mime_type),
+      file_hash = VALUES(file_hash),
+      local_path = VALUES(local_path),
+      document_id = VALUES(document_id),
+      status = VALUES(status),
+      last_error_message = VALUES(last_error_message)
+  </insert>
+
+</mapper>

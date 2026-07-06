@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS law_api_documents (
     agency_name VARCHAR(255) NULL COMMENT '소관기관 또는 담당기관명',
     category_name VARCHAR(100) NULL COMMENT '법령/행정규칙/판례 등 원본 분류명',
     source_date VARCHAR(20) NULL COMMENT '원본 기준일자(시행일자, 발령일자, 공포일자 등)',
+    canonical_key VARCHAR(600) NULL COMMENT '동일 법령/행정규칙 버전 묶음 식별자',
+    effective_date VARCHAR(8) NULL COMMENT '검색 기준 시행/발령일자(yyyyMMdd)',
+    effective_status VARCHAR(20) NOT NULL DEFAULT 'UNKNOWN' COMMENT '버전 상태(CURRENT, FUTURE, PAST, UNKNOWN)',
     detail_link VARCHAR(1000) NULL COMMENT '국가법령 API 상세 조회 링크',
     raw_json LONGTEXT NOT NULL COMMENT '검색 목록 API 원본 JSON' CHECK (JSON_VALID(raw_json)),
     content_hash CHAR(64) NULL COMMENT '원본 JSON 변경 감지용 SHA-256 해시',
@@ -33,8 +36,10 @@ CREATE TABLE IF NOT EXISTS law_api_documents (
     UNIQUE KEY uk_law_api_documents_target_external (target, external_id),
     KEY idx_law_api_documents_title (title),
     KEY idx_law_api_documents_target_source_date (target, source_date),
+    KEY idx_law_api_documents_effective_status (target, canonical_key, effective_status, effective_date),
     KEY idx_law_api_documents_fetched_at (fetched_at),
-    CONSTRAINT chk_law_api_documents_use_yn CHECK (use_yn IN ('Y', 'N'))
+    CONSTRAINT chk_law_api_documents_use_yn CHECK (use_yn IN ('Y', 'N')),
+    CONSTRAINT chk_law_api_documents_effective_status CHECK (effective_status IN ('CURRENT', 'FUTURE', 'PAST', 'UNKNOWN'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS law_api_document_details (
@@ -69,7 +74,7 @@ CREATE TABLE IF NOT EXISTS law_api_document_chunks (
     chunk_title VARCHAR(500) NULL COMMENT '청크 제목',
     chunk_text LONGTEXT NOT NULL COMMENT 'AI 검색 기준 원문 텍스트',
     source_path VARCHAR(500) NULL COMMENT '원본 JSON 경로 또는 정규화된 출처 위치',
-    source_url VARCHAR(1000) NULL COMMENT '청크 출처 URL',
+    source_url VARCHAR(4000) NULL COMMENT '청크 출처 URL',
     sort_order INT NOT NULL DEFAULT 0 COMMENT '문서 내 표시 및 색인 순서',
     content_hash CHAR(64) NULL COMMENT '청크 텍스트 변경 감지용 SHA-256 해시',
     indexed_at DATETIME NULL COMMENT '검색/벡터 인덱스에 마지막으로 반영한 일시',
@@ -97,8 +102,8 @@ CREATE TABLE IF NOT EXISTS law_api_assets (
     document_id BIGINT NOT NULL COMMENT '연결된 문서 식별자',
     detail_id BIGINT NULL COMMENT '연결된 상세 정보 식별자',
     asset_type VARCHAR(50) NOT NULL COMMENT '자산 유형(image, pdf, hwp, doc, file, link 등)',
-    source_url VARCHAR(1000) NOT NULL COMMENT '국가법령 원본 파일 또는 이미지 URL',
-    proxy_url VARCHAR(1000) NULL COMMENT '우리 서버 프록시 URL',
+    source_url VARCHAR(4000) NOT NULL COMMENT '국가법령 원본 파일 또는 이미지 URL',
+    proxy_url TEXT NULL COMMENT '우리 서버 프록시 URL',
     file_name VARCHAR(500) NULL COMMENT '파일명',
     file_extension VARCHAR(20) NULL COMMENT '파일 확장자',
     mime_type VARCHAR(100) NULL COMMENT 'MIME 타입',
@@ -209,7 +214,7 @@ CREATE TABLE IF NOT EXISTS rag_documents (
     file_path VARCHAR(1000) NOT NULL COMMENT 'local file path',
     file_hash CHAR(64) NOT NULL COMMENT 'SHA-256 file hash',
     mime_type VARCHAR(100) NULL COMMENT 'detected mime type',
-    source_url VARCHAR(1000) NULL COMMENT 'source url or local reference',
+    source_url VARCHAR(4000) NULL COMMENT 'source url or local reference',
     import_status VARCHAR(30) NOT NULL DEFAULT 'PENDING' COMMENT 'import status',
     last_error_message TEXT NULL COMMENT 'last import error',
     use_yn CHAR(1) NOT NULL DEFAULT 'Y' COMMENT 'use flag',
@@ -228,12 +233,16 @@ CREATE TABLE IF NOT EXISTS rag_documents (
 CREATE TABLE IF NOT EXISTS rag_document_chunks (
     chunk_id BIGINT NOT NULL AUTO_INCREMENT COMMENT 'RAG document chunk id',
     document_id BIGINT NOT NULL COMMENT 'RAG document id',
+    chunk_version INT NOT NULL DEFAULT 1 COMMENT 'chunking strategy version',
     chunk_no VARCHAR(100) NULL COMMENT 'page or chunk number',
+    parent_section_title VARCHAR(500) NULL COMMENT 'parent section title',
     chunk_title VARCHAR(500) NULL COMMENT 'section title',
+    section_type VARCHAR(50) NOT NULL DEFAULT 'body' COMMENT 'body, target_scope, procedure, requirement, exception, example, table',
     chunk_text LONGTEXT NOT NULL COMMENT 'chunk text',
+    embedding_text LONGTEXT NULL COMMENT 'versioned text used for embedding',
     page_no INT NULL COMMENT 'source page number',
     source_path VARCHAR(1000) NULL COMMENT 'source path',
-    source_url VARCHAR(1000) NULL COMMENT 'source url',
+    source_url VARCHAR(4000) NULL COMMENT 'source url',
     sort_order INT NOT NULL DEFAULT 0 COMMENT 'display order',
     content_hash CHAR(64) NOT NULL COMMENT 'chunk content hash',
     index_status VARCHAR(30) NOT NULL DEFAULT 'PENDING' COMMENT 'index status',
@@ -242,12 +251,32 @@ CREATE TABLE IF NOT EXISTS rag_document_chunks (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'updated time',
     PRIMARY KEY (chunk_id),
     KEY idx_rag_document_chunks_document (document_id, sort_order),
+    KEY idx_rag_document_chunks_version (document_id, chunk_version, use_yn, sort_order),
+    KEY idx_rag_document_chunks_section (section_type, chunk_version),
     KEY idx_rag_document_chunks_status (index_status),
     CONSTRAINT fk_rag_document_chunks_document
         FOREIGN KEY (document_id) REFERENCES rag_documents (document_id)
         ON DELETE CASCADE,
     CONSTRAINT chk_rag_document_chunks_use_yn CHECK (use_yn IN ('Y', 'N'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE rag_document_chunks
+    ADD COLUMN IF NOT EXISTS chunk_version INT NOT NULL DEFAULT 1 COMMENT 'chunking strategy version';
+
+ALTER TABLE rag_document_chunks
+    ADD COLUMN IF NOT EXISTS parent_section_title VARCHAR(500) NULL COMMENT 'parent section title';
+
+ALTER TABLE rag_document_chunks
+    ADD COLUMN IF NOT EXISTS section_type VARCHAR(50) NOT NULL DEFAULT 'body' COMMENT 'body, target_scope, procedure, requirement, exception, example, table';
+
+ALTER TABLE rag_document_chunks
+    ADD COLUMN IF NOT EXISTS embedding_text LONGTEXT NULL COMMENT 'versioned text used for embedding';
+
+CREATE INDEX IF NOT EXISTS idx_rag_document_chunks_version
+    ON rag_document_chunks (document_id, chunk_version, use_yn, sort_order);
+
+CREATE INDEX IF NOT EXISTS idx_rag_document_chunks_section
+    ON rag_document_chunks (section_type, chunk_version);
 
 CREATE TABLE IF NOT EXISTS rag_chunk_embeddings (
     chunk_id BIGINT NOT NULL COMMENT 'RAG chunk id',
@@ -286,6 +315,91 @@ CREATE TABLE IF NOT EXISTS rag_import_jobs (
     KEY idx_rag_import_jobs_status (status, started_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS rag_collection_sources (
+    source_id BIGINT NOT NULL AUTO_INCREMENT COMMENT 'RAG external collection source id',
+    source_key VARCHAR(100) NOT NULL COMMENT 'stable source key',
+    source_type VARCHAR(30) NOT NULL DEFAULT 'RSS' COMMENT 'RSS, API, BOARD',
+    agency_code VARCHAR(30) NOT NULL COMMENT 'agency code',
+    agency_name VARCHAR(200) NOT NULL COMMENT 'agency display name',
+    source_url VARCHAR(4000) NOT NULL COMMENT 'feed or API URL',
+    enabled CHAR(1) NOT NULL DEFAULT 'Y' COMMENT 'enabled flag',
+    last_checked_at DATETIME NULL COMMENT 'last checked time',
+    last_success_at DATETIME NULL COMMENT 'last successful check time',
+    last_error_message TEXT NULL COMMENT 'last collection error',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created time',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'updated time',
+    PRIMARY KEY (source_id),
+    UNIQUE KEY uk_rag_collection_sources_key (source_key),
+    KEY idx_rag_collection_sources_agency (agency_code, enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS rag_source_articles (
+    article_id BIGINT NOT NULL AUTO_INCREMENT COMMENT 'RAG source article id',
+    source_id BIGINT NOT NULL COMMENT 'collection source id',
+    external_id VARCHAR(500) NOT NULL COMMENT 'RSS guid or normalized link hash',
+    title VARCHAR(1000) NOT NULL COMMENT 'article title',
+    link VARCHAR(4000) NOT NULL COMMENT 'article URL',
+    published_at DATETIME NULL COMMENT 'published time',
+    status VARCHAR(30) NOT NULL DEFAULT 'DISCOVERED' COMMENT 'DISCOVERED, DOWNLOADED, IMPORTED, SKIPPED, FAILED',
+    detail_hash CHAR(64) NULL COMMENT 'detail page hash',
+    last_error_message TEXT NULL COMMENT 'last article error',
+    fetched_at DATETIME NULL COMMENT 'last fetched time',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created time',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'updated time',
+    PRIMARY KEY (article_id),
+    UNIQUE KEY uk_rag_source_articles_external (source_id, external_id),
+    KEY idx_rag_source_articles_status (status, fetched_at),
+    CONSTRAINT fk_rag_source_articles_source
+        FOREIGN KEY (source_id) REFERENCES rag_collection_sources (source_id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS rag_source_attachments (
+    attachment_id BIGINT NOT NULL AUTO_INCREMENT COMMENT 'RAG source attachment id',
+    article_id BIGINT NOT NULL COMMENT 'source article id',
+    url VARCHAR(4000) NOT NULL COMMENT 'attachment URL',
+    file_name VARCHAR(500) NOT NULL COMMENT 'downloaded file name',
+    extension VARCHAR(20) NOT NULL COMMENT 'file extension',
+    mime_type VARCHAR(100) NULL COMMENT 'detected mime type',
+    file_hash CHAR(64) NULL COMMENT 'SHA-256 file hash',
+    local_path VARCHAR(1000) NULL COMMENT 'local downloaded path',
+    document_id BIGINT NULL COMMENT 'linked rag document id',
+    status VARCHAR(30) NOT NULL DEFAULT 'DISCOVERED' COMMENT 'DISCOVERED, DOWNLOADED, IMPORTED, SKIPPED, FAILED',
+    last_error_message TEXT NULL COMMENT 'last attachment error',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created time',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'updated time',
+    PRIMARY KEY (attachment_id),
+    UNIQUE KEY uk_rag_source_attachments_url (article_id, url(500)),
+    KEY idx_rag_source_attachments_status (status),
+    KEY idx_rag_source_attachments_document (document_id),
+    CONSTRAINT fk_rag_source_attachments_article
+        FOREIGN KEY (article_id) REFERENCES rag_source_articles (article_id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_rag_source_attachments_document
+        FOREIGN KEY (document_id) REFERENCES rag_documents (document_id)
+        ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS rag_collection_runs (
+    run_id BIGINT NOT NULL AUTO_INCREMENT COMMENT 'RAG collection run id',
+    agency_code VARCHAR(30) NULL COMMENT 'requested agency code',
+    status VARCHAR(30) NOT NULL DEFAULT 'RUNNING' COMMENT 'RUNNING, SUCCESS, PARTIAL_SUCCESS, FAILED',
+    discovered_articles INT NOT NULL DEFAULT 0 COMMENT 'discovered article count',
+    new_articles INT NOT NULL DEFAULT 0 COMMENT 'new article count',
+    attachments_discovered INT NOT NULL DEFAULT 0 COMMENT 'discovered attachment count',
+    downloaded_count INT NOT NULL DEFAULT 0 COMMENT 'downloaded attachment count',
+    imported_count INT NOT NULL DEFAULT 0 COMMENT 'imported document count',
+    skipped_count INT NOT NULL DEFAULT 0 COMMENT 'skipped count',
+    failed_count INT NOT NULL DEFAULT 0 COMMENT 'failed count',
+    submitted_batches INT NOT NULL DEFAULT 0 COMMENT 'newly submitted batch count',
+    last_error_message TEXT NULL COMMENT 'last run error',
+    started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'started time',
+    finished_at DATETIME NULL COMMENT 'finished time',
+    PRIMARY KEY (run_id),
+    KEY idx_rag_collection_runs_status (status, started_at),
+    KEY idx_rag_collection_runs_agency (agency_code, started_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS law_api_sync_history (
     sync_history_id BIGINT NOT NULL AUTO_INCREMENT COMMENT '동기화 이력 내부 식별자',
     sync_type VARCHAR(50) NOT NULL COMMENT '동기화 유형(search, detail, chunk, asset, full-sync 등)',
@@ -306,4 +420,56 @@ CREATE TABLE IF NOT EXISTS law_api_sync_history (
     CONSTRAINT fk_law_api_sync_history_document
         FOREIGN KEY (document_id) REFERENCES law_api_documents (document_id)
         ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS law_ai_search_failure_logs (
+    failure_id BIGINT NOT NULL AUTO_INCREMENT COMMENT 'AI search failure log id',
+    question TEXT NOT NULL COMMENT 'user question',
+    targets VARCHAR(500) NULL COMMENT 'selected search targets',
+    intent_types VARCHAR(1000) NULL COMMENT 'detected intent types',
+    entity_ids VARCHAR(1000) NULL COMMENT 'detected entity ids',
+    lexical_keywords TEXT NULL COMMENT 'lexical keywords used for search',
+    expanded_queries TEXT NULL COMMENT 'multi-query search texts',
+    failure_type VARCHAR(50) NOT NULL DEFAULT 'UNKNOWN' COMMENT 'classified failure type',
+    failure_stage VARCHAR(50) NOT NULL DEFAULT 'UNKNOWN' COMMENT 'pipeline stage where failure happened',
+    retryable TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'whether search logic/data can improve this failure',
+    eval_candidate TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'whether this failure should become an evaluation candidate',
+    qdrant_hit_count INT NOT NULL DEFAULT 0 COMMENT 'raw qdrant hit count',
+    vector_chunk_count INT NOT NULL DEFAULT 0 COMMENT 'vector chunks loaded from DB',
+    lexical_chunk_count INT NOT NULL DEFAULT 0 COMMENT 'keyword chunks loaded from DB',
+    merged_count INT NOT NULL DEFAULT 0 COMMENT 'merged candidate count',
+    ranked_count INT NOT NULL DEFAULT 0 COMMENT 'reranked candidate count',
+    intent_filtered_count INT NOT NULL DEFAULT 0 COMMENT 'intent filtered candidate count',
+    judge_candidate_count INT NOT NULL DEFAULT 0 COMMENT 'candidate count sent to evidence judge',
+    judged_count INT NOT NULL DEFAULT 0 COMMENT 'evidence judge accepted count',
+    final_ground_count INT NOT NULL DEFAULT 0 COMMENT 'final returned ground count',
+    result_msg VARCHAR(50) NOT NULL COMMENT 'retrieval result code',
+    public_message TEXT NULL COMMENT 'public no-ground message',
+    diagnostic_message TEXT NULL COMMENT 'internal diagnostic message',
+    review_status VARCHAR(30) NOT NULL DEFAULT 'OPEN' COMMENT 'review workflow status',
+    promoted_eval_case_id VARCHAR(120) NULL COMMENT 'evaluation case id when promoted',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created time',
+    PRIMARY KEY (failure_id),
+    KEY idx_law_ai_search_failure_created (created_at),
+    KEY idx_law_ai_search_failure_result (result_msg, created_at),
+    KEY idx_law_ai_search_failure_type (failure_type, created_at),
+    KEY idx_law_ai_search_failure_review (review_status, eval_candidate, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS admin_user (
+    admin_user_id BIGINT NOT NULL AUTO_INCREMENT COMMENT 'Admin user id',
+    username VARCHAR(50) NOT NULL COMMENT 'Login username',
+    password_hash VARCHAR(255) NOT NULL COMMENT 'BCrypt password hash',
+    display_name VARCHAR(100) NOT NULL COMMENT 'Display name',
+    role VARCHAR(30) NOT NULL DEFAULT 'ADMIN' COMMENT 'Admin role',
+    enabled BOOLEAN NOT NULL DEFAULT TRUE COMMENT 'Enabled flag',
+    failed_login_count INT NOT NULL DEFAULT 0 COMMENT 'Consecutive failed login count',
+    locked_until DATETIME NULL COMMENT 'Temporary login lock expiration time',
+    last_login_at DATETIME NULL COMMENT 'Last successful login time',
+    last_failed_at DATETIME NULL COMMENT 'Last failed login time',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Created time',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Updated time',
+    PRIMARY KEY (admin_user_id),
+    UNIQUE KEY uk_admin_user_username (username),
+    KEY idx_admin_user_enabled (enabled)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

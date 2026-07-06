@@ -4,8 +4,12 @@ $workspace = Split-Path -Parent $PSScriptRoot
 $mysql = "C:\Program Files\MariaDB 12.2\bin\mariadb.exe"
 $database = "pandora"
 $user = "pandora"
-$password = "pandora"
-$qdrantCollectionUrl = "http://localhost:6333/collections/law_chunks"
+$password = $env:PANDORA_DB_PASSWORD
+if (-not $password) {
+    $password = "pandora"
+}
+$lawQdrantCollectionUrl = "http://localhost:6333/collections/law_chunks"
+$officialQdrantCollectionUrl = "http://localhost:6333/collections/rag_chunks_v4"
 
 function Invoke-ScalarQuery {
     param([string] $Sql)
@@ -60,6 +64,12 @@ FROM (
   WHERE e.status = 'INDEXED'
     AND c.use_yn = 'Y'
     AND d.use_yn = 'Y'
+    AND c.chunk_version = (
+      SELECT MAX(c2.chunk_version)
+      FROM rag_document_chunks c2
+      WHERE c2.document_id = c.document_id
+        AND c2.use_yn = 'Y'
+    )
 ) indexed
 "@
 
@@ -87,9 +97,15 @@ FROM (
   LEFT JOIN rag_chunk_embeddings e
     ON e.chunk_id = c.chunk_id
     AND e.embedding_model = 'text-embedding-3-small'
-    AND e.vector_store = 'law_chunks'
+    AND e.vector_store = 'rag_chunks_v4'
   WHERE c.use_yn = 'Y'
     AND d.use_yn = 'Y'
+    AND c.chunk_version = (
+      SELECT MAX(c2.chunk_version)
+      FROM rag_document_chunks c2
+      WHERE c2.document_id = c.document_id
+        AND c2.use_yn = 'Y'
+    )
     AND (
       e.chunk_id IS NULL
       OR e.status IN ('FAILED', 'ERROR')
@@ -101,7 +117,7 @@ FROM (
 $failedOrCancelledJobs = Invoke-ScalarQuery @"
 SELECT COUNT(*)
 FROM semantic_batch_jobs
-WHERE status IN ('FAILED', 'failed', 'CANCELLED', 'cancelled', 'EXPIRED', 'expired')
+WHERE status IN ('FAILED', 'failed', 'CANCELLED', 'cancelled', 'CANCELLED_LOCAL', 'ABANDONED', 'EXPIRED', 'expired')
 "@
 
 $retryNeeded = Invoke-ScalarQuery @"
@@ -117,8 +133,11 @@ FROM (
 ) failed_chunks
 "@
 
-$qdrant = Invoke-RestMethod -Uri $qdrantCollectionUrl -Method Get
-$qdrantPoints = [long]$qdrant.result.points_count
+$lawQdrant = Invoke-RestMethod -Uri $lawQdrantCollectionUrl -Method Get
+$officialQdrant = Invoke-RestMethod -Uri $officialQdrantCollectionUrl -Method Get
+$lawQdrantPoints = [long]$lawQdrant.result.points_count
+$officialQdrantPoints = [long]$officialQdrant.result.points_count
+$qdrantPoints = $lawQdrantPoints + $officialQdrantPoints
 $rawDelta = $qdrantPoints - $dbIndexedRaw
 $activeDelta = $qdrantPoints - $dbIndexedActive
 
@@ -128,7 +147,9 @@ Write-Host "time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz')"
 Write-Host ""
 Write-Host "DB INDEXED chunks(raw):    $dbIndexedRaw"
 Write-Host "DB INDEXED chunks(active): $dbIndexedActive"
-Write-Host "Qdrant points:             $qdrantPoints"
+Write-Host "Qdrant law_chunks points:      $lawQdrantPoints"
+Write-Host "Qdrant rag_chunks_v4 points:  $officialQdrantPoints"
+Write-Host "Qdrant points(total):          $qdrantPoints"
 Write-Host "Qdrant - raw DB delta:     $rawDelta"
 Write-Host "Qdrant - active DB delta:  $activeDelta"
 Write-Host "remaining candidates: $remainingCandidates"
@@ -157,9 +178,18 @@ SELECT
   COUNT(*) AS chunks
 FROM rag_document_chunks c
 JOIN rag_documents d ON d.document_id = c.document_id
-LEFT JOIN rag_chunk_embeddings e ON e.chunk_id = c.chunk_id
+LEFT JOIN rag_chunk_embeddings e
+  ON e.chunk_id = c.chunk_id
+  AND e.embedding_model = 'text-embedding-3-small'
+  AND e.vector_store = 'rag_chunks_v4'
 WHERE c.use_yn = 'Y'
   AND d.use_yn = 'Y'
+  AND c.chunk_version = (
+    SELECT MAX(c2.chunk_version)
+    FROM rag_document_chunks c2
+    WHERE c2.document_id = c.document_id
+      AND c2.use_yn = 'Y'
+  )
 GROUP BY d.document_type, COALESCE(e.status, 'NO_EMBED')
 ORDER BY d.document_type, status
 "@

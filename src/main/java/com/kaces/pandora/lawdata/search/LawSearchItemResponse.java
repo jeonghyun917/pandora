@@ -8,6 +8,7 @@ public record LawSearchItemResponse(
 	String agencyName,
 	String categoryName,
 	String sourceDate,
+	String effectiveStatus,
 	String detailLink,
 	String source,
 	Long chunkId,
@@ -24,9 +25,10 @@ public record LawSearchItemResponse(
 		String agencyName,
 		String categoryName,
 		String sourceDate,
+		String effectiveStatus,
 		String detailLink,
 		String source
 	) {
-		this(documentId, target, externalId, title, agencyName, categoryName, sourceDate, detailLink, source, null, null, null, null, null);
+		this(documentId, target, externalId, title, agencyName, categoryName, sourceDate, effectiveStatus, detailLink, source, null, null, null, null, null);
 	}
 }

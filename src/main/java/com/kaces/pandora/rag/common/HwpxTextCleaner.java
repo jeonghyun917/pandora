@@ -28,10 +28,16 @@ public final class HwpxTextCleaner {
 		String normalized = value
 			.replace("\r\n", "\n")
 			.replace('\r', '\n');
+		normalized = stripControlArtifacts(normalized);
 		if (!containsHwpxArtifact(normalized)) {
 			return normalized.trim();
 		}
 		return cleanLines(stripInlineControlPrefixes(cleanInlineFields(normalized))).trim();
+	}
+
+	// 메소드 설명: PDF/HWPX 추출 과정에서 섞이는 비표시 제어문자를 제거합니다.
+	private static String stripControlArtifacts(String value) {
+		return value.replaceAll("[\\p{Cntrl}&&[^\n\t]]", "");
 	}
 
 	// 메소드 설명: containsHwpxArtifact 처리 흐름을 수행합니다.

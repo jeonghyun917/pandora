@@ -1,8 +1,6 @@
 package com.kaces.pandora.ai.answer;
 
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
@@ -13,7 +11,9 @@ public class AnswerGuard {
 	private static final Pattern CITATION_GROUP = Pattern.compile(
 		"\\[\\s*((?:(?:근거|출처|문서)?\\s*\\d+\\s*(?:번)?\\s*)(?:[,，、/]\\s*(?:근거|출처|문서)?\\s*\\d+\\s*(?:번)?\\s*)*)\\]"
 	);
-	private static final Pattern CITATION_NUMBER = Pattern.compile("\\d+");
+	private static final Pattern INTERNAL_DIAGNOSTIC_LINE = Pattern.compile(
+		"(?im)^.*(?:진단:|단계별\\s*건수|DEBUG|Qdrant|Evidence\\s*Judge|Judge후보|Judge통과|vector\\s*후보|keyword\\s*후보|embeddingMs|qdrantMs|dbMs|judgeMs|answerMs|chunk_id|document_id).*$"
+	);
 	private static final String INSUFFICIENT_EVIDENCE_MESSAGE =
 		"제공된 근거만으로는 답변을 확정하기 어렵습니다. 관련 법령명이나 문서 범위를 더 구체적으로 입력해 주세요.";
 
@@ -27,9 +27,9 @@ public class AnswerGuard {
 			return INSUFFICIENT_EVIDENCE_MESSAGE;
 		}
 
-		Set<Integer> validCitationNumbers = validCitationNumbers(safeGrounds);
 		String guarded = answer.replace("\r\n", "\n").trim();
-		guarded = removeInvalidCitations(guarded, validCitationNumbers);
+		guarded = removeCitationMarkers(guarded);
+		guarded = removeInternalDiagnostics(guarded);
 		guarded = normalizeDashes(guarded);
 		guarded = softenFinality(guarded);
 		guarded = trimBlankLines(guarded);
@@ -37,55 +37,28 @@ public class AnswerGuard {
 		if (guarded.isBlank()) {
 			return INSUFFICIENT_EVIDENCE_MESSAGE;
 		}
-		if (!containsValidCitation(guarded, validCitationNumbers)) {
-			guarded = appendPrimaryCitation(guarded, safeGrounds);
-		}
 		return guarded;
 	}
 
-	// 메소드 설명: validCitationNumbers 처리 흐름을 수행합니다.
-	private Set<Integer> validCitationNumbers(List<LawAiAnswerGround> grounds) {
-		Set<Integer> validNumbers = new LinkedHashSet<>();
-		for (int i = 0; i < grounds.size(); i++) {
-			int number = grounds.get(i).number();
-			validNumbers.add(number > 0 ? number : i + 1);
-		}
-		return validNumbers;
+	private String removeInternalDiagnostics(String answer) {
+		return INTERNAL_DIAGNOSTIC_LINE.matcher(answer)
+			.replaceAll("")
+			.replaceAll("\\n{3,}", "\n\n")
+			.trim();
 	}
 
-	// 메소드 설명: removeInvalidCitations 처리 흐름을 수행합니다.
-	private String removeInvalidCitations(String answer, Set<Integer> validCitationNumbers) {
+	// 메소드 설명: removeCitationMarkers 처리 흐름을 수행합니다.
+	private String removeCitationMarkers(String answer) {
 		Matcher matcher = CITATION_GROUP.matcher(answer);
 		StringBuffer result = new StringBuffer();
 		while (matcher.find()) {
-			String replacement = normalizeCitationGroup(matcher.group(1), validCitationNumbers);
-			matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
+			matcher.appendReplacement(result, "");
 		}
 		matcher.appendTail(result);
 		return result.toString()
 			.replaceAll("[ \\t]+([,.!?])", "$1")
 			.replaceAll("[ \\t]+\\n", "\n")
 			.trim();
-	}
-
-	// 메소드 설명: normalizeCitationGroup 처리 흐름을 수행합니다.
-	private String normalizeCitationGroup(String rawNumbers, Set<Integer> validCitationNumbers) {
-		Set<Integer> keptNumbers = new LinkedHashSet<>();
-		Matcher numberMatcher = CITATION_NUMBER.matcher(rawNumbers);
-		while (numberMatcher.find()) {
-			try {
-				int number = Integer.parseInt(numberMatcher.group());
-				if (validCitationNumbers.contains(number)) {
-					keptNumbers.add(number);
-				}
-			} catch (NumberFormatException ignored) {
-				// Regex already limits this to digits, but keep parsing defensive.
-			}
-		}
-		if (keptNumbers.isEmpty()) {
-			return "";
-		}
-		return "[" + String.join(", ", keptNumbers.stream().map(String::valueOf).toList()) + "]";
 	}
 
 	// 메소드 설명: softenFinality 처리 흐름을 수행합니다.
@@ -114,27 +87,4 @@ public class AnswerGuard {
 			.trim();
 	}
 
-	// 메소드 설명: containsValidCitation 처리 흐름을 수행합니다.
-	private boolean containsValidCitation(String answer, Set<Integer> validCitationNumbers) {
-		Matcher matcher = CITATION_GROUP.matcher(answer);
-		while (matcher.find()) {
-			Matcher numberMatcher = CITATION_NUMBER.matcher(matcher.group(1));
-			while (numberMatcher.find()) {
-				try {
-					if (validCitationNumbers.contains(Integer.parseInt(numberMatcher.group()))) {
-						return true;
-					}
-				} catch (NumberFormatException ignored) {
-					return false;
-				}
-			}
-		}
-		return false;
-	}
-
-	// 메소드 설명: appendPrimaryCitation 처리 흐름을 수행합니다.
-	private String appendPrimaryCitation(String answer, List<LawAiAnswerGround> grounds) {
-		int primaryNumber = grounds.get(0).number() > 0 ? grounds.get(0).number() : 1;
-		return answer.trim() + " [" + primaryNumber + "]";
-	}
 }

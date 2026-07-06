@@ -6,9 +6,12 @@ const workspace = path.resolve(__dirname, "..");
 const logDir = path.join(workspace, "logs");
 const logPath = path.join(logDir, "admrul-batch-monitor.log");
 const reportPath = path.join(logDir, "admrul-batch-report-latest.md");
+const skipFillQueuePath = path.join(logDir, "admrul-skip-fill-queue.flag");
 const lockPath = path.join(process.env.TEMP || workspace, "pandora-admrul-batch-monitor.lock");
+const monitorLockMinutes = 20;
+const waveLockMaxMinutes = 360;
 const mysql = "C:\\Program Files\\MariaDB 12.2\\bin\\mariadb.exe";
-const baseUrl = "http://localhost:8080";
+const baseUrl = process.env.PANDORA_BASE_URL || "http://localhost:18080";
 const qdrantUrl = "http://localhost:6333/collections/law_chunks";
 const model = "text-embedding-3-small";
 const vectorStore = "law_chunks";
@@ -18,6 +21,8 @@ const syncQuery = process.env.PANDORA_SYNC_QUERY || "*";
 const syncSort = process.env.PANDORA_SYNC_SORT || "efdes";
 const syncPages = positiveIntEnv("PANDORA_SYNC_PAGES", 1, 10);
 const syncDisplay = positiveIntEnv("PANDORA_SYNC_DISPLAY", 100, 100);
+const batchFillLimit = positiveIntEnv("PANDORA_BATCH_FILL_LIMIT", 100, 5000);
+const batchMaxActiveJobs = positiveIntEnv("PANDORA_BATCH_MAX_ACTIVE_JOBS", 1, 2);
 const syncDate = process.env.PANDORA_SYNC_DATE || "";
 const syncEfYd = process.env.PANDORA_SYNC_EFYD || "";
 const syncAncYd = process.env.PANDORA_SYNC_ANCYD || recentDateRange(120);
@@ -179,12 +184,12 @@ function buildReport(context) {
   const docsAndChunks = db(`
 SELECT CONCAT('documents=', COUNT(DISTINCT doc.document_id))
 FROM law_api_documents doc
-WHERE doc.target = 'admrul' AND doc.use_yn = 'Y'
+WHERE doc.target IN (${sqlTargets(batchTargets)}) AND doc.use_yn = 'Y'
 UNION ALL
 SELECT CONCAT('chunks=', COUNT(*))
 FROM law_api_document_chunks c
 JOIN law_api_documents doc ON doc.document_id = c.document_id
-WHERE doc.target = 'admrul' AND c.use_yn = 'Y' AND doc.use_yn = 'Y'
+WHERE doc.target IN (${sqlTargets(batchTargets)}) AND c.use_yn = 'Y' AND doc.use_yn = 'Y'
 `);
   const total = Object.fromEntries(docsAndChunks.map((line) => {
     const [key, value] = line.split("=");
@@ -246,12 +251,12 @@ function buildReportReadable(context) {
   const docsAndChunks = db(`
 SELECT CONCAT('documents=', COUNT(DISTINCT doc.document_id))
 FROM law_api_documents doc
-WHERE doc.target = 'admrul' AND doc.use_yn = 'Y'
+WHERE doc.target IN (${sqlTargets(batchTargets)}) AND doc.use_yn = 'Y'
 UNION ALL
 SELECT CONCAT('chunks=', COUNT(*))
 FROM law_api_document_chunks c
 JOIN law_api_documents doc ON doc.document_id = c.document_id
-WHERE doc.target = 'admrul' AND c.use_yn = 'Y' AND doc.use_yn = 'Y'
+WHERE doc.target IN (${sqlTargets(batchTargets)}) AND c.use_yn = 'Y' AND doc.use_yn = 'Y'
 `);
   const total = Object.fromEntries(docsAndChunks.map((line) => {
     const [key, value] = line.split("=");
@@ -300,12 +305,18 @@ ${jobLines || "| - | - | - | - | - |"}
 async function main() {
   if (fs.existsSync(lockPath)) {
     const ageMinutes = (Date.now() - fs.statSync(lockPath).mtimeMs) / 60000;
-    if (ageMinutes < 20) {
+    const lockContent = fs.readFileSync(lockPath, "utf8").trim();
+    if (lockContent.startsWith("law-parent-child-wave") && ageMinutes < waveLockMaxMinutes) {
+      log(`skip: law parent-child wave active age_min=${ageMinutes.toFixed(1)}`);
+      return;
+    }
+    if (ageMinutes < monitorLockMinutes) {
       log("skip: previous monitor run still active");
       return;
     }
+    log(`stale monitor lock replaced age_min=${ageMinutes.toFixed(1)} content=${lockContent.slice(0, 80)}`);
   }
-  fs.writeFileSync(lockPath, String(process.pid));
+  fs.writeFileSync(lockPath, `monitor pid=${process.pid} started=${new Date().toISOString()}`, "utf8");
   const recoveryActions = [];
   const risks = [];
   let fill = "";
@@ -369,14 +380,24 @@ ORDER BY batch_job_id
     }
 
     const fillResults = [];
-    for (const target of batchTargets) {
-      try {
-        const targetFill = await api("POST", `/api/law-data/semantic/batches/fill-queue?target=${encodeURIComponent(target)}&maxActiveJobs=2`, 600000);
-        fillResults.push(targetFill);
-        log(`fill-queue target=${target} ${targetFill}`);
-      } catch (error) {
-        log(`fill-queue-error target=${target} ${error.message}`);
-        risks.push(`fill-queue 실패 ${target}: ${error.message.slice(0, 160)}`);
+    if (fs.existsSync(skipFillQueuePath)) {
+      log("fill-queue skipped by admrul-skip-fill-queue.flag");
+      recoveryActions.push("fill-queue skipped by admrul-skip-fill-queue.flag");
+    } else {
+      for (const target of batchTargets) {
+        try {
+          const params = new URLSearchParams({
+            target,
+            limit: String(batchFillLimit),
+            maxActiveJobs: String(batchMaxActiveJobs),
+          });
+          const targetFill = await api("POST", `/api/law-data/semantic/batches/fill-queue?${params.toString()}`, 600000);
+          fillResults.push(targetFill);
+          log(`fill-queue target=${target} limit=${batchFillLimit} maxActiveJobs=${batchMaxActiveJobs} ${targetFill}`);
+        } catch (error) {
+          log(`fill-queue-error target=${target} ${error.message}`);
+          risks.push(`fill-queue 실패 ${target}: ${error.message.slice(0, 160)}`);
+        }
       }
     }
     fill = fillResults.join("\n");
@@ -421,7 +442,7 @@ SELECT CONCAT(
   END
 )
 FROM semantic_batch_jobs
-WHERE target = 'admrul'
+WHERE target IN (${sqlTargets(batchTargets)})
   AND status IN ('validating','in_progress','finalizing','completed')
 ORDER BY batch_job_id DESC
 `);
@@ -435,7 +456,7 @@ ORDER BY batch_job_id DESC
     const summary = db(`
 SELECT CONCAT('active=', COUNT(*))
 FROM semantic_batch_jobs
-WHERE target = 'admrul' AND status IN ('validating','in_progress','finalizing')
+WHERE target IN (${sqlTargets(batchTargets)}) AND status IN ('validating','in_progress','finalizing')
 UNION ALL
 SELECT CONCAT(COALESCE(e.status,'NO_EMBED'), '=', COUNT(*))
 FROM law_api_document_chunks c
@@ -444,7 +465,7 @@ LEFT JOIN law_api_chunk_embeddings e
   ON e.chunk_id = c.chunk_id
   AND e.embedding_model = '${model}'
   AND e.vector_store = '${vectorStore}'
-WHERE doc.target = 'admrul'
+WHERE doc.target IN (${sqlTargets(batchTargets)})
   AND c.use_yn = 'Y'
   AND doc.use_yn = 'Y'
 GROUP BY COALESCE(e.status,'NO_EMBED')
@@ -454,7 +475,7 @@ GROUP BY COALESCE(e.status,'NO_EMBED')
     const jobs = db(`
 SELECT batch_job_id, openai_batch_id, status, requested_count, submitted_count, completed_count, failed_count, ingested_count, updated_at
 FROM semantic_batch_jobs
-WHERE target = 'admrul'
+WHERE target IN (${sqlTargets(batchTargets)})
 ORDER BY
   CASE WHEN status = 'INGESTED' THEN 1 ELSE 0 END,
   batch_job_id DESC

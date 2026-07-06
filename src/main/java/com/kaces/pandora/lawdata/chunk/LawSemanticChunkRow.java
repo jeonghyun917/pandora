@@ -9,6 +9,7 @@ public record LawSemanticChunkRow(
 	String agencyName,
 	String categoryName,
 	String sourceDate,
+	String effectiveStatus,
 	String chunkNo,
 	String chunkTitle,
 	String chunkText,
@@ -16,14 +17,18 @@ public record LawSemanticChunkRow(
 	String sourcePath,
 	String sourceUrl,
 	int sortOrder,
-	String contentHash
+	String contentHash,
+	String parentSectionTitle,
+	String sectionType
 ) {
 	// 메소드 설명: embeddingInput 처리 흐름을 수행합니다.
 	public String embeddingInput() {
 		return String.join("\n",
 			nullToEmpty(title),
 			nullToEmpty(chunkNo),
+			nullToEmpty(parentSectionTitle),
 			nullToEmpty(chunkTitle),
+			nullToEmpty(sectionType),
 			nullToEmpty(chunkText)
 		).trim();
 	}

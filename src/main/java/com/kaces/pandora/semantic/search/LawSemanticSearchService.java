@@ -35,7 +35,12 @@ public class LawSemanticSearchService {
 
 	// 메소드 설명: search 처리 흐름을 수행합니다.
 	public Map<String, LawSemanticSearchResponse> search(String target, String query, int limit) {
-		LawSearchQuery normalized = LawSearchQuery.normalize(target, query, 1, Math.max(1, Math.min(limit, 50)));
+		return search(target, query, limit, true);
+	}
+
+	// 메소드 설명: search 처리 흐름을 수행합니다.
+	public Map<String, LawSemanticSearchResponse> search(String target, String query, int limit, boolean includeFuture) {
+		LawSearchQuery normalized = LawSearchQuery.normalize(target, query, 1, Math.max(1, Math.min(limit, 50)), false, includeFuture);
 		if (normalized.searchAll()) {
 			return Map.of("SemanticSearch", new LawSemanticSearchResponse("00", "EMPTY_QUERY", normalized.target(), normalized.query(), 0, List.of()));
 		}
@@ -56,7 +61,7 @@ public class LawSemanticSearchService {
 		List<Long> lawChunkIds = hits.stream().filter(hit -> isLawTarget(hit.target())).map(QdrantSearchHit::chunkId).distinct().toList();
 		if (!lawChunkIds.isEmpty()) {
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-			for (LawSemanticChunkRow chunk : lawChunkMapper.findSemanticChunksByIds(lawChunkIds)) {
+			for (LawSemanticChunkRow chunk : lawChunkMapper.findSemanticChunksByIds(lawChunkIds, normalized.includeFuture())) {
 				chunkById.put(scoreKey(chunk.target(), chunk.chunkId()), chunk);
 			}
 		}

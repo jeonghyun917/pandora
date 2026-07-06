@@ -11,6 +11,7 @@
       doc.title AS title,
       doc.agency_name AS agencyName,
       doc.source_date AS sourceDate,
+      doc.detail_link AS detailLink,
       d.detail_title AS detailTitle,
       d.sections_json AS sectionsJson,
       d.raw_json AS rawJson
@@ -52,7 +53,21 @@
       doc.target AS target,
       doc.title AS title,
       d.detail_title AS detailTitle,
-      d.raw_json AS rawJson
+      d.raw_json AS rawJson,
+      doc.detail_link AS detailLink,
+      (
+        SELECT COUNT(*)
+        FROM law_api_document_chunks c
+        WHERE c.document_id = d.document_id
+          AND c.use_yn = 'Y'
+      ) AS currentChunkCount,
+      (
+        SELECT COUNT(*)
+        FROM law_api_document_chunks c
+        WHERE c.document_id = d.document_id
+          AND c.use_yn = 'Y'
+          AND CHAR_LENGTH(c.chunk_text) &lt; 80
+      ) AS currentTinyChunkCount
     FROM law_api_document_details d
     JOIN law_api_documents doc ON doc.document_id = d.document_id
     WHERE doc.use_yn = 'Y'
@@ -69,7 +84,21 @@
       doc.target AS target,
       doc.title AS title,
       d.detail_title AS detailTitle,
-      d.raw_json AS rawJson
+      d.raw_json AS rawJson,
+      doc.detail_link AS detailLink,
+      (
+        SELECT COUNT(*)
+        FROM law_api_document_chunks c
+        WHERE c.document_id = d.document_id
+          AND c.use_yn = 'Y'
+      ) AS currentChunkCount,
+      (
+        SELECT COUNT(*)
+        FROM law_api_document_chunks c
+        WHERE c.document_id = d.document_id
+          AND c.use_yn = 'Y'
+          AND CHAR_LENGTH(c.chunk_text) &lt; 80
+      ) AS currentTinyChunkCount
     FROM law_api_document_details d
     JOIN law_api_documents doc ON doc.document_id = d.document_id
     WHERE doc.use_yn = 'Y'

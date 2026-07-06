@@ -8,6 +8,7 @@ public record LawDocumentRow(
 	String agencyName,
 	String categoryName,
 	String sourceDate,
+	String effectiveStatus,
 	String detailLink
 ) {
 }

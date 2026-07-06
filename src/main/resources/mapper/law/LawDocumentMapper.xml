@@ -8,6 +8,7 @@
   <sql id="documentSearchWhere">
     target = #{target}
     AND use_yn = 'Y'
+    <include refid="effectiveSearchFilter"/>
     <if test="!searchAll">
       AND (
         title LIKE CONCAT('%', #{query}, '%')
@@ -17,6 +18,15 @@
         </if>
       )
     </if>
+  </sql>
+  <sql id="effectiveSearchFilter">
+    AND (
+      target NOT IN ('law', 'admrul')
+      OR effective_status IS NULL
+      OR effective_status IN ('CURRENT', 'UNKNOWN'
+        <if test="includeFuture">, 'FUTURE'</if>
+      )
+    )
   </sql>
   <!-- 검색 조건에 맞는 법령 문서 전체 건수를 조회합니다. -->
   <select id="countDocuments" resultType="int">
@@ -34,27 +44,42 @@
       agency_name AS agencyName,
       category_name AS categoryName,
       source_date AS sourceDate,
+      effective_status AS effectiveStatus,
       detail_link AS detailLink
     FROM law_api_documents
     WHERE <include refid="documentSearchWhere"/>
-    ORDER BY title, external_id
+    ORDER BY
+      CASE
+        WHEN title = #{query} THEN 0
+        WHEN title LIKE CONCAT(#{query}, '%') THEN 1
+        WHEN title LIKE CONCAT('%', #{query}, '%') THEN 2
+        ELSE 3
+      END,
+      COALESCE(source_date, '') DESC,
+      title ASC,
+      external_id DESC
     LIMIT #{limit} OFFSET #{offset}
   </select>
   <!-- 외부 API 검색 문서를 신규 저장하거나 동일 target/external_id 문서를 최신 값으로 갱신합니다. -->
   <insert id="upsertDocument">
     INSERT INTO law_api_documents (
       target, external_id, title, agency_name, category_name, source_date,
-      detail_link, raw_json, content_hash, sync_status, last_error_message, fetched_at
+      canonical_key, effective_date, effective_status, detail_link, raw_json,
+      content_hash, sync_status, last_error_message, fetched_at
     )
     VALUES (
       #{document.target}, #{document.externalId}, #{document.title}, #{document.agencyName}, #{document.categoryName}, #{document.sourceDate},
-      #{document.detailLink}, #{document.rawJson}, #{contentHash}, 'SYNCED', NULL, CURRENT_TIMESTAMP
+      #{document.canonicalKey}, #{document.effectiveDate}, #{document.effectiveStatus}, #{document.detailLink}, #{document.rawJson},
+      #{contentHash}, 'SYNCED', NULL, CURRENT_TIMESTAMP
     )
     ON DUPLICATE KEY UPDATE
       title = VALUES(title),
       agency_name = VALUES(agency_name),
       category_name = VALUES(category_name),
       source_date = VALUES(source_date),
+      canonical_key = VALUES(canonical_key),
+      effective_date = VALUES(effective_date),
+      effective_status = VALUES(effective_status),
       detail_link = VALUES(detail_link),
       raw_json = VALUES(raw_json),
       content_hash = VALUES(content_hash),

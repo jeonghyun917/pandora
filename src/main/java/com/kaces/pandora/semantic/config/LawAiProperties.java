@@ -14,10 +14,10 @@ public record LawAiProperties(
 			openai = new OpenAi("", "text-embedding-3-small", "gpt-5-mini", "low", "low", 700);
 		}
 		if (qdrant == null) {
-			qdrant = new Qdrant("http://127.0.0.1:6333", "law_chunks", 1536);
+			qdrant = new Qdrant("http://127.0.0.1:6333", "law_chunks", "rag_chunks_v4", 1536);
 		}
 		if (batch == null) {
-			batch = new Batch(false, "", "", 50_000, 1, 60_000, 360);
+			batch = new Batch(false, false, true, "", "", 50_000, 1, 60_000, 360);
 		}
 		if (rag == null) {
 			rag = new Rag("data/rag-upload", 64);
@@ -54,12 +54,20 @@ public record LawAiProperties(
 	public record Qdrant(
 		String baseUrl,
 		String collection,
+		String ragCollection,
 		int vectorSize
 	) {
+		public Qdrant {
+			if (ragCollection == null || ragCollection.isBlank()) {
+				ragCollection = "rag_chunks_v4";
+			}
+		}
 	}
 
 	public record Batch(
+		boolean schedulerEnabled,
 		boolean autoEnabled,
+		boolean autoIngestEnabled,
 		String autoTarget,
 		String autoQuery,
 		int submitLimit,

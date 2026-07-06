@@ -57,6 +57,7 @@ public class LawSearchResponseAssembler {
 			row.agencyName(),
 			row.categoryName(),
 			row.sourceDate(),
+			row.effectiveStatus(),
 			detailLink(row),
 			"DB"
 		);
@@ -73,6 +74,7 @@ public class LawSearchResponseAssembler {
 			row.agencyName(),
 			row.categoryName(),
 			row.sourceDate(),
+			row.effectiveStatus(),
 			chunkDetailLink(row),
 			"DB_CHUNK",
 			row.chunkId(),

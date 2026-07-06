@@ -47,6 +47,10 @@ public class OpenAiAnswerClient {
 
 	// 메소드 설명: answer 처리 흐름을 수행합니다.
 	public String answer(String question, String context) {
+		return answer(question, context, answerMaxOutputTokens());
+	}
+
+	public String answer(String question, String context, int maxOutputTokens) {
 		String apiKey = properties.openai().apiKey();
 		if (apiKey == null || apiKey.isBlank()) {
 			throw new IllegalStateException("OPENAI_API_KEY environment variable is required.");
@@ -62,7 +66,7 @@ public class OpenAiAnswerClient {
 				"input", userInput(question, context),
 				"reasoning", Map.of("effort", answerReasoningEffort()),
 				"text", Map.of("verbosity", answerVerbosity()),
-				"max_output_tokens", answerMaxOutputTokens()
+				"max_output_tokens", safeMaxOutputTokens(maxOutputTokens)
 			))
 			.retrieve()
 			.body(Map.class);
@@ -72,6 +76,10 @@ public class OpenAiAnswerClient {
 
 	// 메소드 설명: answerStreaming 처리 흐름을 수행합니다.
 	public String answerStreaming(String question, String context, Consumer<String> onDelta) {
+		return answerStreaming(question, context, onDelta, answerMaxOutputTokens());
+	}
+
+	public String answerStreaming(String question, String context, Consumer<String> onDelta, int maxOutputTokens) {
 		String apiKey = properties.openai().apiKey();
 		if (apiKey == null || apiKey.isBlank()) {
 			throw new IllegalStateException("OPENAI_API_KEY environment variable is required.");
@@ -85,7 +93,7 @@ public class OpenAiAnswerClient {
 				"input", userInput(question, context),
 				"reasoning", Map.of("effort", answerReasoningEffort()),
 				"text", Map.of("verbosity", answerVerbosity()),
-				"max_output_tokens", answerMaxOutputTokens(),
+				"max_output_tokens", safeMaxOutputTokens(maxOutputTokens),
 				"stream", true
 			));
 			HttpRequest request = HttpRequest.newBuilder(URI.create("https://api.openai.com/v1/responses"))
@@ -154,7 +162,7 @@ public class OpenAiAnswerClient {
 			Answer naturally in Korean for a non-lawyer.
 			Use only the provided evidence and synthesize it into a direct answer.
 			Keep the answer concise: 2 short paragraphs or up to 4 bullets.
-			Cite only important claims with evidence numbers like [1].
+			Do not include evidence numbers or bracket citations like [1] in the answer body.
 			Do not use em dashes, en dashes, or decorative separators. Use Korean commas and periods instead.
 			If the evidence is insufficient, say what is missing instead of guessing.
 			Do not present the answer as legal advice or a final legal judgment.
@@ -173,7 +181,7 @@ public class OpenAiAnswerClient {
 			답변 지침:
 			- 첫 문장부터 결론을 말하고, 법령/문서 문구를 그대로 나열하지 마세요.
 			- 조건, 예외, 확인할 사항이 있으면 함께 묶어 설명하세요.
-			- 근거 번호는 중요한 문장 끝에만 붙이고, 한 문장에 여러 번호를 몰아 붙이지 마세요.
+			- 답변 본문에는 [1] 같은 근거 번호를 붙이지 마세요. 근거 목록은 별도로 제공됩니다.
 			- 확실하지 않은 세부 절차나 금액은 확인이 필요하다고 짧게 말하세요.
 			""".formatted(question, context);
 	}
@@ -250,5 +258,9 @@ public class OpenAiAnswerClient {
 	// 메소드 설명: answerMaxOutputTokens 처리 흐름을 수행합니다.
 	private int answerMaxOutputTokens() {
 		return properties.openai().answerMaxOutputTokens();
+	}
+
+	private int safeMaxOutputTokens(int maxOutputTokens) {
+		return maxOutputTokens > 0 ? maxOutputTokens : answerMaxOutputTokens();
 	}
 }

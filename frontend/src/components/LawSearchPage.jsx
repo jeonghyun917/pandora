@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Bot,
   Bug,
+  ExternalLink,
   Gavel,
   KeyRound,
   Search,
@@ -13,18 +14,20 @@ import { normalizeDetail, normalizeList } from '../domain/lawNormalize';
 import { LandingConstellation } from './LandingPage';
 
 const initialQuery = '';
-const starterQuestions = [
-  '개인정보 보호법은 어떤 것까지 해야 해?',
-  '공공소프트웨어사업에서 단순 하드웨어 구매는 포함되나요?',
-  '정보화사업 사전협의 대상은 어떻게 돼?',
-  '보안성검토 대상 시스템은?',
+const officialGuideAgencyLabels = [
+  { label: '문화체육관광부 공식 가이드', aliases: ['문화체육관광부', '문체부', 'mcst', 'Ministry of Culture, Sports and Tourism'] },
+  { label: '행정안전부 공식 가이드', aliases: ['행정안전부', '행안부', 'mois', 'Ministry of the Interior and Safety'] },
+  { label: '과학기술정보통신부 공식 가이드', aliases: ['과학기술정보통신부', '과기정통부', 'msit', 'Ministry of Science and ICT'] },
+  { label: '개인정보보호위원회 공식 가이드', aliases: ['개인정보보호위원회', '개인정보위', 'pipc', 'Personal Information Protection Commission'] },
 ];
+const readinessSearchTargets = ['law', 'admrul', 'official_doc', 'internal_doc', 'reference_doc'];
 
 // 메소드 설명: LawSearchPage 처리 흐름을 수행합니다.
 export function LawSearchPage({ onBack, onDebug }) {
   const [query, setQuery] = useState(initialQuery);
   const [searchMode, setSearchMode] = useState('ai');
   const [selectedMenuIds, setSelectedMenuIds] = useState(defaultSelectedMenuIds);
+  const [includeFuture, setIncludeFuture] = useState(true);
   const [results, setResults] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [aiAnswer, setAiAnswer] = useState(null);
@@ -37,7 +40,15 @@ export function LawSearchPage({ onBack, onDebug }) {
   const [detailError, setDetailError] = useState('');
   const detailPageRef = useRef(null);
   const documentViewerRef = useRef(null);
+  const searchGenerationRef = useRef(0);
   const [viewerFocus, setViewerFocus] = useState({ text: '', pageNo: null, nonce: 0 });
+  const [readinessCounts, setReadinessCounts] = useState({
+    law: null,
+    admrul: null,
+    official_doc: null,
+    internal_doc: null,
+    reference_doc: null,
+  });
 
   // 주요 호출: API 또는 프레임워크 기능을 호출합니다.
   const detail = useMemo(
@@ -60,6 +71,9 @@ export function LawSearchPage({ onBack, onDebug }) {
     () => buildAnswerSourceLabel(results, selectedMenus[0]?.title ?? aiAnswer?.target),
     [results, selectedMenus, aiAnswer],
   );
+  const loadingSummaryText = loading
+    ? buildAiLoadingSummary(aiAnswer, results.length)
+    : `${totalCount.toLocaleString()}건의 근거 표시`;
   const targetSection = targetSectionIndex >= 0 ? detail?.sections?.[targetSectionIndex] : null;
   const targetPageNo = getTargetPageNo(selectedItem, targetSection);
   const previewUrl = detail?.previewFileUrl || detail?.originalFileUrl;
@@ -69,7 +83,7 @@ export function LawSearchPage({ onBack, onDebug }) {
     ? buildPdfViewerUrl(
       previewUrl,
       viewerFocus.pageNo || targetPageNo,
-      viewerFocus.text || selectedItem?.snippet || targetSection?.body || query,
+      viewerFocus.text || targetSection?.body || selectedItem?.snippet || query,
       viewerFocus.nonce,
     )
     : '';
@@ -109,19 +123,44 @@ export function LawSearchPage({ onBack, onDebug }) {
     return () => window.cancelAnimationFrame(frameId);
   }, [htmlViewerUrl, viewerFocus]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadReadinessCounts() {
+      const entries = await Promise.all(
+        lawApiMenus
+          .filter((menu) => readinessSearchTargets.includes(menu.target))
+          .map(async (menu) => {
+            try {
+              const response = normalizeList(
+                await searchLawData(menu, '', { titleOnly: true, includeFuture }),
+                menu,
+              );
+              return [menu.target, response.total];
+            } catch {
+              return [menu.target, null];
+            }
+          }),
+      );
+
+      if (!cancelled) {
+        setReadinessCounts(Object.fromEntries(entries));
+      }
+    }
+
+    void loadReadinessCounts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [includeFuture]);
+
   // 메소드 설명: loadResults 처리 흐름을 수행합니다.
-  async function loadResults(nextQuery = query, menus = selectedMenus, mode = searchMode) {
+  async function loadResults(nextQuery = query, menus = selectedMenus, mode = searchMode, future = includeFuture) {
+    const searchGeneration = nextSearchGeneration();
     const trimmedQuery = String(nextQuery ?? '').trim();
     if (!trimmedQuery) {
-      setHasSearched(false);
-      setLoading(false);
-      setError('');
-      setResults([]);
-      setTotalCount(0);
-      setAiAnswer(null);
-      setSelectedItem(null);
-      setDetailPayload(null);
-      setDetailError('');
+      resetSearchState({ invalidate: false });
       return;
     }
 
@@ -146,6 +185,9 @@ export function LawSearchPage({ onBack, onDebug }) {
         const primaryMenu = menus[0];
         // 메소드 설명: applyAnswerPayload 처리 흐름을 수행합니다.
         const applyAnswerPayload = (answer) => {
+          if (!isActiveSearchGeneration(searchGeneration)) {
+            return;
+          }
           const groundRows = (answer?.grounds ?? []).map((ground) => normalizeGround(ground, primaryMenu));
           setAiAnswer(answer);
           setResults(groundRows);
@@ -154,6 +196,9 @@ export function LawSearchPage({ onBack, onDebug }) {
         await askLawAiStream(primaryMenu.target, trimmedQuery, 8, menus.map((menu) => menu.target), {
           onGrounds: applyAnswerPayload,
           onDelta: (delta) => {
+            if (!isActiveSearchGeneration(searchGeneration)) {
+              return;
+            }
             if (!delta) {
               return;
             }
@@ -176,28 +221,36 @@ export function LawSearchPage({ onBack, onDebug }) {
             });
           },
           onAnswer: applyAnswerPayload,
-        }).catch(async (streamError) => {
+        }, { includeFuture: future }).catch(async (streamError) => {
           if (streamError instanceof Error && streamError.name === 'AbortError') {
             throw streamError;
           }
-          const answer = await askLawAi(primaryMenu.target, trimmedQuery, 8, menus.map((menu) => menu.target));
+          const answer = await askLawAi(primaryMenu.target, trimmedQuery, 8, menus.map((menu) => menu.target), { includeFuture: future });
           applyAnswerPayload(answer);
         });
         return;
       }
 
       const responses = await Promise.all(
-        menus.map(async (menu) => normalizeList(await searchLawData(menu, trimmedQuery, { titleOnly: true }), menu)),
+        menus.map(async (menu) => normalizeList(await searchLawData(menu, trimmedQuery, { titleOnly: true, includeFuture: future }), menu)),
       );
+      if (!isActiveSearchGeneration(searchGeneration)) {
+        return;
+      }
       setResults(responses.flatMap((response) => response.rows));
       setTotalCount(responses.reduce((sum, response) => sum + response.total, 0));
     } catch (err) {
+      if (!isActiveSearchGeneration(searchGeneration)) {
+        return;
+      }
       setResults([]);
       setTotalCount(0);
       setAiAnswer(null);
       setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
     } finally {
-      setLoading(false);
+      if (isActiveSearchGeneration(searchGeneration)) {
+        setLoading(false);
+      }
     }
   }
 
@@ -215,17 +268,48 @@ export function LawSearchPage({ onBack, onDebug }) {
     });
   }
 
-  function runStarterQuestion(question) {
-    setQuery(question);
-    void loadResults(question, selectedMenus, searchMode);
+  function toggleIncludeFuture() {
+    setIncludeFuture((current) => {
+      const next = !current;
+      if (hasSearched) {
+        void loadResults(query, selectedMenus, searchMode, next);
+      }
+      return next;
+    });
+  }
+
+  function nextSearchGeneration() {
+    searchGenerationRef.current += 1;
+    return searchGenerationRef.current;
+  }
+
+  function isActiveSearchGeneration(searchGeneration) {
+    return searchGenerationRef.current === searchGeneration;
+  }
+
+  function resetSearchState({ invalidate = true } = {}) {
+    if (invalidate) {
+      nextSearchGeneration();
+    }
+    setHasSearched(false);
+    setLoading(false);
+    setError('');
+    setResults([]);
+    setTotalCount(0);
+    setAiAnswer(null);
+    setSelectedItem(null);
+    setDetailPayload(null);
+    setDetailError('');
+    setViewerFocus({ text: '', pageNo: null, nonce: 0 });
   }
 
   function handleSearchModeChange(nextMode) {
-    setSearchMode(nextMode);
-    setAiAnswer(null);
-    if (hasSearched && query.trim()) {
-      void loadResults(query, selectedMenus, nextMode);
+    if (nextMode === searchMode) {
+      return;
     }
+    setSearchMode(nextMode);
+    setQuery('');
+    resetSearchState();
   }
 
   function handleQueryChange(event) {
@@ -314,15 +398,20 @@ export function LawSearchPage({ onBack, onDebug }) {
   }
 
   if (selectedItem) {
+    const lawCenterOriginalUrl = buildLawCenterOriginalUrl(
+      detail?.detailLink || selectedItem?.raw?.detailLink || selectedItem?.detailLink,
+      selectedItem?.target,
+    );
+
     return (
       <main className="law-search-shell detail-screen-shell">
-        <LandingConstellation interactive={false} />
+        <LandingConstellation interactive={false} showGrid={false} showTexture={false} />
         <header className="law-search-header">
           <button className="icon-button" type="button" onClick={() => setSelectedItem(null)} aria-label="검색 결과로 돌아가기" title="돌아가기">
             <ArrowLeft aria-hidden="true" size={18} />
           </button>
           <div>
-            <p className="eyebrow">{selectedItem.category}</p>
+            <p className="eyebrow">{sourceLabelForItem(selectedItem)}</p>
             <h1>{selectedItem.title}</h1>
             {(isFutureEffectiveItem(selectedItem) || detail?.meta?.length > 0) && (
               <div className="detail-header-meta">
@@ -333,11 +422,25 @@ export function LawSearchPage({ onBack, onDebug }) {
               </div>
             )}
           </div>
-          {detail?.contacts?.length > 0 && (
-            <div className="detail-contact-meta">
-              {detail.contacts.map((item, index) => <span key={`${item}-${index}`}>{item}</span>)}
-            </div>
-          )}
+          <div className="detail-header-actions">
+            {lawCenterOriginalUrl && (
+              <a
+                className="law-center-original-link"
+                href={lawCenterOriginalUrl}
+                target="_blank"
+                rel="noreferrer"
+                title="국가법령센터 원문 새 탭으로 열기"
+              >
+                <ExternalLink aria-hidden="true" size={14} />
+                <span>국가법령센터 원문링크</span>
+              </a>
+            )}
+            {detail?.contacts?.length > 0 && (
+              <div className="detail-contact-meta">
+                {detail.contacts.map((item, index) => <span key={`${item}-${index}`}>{item}</span>)}
+              </div>
+            )}
+          </div>
         </header>
 
         <section className="detail-page" aria-label="상세 정보" ref={detailPageRef}>
@@ -356,7 +459,7 @@ export function LawSearchPage({ onBack, onDebug }) {
                     if (htmlViewerUrl) {
                       focusHtmlPreviewText(
                         documentViewerRef.current,
-                        viewerFocus.text || selectedItem?.snippet || targetSection?.body || '',
+                        viewerFocus.text || targetSection?.body || selectedItem?.snippet || '',
                       );
                     }
                   }}
@@ -419,7 +522,7 @@ export function LawSearchPage({ onBack, onDebug }) {
 
   return (
     <main className="law-search-shell">
-      <LandingConstellation interactive={false} />
+      <LandingConstellation interactive={false} showGrid={false} showTexture={false} />
       <header className="law-search-header">
         <button className="icon-button" type="button" onClick={onBack} aria-label="처음 화면으로 돌아가기" title="돌아가기">
           <ArrowLeft aria-hidden="true" size={18} />
@@ -479,7 +582,25 @@ export function LawSearchPage({ onBack, onDebug }) {
           </button>
         </form>
         <div className="category-filter" aria-label="검색할 데이터 분류">
-          {lawApiMenus.map((menu) => (
+          {lawApiMenus.filter((menu) => menu.target !== 'reference_doc').map((menu) => (
+            <label className="category-checkbox" key={menu.id}>
+              <input
+                type="checkbox"
+                checked={selectedMenuIds.includes(menu.id)}
+                onChange={() => toggleMenu(menu.id)}
+              />
+              <span>{menu.title}</span>
+            </label>
+          ))}
+          <label className="category-checkbox category-checkbox-option">
+            <input
+              type="checkbox"
+              checked={includeFuture}
+              onChange={toggleIncludeFuture}
+            />
+            <span>시행예정 포함</span>
+          </label>
+          {lawApiMenus.filter((menu) => menu.target === 'reference_doc').map((menu) => (
             <label className="category-checkbox" key={menu.id}>
               <input
                 type="checkbox"
@@ -516,18 +637,41 @@ export function LawSearchPage({ onBack, onDebug }) {
           )}
 
           {!hasSearched && !loading && !error && (
-            <div className="search-start-panel" aria-label="검색 시작">
-              <div className="starter-question-list">
-                {starterQuestions.map((question) => (
-                  <button
-                    className="starter-question-button"
-                    type="button"
-                    onClick={() => runStarterQuestion(question)}
-                    key={question}
-                  >
-                    {question}
-                  </button>
-                ))}
+            <div className="search-start-panel" aria-label="검색 범위 안내">
+              <div className="search-readiness-grid">
+                <section className="search-readiness-card" aria-label="현재 검색 대상">
+                  <p className="search-readiness-label">현재 검색 대상</p>
+                  <div className="search-readiness-metrics">
+                    {selectedMenus.length > 0 ? selectedMenus.map((menu) => (
+                      <span key={menu.id}>
+                        <strong>{formatReadinessCount(readinessCounts[menu.target])}</strong>
+                        <small>{menu.title}</small>
+                      </span>
+                    )) : (
+                      <span>
+                        <strong>-</strong>
+                        <small>선택 없음</small>
+                      </span>
+                    )}
+                  </div>
+                </section>
+                <section className="search-readiness-card" aria-label="본문 검색 범위">
+                  <p className="search-readiness-label">본문 검색 범위</p>
+                  <ul className="search-readiness-list">
+                    <li>법령 조문·문단</li>
+                    <li>문서 페이지·섹션</li>
+                    <li>출처·위치 정보 포함</li>
+                    <li>법령센터·원본 문서 연결</li>
+                  </ul>
+                </section>
+                <section className="search-readiness-card" aria-label="AI 검색 기능">
+                  <p className="search-readiness-label">AI 검색</p>
+                  <ul className="search-readiness-list">
+                    <li>법령·문서 통합 의미 검색</li>
+                    <li>직접 근거 판정</li>
+                    <li>근거 기반 답변 생성</li>
+                  </ul>
+                </section>
               </div>
               <div className="search-source-row">
                 {selectedMenus.map((menu) => (
@@ -543,7 +687,7 @@ export function LawSearchPage({ onBack, onDebug }) {
             <div className="result-summary">
               <span className={loading ? 'loading-status' : ''}>
                 {loading && <span className="loading-spinner" aria-hidden="true" />}
-                {loading ? '답변 생성 중입니다' : `${totalCount.toLocaleString()}건의 근거 표시`}
+                {loadingSummaryText}
               </span>
               <small>{aiAnswer ? '서버가 확정한 근거 목록' : searchMode === 'db' ? '문서 제목 DB 검색' : selectedMenus.map((menu) => menu.title).join(', ') || '선택 없음'}</small>
             </div>
@@ -568,7 +712,7 @@ export function LawSearchPage({ onBack, onDebug }) {
                       <span className="future-effective-badge future-effective-badge-inline">미래시행</span>
                     )}
                     <span className={`result-source-badge result-source-badge-${normalizeSourceBadgeType(item.target)}`}>
-                      {item.category}
+                      {sourceLabelForItem(item)}
                     </span>
                     <button className="result-title-button" type="button" onClick={() => loadDetail(item)}>
                       {highlightText(item.title, searchTerm)}
@@ -600,12 +744,35 @@ export function LawSearchPage({ onBack, onDebug }) {
   );
 }
 
+function buildAiLoadingSummary(aiAnswer, resultCount) {
+  const hasAnswerText = String(aiAnswer?.answer ?? '').trim().length > 0;
+  if (hasAnswerText) {
+    return '답변을 실시간으로 작성 중입니다';
+  }
+  if (aiAnswer || resultCount > 0) {
+    return '근거 확인 완료, 답변 작성 중입니다';
+  }
+  return '근거를 찾는 중입니다';
+}
+
+function formatReadinessCount(value) {
+  const count = Number(value);
+  return Number.isFinite(count) ? `${count.toLocaleString()}건` : '확인 중';
+}
+
 // 메소드 설명: normalizeGround 처리 흐름을 수행합니다.
 const futureEffectiveTargets = new Set(['law', 'admrul']);
 
 // 메소드 설명: 법령/행정규칙 시행일이 오늘 이후인지 판정합니다.
 function isFutureEffectiveItem(item) {
   if (!futureEffectiveTargets.has(item?.target)) {
+    return false;
+  }
+  const status = String(item?.effectiveStatus ?? item?.raw?.effectiveStatus ?? '').toUpperCase();
+  if (status === 'FUTURE') {
+    return true;
+  }
+  if (status === 'CURRENT' || status === 'PAST') {
     return false;
   }
   const effectiveDate = parseEffectiveDate(item?.date || item?.raw?.sourceDate || item?.raw?.source_date);
@@ -646,12 +813,15 @@ function parseEffectiveDate(value) {
 function normalizeGround(ground, menu) {
   return {
     id: ground.chunkId,
+    chunkId: ground.chunkId,
     documentId: ground.documentId,
     category: ground.categoryName || menu.title,
     target: ground.target || menu.target,
     title: ground.title || `근거 ${ground.number}`,
+    agencyName: ground.agencyName || '',
     meta: [ground.agencyName, ground.chunkTitle].filter(Boolean).join(' · '),
     date: ground.sourceDate || '',
+    effectiveStatus: ground.effectiveStatus || '',
     detailLink: isRagTarget(ground.target || menu.target) ? `rag:${ground.documentId}` : (ground.sourceUrl || ''),
     position: buildGroundPosition(ground),
     pageNo: ground.pageNo,
@@ -718,6 +888,53 @@ function normalizeSourceBadgeType(target) {
 }
 
 // 메소드 설명: resolveRagDocumentId 처리 흐름을 수행합니다.
+function sourceLabelForItem(item) {
+  if (!item) {
+    return '';
+  }
+  return sourceTypeLabel(
+    item.target,
+    item.agencyName || item.raw?.agencyName || item.raw?.sourceOrg || item.meta,
+    item.category,
+  );
+}
+
+function sourceTypeLabel(target, agencyName = '', fallback = '') {
+  if (target === 'law') {
+    return '법령';
+  }
+  if (target === 'admrul') {
+    return '행정규칙';
+  }
+  if (target === 'official_doc') {
+    return officialGuideAgencyLabel(agencyName) || '공식 가이드 문서';
+  }
+  if (target === 'internal_doc') {
+    return '내부 지침/매뉴얼';
+  }
+  if (target === 'reference_doc') {
+    return '참고자료';
+  }
+  return fallback || target || '';
+}
+
+function officialGuideAgencyLabel(agencyName) {
+  const normalized = normalizeAgencyName(agencyName);
+  if (!normalized) {
+    return '';
+  }
+  const matched = officialGuideAgencyLabels.find(({ aliases }) => (
+    aliases.some((alias) => normalized.includes(normalizeAgencyName(alias)))
+  ));
+  return matched?.label || '';
+}
+
+function normalizeAgencyName(value) {
+  return String(value ?? '')
+    .toLowerCase()
+    .replace(/[\s()[\]{}·ㆍ._-]+/g, '');
+}
+
 function resolveRagDocumentId(item) {
   return item?.documentId
     || parseRagDocumentId(item?.detailLink)
@@ -731,6 +948,52 @@ function resolveRagDocumentId(item) {
 function parseRagDocumentId(value) {
   const match = String(value ?? '').match(/(?:rag:|db:)?(\d+)$/);
   return match?.[1] ?? '';
+}
+
+function buildLawCenterOriginalUrl(detailLink, target) {
+  if (!['law', 'admrul'].includes(target)) {
+    return '';
+  }
+
+  const value = String(detailLink ?? '').trim();
+  if (!value || value.startsWith('db:') || value.startsWith('rag:')) {
+    return '';
+  }
+
+  try {
+    const apiUrl = value.startsWith('http://') || value.startsWith('https://')
+      ? new URL(value)
+      : new URL(value.startsWith('/') ? value : `/${value}`, 'https://www.law.go.kr');
+
+    if (target === 'admrul') {
+      const admRulSeq = apiUrl.searchParams.get('ID') || apiUrl.searchParams.get('admRulSeq');
+      if (admRulSeq) {
+        const url = new URL('/admRulLsInfoP.do', 'https://www.law.go.kr');
+        url.searchParams.set('admRulSeq', admRulSeq);
+        return url.toString();
+      }
+    }
+
+    if (target === 'law') {
+      const lsiSeq = apiUrl.searchParams.get('MST') || apiUrl.searchParams.get('lsiSeq');
+      if (lsiSeq) {
+        const url = new URL('/lsInfoP.do', 'https://www.law.go.kr');
+        url.searchParams.set('lsiSeq', lsiSeq);
+        const effectiveDate = apiUrl.searchParams.get('efYd');
+        if (effectiveDate) {
+          url.searchParams.set('efYd', effectiveDate);
+        }
+        return url.toString();
+      }
+    }
+
+    apiUrl.protocol = 'https:';
+    apiUrl.hostname = 'www.law.go.kr';
+    apiUrl.searchParams.delete('OC');
+    return apiUrl.toString();
+  } catch {
+    return '';
+  }
 }
 
 // 메소드 설명: getTargetPageNo 처리 흐름을 수행합니다.
@@ -799,14 +1062,11 @@ function extractPdfSearchText(value) {
 
 // 메소드 설명: buildAnswerSourceLabel 처리 흐름을 수행합니다.
 function buildAnswerSourceLabel(items, fallback) {
-  const targets = Array.from(new Set(
+  const labels = Array.from(new Set(
     (items ?? [])
-      .map((item) => item.target)
+      .map((item) => sourceLabelForItem(item))
       .filter(Boolean),
   ));
-  const labels = lawApiMenus
-    .filter((menu) => targets.includes(menu.target))
-    .map((menu) => menu.title);
   return labels.length > 0 ? labels.join(' · ') : (fallback || '');
 }
 
@@ -817,19 +1077,20 @@ function findTargetSectionIndex(sections, item) {
     return -1;
   }
 
-  const pageNo = Number(item.pageNo ?? item.raw?.pageNo);
-  if (Number.isFinite(pageNo) && pageNo > 0) {
-    const pageIndex = rows.findIndex((section) => Number(section.pageNo) === pageNo);
-    if (pageIndex >= 0) {
-      return pageIndex;
+  const chunkId = comparableChunkId(item);
+  if (chunkId) {
+    const chunkIndex = rows.findIndex((section) => comparableChunkId(section) === chunkId);
+    if (chunkIndex >= 0) {
+      return chunkIndex;
     }
   }
 
-  const snippet = normalizeComparableText(item.snippet);
-  if (snippet) {
-    const snippetIndex = rows.findIndex((section) => (
-      normalizeComparableText([section.title, section.body].filter(Boolean).join(' ')).includes(snippet)
-    ));
+  const snippets = comparableSnippetCandidates(item);
+  if (snippets.length > 0) {
+    const snippetIndex = rows.findIndex((section) => {
+      const sectionText = normalizeComparableText([section.title, section.body].filter(Boolean).join(' '));
+      return snippets.some((snippet) => sectionText.includes(snippet));
+    });
     if (snippetIndex >= 0) {
       return snippetIndex;
     }
@@ -848,7 +1109,21 @@ function findTargetSectionIndex(sections, item) {
     }
   }
 
+  const pageNo = Number(item.pageNo ?? item.raw?.pageNo);
+  if (Number.isFinite(pageNo) && pageNo > 0) {
+    const pageIndex = rows.findIndex((section) => Number(section.pageNo) === pageNo);
+    if (pageIndex >= 0) {
+      return pageIndex;
+    }
+  }
+
   return -1;
+}
+
+function comparableChunkId(value) {
+  const raw = value?.chunkId ?? value?.id ?? value?.raw?.chunkId;
+  const text = String(raw ?? '').trim();
+  return /^\d+$/.test(text) ? text : '';
 }
 
 // 메소드 설명: normalizeComparableText 처리 흐름을 수행합니다.
@@ -856,6 +1131,33 @@ function normalizeComparableText(value) {
   return String(value ?? '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+// 메소드 설명: comparableSnippetCandidates 처리 흐름을 수행합니다.
+function comparableSnippetCandidates(item) {
+  const raw = String(item?.snippet ?? '').trim();
+  const cleaned = cleanResultSnippet(raw, item);
+  const candidates = [raw, cleaned];
+  [raw, cleaned].forEach((value) => {
+    const withoutHeading = value
+      .replace(/^.{2,80}\s+[—–-]\s+/, '')
+      .replace(/^.{2,80}\s*[:：]\s+/, '')
+      .trim();
+    if (withoutHeading && withoutHeading !== value) {
+      candidates.push(withoutHeading);
+    }
+  });
+  return candidates
+    .flatMap((value) => {
+      const normalized = normalizeComparableText(value);
+      return [
+        normalized,
+        normalized.replace(/^\.\.\.\s*/, ''),
+        normalized.slice(0, 180).trim(),
+        normalized.replace(/^\.\.\.\s*/, '').slice(0, 180).trim(),
+      ];
+    })
+    .filter((value, index, values) => value.length >= 8 && values.indexOf(value) === index);
 }
 
 // 메소드 설명: stripAnswerCitations 처리 흐름을 수행합니다.
@@ -901,12 +1203,13 @@ function findArticleNumber(value) {
 // 메소드 설명: highlightTargetSnippet 처리 흐름을 수행합니다.
 function highlightTargetSnippet(body, item, isTargetSection) {
   const value = String(body ?? '');
-  const snippet = String(item?.snippet ?? '').trim();
-  if (!isTargetSection || !snippet) {
+  const snippets = comparableSnippetCandidates(item);
+  if (!isTargetSection || snippets.length === 0) {
     return value;
   }
 
-  const index = value.indexOf(snippet);
+  const snippet = snippets.find((candidate) => value.includes(candidate)) ?? '';
+  const index = snippet ? value.indexOf(snippet) : -1;
   if (index < 0) {
     return value;
   }

@@ -30,9 +30,18 @@ SELECT
   COUNT(*) AS chunks
 FROM rag_document_chunks c
 JOIN rag_documents d ON d.document_id = c.document_id
-LEFT JOIN rag_chunk_embeddings e ON e.chunk_id = c.chunk_id
+LEFT JOIN rag_chunk_embeddings e
+  ON e.chunk_id = c.chunk_id
+  AND e.embedding_model = 'text-embedding-3-small'
+  AND e.vector_store = 'rag_chunks_v4'
 WHERE c.use_yn = 'Y'
   AND d.use_yn = 'Y'
+  AND c.chunk_version = (
+    SELECT MAX(c2.chunk_version)
+    FROM rag_document_chunks c2
+    WHERE c2.document_id = c.document_id
+      AND c2.use_yn = 'Y'
+  )
 GROUP BY d.document_type, COALESCE(e.status, 'NO_EMBED')
 ORDER BY d.document_type, status;
 
@@ -61,9 +70,15 @@ JOIN rag_documents d ON d.document_id = c.document_id
 LEFT JOIN rag_chunk_embeddings e
   ON e.chunk_id = c.chunk_id
   AND e.embedding_model = 'text-embedding-3-small'
-  AND e.vector_store = 'law_chunks'
+  AND e.vector_store = 'rag_chunks_v4'
 WHERE c.use_yn = 'Y'
   AND d.use_yn = 'Y'
+  AND c.chunk_version = (
+    SELECT MAX(c2.chunk_version)
+    FROM rag_document_chunks c2
+    WHERE c2.document_id = c.document_id
+      AND c2.use_yn = 'Y'
+  )
   AND (
     e.chunk_id IS NULL
     OR e.status IN ('FAILED', 'ERROR')

@@ -4,11 +4,20 @@ package com.kaces.pandora.infra.qdrant;
 import com.kaces.pandora.semantic.config.LawAiProperties;
 import com.kaces.pandora.semantic.search.QdrantSearchHit;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
+import jakarta.annotation.PreDestroy;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.slf4j.Logger;
@@ -17,18 +26,23 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class QdrantClient {
 	private static final long RAG_POINT_ID_OFFSET = 9_000_000_000_000_000L;
+	private static final List<String> SEARCH_PAYLOAD_FIELDS = List.of("target", "chunkId");
 	private static final Logger log = LoggerFactory.getLogger(QdrantClient.class);
 
 	private final LawAiProperties properties;
 	private final RestClient restClient;
+	private final ExecutorService searchExecutor;
+	private final ObjectMapper objectMapper;
 
 	// 메소드 설명: QdrantClient 처리 흐름을 수행합니다.
-	public QdrantClient(LawAiProperties properties) {
+	public QdrantClient(LawAiProperties properties, ObjectMapper objectMapper) {
 		this.properties = properties;
+		this.objectMapper = objectMapper;
 		SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
 		requestFactory.setConnectTimeout(Duration.ofSeconds(5));
 		requestFactory.setReadTimeout(Duration.ofMinutes(2));
@@ -36,14 +50,28 @@ public class QdrantClient {
 			.baseUrl(properties.qdrant().baseUrl())
 			.requestFactory(requestFactory)
 			.build();
+		this.searchExecutor = Executors.newFixedThreadPool(6, namedThreadFactory("qdrant-search-"));
+	}
+
+	@PreDestroy
+	public void shutdownExecutor() {
+		searchExecutor.shutdownNow();
 	}
 
 	// 메소드 설명: ensureCollection 처리 흐름을 수행합니다.
 	public void ensureCollection() {
+		ensureCollection(properties.qdrant().collection());
+	}
+
+	public void ensureRagCollection() {
+		ensureCollection(ragCollection());
+	}
+
+	private void ensureCollection(String collection) {
 		try {
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 			restClient.get()
-				.uri("/collections/{collection}", properties.qdrant().collection())
+				.uri("/collections/{collection}", collection)
 				.retrieve()
 				.toBodilessEntity();
 			return;
@@ -54,7 +82,7 @@ public class QdrantClient {
 		}
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		restClient.put()
-			.uri("/collections/{collection}", properties.qdrant().collection())
+			.uri("/collections/{collection}", collection)
 			.body(Map.of(
 				"vectors", Map.of(
 					"size", properties.qdrant().vectorSize(),
@@ -72,11 +100,16 @@ public class QdrantClient {
 
 	// 메소드 설명: upsertRag 처리 흐름을 수행합니다.
 	public void upsertRag(List<LawSemanticChunkRow> chunks, List<List<Double>> vectors) {
-		upsert(chunks, vectors, true);
+		ensureRagCollection();
+		upsert(chunks, vectors, true, ragCollection());
 	}
 
 	// 메소드 설명: upsert 처리 흐름을 수행합니다.
 	private void upsert(List<LawSemanticChunkRow> chunks, List<List<Double>> vectors, boolean stringPointId) {
+		upsert(chunks, vectors, stringPointId, properties.qdrant().collection());
+	}
+
+	private void upsert(List<LawSemanticChunkRow> chunks, List<List<Double>> vectors, boolean stringPointId, String collection) {
 		if (chunks.size() != vectors.size()) {
 			throw new IllegalArgumentException("Chunk and vector counts must match.");
 		}
@@ -86,23 +119,29 @@ public class QdrantClient {
 		List<Map<String, Object>> points = new ArrayList<>(chunks.size());
 		for (int i = 0; i < chunks.size(); i++) {
 			LawSemanticChunkRow chunk = chunks.get(i);
+			Map<String, Object> payload = new LinkedHashMap<>();
+			String agencyName = blankIfNull(chunk.agencyName());
+			payload.put("chunkId", chunk.chunkId());
+			payload.put("documentId", chunk.documentId());
+			payload.put("target", chunk.target());
+			payload.put("title", blankIfNull(chunk.title()));
+			payload.put("sourceOrg", agencyName);
+			payload.put("agencyName", agencyName);
+			payload.put("sourceDate", blankIfNull(chunk.sourceDate()));
+			payload.put("effectiveStatus", blankIfNull(chunk.effectiveStatus()));
+			payload.put("chunkNo", blankIfNull(chunk.chunkNo()));
+			payload.put("chunkVersion", chunkVersion(chunk));
+			payload.put("sourcePath", blankIfNull(chunk.sourcePath()));
 			points.add(Map.of(
 				"id", stringPointId ? ragPointId(chunk.chunkId()) : chunk.chunkId(),
 				"vector", vectors.get(i),
-				"payload", Map.of(
-					"chunkId", chunk.chunkId(),
-					"documentId", chunk.documentId(),
-					"target", chunk.target(),
-					"title", chunk.title(),
-					"chunkNo", chunk.chunkNo() == null ? "" : chunk.chunkNo(),
-					"sourcePath", chunk.sourcePath() == null ? "" : chunk.sourcePath()
-				)
+				"payload", payload
 			));
 		}
 
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		restClient.put()
-			.uri("/collections/{collection}/points?wait=true", properties.qdrant().collection())
+			.uri("/collections/{collection}/points?wait=true", collection)
 			.body(Map.of("points", points))
 			.retrieve()
 			.toBodilessEntity();
@@ -111,6 +150,21 @@ public class QdrantClient {
 	// 메소드 설명: ragPointId 처리 흐름을 수행합니다.
 	public static long ragPointId(long chunkId) {
 		return RAG_POINT_ID_OFFSET + chunkId;
+	}
+
+	private int chunkVersion(LawSemanticChunkRow chunk) {
+		String sourcePath = chunk.sourcePath() == null ? "" : chunk.sourcePath();
+		if (sourcePath.contains("$.v4.")) {
+			return 4;
+		}
+		if (sourcePath.contains("$.v3.")) {
+			return 3;
+		}
+		return sourcePath.contains("$.v2.") ? 2 : 1;
+	}
+
+	private static String blankIfNull(String value) {
+		return value == null ? "" : value;
 	}
 
 	// 메소드 설명: upsertVectors 처리 흐름을 수행합니다.
@@ -137,12 +191,19 @@ public class QdrantClient {
 			.filter(id -> id != null && id > 0)
 			.map(QdrantClient::ragPointId)
 			.toList();
-		deletePointsBestEffort(pointIds, "rag");
+		deletePointsBestEffort(pointIds, "rag", ragCollection());
+		if (!ragCollection().equals(properties.qdrant().collection())) {
+			deletePointsBestEffort(pointIds, "rag-legacy", properties.qdrant().collection());
+		}
 	}
 
 	private void deletePointsBestEffort(List<Long> pointIds, String label) {
+		deletePointsBestEffort(pointIds, label, properties.qdrant().collection());
+	}
+
+	private void deletePointsBestEffort(List<Long> pointIds, String label, String collection) {
 		try {
-			deletePoints(pointIds);
+			deletePoints(pointIds, collection);
 		} catch (RestClientException exception) {
 			log.warn("Qdrant {} stale point cleanup failed. It can be retried later. count={} message={}",
 				label,
@@ -153,6 +214,10 @@ public class QdrantClient {
 	}
 
 	private void deletePoints(List<Long> pointIds) {
+		deletePoints(pointIds, properties.qdrant().collection());
+	}
+
+	private void deletePoints(List<Long> pointIds, String collection) {
 		List<Long> ids = pointIds == null ? List.of() : pointIds.stream()
 			.filter(id -> id != null && id > 0)
 			.distinct()
@@ -164,7 +229,7 @@ public class QdrantClient {
 		for (int start = 0; start < ids.size(); start += batchSize) {
 			List<Long> batch = ids.subList(start, Math.min(start + batchSize, ids.size()));
 			restClient.post()
-				.uri("/collections/{collection}/points/delete?wait=true", properties.qdrant().collection())
+				.uri("/collections/{collection}/points/delete?wait=true", collection)
 				.body(Map.of("points", batch))
 				.retrieve()
 				.toBodilessEntity();
@@ -183,8 +248,7 @@ public class QdrantClient {
 			.distinct()
 			.toList();
 		if (normalizedTargets.size() > 1) {
-			return normalizedTargets.stream()
-				.flatMap(target -> searchSingleTarget(vector, target, limit).stream())
+			return searchTargetsInParallel(vector, normalizedTargets, limit).stream()
 				.sorted(Comparator.comparing(QdrantSearchHit::score).reversed())
 				.limit(limit)
 				.toList();
@@ -193,18 +257,69 @@ public class QdrantClient {
 		return searchSingleTarget(vector, target, limit);
 	}
 
+	public List<QdrantSearchHit> searchBalanced(List<Double> vector, List<String> targets, int perTargetLimit, int maxTotalLimit) {
+		List<String> normalizedTargets = targets == null ? List.of() : targets.stream()
+			.filter(target -> target != null && !target.isBlank())
+			.distinct()
+			.toList();
+		int safePerTargetLimit = Math.max(1, perTargetLimit);
+		int safeMaxTotalLimit = Math.max(safePerTargetLimit, maxTotalLimit);
+		if (normalizedTargets.size() <= 1) {
+			String target = normalizedTargets.isEmpty() ? "" : normalizedTargets.get(0);
+			return searchSingleTarget(vector, target, safeMaxTotalLimit);
+		}
+		return searchTargetsInParallel(vector, normalizedTargets, safePerTargetLimit).stream()
+			.collect(java.util.stream.Collectors.toMap(
+				hit -> hit.target() + ":" + hit.chunkId(),
+				hit -> hit,
+				(first, second) -> first.score() >= second.score() ? first : second,
+				java.util.LinkedHashMap::new
+			))
+			.values()
+			.stream()
+			.sorted(Comparator.comparing(QdrantSearchHit::score).reversed())
+			.limit(safeMaxTotalLimit)
+			.toList();
+	}
+
+	private List<QdrantSearchHit> searchTargetsInParallel(List<Double> vector, List<String> targets, int limit) {
+		List<CompletableFuture<List<QdrantSearchHit>>> futures = targets.stream()
+			.map(target -> CompletableFuture.supplyAsync(() -> searchSingleTarget(vector, target, limit), searchExecutor))
+			.toList();
+		List<QdrantSearchHit> hits = new ArrayList<>();
+		for (CompletableFuture<List<QdrantSearchHit>> future : futures) {
+			hits.addAll(joinFuture(future));
+		}
+		return hits;
+	}
+
+	private <T> T joinFuture(CompletableFuture<T> future) {
+		try {
+			return future.join();
+		} catch (CompletionException exception) {
+			Throwable cause = exception.getCause();
+			if (cause instanceof RuntimeException runtimeException) {
+				throw runtimeException;
+			}
+			throw new IllegalStateException("Qdrant search task failed.", cause);
+		}
+	}
+
 	// 메소드 설명: searchSingleTarget 처리 흐름을 수행합니다.
 	private List<QdrantSearchHit> searchSingleTarget(List<Double> vector, String target, int limit) {
+		String collection = isRagTarget(target) ? ragCollection() : properties.qdrant().collection();
 		Map<String, Object> body = target == null || target.isBlank()
 			? Map.of(
 				"vector", vector,
 				"limit", limit,
-				"with_payload", true
+				"with_payload", SEARCH_PAYLOAD_FIELDS,
+				"with_vector", false
 			)
 			: Map.of(
 			"vector", vector,
 			"limit", limit,
-			"with_payload", true,
+			"with_payload", SEARCH_PAYLOAD_FIELDS,
+			"with_vector", false,
 			"filter", Map.of(
 				"must", List.of(Map.of(
 					"key", "target",
@@ -213,11 +328,11 @@ public class QdrantClient {
 			)
 		);
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		Map<?, ?> response = restClient.post()
-			.uri("/collections/{collection}/points/search", properties.qdrant().collection())
-			.body(body)
-			.retrieve()
-			.body(Map.class);
+		Map<?, ?> response = qdrantPostForMap(
+			"/collections/{collection}/points/search",
+			collection,
+			body
+		);
 
 		Object resultObject = response == null ? null : response.get("result");
 		List<?> result = resultObject instanceof List<?> resultList ? resultList : List.of();
@@ -227,7 +342,58 @@ public class QdrantClient {
 			.toList();
 	}
 
+	private Map<String, Object> qdrantPostForMap(String uri, String collection, Map<String, Object> body) {
+		RuntimeException lastException = null;
+		for (int attempt = 1; attempt <= 2; attempt++) {
+			try {
+				return qdrantPostForMapOnce(uri, collection, body);
+			} catch (RestClientException | IllegalStateException exception) {
+				lastException = exception;
+				log.warn("Qdrant search request failed. attempt={} collection={} message={}",
+					attempt,
+					collection,
+					exception.getMessage()
+				);
+				sleepBeforeRetry(attempt);
+			}
+		}
+		log.warn("Qdrant search request abandoned after retry. collection={} message={}",
+			collection,
+			lastException == null ? "" : lastException.getMessage()
+		);
+		return Map.of();
+	}
+
+	@SuppressWarnings("unchecked")
+	private Map<String, Object> qdrantPostForMapOnce(String uri, String collection, Map<String, Object> body) {
+		byte[] response = restClient.post()
+			.uri(uri, collection)
+			.body(body)
+			.retrieve()
+			.body(byte[].class);
+		if (response == null || response.length == 0) {
+			return Map.of();
+		}
+		try {
+			return objectMapper.readValue(response, Map.class);
+		} catch (RuntimeException exception) {
+			String snippet = new String(response, StandardCharsets.UTF_8);
+			if (snippet.length() > 300) {
+				snippet = snippet.substring(0, 300) + "...";
+			}
+			throw new IllegalStateException("Qdrant response was not valid JSON. body=" + snippet, exception);
+		}
+	}
+
 	// 메소드 설명: toHit 처리 흐름을 수행합니다.
+	private void sleepBeforeRetry(int attempt) {
+		try {
+			Thread.sleep(Math.min(500L, 150L * Math.max(1, attempt)));
+		} catch (InterruptedException exception) {
+			Thread.currentThread().interrupt();
+		}
+	}
+
 	private QdrantSearchHit toHit(Object item) {
 		Map<?, ?> itemMap = (Map<?, ?>) item;
 		Number score = (Number) itemMap.get("score");
@@ -241,5 +407,22 @@ public class QdrantClient {
 			chunkId.longValue(),
 			score.doubleValue()
 		);
+	}
+
+	private String ragCollection() {
+		return properties.qdrant().ragCollection();
+	}
+
+	private boolean isRagTarget(String target) {
+		return "official_doc".equals(target) || "internal_doc".equals(target) || "reference_doc".equals(target);
+	}
+
+	private static ThreadFactory namedThreadFactory(String prefix) {
+		AtomicInteger counter = new AtomicInteger();
+		return runnable -> {
+			Thread thread = new Thread(runnable, prefix + counter.incrementAndGet());
+			thread.setDaemon(true);
+			return thread;
+		};
 	}
 }

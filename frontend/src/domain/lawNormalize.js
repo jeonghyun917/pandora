@@ -37,6 +37,7 @@ export function normalizeDetail(payload, fallbackTitle) {
       originalMimeType: payload.originalMimeType || '',
       previewFileUrl: payload.previewFileUrl || '',
       previewHtmlUrl: payload.previewHtmlUrl || '',
+      detailLink: payload.detailLink || '',
     };
   }
 
@@ -48,6 +49,7 @@ export function normalizeDetail(payload, fallbackTitle) {
       contacts: meta.contacts,
       sections: payload.sections?.length ? payload.sections : [{ title: '원문 내용', body: '표시할 원문 텍스트를 찾지 못했습니다.' }],
       htmlDetail: true,
+      detailLink: payload.detailLink || '',
     };
   }
 
@@ -87,6 +89,7 @@ export function normalizeDetail(payload, fallbackTitle) {
     meta,
     contacts: [],
     sections: collectDetailSections(root),
+    detailLink: payload?.detailLink || '',
   };
 }
 
@@ -111,6 +114,8 @@ function normalizeRow(row, target, index, menu) {
     `${target} 항목 ${index + 1}`;
   const meta =
     row.agencyName ??
+    row.sourceOrg ??
+    row.source_org ??
     row.categoryName ??
     row.소관부처명 ??
     row.법원명 ??
@@ -123,6 +128,7 @@ function normalizeRow(row, target, index, menu) {
     row.공포번호 ??
     row.구분 ??
     '국가법령정보센터';
+  const agencyName = row.agencyName ?? row.sourceOrg ?? row.source_org ?? '';
   const date =
     row.sourceDate ??
     row.시행일자 ??
@@ -152,12 +158,15 @@ function normalizeRow(row, target, index, menu) {
 
   return {
     id,
+    chunkId: row.chunkId,
     documentId,
     category: menu.title,
     target,
     title: sanitizeText(title),
+    agencyName: sanitizeText(agencyName),
     meta: sanitizeText(meta),
     date: formatDate(String(date)),
+    effectiveStatus: row.effectiveStatus ?? '',
     detailLink,
     position: sanitizeText(row.sourcePath ?? row.chunkNo ?? row.chunkTitle ?? row.조문위치 ?? row.조문제목 ?? ''),
     snippet: sanitizeText(row.snippet ?? row.본문 ?? ''),

@@ -55,10 +55,21 @@ public class RagDocumentController {
 	public ResponseEntity<RagImportResponse> importFolder(
 		@RequestParam(defaultValue = "") String documentType,
 		@RequestParam(defaultValue = "") String path,
-		@RequestParam(defaultValue = "true") boolean indexNow
+		@RequestParam(defaultValue = "true") boolean indexNow,
+		@RequestParam(defaultValue = "false") boolean force
 	) {
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		return ResponseEntity.ok(importService.importFolder(documentType, path, indexNow));
+		return ResponseEntity.ok(importService.importFolder(documentType, path, indexNow, force));
+	}
+
+	@PostMapping("/reimport-existing")
+	public ResponseEntity<RagImportResponse> reimportExisting(
+		@RequestParam(defaultValue = "") String documentType,
+		@RequestParam(defaultValue = "false") boolean indexNow,
+		@RequestParam(defaultValue = "true") boolean force
+	) {
+		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		return ResponseEntity.ok(importService.reimportExistingDocuments(documentType, indexNow, force));
 	}
 
 	@GetMapping("/{documentId}/detail")
@@ -76,7 +87,8 @@ public class RagDocumentController {
 				cleanHwpxText(chunk.chunkTitle()),
 				cleanHwpxText(chunk.chunkText()),
 				chunk.pageNo(),
-				chunk.sourcePath()
+				chunk.sourcePath(),
+				chunk.chunkId()
 			))
 			.filter(section -> !RagTextNoiseFilter.isTableOfContents(section.title(), section.body()))
 			.filter(section -> !RagTextNoiseFilter.isMeaninglessSection(section.title(), section.body()))
@@ -99,7 +111,8 @@ public class RagDocumentController {
 			document.fileName(),
 			document.mimeType(),
 			previewService.canPreview(document) ? "/api/rag-documents/" + document.documentId() + "/preview.pdf" : null,
-			htmlPreviewService.canPreview(document) ? "/api/rag-documents/" + document.documentId() + "/preview.html" : null
+			htmlPreviewService.canPreview(document) ? "/api/rag-documents/" + document.documentId() + "/preview.html" : null,
+			null
 		));
 	}
 

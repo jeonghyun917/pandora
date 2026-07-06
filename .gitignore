@@ -5,6 +5,7 @@ frontend/dist/
 src/main/resources/application-local.properties
 data/
 storage/
+runtime/
 .qdrant-initialized
 *.log
 logs/
