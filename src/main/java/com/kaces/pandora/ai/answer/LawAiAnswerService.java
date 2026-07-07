@@ -17,6 +17,7 @@ import com.kaces.pandora.semantic.search.QdrantSearchHit;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -339,6 +340,21 @@ public class LawAiAnswerService {
 		);
 	}
 
+	public List<LawAiSearchFailureCandidate> failureEvaluationCandidates(
+		Integer limit,
+		Integer minOccurrences,
+		Integer days
+	) {
+		int safeLimit = limit == null ? 30 : Math.max(1, Math.min(limit, 100));
+		int safeMinOccurrences = minOccurrences == null ? 2 : Math.max(1, Math.min(minOccurrences, 20));
+		int safeDays = days == null ? 14 : Math.max(1, Math.min(days, 180));
+		return searchFailureMapper.findEvaluationCandidates(
+			safeLimit,
+			safeMinOccurrences,
+			LocalDateTime.now().minusDays(safeDays)
+		);
+	}
+
 	public LawAiEvalRequest.EvalCase promoteFailureToEvaluationCase(
 		long failureId,
 		LawAiFailureEvalCaseRequest request
@@ -349,7 +365,9 @@ public class LawAiAnswerService {
 		}
 		LawAiEvalRequest.EvalCase evalCase = evaluationCaseFromFailure(failure, request);
 		try {
-			LawAiEvaluationCaseCatalog.appendExternalFailureCase(evalCase);
+			if (!LawAiEvaluationCaseCatalog.caseIdExists(evalCase.id())) {
+				LawAiEvaluationCaseCatalog.appendExternalFailureCase(evalCase);
+			}
 			searchFailureMapper.markPromoted(failureId, evalCase.id());
 			return evalCase;
 		} catch (IOException exception) {
@@ -1130,17 +1148,20 @@ public class LawAiAnswerService {
 		if (judgedEvidence == null) {
 			return "Evidence Judge 결과가 없어 답변 생성을 중단했습니다.";
 		}
-		if ("exploratory_lookup".equals(judgedEvidence.selectionPolicy() == null ? "" : judgedEvidence.selectionPolicy())) {
-			return null;
-		}
+		String policy = judgedEvidence.selectionPolicy() == null ? "" : judgedEvidence.selectionPolicy();
 		if (judgedEvidence.directEvidenceRequired() && !judgedEvidence.directEvidenceFound()) {
 			return "질문 유형상 직접근거가 필요한데 Evidence Judge가 직접근거를 확정하지 못했습니다.";
 		}
 		QuestionIntentProfile profile = queryPlan == null ? null : queryPlan.profile();
+		if ("exploratory_lookup".equals(policy)) {
+			if (requiresStrictEvidence(profile, queryPlan == null ? "" : queryPlan.question())) {
+				return "탐색용 근거만 확인되어 직접 답변이 필요한 질문에는 답변을 생성하지 않습니다.";
+			}
+			return null;
+		}
 		if (!requiresStrictEvidence(profile, queryPlan == null ? "" : queryPlan.question())) {
 			return null;
 		}
-		String policy = judgedEvidence.selectionPolicy() == null ? "" : judgedEvidence.selectionPolicy();
 		if ("fallback_ranked".equals(policy) || "topic_aligned".equals(policy)) {
 			return "질문이 대상·예외·계약·서류·절차처럼 오답 위험이 큰 유형인데 Judge 정책이 '" + policy + "'라 직접근거로 보기 어렵습니다.";
 		}

@@ -15,15 +15,6 @@ public class AdminAccessWebConfig implements WebMvcConfigurer {
 	@Override
 	public void addInterceptors(InterceptorRegistry registry) {
 		registry.addInterceptor(adminAccessInterceptor)
-			.addPathPatterns(
-				"/api/admin/**",
-				"/api/law-data/ai/debug/**",
-				"/api/rag-collection/**",
-				"/api/law-data/semantic/collection",
-				"/api/law-data/semantic/index-sample",
-				"/api/law-data/semantic/index-documents",
-				"/api/law-data/semantic/batch-file",
-				"/api/law-data/semantic/batches/**"
-			);
+			.addPathPatterns(AdminAccessPaths.PATTERNS);
 	}
 }

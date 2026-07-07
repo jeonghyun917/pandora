@@ -1,8 +1,9 @@
 package com.kaces.pandora.ai.answer;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
-import java.util.List;
 
 @Mapper
 public interface LawAiSearchFailureMapper {
@@ -13,6 +14,12 @@ public interface LawAiSearchFailureMapper {
 		@Param("limit") int limit,
 		@Param("evalCandidateOnly") boolean evalCandidateOnly,
 		@Param("reviewStatus") String reviewStatus
+	);
+
+	List<LawAiSearchFailureCandidate> findEvaluationCandidates(
+		@Param("limit") int limit,
+		@Param("minOccurrences") int minOccurrences,
+		@Param("since") LocalDateTime since
 	);
 
 	LawAiSearchFailureRow findById(@Param("failureId") long failureId);

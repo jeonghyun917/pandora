@@ -33,6 +33,22 @@
     <result property="createdAt" column="created_at"/>
   </resultMap>
 
+  <resultMap id="FailureCandidateMap" type="com.kaces.pandora.ai.answer.LawAiSearchFailureCandidate">
+    <id property="candidateKey" column="candidate_key"/>
+    <result property="latestFailureId" column="latest_failure_id"/>
+    <result property="sampleQuestion" column="sample_question"/>
+    <result property="targets" column="targets"/>
+    <result property="intentTypes" column="intent_types"/>
+    <result property="entityIds" column="entity_ids"/>
+    <result property="lexicalKeywords" column="lexical_keywords"/>
+    <result property="expandedQueries" column="expanded_queries"/>
+    <result property="failureType" column="failure_type"/>
+    <result property="failureStage" column="failure_stage"/>
+    <result property="occurrenceCount" column="occurrence_count"/>
+    <result property="firstCreatedAt" column="first_created_at"/>
+    <result property="latestCreatedAt" column="latest_created_at"/>
+  </resultMap>
+
   <insert id="insertFailure">
     INSERT INTO law_ai_search_failure_logs (
       question,
@@ -120,6 +136,59 @@
       AND review_status = #{reviewStatus}
     </if>
     ORDER BY created_at DESC, failure_id DESC
+    LIMIT #{limit}
+  </select>
+
+  <select id="findEvaluationCandidates" resultMap="FailureCandidateMap">
+    SELECT
+      CONCAT(
+        normalized_question, '|',
+        COALESCE(targets, ''), '|',
+        COALESCE(intent_types, ''), '|',
+        COALESCE(entity_ids, ''), '|',
+        failure_type, '|',
+        failure_stage
+      ) AS candidate_key,
+      MAX(failure_id) AS latest_failure_id,
+      MAX(question) AS sample_question,
+      targets,
+      intent_types,
+      entity_ids,
+      MAX(lexical_keywords) AS lexical_keywords,
+      MAX(expanded_queries) AS expanded_queries,
+      failure_type,
+      failure_stage,
+      COUNT(*) AS occurrence_count,
+      MIN(created_at) AS first_created_at,
+      MAX(created_at) AS latest_created_at
+    FROM (
+      SELECT
+        failure_id,
+        question,
+        LOWER(REPLACE(REPLACE(REPLACE(REPLACE(TRIM(question), ' ', ''), CHAR(9), ''), '?', ''), '？', '')) AS normalized_question,
+        targets,
+        intent_types,
+        entity_ids,
+        lexical_keywords,
+        expanded_queries,
+        failure_type,
+        failure_stage,
+        created_at
+      FROM law_ai_search_failure_logs
+      WHERE eval_candidate = 1
+        AND retryable = 1
+        AND review_status = 'OPEN'
+        AND created_at &gt;= #{since}
+    ) recent_failures
+    GROUP BY
+      normalized_question,
+      targets,
+      intent_types,
+      entity_ids,
+      failure_type,
+      failure_stage
+    HAVING COUNT(*) &gt;= #{minOccurrences}
+    ORDER BY occurrence_count DESC, latest_created_at DESC
     LIMIT #{limit}
   </select>
 

@@ -84,6 +84,24 @@ class QuestionSearchPlanTests {
 	}
 
 	@Test
+	void generatesEntityIntentQueryBeforeGenericIntentFallback() {
+		QuestionSearchPlan plan = QuestionSearchPlan.from(
+			"\uACF5\uACF5\uAE30\uAD00\uC774 \uACF5\uACF5\uB370\uC774\uD130\uB97C \uC81C\uACF5\uD558\uC9C0 \uC54A\uC73C\uBA74 \uC5B4\uB5A4 \uBD88\uC774\uC775\uC774 \uC788\uC5B4?"
+		);
+
+		var nonEmbeddingQueries = plan.expandedQueries().stream().skip(1).toList();
+
+		assertThat(plan.profile().entities()).extracting(QuestionEntity::id).contains("public_data");
+		assertThat(plan.profile().intentTypes()).contains("penalty");
+		assertThat(nonEmbeddingQueries).anySatisfy(query -> {
+			assertThat(query).contains("\uACF5\uACF5\uB370\uC774\uD130");
+			assertThat(query).containsAnyOf("\uBD88\uC774\uC775", "\uC81C\uC7AC", "\uC870\uCE58", "\uC608\uC0B0 \uC870\uC815");
+		});
+		assertThat(nonEmbeddingQueries).noneMatch(query -> query.contains(" penalty") || query.contains(" target_scope"));
+		assertThat(plan.expandedQueries()).hasSizeLessThanOrEqualTo(4);
+	}
+
+	@Test
 	void expandsPublicDataStandardizationQuestion() {
 		QuestionSearchPlan plan = QuestionSearchPlan.from(
 			"\uACF5\uACF5\uB370\uC774\uD130\uD3EC\uD138 \uACF5\uACF5\uB370\uC774\uD130\uBCA0\uC774\uC2A4 \uD45C\uC900\uD654 \uAD00\uB9AC \uB9E4\uB274\uC5BC\uC5D0\uC11C \uD45C\uC900\uC6A9\uC5B4\uB294 \uC65C \uAD00\uB9AC\uD574?"

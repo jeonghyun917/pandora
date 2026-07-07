@@ -140,11 +140,20 @@ $launchSpec = [ordered]@{
     errLog = $errLog
 }
 $launchSpec | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $launchFile -Encoding UTF8
-$nodeExe = (Get-Command node -ErrorAction Stop).Source
-$launcherScript = Join-Path $ProjectDir 'scripts\start-pandora-detached.js'
-$nodeCommand = ('"{0}" "{1}" --launch-file "{2}"' -f $nodeExe, $launcherScript, $launchFile)
+$javaCommandParts = @((Quote-CmdArgument $javaExe))
+foreach ($argument in $arguments) {
+    $javaCommandParts += (Quote-CmdArgument $argument)
+}
+$javaCommandParts += @(
+    '1>>',
+    (Quote-CmdArgument $outLog),
+    '2>>',
+    (Quote-CmdArgument $errLog)
+)
+$javaCommand = $javaCommandParts -join ' '
+$launcherCommand = 'cmd.exe /c "' + $javaCommand + '"'
 $vbsCurrentDirectory = ($ProjectDir -replace '[\r\n]+', '') -replace '"', '""'
-$vbsCommand = ($nodeCommand -replace '[\r\n]+', ' ') -replace '"', '""'
+$vbsCommand = ($launcherCommand -replace '[\r\n]+', ' ') -replace '"', '""'
 $vbsLines = @(
     'Option Explicit',
     'Dim shell, command',
@@ -156,13 +165,33 @@ $vbsLines = @(
 $vbsLines | Set-Content -LiteralPath $vbsPath -Encoding ASCII
 
 $wscript = Join-Path $env:SystemRoot 'System32\wscript.exe'
-& $wscript $vbsPath
-if ($LASTEXITCODE -ne 0) {
-    throw "Hidden launcher failed with exit code $LASTEXITCODE"
+$taskName = "Pandora-$Role-$Port-$([Guid]::NewGuid().ToString('N'))"
+$taskCreated = $false
+try {
+    $taskStartTime = (Get-Date).AddMinutes(1).ToString('HH:mm')
+    $taskAction = ('wscript.exe "{0}"' -f $vbsPath)
+    & schtasks.exe /Create /TN $taskName /SC ONCE /ST $taskStartTime /TR $taskAction /F | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "schtasks /Create failed with exit code $LASTEXITCODE"
+    }
+    $taskCreated = $true
+    & schtasks.exe /Run /TN $taskName | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "schtasks /Run failed with exit code $LASTEXITCODE"
+    }
+} catch {
+    Write-Warning "Task Scheduler launcher failed. Falling back to direct hidden launcher. $($_.Exception.Message)"
+    & $wscript $vbsPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Hidden launcher failed with exit code $LASTEXITCODE"
+    }
 }
 $launcherPid = $null
 
 $listenerPid = Wait-PortListenerPid $Port 60
+if ($taskCreated) {
+    & schtasks.exe /Delete /TN $taskName /F | Out-Null
+}
 if (-not $listenerPid) {
     throw "Started $Role but port $Port did not begin listening within 60 seconds. Check $outLog and $errLog"
 }

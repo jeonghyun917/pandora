@@ -39,7 +39,8 @@ public class ParentContextAssembler {
 		Map<String, Double> scoreByChunkId,
 		Function<LawSemanticChunkRow, String> snippetFactory
 	) {
-		String key = scoreKey(chunk.target(), chunk.chunkId());
+		String displayKey = scoreKey(chunk.target(), chunk.chunkId());
+		String matchedKey = matchedChunk == null ? displayKey : scoreKey(matchedChunk.target(), matchedChunk.chunkId());
 		String matchedChildText = matchedChunk == null ? chunk.chunkText() : matchedChunk.chunkText();
 		String parentContextText = sameNormalizedText(matchedChildText, chunk.chunkText()) ? null : chunk.chunkText();
 		String contextPolicy = parentContextText == null ? "matched_child_only" : "parent_context_expanded";
@@ -59,12 +60,30 @@ public class ParentContextAssembler {
 			snippetFactory == null ? "" : snippetFactory.apply(chunk),
 			chunk.sourcePath(),
 			chunk.sourceUrl(),
-			scoreByChunkId == null ? 0.0 : scoreByChunkId.getOrDefault(key, 0.0),
+			score(scoreByChunkId, matchedKey, displayKey),
 			limitText(cleanDisplayText(matchedChildText), 1_200),
 			parentContextText == null ? null : limitText(cleanDisplayText(parentContextText), 2_800),
-			List.of(chunk.chunkId()),
+			contextChunkIds(chunk, matchedChunk),
 			contextPolicy
 		);
+	}
+
+	private double score(Map<String, Double> scoreByChunkId, String matchedKey, String displayKey) {
+		if (scoreByChunkId == null || scoreByChunkId.isEmpty()) {
+			return 0.0;
+		}
+		Double matchedScore = scoreByChunkId.get(matchedKey);
+		if (matchedScore != null) {
+			return matchedScore;
+		}
+		return scoreByChunkId.getOrDefault(displayKey, 0.0);
+	}
+
+	private List<Long> contextChunkIds(LawSemanticChunkRow chunk, LawSemanticChunkRow matchedChunk) {
+		if (matchedChunk == null || matchedChunk.chunkId() == chunk.chunkId()) {
+			return List.of(chunk.chunkId());
+		}
+		return List.of(matchedChunk.chunkId(), chunk.chunkId());
 	}
 
 	private boolean sameNormalizedText(String left, String right) {

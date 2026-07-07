@@ -51,6 +51,15 @@ final class LawAiEvaluationCaseCatalog {
 		return EXTERNAL_FAILURE_CASE_PATH;
 	}
 
+	static boolean caseIdExists(String caseId) {
+		if (caseId == null || caseId.isBlank()) {
+			return false;
+		}
+		String normalized = caseId.trim();
+		return loadDefaultCases().stream()
+			.anyMatch(evalCase -> normalized.equals(evalCase.id()));
+	}
+
 	static void appendExternalFailureCase(LawAiEvalRequest.EvalCase evalCase) throws IOException {
 		if (evalCase == null || evalCase.id() == null || evalCase.id().isBlank()) {
 			throw new IllegalArgumentException("Evaluation case id is required.");

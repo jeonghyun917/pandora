@@ -67,6 +67,17 @@ public class LawAiAnswerController {
 			.body(answerService.recentSearchFailures(limit, evalCandidateOnly, reviewStatus));
 	}
 
+	@GetMapping("/debug/failures/evaluation-candidates")
+	public ResponseEntity<java.util.List<LawAiSearchFailureCandidate>> failureEvaluationCandidates(
+		@RequestParam(required = false) Integer limit,
+		@RequestParam(required = false) Integer minOccurrences,
+		@RequestParam(required = false) Integer days
+	) {
+		return ResponseEntity.ok()
+			.contentType(MediaType.APPLICATION_JSON)
+			.body(answerService.failureEvaluationCandidates(limit, minOccurrences, days));
+	}
+
 	@PostMapping("/debug/failures/{failureId}/evaluation-case")
 	public ResponseEntity<LawAiEvalRequest.EvalCase> promoteFailureToEvaluationCase(
 		@PathVariable long failureId,

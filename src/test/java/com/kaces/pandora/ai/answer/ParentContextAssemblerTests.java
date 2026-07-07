@@ -13,7 +13,7 @@ class ParentContextAssemblerTests {
 
 	@Test
 	void separatesMatchedChildFromExpandedParentContext() {
-		LawSemanticChunkRow child = chunk(10, "적용 대상 사업", "국가기관 등이 발주하는 모든 SW사업은 과업심의 대상이다.");
+		LawSemanticChunkRow child = chunk(9, "적용 대상 사업", "국가기관 등이 발주하는 모든 SW사업은 과업심의 대상이다.");
 		LawSemanticChunkRow parent = chunk(
 			10,
 			"과업심의 대상",
@@ -23,7 +23,7 @@ class ParentContextAssemblerTests {
 		List<LawAiAnswerGround> grounds = assembler.toGrounds(
 			List.of(parent),
 			Map.of("official_doc:10", child),
-			Map.of("official_doc:10", 0.91),
+			Map.of("official_doc:9", 0.91),
 			chunk -> "적용 대상 사업 — 국가기관 등이 발주하는 모든 SW사업은 과업심의 대상이다."
 		);
 
@@ -31,7 +31,8 @@ class ParentContextAssemblerTests {
 		LawAiAnswerGround ground = grounds.get(0);
 		assertThat(ground.matchedChildText()).contains("모든 SW사업은 과업심의 대상");
 		assertThat(ground.parentContextText()).contains("단순 H/W");
-		assertThat(ground.contextChunkIds()).containsExactly(10L);
+		assertThat(ground.contextChunkIds()).containsExactly(9L, 10L);
+		assertThat(ground.score()).isEqualTo(0.91);
 		assertThat(ground.contextPolicy()).isEqualTo("parent_context_expanded");
 	}
 

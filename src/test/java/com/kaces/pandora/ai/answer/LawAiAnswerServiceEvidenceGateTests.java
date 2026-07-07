@@ -33,6 +33,16 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void rejectsExploratoryLookupPolicyForCarefulQuestion() throws Exception {
+		String reason = rejectionReason(
+			"디지털카탈로그에서 구매하면 수의계약인가?",
+			result(false, false, true, true, 8, 4, 0, "exploratory_lookup")
+		);
+
+		assertThat(reason).contains("탐색용 근거");
+	}
+
+	@Test
 	void allowsDirectEvidencePolicyForCarefulQuestion() throws Exception {
 		String reason = rejectionReason(
 			"보안성검토 대상 시스템은?",

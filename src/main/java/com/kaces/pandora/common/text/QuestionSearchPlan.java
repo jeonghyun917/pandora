@@ -79,15 +79,13 @@ public record QuestionSearchPlan(
 				addAll(queries, QuestionIntentDictionary.values("multi_query." + entity.id() + "." + intentType, List.of()));
 			}
 		}
+		addGeneratedEntityIntentQueries(queries, profile, intentTypes);
+		addGeneratedSynonymIntentQueries(queries, profile, intentTypes);
 		for (String intentType : intentTypes) {
 			addAll(queries, QuestionIntentDictionary.values("multi_query." + intentType, List.of()));
 		}
 		if (queries.size() < 2 && !profile.entities().isEmpty() && !profile.intentTypes().isEmpty()) {
-			for (QuestionEntity entity : profile.entities()) {
-				for (String intentType : intentTypes) {
-					queries.add(entity.label() + " " + String.join(" ", profile.focusedKeywords()) + " " + intentType);
-				}
-			}
+			addFallbackEntityIntentQueries(queries, profile, intentTypes);
 		}
 		if (queries.isEmpty() && question != null && !question.isBlank()) {
 			queries.add(question.trim());
@@ -98,6 +96,72 @@ public record QuestionSearchPlan(
 			.distinct()
 			.limit(MAX_EXPANDED_QUERIES)
 			.toList();
+	}
+
+	private static void addGeneratedEntityIntentQueries(
+		LinkedHashSet<String> queries,
+		QuestionIntentProfile profile,
+		List<String> intentTypes
+	) {
+		if (profile.entities().isEmpty() || intentTypes.isEmpty()) {
+			return;
+		}
+		for (QuestionEntity entity : profile.entities()) {
+			for (String intentType : intentTypes) {
+				LinkedHashSet<String> terms = new LinkedHashSet<>();
+				addTerm(terms, entity.label());
+				addLimitedTerms(terms, entity.focusedKeywords(), 4);
+				addFirstTerms(terms, entity.directEvidenceGroups(), 3);
+				addLimitedTerms(terms, QuestionIntentDictionary.values("intent." + intentType + ".terms", List.of()), 4);
+				addFirstTerms(terms, profile.directEvidenceGroups(), 2);
+				String query = queryFromTerms(terms, 10);
+				if (!query.isBlank()) {
+					queries.add(query);
+				}
+			}
+		}
+	}
+
+	private static void addGeneratedSynonymIntentQueries(
+		LinkedHashSet<String> queries,
+		QuestionIntentProfile profile,
+		List<String> intentTypes
+	) {
+		if (profile.synonymGroups().isEmpty() || intentTypes.isEmpty()) {
+			return;
+		}
+		for (String intentType : intentTypes) {
+			LinkedHashSet<String> terms = new LinkedHashSet<>();
+			addFirstTerms(terms, profile.synonymGroups(), 4);
+			addLimitedTerms(terms, QuestionIntentDictionary.values("intent." + intentType + ".terms", List.of()), 4);
+			addLimitedTerms(terms, profile.focusedKeywords(), 3);
+			String query = queryFromTerms(terms, 10);
+			if (!query.isBlank()) {
+				queries.add(query);
+			}
+		}
+	}
+
+	private static void addFallbackEntityIntentQueries(
+		LinkedHashSet<String> queries,
+		QuestionIntentProfile profile,
+		List<String> intentTypes
+	) {
+		for (QuestionEntity entity : profile.entities()) {
+			for (String intentType : intentTypes) {
+				LinkedHashSet<String> terms = new LinkedHashSet<>();
+				addTerm(terms, entity.label());
+				addLimitedTerms(terms, QuestionIntentDictionary.values("intent." + intentType + ".terms", List.of()), 4);
+				addLimitedTerms(terms, profile.focusedKeywords(), 4);
+				addFirstTerms(terms, profile.directEvidenceGroups(), 2);
+				if (terms.size() >= 2) {
+					String query = queryFromTerms(terms, 8);
+					if (!query.isBlank()) {
+						queries.add(query);
+					}
+				}
+			}
+		}
 	}
 
 	private static List<String> buildClarificationQuestions(String question, QuestionIntentProfile profile) {
@@ -214,6 +278,60 @@ public record QuestionSearchPlan(
 				target.add(group.get(0));
 			}
 		}
+	}
+
+	private static void addFirstTerms(Set<String> target, List<List<String>> groups, int limit) {
+		if (groups == null || limit <= 0) {
+			return;
+		}
+		int count = 0;
+		for (List<String> group : groups) {
+			if (group != null && !group.isEmpty() && addTerm(target, group.get(0))) {
+				count++;
+				if (count >= limit) {
+					return;
+				}
+			}
+		}
+	}
+
+	private static void addLimitedTerms(Set<String> target, Iterable<String> values, int limit) {
+		if (values == null || limit <= 0) {
+			return;
+		}
+		int count = 0;
+		for (String value : values) {
+			if (addTerm(target, value)) {
+				count++;
+				if (count >= limit) {
+					return;
+				}
+			}
+		}
+	}
+
+	private static boolean addTerm(Set<String> target, String value) {
+		if (value == null) {
+			return false;
+		}
+		String cleaned = value.replaceAll("\\s+", " ").trim();
+		if (cleaned.length() < 2) {
+			return false;
+		}
+		return target.add(cleaned);
+	}
+
+	private static String queryFromTerms(Set<String> terms, int limit) {
+		if (terms == null || terms.isEmpty()) {
+			return "";
+		}
+		return terms.stream()
+			.map(value -> value == null ? "" : value.replaceAll("\\s+", " ").trim())
+			.filter(value -> value.length() >= 2)
+			.distinct()
+			.limit(limit)
+			.reduce((left, right) -> left + " " + right)
+			.orElse("");
 	}
 
 	private static void addAll(Set<String> target, Iterable<String> values) {
