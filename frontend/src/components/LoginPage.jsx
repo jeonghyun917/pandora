@@ -36,12 +36,12 @@ export function LoginPage({ onAuthenticated }) {
     <main className="auth-page">
       <LandingConstellation interactive={false} showGrid={false} showTexture={false} />
       <section className="auth-hero" aria-labelledby="login-title">
-        <header className="auth-header">
-          <p className="auth-kicker">LAW OPEN DATA WORKSPACE</p>
-          <h1 id="login-title">{COPY.title}</h1>
-        </header>
-
         <form className="login-panel login-form" onSubmit={handleSubmit}>
+          <header className="auth-header">
+            <p className="auth-kicker">LAW OPEN DATA WORKSPACE</p>
+            <h1 id="login-title">{COPY.title}</h1>
+          </header>
+
           <div className="login-panel-heading">
             <div className="login-mark" aria-hidden="true">
               <LockKeyhole size={21} strokeWidth={1.6} />
