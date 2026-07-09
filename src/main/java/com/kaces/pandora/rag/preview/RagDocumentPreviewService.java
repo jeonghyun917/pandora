@@ -6,6 +6,7 @@ import com.kaces.pandora.rag.importing.RagTextExtractor;
 import com.kaces.pandora.rag.document.RagDocumentRow;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -69,10 +70,13 @@ public class RagDocumentPreviewService {
 
 	// 메소드 설명: canPreview 처리 흐름을 수행합니다.
 	public boolean canPreview(RagDocumentRow document) {
-		if (document == null || document.fileName() == null) {
+		Path source = sourcePath(document);
+		if (source == null || !Files.isRegularFile(source) || !Files.isReadable(source)) {
 			return false;
 		}
-		String lower = document.fileName().toLowerCase();
+		String lower = document.fileName() == null
+			? source.getFileName().toString().toLowerCase()
+			: document.fileName().toLowerCase();
 		String mimeType = document.mimeType() == null ? "" : document.mimeType().toLowerCase();
 		return mimeType.contains("pdf")
 			|| lower.endsWith(".pdf")
@@ -84,6 +88,17 @@ public class RagDocumentPreviewService {
 			|| lower.endsWith(".ppt")
 			|| lower.endsWith(".xlsx")
 			|| lower.endsWith(".xls");
+	}
+
+	private Path sourcePath(RagDocumentRow document) {
+		if (document == null || document.filePath() == null || document.filePath().isBlank()) {
+			return null;
+		}
+		try {
+			return Path.of(document.filePath()).toAbsolutePath().normalize();
+		} catch (InvalidPathException exception) {
+			return null;
+		}
 	}
 
 	// 메소드 설명: hasReadyPreview 처리 흐름을 수행합니다.

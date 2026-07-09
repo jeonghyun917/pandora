@@ -26,13 +26,16 @@ export function LoginPage({ onAuthenticated }) {
   return (
     <main className="auth-page">
       <LandingConstellation interactive={false} showGrid={false} showTexture={false} />
-      <section className="login-panel" aria-labelledby="login-title">
-        <div className="login-mark" aria-hidden="true">
-          <LockKeyhole size={22} strokeWidth={1.6} />
-        </div>
-        <p className="login-kicker">private workspace</p>
-        <h1 id="login-title">Pandora Login</h1>
-        <form className="login-form" onSubmit={handleSubmit}>
+      <section className="auth-hero" aria-labelledby="login-title">
+        <p className="auth-kicker">law open data workspace</p>
+        <h1 id="login-title">pandora</h1>
+        <form className="login-panel login-form" onSubmit={handleSubmit}>
+          <div className="login-panel-heading">
+            <div className="login-mark" aria-hidden="true">
+              <LockKeyhole size={21} strokeWidth={1.6} />
+            </div>
+            <p className="login-kicker">private access</p>
+          </div>
           <label>
             <span>아이디</span>
             <input

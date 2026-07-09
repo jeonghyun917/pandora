@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react';
 import { fetchAuthStatus, logoutAdmin } from './api/lawApi';
-import { LandingPage } from './components/LandingPage';
 import { LawSearchPage } from './components/LawSearchPage';
 import { RagDebugPage } from './components/RagDebugPage';
 import { AdminPage } from './components/AdminPage';
 import { LoginPage } from './components/LoginPage';
 
-// 메소드 설명: App 처리 흐름을 수행합니다.
 export function App() {
-  const [page, setPage] = useState('landing');
+  const [page, setPage] = useState('law-search');
   const [authStatus, setAuthStatus] = useState(null);
 
   useEffect(() => {
@@ -32,7 +30,12 @@ export function App() {
   async function handleLogout() {
     await logoutAdmin();
     setAuthStatus({ authenticated: false });
-    setPage('landing');
+    setPage('law-search');
+  }
+
+  function handleAuthenticated(result) {
+    setAuthStatus(result);
+    setPage('law-search');
   }
 
   if (authStatus === null) {
@@ -44,11 +47,17 @@ export function App() {
   }
 
   if (!authStatus.authenticated) {
-    return <LoginPage onAuthenticated={setAuthStatus} />;
+    return <LoginPage onAuthenticated={handleAuthenticated} />;
   }
 
   if (page === 'law-search') {
-    return <LawSearchPage onBack={() => setPage('landing')} onDebug={() => setPage('rag-debug')} />;
+    return (
+      <LawSearchPage
+        onAdmin={() => setPage('admin')}
+        onDebug={() => setPage('rag-debug')}
+        onLogout={handleLogout}
+      />
+    );
   }
 
   if (page === 'rag-debug') {
@@ -56,15 +65,8 @@ export function App() {
   }
 
   if (page === 'admin') {
-    return <AdminPage onBack={() => setPage('landing')} />;
+    return <AdminPage onBack={() => setPage('law-search')} />;
   }
 
-  return (
-    <LandingPage
-      admin={authStatus}
-      onEnter={() => setPage('law-search')}
-      onAdmin={() => setPage('admin')}
-      onLogout={handleLogout}
-    />
-  );
+  return null;
 }

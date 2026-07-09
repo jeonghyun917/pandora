@@ -14,6 +14,7 @@ import com.kaces.pandora.rag.persistence.RagDocumentMapper;
 import com.kaces.pandora.rag.document.RagDocumentRow;
 import java.net.MalformedURLException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Stream;
@@ -98,6 +99,9 @@ public class RagDocumentController {
 			nonBlank(document.sourceOrg(), document.fileName()),
 			nonBlank(document.publishedDate(), document.version())
 		).filter(value -> value != null && !value.isBlank()).toList();
+		String originalFileUrl = hasReadableSourceFile(document)
+			? "/api/rag-documents/" + document.documentId() + "/file"
+			: null;
 
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		return ResponseEntity.ok(new LawDetailResponse(
@@ -107,7 +111,7 @@ public class RagDocumentController {
 			document.title(),
 			meta,
 			sections,
-			"/api/rag-documents/" + document.documentId() + "/file",
+			originalFileUrl,
 			document.fileName(),
 			document.mimeType(),
 			previewService.canPreview(document) ? "/api/rag-documents/" + document.documentId() + "/preview.pdf" : null,
@@ -204,6 +208,18 @@ public class RagDocumentController {
 			case RagDocumentType.REFERENCE_DOC -> "참고자료";
 			default -> documentType;
 		};
+	}
+
+	private boolean hasReadableSourceFile(RagDocumentRow document) {
+		if (document == null || document.filePath() == null || document.filePath().isBlank()) {
+			return false;
+		}
+		try {
+			Path file = Path.of(document.filePath()).toAbsolutePath().normalize();
+			return Files.isRegularFile(file) && Files.isReadable(file);
+		} catch (InvalidPathException exception) {
+			return false;
+		}
 	}
 
 	// 메소드 설명: nonBlank 처리 흐름을 수행합니다.

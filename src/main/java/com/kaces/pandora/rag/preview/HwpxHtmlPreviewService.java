@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -29,7 +30,8 @@ public class HwpxHtmlPreviewService {
 
 	// 메소드 설명: canPreview 처리 흐름을 수행합니다.
 	public boolean canPreview(RagDocumentRow document) {
-		return sourcePath(document) != null && isHwpx(sourcePath(document));
+		Path source = sourcePath(document);
+		return source != null && Files.isRegularFile(source) && Files.isReadable(source);
 	}
 
 	// 메소드 설명: previewHtml 처리 흐름을 수행합니다.
@@ -400,8 +402,12 @@ public class HwpxHtmlPreviewService {
 		if (document == null || document.filePath() == null || document.filePath().isBlank()) {
 			return null;
 		}
-		Path source = Path.of(document.filePath()).toAbsolutePath().normalize();
-		return isHwpx(source) ? source : null;
+		try {
+			Path source = Path.of(document.filePath()).toAbsolutePath().normalize();
+			return isHwpx(source) ? source : null;
+		} catch (InvalidPathException exception) {
+			return null;
+		}
 	}
 
 	// 메소드 설명: previewPath 처리 흐름을 수행합니다.

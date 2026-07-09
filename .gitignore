@@ -3,9 +3,15 @@ target/
 frontend/node_modules/
 frontend/dist/
 src/main/resources/application-local.properties
+.env
+.env.*
+!.env.example
+!.env.*.example
 data/
 storage/
+snapshots/
 runtime/
+tmp/
 .qdrant-initialized
 *.log
 logs/

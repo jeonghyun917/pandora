@@ -6,7 +6,9 @@ import {
   ExternalLink,
   Gavel,
   KeyRound,
+  LogOut,
   Search,
+  Settings,
 } from 'lucide-react';
 import { askLawAi, askLawAiStream, fetchLawDetail, fetchRagDocumentDetail, searchLawData } from '../api/lawApi';
 import { defaultSelectedMenuIds, lawApiMenus } from '../constants/lawApiMenus';
@@ -23,7 +25,7 @@ const officialGuideAgencyLabels = [
 const readinessSearchTargets = ['law', 'admrul', 'official_doc', 'internal_doc', 'reference_doc'];
 
 // 메소드 설명: LawSearchPage 처리 흐름을 수행합니다.
-export function LawSearchPage({ onBack, onDebug }) {
+export function LawSearchPage({ onAdmin, onDebug, onLogout }) {
   const [query, setQuery] = useState(initialQuery);
   const [searchMode, setSearchMode] = useState('ai');
   const [selectedMenuIds, setSelectedMenuIds] = useState(defaultSelectedMenuIds);
@@ -344,14 +346,15 @@ export function LawSearchPage({ onBack, onDebug }) {
       return;
     }
 
-    if (!item.detailLink) {
+    const lawDetailLink = resolveLawDetailLink(item);
+    if (!lawDetailLink) {
       setDetailError('이 항목에는 상세 링크가 없습니다.');
       return;
     }
 
     setDetailLoading(true);
     try {
-      setDetailPayload(await fetchLawDetail(item.detailLink));
+      setDetailPayload(await fetchLawDetail(lawDetailLink));
     } catch (err) {
       setDetailError(err instanceof Error ? err.message : '상세 조회 중 오류가 발생했습니다.');
     } finally {
@@ -523,15 +526,16 @@ export function LawSearchPage({ onBack, onDebug }) {
   return (
     <main className="law-search-shell">
       <LandingConstellation interactive={false} showGrid={false} showTexture={false} />
-      <header className="law-search-header">
-        <button className="icon-button" type="button" onClick={onBack} aria-label="처음 화면으로 돌아가기" title="돌아가기">
-          <ArrowLeft aria-hidden="true" size={18} />
-        </button>
-        <div>
+      <header className="law-search-header law-search-header-main">
+        <div className="law-search-brand">
           <p className="eyebrow">LAW OPEN DATA WORKSPACE</p>
           <h1>법령 AI 검색</h1>
         </div>
         <div className="header-actions">
+          <button className="debug-nav-button header-admin-button" type="button" onClick={onAdmin}>
+            <Settings aria-hidden="true" size={15} />
+            <span>ADMIN</span>
+          </button>
           <button className="debug-nav-button" type="button" onClick={onDebug}>
             <Bug aria-hidden="true" size={15} />
             <span>DEBUG</span>
@@ -539,6 +543,11 @@ export function LawSearchPage({ onBack, onDebug }) {
           <div className="header-status" aria-label="AI 검색 상태">
             <span>RAG ONLINE</span>
             <KeyRound aria-hidden="true" size={16} />
+          </div>
+          <div className="header-session-actions" aria-label="로그인 세션">
+            <button type="button" onClick={onLogout} aria-label="로그아웃" title="로그아웃">
+              <LogOut aria-hidden="true" size={15} />
+            </button>
           </div>
         </div>
       </header>
@@ -612,7 +621,6 @@ export function LawSearchPage({ onBack, onDebug }) {
           ))}
         </div>
       </section>
-
       <section className="law-browser single-column" aria-label="AI 답변과 근거">
         <div className="law-content">
           <div className="law-content-heading">
@@ -658,16 +666,16 @@ export function LawSearchPage({ onBack, onDebug }) {
                 <section className="search-readiness-card" aria-label="본문 검색 범위">
                   <p className="search-readiness-label">본문 검색 범위</p>
                   <ul className="search-readiness-list">
-                    <li>법령 조문·문단</li>
-                    <li>문서 페이지·섹션</li>
-                    <li>출처·위치 정보 포함</li>
-                    <li>법령센터·원본 문서 연결</li>
+                    <li>법령 조문과 문단</li>
+                    <li>문서 페이지와 섹션</li>
+                    <li>출처와 위치 정보 포함</li>
+                    <li>법령센터와 원본 문서 연결</li>
                   </ul>
                 </section>
                 <section className="search-readiness-card" aria-label="AI 검색 기능">
                   <p className="search-readiness-label">AI 검색</p>
                   <ul className="search-readiness-list">
-                    <li>법령·문서 통합 의미 검색</li>
+                    <li>법령과 문서 통합 의미 검색</li>
                     <li>직접 근거 판정</li>
                     <li>근거 기반 답변 생성</li>
                   </ul>
@@ -698,42 +706,42 @@ export function LawSearchPage({ onBack, onDebug }) {
           {(hasSearched || results.length > 0) && (
             <div className="law-result-list">
               {results.map((item) => (
-              <article className="law-result-card" key={`${item.target}-${item.id}-${item.title}`}>
-                <span className="result-date">
-                  <span>{item.date || '날짜 없음'}</span>
-                  {isFutureEffectiveItem(item) && (
-                    <span className="future-effective-badge">미래시행</span>
-                  )}
-                </span>
-                <div className="result-main">
-                  <div className="result-title-row">
-                    {item.snippet && <span className="result-match-badge">{aiAnswer ? `근거 ${item.groundNumber}` : '본문 일치'}</span>}
+                <article className="law-result-card" key={`${item.target}-${item.id}-${item.title}`}>
+                  <span className="result-date">
+                    <span>{item.date || '날짜 없음'}</span>
                     {isFutureEffectiveItem(item) && (
-                      <span className="future-effective-badge future-effective-badge-inline">미래시행</span>
+                      <span className="future-effective-badge">미래시행</span>
                     )}
-                    <span className={`result-source-badge result-source-badge-${normalizeSourceBadgeType(item.target)}`}>
-                      {sourceLabelForItem(item)}
-                    </span>
-                    <button className="result-title-button" type="button" onClick={() => loadDetail(item)}>
-                      {highlightText(item.title, searchTerm)}
-                    </button>
+                  </span>
+                  <div className="result-main">
+                    <div className="result-title-row">
+                      {item.snippet && <span className="result-match-badge">{aiAnswer ? `근거 ${item.groundNumber}` : '본문 일치'}</span>}
+                      {isFutureEffectiveItem(item) && (
+                        <span className="future-effective-badge future-effective-badge-inline">미래시행</span>
+                      )}
+                      <span className={`result-source-badge result-source-badge-${normalizeSourceBadgeType(item.target)}`}>
+                        {sourceLabelForItem(item)}
+                      </span>
+                      <button className="result-title-button" type="button" onClick={() => loadDetail(item)}>
+                        {highlightText(item.title, searchTerm)}
+                      </button>
+                    </div>
+                    <div className="result-location">
+                      {displayResultPosition(item) && <strong>{displayResultPosition(item)}</strong>}
+                      {!displayResultPosition(item) && item.meta && <span>{item.meta}</span>}
+                    </div>
+                    {item.snippet && (
+                      <button
+                        className="result-snippet"
+                        type="button"
+                        onClick={() => loadDetail(item)}
+                        aria-label={`${item.title} 근거 본문 상세 보기`}
+                      >
+                        {highlightText(cleanResultSnippet(item.snippet, item), searchTerm)}
+                      </button>
+                    )}
                   </div>
-                  <div className="result-location">
-                    {displayResultPosition(item) && <strong>{displayResultPosition(item)}</strong>}
-                    {!displayResultPosition(item) && item.meta && <span>{item.meta}</span>}
-                  </div>
-                  {item.snippet && (
-                    <button
-                      className="result-snippet"
-                      type="button"
-                      onClick={() => loadDetail(item)}
-                      aria-label={`${item.title} 근거 본문 상세 보기`}
-                    >
-                      {highlightText(cleanResultSnippet(item.snippet, item), searchTerm)}
-                    </button>
-                  )}
-                </div>
-              </article>
+                </article>
               ))}
               {!loading && !error && results.length === 0 && <p className="empty-message">검색 결과가 없습니다.</p>}
             </div>
@@ -822,7 +830,7 @@ function normalizeGround(ground, menu) {
     meta: [ground.agencyName, ground.chunkTitle].filter(Boolean).join(' · '),
     date: ground.sourceDate || '',
     effectiveStatus: ground.effectiveStatus || '',
-    detailLink: isRagTarget(ground.target || menu.target) ? `rag:${ground.documentId}` : (ground.sourceUrl || ''),
+    detailLink: buildGroundDetailLink(ground, menu),
     position: buildGroundPosition(ground),
     pageNo: ground.pageNo,
     snippet: ground.snippet || '',
@@ -839,6 +847,29 @@ function buildGroundPosition(ground) {
     return `원문 ${pageNo}쪽`;
   }
   return cleanDisplayPosition(ground?.chunkNo);
+}
+
+function buildGroundDetailLink(ground, menu) {
+  const target = ground.target || menu.target;
+  if (isRagTarget(target)) {
+    return ground.documentId ? `rag:${ground.documentId}` : '';
+  }
+  if (ground.documentId) {
+    return `db:${ground.documentId}`;
+  }
+  return ground.sourceUrl || '';
+}
+
+function resolveLawDetailLink(item) {
+  const detailLink = String(item?.detailLink ?? '').trim();
+  if (detailLink.startsWith('db:')) {
+    return detailLink;
+  }
+  const documentId = item?.documentId || item?.raw?.documentId;
+  if (documentId) {
+    return `db:${documentId}`;
+  }
+  return detailLink;
 }
 
 // 메소드 설명: displayResultPosition 처리 흐름을 수행합니다.

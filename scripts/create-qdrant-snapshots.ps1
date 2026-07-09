@@ -7,6 +7,11 @@ param(
 $ErrorActionPreference = 'Stop'
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+$Collections = $Collections |
+    ForEach-Object { $_ -split ',' } |
+    ForEach-Object { $_.Trim() } |
+    Where-Object { $_ }
+
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $manifest = @()
 
