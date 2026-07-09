@@ -4,8 +4,6 @@ import { loginAdmin } from '../api/lawApi';
 import { LandingConstellation } from './LandingPage';
 
 const COPY = {
-  title: '\uBC95\uB839 AI \uAC80\uC0C9',
-  heading: '\uAD00\uB9AC\uC790 \uB85C\uADF8\uC778',
   username: '\uC544\uC774\uB514',
   password: '\uBE44\uBC00\uBC88\uD638',
   checking: '\uD655\uC778 \uC911',
@@ -36,22 +34,15 @@ export function LoginPage({ onAuthenticated }) {
     <main className="auth-page">
       <LandingConstellation interactive={false} showGrid={false} showTexture={false} />
       <section className="auth-hero" aria-labelledby="login-title">
+        <p className="auth-kicker">law open data workspace</p>
+        <h1 id="login-title">pandora</h1>
         <form className="login-panel login-form" onSubmit={handleSubmit}>
-          <header className="auth-header">
-            <p className="auth-kicker">LAW OPEN DATA WORKSPACE</p>
-            <h1 id="login-title">{COPY.title}</h1>
-          </header>
-
           <div className="login-panel-heading">
             <div className="login-mark" aria-hidden="true">
               <LockKeyhole size={21} strokeWidth={1.6} />
             </div>
-            <div>
-              <p className="login-kicker">PRIVATE WORKSPACE</p>
-              <h2>{COPY.heading}</h2>
-            </div>
+            <p className="login-kicker">private access</p>
           </div>
-
           <label>
             <span>{COPY.username}</span>
             <input
@@ -62,7 +53,6 @@ export function LoginPage({ onAuthenticated }) {
               disabled={submitting}
             />
           </label>
-
           <label>
             <span>{COPY.password}</span>
             <input
@@ -73,9 +63,7 @@ export function LoginPage({ onAuthenticated }) {
               disabled={submitting}
             />
           </label>
-
           {message ? <p className="login-error" role="alert">{message}</p> : null}
-
           <button className="login-button" type="submit" disabled={submitting}>
             <LogIn size={16} strokeWidth={1.7} aria-hidden="true" />
             <span>{submitting ? COPY.checking : COPY.login}</span>

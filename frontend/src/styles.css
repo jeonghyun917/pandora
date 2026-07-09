@@ -3181,7 +3181,7 @@ button {
   display: grid;
   place-items: center;
   overflow: hidden;
-  padding: clamp(20px, 4vw, 40px);
+  padding: clamp(28px, 6vw, 72px);
   background: var(--pandora-page-background);
 }
 
@@ -3194,70 +3194,86 @@ button {
 }
 
 .auth-hero {
+  --auth-orbit-size: clamp(700px, 70vw, 820px);
   position: relative;
   z-index: 3;
-  width: min(100%, 440px);
-  padding: 0;
-  text-align: left;
+  display: grid;
+  justify-items: center;
+  gap: clamp(16px, 2.1vw, 24px);
+  width: min(100%, 920px);
+  padding: clamp(18px, 4vh, 38px) 0;
+  text-align: center;
 }
 
-.auth-header {
-  position: relative;
-  width: 100%;
-  display: grid;
-  gap: 4px;
-  padding: 0 0 18px;
-  border-bottom: 1px solid rgba(123, 238, 195, 0.14);
+.auth-hero::before {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: -1;
+  width: var(--auth-orbit-size);
+  height: var(--auth-orbit-size);
+  margin-top: calc(var(--auth-orbit-size) / -2);
+  margin-left: calc(var(--auth-orbit-size) / -2);
+  border: 1px solid rgba(101, 220, 174, 0.16);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 43%, rgba(132, 245, 197, 0.105), transparent 34%),
+    radial-gradient(circle at 50% 62%, rgba(231, 194, 122, 0.052), transparent 48%),
+    radial-gradient(circle at 50% 50%, rgba(101, 220, 174, 0.035), transparent 64%);
+  content: "";
+  box-shadow:
+    inset 0 0 96px rgba(101, 220, 174, 0.08),
+    inset 0 0 180px rgba(7, 24, 20, 0.2),
+    0 0 100px rgba(101, 220, 174, 0.07);
+  animation: orbitalSpin 46s linear infinite;
 }
 
 .auth-kicker {
   margin: 0;
-  color: rgba(247, 242, 234, 0.58);
-  font-size: 10px;
+  color: #65dcae;
+  font-size: clamp(0.68rem, 1.3vw, 0.78rem);
   font-weight: 800;
   letter-spacing: 0;
   text-transform: uppercase;
+  text-shadow: 0 0 24px rgba(101, 220, 174, 0.3);
 }
 
-.auth-header h1 {
+.auth-hero h1 {
   margin: 0;
   color: #edf8f3;
-  font-size: 22px;
-  font-weight: 900;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(4.2rem, 12vw, 10.6rem);
+  font-weight: 400;
   letter-spacing: 0;
-  line-height: 1.15;
-  text-shadow: 0 0 22px rgba(101, 220, 174, 0.18);
+  line-height: 0.86;
+  text-transform: lowercase;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.22),
+    0 18px 48px rgba(0, 0, 0, 0.72),
+    0 0 64px rgba(101, 220, 174, 0.2);
+  animation: titleFloat 7s ease-in-out infinite alternate;
 }
 
 .login-panel {
-  width: 100%;
-  padding: 28px;
+  width: min(100%, 390px);
+  padding: 26px;
   border: 1px solid rgba(123, 238, 195, 0.22);
   border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(8, 29, 24, 0.93), rgba(4, 17, 15, 0.94)),
-    rgba(6, 20, 18, 0.88);
-  box-shadow:
-    0 28px 80px rgba(0, 0, 0, 0.38),
-    0 0 0 1px rgba(3, 8, 7, 0.38);
-  backdrop-filter: blur(18px);
-  text-align: left;
+  background: rgba(6, 20, 18, 0.82);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(16px);
 }
 
 .login-panel-heading {
-  width: 100%;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 12px;
-  min-height: 48px;
-  padding-top: 2px;
-  text-align: left;
+  min-height: 42px;
 }
 
 .login-mark {
-  width: 40px;
-  height: 40px;
-  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
   display: grid;
   place-items: center;
   border: 1px solid rgba(123, 238, 195, 0.34);
@@ -3269,23 +3285,15 @@ button {
 .login-kicker {
   margin: 0;
   color: rgba(247, 242, 234, 0.62);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-}
-
-.login-panel h2 {
-  margin: 2px 0 0;
-  color: #f7f2ea;
-  font-size: 20px;
-  font-weight: 900;
-  line-height: 1.2;
 }
 
 .login-form {
   display: grid;
-  gap: 15px;
+  gap: 13px;
 }
 
 .login-form label {
@@ -3294,12 +3302,11 @@ button {
   color: rgba(247, 242, 234, 0.72);
   font-size: 13px;
   font-weight: 700;
-  text-align: left;
 }
 
 .login-form input {
   width: 100%;
-  min-height: 42px;
+  min-height: 44px;
   padding: 0 13px;
   border: 1px solid rgba(123, 238, 195, 0.22);
   border-radius: 7px;
@@ -3436,21 +3443,8 @@ button {
     flex-wrap: wrap;
   }
 
-  .auth-page {
-    place-items: center;
-    padding: 16px;
-  }
-
-  .auth-hero {
-    width: 100%;
-  }
-
-  .auth-header {
-    padding-bottom: 16px;
-  }
-
-  .login-panel {
-    padding: 20px;
+  .auth-hero h1 {
+    font-size: clamp(3.4rem, 18vw, 6.2rem);
   }
 }
 
