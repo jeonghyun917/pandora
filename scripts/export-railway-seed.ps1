@@ -40,6 +40,8 @@ $commonArgs = @(
     '--single-transaction',
     '--quick',
     '--no-create-info',
+    '--complete-insert',
+    '--skip-extended-insert',
     '--skip-triggers',
     '--compact'
 )
