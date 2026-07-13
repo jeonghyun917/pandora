@@ -54,6 +54,9 @@ public class LawAiAnswerService {
 	private static final int FOCUSED_RAG_KEYWORD_FETCH_LIMIT = 120;
 	private static final int GENERIC_RAG_KEYWORD_FETCH_LIMIT = 45;
 	private static final int MIN_FOCUSED_LEXICAL_CHUNKS = 6;
+	private static final int RAG_LEXICAL_BATCH_SIZE = 3;
+	private static final int MAX_RAG_TEXT_BATCHES = 2;
+	private static final int PARENT_CONTEXT_WINDOW = 18;
 	private static final int LAW_TITLE_KEYWORD_FETCH_LIMIT = 20;
 	private static final int LAW_TEXT_KEYWORD_FETCH_LIMIT = 100;
 	private static final int JUDGE_CANDIDATE_LIMIT = 30;
@@ -154,7 +157,7 @@ public class LawAiAnswerService {
 		RetrievalResult retrieval = retrieve(request, timing);
 		if (!"OK".equals(retrieval.resultMsg())) {
 			String publicMessage = publicNoGroundMessage(retrieval);
-			recordSearchFailure(retrieval, publicMessage);
+			recordSearchFailure(retrieval, publicMessage, timing);
 			LawAiAnswerResponse response = new LawAiAnswerResponse(
 				"00",
 				retrieval.resultMsg(),
@@ -170,19 +173,23 @@ public class LawAiAnswerService {
 			return response;
 		}
 
-		long answerStart = System.nanoTime();
+		long answerContextStart = System.nanoTime();
 		AnswerGenerationProfile answerProfile = answerGenerationProfile(retrieval);
-		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		String answerContext = buildAnswerContext(retrieval, answerProfile);
+		timing.answerContextMs.addAndGet(elapsedMillis(answerContextStart));
+		long answerStart = System.nanoTime();
 		String answer = answerClient.answer(
 			retrieval.query(),
-			buildAnswerContext(retrieval, answerProfile),
+			answerContext,
 			answerProfile.maxOutputTokens()
 		);
 		timing.answerMs.set(elapsedMillis(answerStart));
+		long verifyStart = System.nanoTime();
 		AnswerVerificationService.Result verified = answerVerificationService.verify(answer, retrieval.grounds());
+		timing.verifyMs.addAndGet(elapsedMillis(verifyStart));
 		String guardedAnswer = verified.verifiedAnswer();
 		if (verified.insufficientEvidence()) {
-			recordSearchFailure(retrieval, guardedAnswer, LawAiSearchFailureClassification.claimUnsupported());
+			recordSearchFailure(retrieval, guardedAnswer, LawAiSearchFailureClassification.claimUnsupported(), timing);
 		}
 		LawAiAnswerResponse response = new LawAiAnswerResponse(
 			"00",
@@ -214,9 +221,9 @@ public class LawAiAnswerService {
 		try {
 			LawAiAnswerResponse cached = cachedAnswer(cacheKey, timing);
 			if (cached != null) {
-				sendEvent(emitter, "grounds", cached);
-				sendEvent(emitter, "answer", cached);
-				sendEvent(emitter, "done", Map.of("ok", true));
+				sendEvent(timing, emitter, "grounds", cached);
+				sendEvent(timing, emitter, "answer", cached);
+				sendEvent(timing, emitter, "done", Map.of("ok", true));
 				logTiming("stream-cache", cached.question(), requestTargetsForLog(request), cached.totalCnt(), cached.timing());
 				emitter.complete();
 				return;
@@ -225,7 +232,7 @@ public class LawAiAnswerService {
 			RetrievalResult retrieval = retrieve(request, timing);
 			if (!"OK".equals(retrieval.resultMsg())) {
 				String publicMessage = publicNoGroundMessage(retrieval);
-				recordSearchFailure(retrieval, publicMessage);
+				recordSearchFailure(retrieval, publicMessage, timing);
 				LawAiAnswerResponse response = new LawAiAnswerResponse(
 					"00",
 					retrieval.resultMsg(),
@@ -237,8 +244,8 @@ public class LawAiAnswerService {
 					List.of(),
 					timing.snapshot(false)
 				);
-				sendEvent(emitter, "answer", response);
-				sendEvent(emitter, "done", Map.of("ok", true));
+				sendEvent(timing, emitter, "answer", response);
+				sendEvent(timing, emitter, "done", Map.of("ok", true));
 				logTiming("stream", retrieval.query(), retrieval.targets(), 0, response.timing());
 				emitter.complete();
 				return;
@@ -255,22 +262,26 @@ public class LawAiAnswerService {
 				retrieval.grounds(),
 				timing.snapshot(false)
 			);
-			sendEvent(emitter, "grounds", groundsResponse);
+			sendEvent(timing, emitter, "grounds", groundsResponse);
 
-			long answerStart = System.nanoTime();
+			long answerContextStart = System.nanoTime();
 			AnswerGenerationProfile answerProfile = answerGenerationProfile(retrieval);
-			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-			String answer = answerClient.answerStreaming(
-				retrieval.query(),
-				buildAnswerContext(retrieval, answerProfile),
-				delta -> sendEvent(emitter, "delta", Map.of("text", delta)),
-				answerProfile.maxOutputTokens()
-			);
+			String answerContext = buildAnswerContext(retrieval, answerProfile);
+			timing.answerContextMs.addAndGet(elapsedMillis(answerContextStart));
+			long answerStart = System.nanoTime();
+		String answer = answerClient.answerStreaming(
+			retrieval.query(),
+			answerContext,
+			delta -> sendEvent(timing, emitter, "delta", Map.of("text", delta)),
+			answerProfile.maxOutputTokens()
+		);
 			timing.answerMs.set(elapsedMillis(answerStart));
+			long verifyStart = System.nanoTime();
 			AnswerVerificationService.Result verified = answerVerificationService.verify(answer, retrieval.grounds());
+			timing.verifyMs.addAndGet(elapsedMillis(verifyStart));
 			String guardedAnswer = verified.verifiedAnswer();
 			if (verified.insufficientEvidence()) {
-				recordSearchFailure(retrieval, guardedAnswer, LawAiSearchFailureClassification.claimUnsupported());
+				recordSearchFailure(retrieval, guardedAnswer, LawAiSearchFailureClassification.claimUnsupported(), timing);
 			}
 			LawAiAnswerResponse response = new LawAiAnswerResponse(
 				"00",
@@ -284,16 +295,27 @@ public class LawAiAnswerService {
 				timing.snapshot(false)
 			);
 			cacheAnswer(cacheKey, response);
-			sendEvent(emitter, "answer", response);
-			sendEvent(emitter, "done", Map.of("ok", true));
+			sendEvent(timing, emitter, "answer", response);
+			sendEvent(timing, emitter, "done", Map.of("ok", true));
 			logTiming("stream", retrieval.query(), retrieval.targets(), retrieval.grounds().size(), response.timing());
 			emitter.complete();
 		} catch (RuntimeException exception) {
 			try {
 				log.warn("AI answer stream failed.", exception);
-				sendEvent(emitter, "error", Map.of("message", PUBLIC_STREAM_ERROR_MESSAGE));
+				sendEvent(timing, emitter, "error", Map.of("message", PUBLIC_STREAM_ERROR_MESSAGE));
 			} finally {
 				emitter.completeWithError(exception);
+			}
+		}
+	}
+
+	private void sendEvent(TimingProbe timing, SseEmitter emitter, String name, Object data) {
+		long start = System.nanoTime();
+		try {
+			sendEvent(emitter, name, data);
+		} finally {
+			if (timing != null) {
+				timing.streamSendMs.addAndGet(elapsedMillis(start));
 			}
 		}
 	}
@@ -603,8 +625,13 @@ public class LawAiAnswerService {
 				List.of()
 			);
 		}
+		long plannerStart = System.nanoTime();
 		QuestionSearchPlan queryPlan = QuestionSearchPlan.from(normalized.query());
 		List<String> lexicalKeywords = queryPlan.lexicalKeywords();
+		List<String> embeddingQueries = queryPlan.expandedQueries().isEmpty()
+			? List.of(queryPlan.embeddingQuery())
+			: queryPlan.expandedQueries();
+		timing.plannerMs.addAndGet(elapsedMillis(plannerStart));
 		CompletableFuture<List<LawSemanticChunkRow>> lexicalFuture = CompletableFuture.supplyAsync(() -> {
 			try {
 				return findLexicalChunks(queryPlan, targets, normalized.includeFuture());
@@ -613,9 +640,6 @@ public class LawAiAnswerService {
 				return List.of();
 			}
 		}, searchExecutor);
-		List<String> embeddingQueries = queryPlan.expandedQueries().isEmpty()
-			? List.of(queryPlan.embeddingQuery())
-			: queryPlan.expandedQueries();
 		CompletableFuture<List<List<Double>>> embeddingFuture = CompletableFuture.supplyAsync(() -> {
 			long start = System.nanoTime();
 			try {
@@ -632,12 +656,11 @@ public class LawAiAnswerService {
 		List<QdrantSearchHit> hits = searchMultiQueryVectors(queryVectors, targets);
 		timing.qdrantMs.set(elapsedMillis(qdrantStart));
 
+		long candidateBuildStart = System.nanoTime();
 		Map<String, Double> vectorScoreByChunkId = new HashMap<>();
 		for (QdrantSearchHit hit : hits) {
 			vectorScoreByChunkId.put(scoreKey(hit.target(), hit.chunkId()), hit.score());
 		}
-		Map<String, LawSemanticChunkRow> chunkById = new HashMap<>();
-		long vectorDbStart = System.nanoTime();
 		List<Long> lawChunkIds = hits.stream()
 			.filter(hit -> isLawTarget(hit.target()))
 			.map(QdrantSearchHit::chunkId)
@@ -648,6 +671,9 @@ public class LawAiAnswerService {
 			.map(QdrantSearchHit::chunkId)
 			.distinct()
 			.toList();
+		timing.candidateBuildMs.addAndGet(elapsedMillis(candidateBuildStart));
+		Map<String, LawSemanticChunkRow> chunkById = new HashMap<>();
+		long vectorDbStart = System.nanoTime();
 		CompletableFuture<List<LawSemanticChunkRow>> lawVectorDbFuture = lawChunkIds.isEmpty()
 			? CompletableFuture.completedFuture(List.of())
 			: CompletableFuture.supplyAsync(
@@ -666,16 +692,23 @@ public class LawAiAnswerService {
 		for (LawSemanticChunkRow chunk : joinFuture(ragVectorDbFuture)) {
 			chunkById.put(scoreKey(chunk.target(), chunk.chunkId()), chunk);
 		}
-		timing.dbMs.addAndGet(elapsedMillis(vectorDbStart));
+		long vectorDbElapsedMs = elapsedMillis(vectorDbStart);
+		timing.vectorDbMs.addAndGet(vectorDbElapsedMs);
+		timing.dbMs.addAndGet(vectorDbElapsedMs);
+		candidateBuildStart = System.nanoTime();
 		List<LawSemanticChunkRow> searchedChunks = hits.stream()
 			.map(hit -> chunkById.get(scoreKey(hit.target(), hit.chunkId())))
 			.filter(chunk -> chunk != null)
 			.toList();
 		List<LawSemanticChunkRow> vectorChunks = searchedChunks;
+		timing.candidateBuildMs.addAndGet(elapsedMillis(candidateBuildStart));
 		long keywordTimeoutMillis = lexicalSearchTimeoutMillis(normalized.query(), vectorChunks.size());
 		long lexicalWaitStart = System.nanoTime();
 		List<LawSemanticChunkRow> lexicalChunks = joinFutureOrDefault(lexicalFuture, List.of(), keywordTimeoutMillis);
-		timing.dbMs.addAndGet(elapsedMillis(lexicalWaitStart));
+		long lexicalElapsedMs = elapsedMillis(lexicalWaitStart);
+		timing.lexicalMs.addAndGet(lexicalElapsedMs);
+		timing.dbMs.addAndGet(lexicalElapsedMs);
+		candidateBuildStart = System.nanoTime();
 		Map<String, Double> keywordScoreByChunkId = new HashMap<>();
 		for (LawSemanticChunkRow chunk : lexicalChunks) {
 			chunkById.put(scoreKey(chunk.target(), chunk.chunkId()), chunk);
@@ -694,6 +727,7 @@ public class LawAiAnswerService {
 				.toList();
 		}
 		Map<String, Double> baseScoreByChunkId = baseScoreMap(searchedChunks, vectorScoreByChunkId, keywordScoreByChunkId);
+		timing.candidateBuildMs.addAndGet(elapsedMillis(candidateBuildStart));
 		if (searchedChunks.isEmpty()) {
 			return RetrievalResult.empty(
 				"NO_GROUNDS",
@@ -711,18 +745,24 @@ public class LawAiAnswerService {
 				List.of()
 			);
 		}
+		long rerankStart = System.nanoTime();
 		List<LawSemanticChunkRow> rankedChunks = rerankChunks(searchedChunks, normalized.query(), baseScoreByChunkId);
 		Map<String, Double> combinedScoreByChunkId = adjustedScoreMap(rankedChunks, normalized.query(), baseScoreByChunkId);
 		Map<String, Double> metadataScoreByChunkId = metadataScoreMap(rankedChunks, baseScoreByChunkId, combinedScoreByChunkId);
+		timing.rerankMs.addAndGet(elapsedMillis(rerankStart));
+		long intentFilterStart = System.nanoTime();
 		List<LawSemanticChunkRow> intentFilteredChunks = filterByQuestionIntent(rankedChunks, normalized.query());
+		timing.intentFilterMs.addAndGet(elapsedMillis(intentFilterStart));
+		long judgePrepStart = System.nanoTime();
 		List<LawSemanticChunkRow> judgeSourceChunks = preferUsefulTextForJudgeCandidates(
 			intentFilteredChunks,
 			normalized.query()
 		);
 		List<LawSemanticChunkRow> judgeCandidateChunks = balancedJudgeCandidates(judgeSourceChunks, JUDGE_CANDIDATE_LIMIT, normalized.query());
+		timing.judgePrepMs.addAndGet(elapsedMillis(judgePrepStart));
 		List<LawSemanticChunkRow> judgeContextChunks = shouldJudgeExactCandidateText(normalized.query())
 			? judgeCandidateChunks
-			: enrichWithParentContext(judgeCandidateChunks, normalized.query());
+			: enrichWithParentContext(judgeCandidateChunks, normalized.query(), timing);
 		long judgeStart = System.nanoTime();
 		EvidenceJudge.Result judgedEvidence = evidenceJudge.judge(
 			normalized.query(),
@@ -761,8 +801,11 @@ public class LawAiAnswerService {
 		boolean intentDirectEvidenceMissing = shouldRequireIntentDirectEvidence(normalized.query(), queryPlan.profile())
 			&& intentDirectEvidenceChunks(judgeContextChunks, normalized.query()).isEmpty();
 		if ((evidenceChunks.isEmpty() && judgedEvidence.directEvidenceRequired()) || intentDirectEvidenceMissing) {
+			long fallbackStart = System.nanoTime();
 			List<LawSemanticChunkRow> fallbackChunks = findDirectEvidenceFallbackChunks(queryPlan, targets, normalized.includeFuture());
+			timing.fallbackMs.addAndGet(elapsedMillis(fallbackStart));
 			if (!fallbackChunks.isEmpty()) {
+				candidateBuildStart = System.nanoTime();
 				for (LawSemanticChunkRow chunk : fallbackChunks) {
 					String key = scoreKey(chunk.target(), chunk.chunkId());
 					chunkById.put(key, chunk);
@@ -770,18 +813,25 @@ public class LawAiAnswerService {
 				}
 				searchedChunks = mergeChunks(fallbackChunks, searchedChunks);
 				baseScoreByChunkId = baseScoreMap(searchedChunks, vectorScoreByChunkId, keywordScoreByChunkId);
+				timing.candidateBuildMs.addAndGet(elapsedMillis(candidateBuildStart));
+				rerankStart = System.nanoTime();
 				rankedChunks = rerankChunks(searchedChunks, normalized.query(), baseScoreByChunkId);
 				combinedScoreByChunkId = adjustedScoreMap(rankedChunks, normalized.query(), baseScoreByChunkId);
 				metadataScoreByChunkId = metadataScoreMap(rankedChunks, baseScoreByChunkId, combinedScoreByChunkId);
+				timing.rerankMs.addAndGet(elapsedMillis(rerankStart));
+				intentFilterStart = System.nanoTime();
 				intentFilteredChunks = filterByQuestionIntent(rankedChunks, normalized.query());
+				timing.intentFilterMs.addAndGet(elapsedMillis(intentFilterStart));
+				judgePrepStart = System.nanoTime();
 				judgeSourceChunks = preferUsefulTextForJudgeCandidates(
 					intentFilteredChunks,
 					normalized.query()
 				);
 				judgeCandidateChunks = balancedJudgeCandidates(judgeSourceChunks, JUDGE_CANDIDATE_LIMIT, normalized.query());
+				timing.judgePrepMs.addAndGet(elapsedMillis(judgePrepStart));
 				judgeContextChunks = shouldJudgeExactCandidateText(normalized.query())
 					? judgeCandidateChunks
-					: enrichWithParentContext(judgeCandidateChunks, normalized.query());
+					: enrichWithParentContext(judgeCandidateChunks, normalized.query(), timing);
 				long fallbackJudgeStart = System.nanoTime();
 				judgedEvidence = evidenceJudge.judge(
 					normalized.query(),
@@ -895,7 +945,7 @@ public class LawAiAnswerService {
 		}
 		List<LawSemanticChunkRow> displayChunks = shouldJudgeExactCandidateText(normalized.query())
 			? orderedChunks
-			: enrichWithParentContext(orderedChunks, normalized.query());
+			: enrichWithParentContext(orderedChunks, normalized.query(), timing);
 		Map<String, LawSemanticChunkRow> matchedChunkByKey = orderedChunks.stream()
 			.collect(java.util.stream.Collectors.toMap(
 				chunk -> scoreKey(chunk.target(), chunk.chunkId()),
@@ -903,12 +953,14 @@ public class LawAiAnswerService {
 				(left, right) -> left,
 				LinkedHashMap::new
 			));
+		long groundsStart = System.nanoTime();
 		List<LawAiAnswerGround> grounds = parentContextAssembler.toGrounds(
 			displayChunks,
 			matchedChunkByKey,
 			finalScoreByChunkId,
 			chunk -> snippet(chunk, normalized.query())
 		);
+		timing.groundsMs.addAndGet(elapsedMillis(groundsStart));
 		if (grounds.isEmpty()) {
 			String noGroundMessage = noGroundDiagnosticMessage(
 				judgedEvidence,
@@ -1042,7 +1094,11 @@ public class LawAiAnswerService {
 	}
 
 	private void recordSearchFailure(RetrievalResult retrieval, String publicMessage) {
-		recordSearchFailure(retrieval, publicMessage, null);
+		recordSearchFailure(retrieval, publicMessage, (LawAiSearchFailureClassification) null);
+	}
+
+	private void recordSearchFailure(RetrievalResult retrieval, String publicMessage, TimingProbe timing) {
+		recordSearchFailure(retrieval, publicMessage, null, timing);
 	}
 
 	private void recordSearchFailure(
@@ -1051,6 +1107,22 @@ public class LawAiAnswerService {
 		LawAiSearchFailureClassification classification
 	) {
 		failureLoggingService.record(toFailureSnapshot(retrieval), publicMessage, classification);
+	}
+
+	private void recordSearchFailure(
+		RetrievalResult retrieval,
+		String publicMessage,
+		LawAiSearchFailureClassification classification,
+		TimingProbe timing
+	) {
+		long start = System.nanoTime();
+		try {
+			recordSearchFailure(retrieval, publicMessage, classification);
+		} finally {
+			if (timing != null) {
+				timing.failureLogMs.addAndGet(elapsedMillis(start));
+			}
+		}
 	}
 
 	private LawAiSearchFailureSnapshot toFailureSnapshot(RetrievalResult retrieval) {
@@ -1868,18 +1940,42 @@ public class LawAiAnswerService {
 	}
 
 	private List<LawSemanticChunkRow> enrichWithParentContext(List<LawSemanticChunkRow> chunks, String query) {
+		return enrichWithParentContext(chunks, query, null);
+	}
+
+	private List<LawSemanticChunkRow> enrichWithParentContext(
+		List<LawSemanticChunkRow> chunks,
+		String query,
+		TimingProbe timing
+	) {
+		long start = System.nanoTime();
+		try {
+			return enrichWithParentContextInternal(chunks, query);
+		} finally {
+			if (timing != null) {
+				timing.parentContextMs.addAndGet(elapsedMillis(start));
+			}
+		}
+	}
+
+	private List<LawSemanticChunkRow> enrichWithParentContextInternal(List<LawSemanticChunkRow> chunks, String query) {
 		if (chunks == null || chunks.isEmpty()) {
 			return List.of();
 		}
-		Map<Long, List<LawSemanticChunkRow>> ragChunksByDocumentId = new HashMap<>();
+		Map<String, List<LawSemanticChunkRow>> ragContextByChunkKey = new HashMap<>();
 		Map<Long, List<LawSemanticChunkRow>> lawContextByChunkId = new HashMap<>();
 		for (LawSemanticChunkRow chunk : chunks) {
-			if (isRagTarget(chunk.target()) && !ragChunksByDocumentId.containsKey(chunk.documentId())) {
+			String chunkKey = scoreKey(chunk.target(), chunk.chunkId());
+			if (isRagTarget(chunk.target()) && !ragContextByChunkKey.containsKey(chunkKey)) {
 				try {
-					ragChunksByDocumentId.put(chunk.documentId(), ragDocumentMapper.findSemanticChunksByDocumentId(chunk.documentId()));
+					ragContextByChunkKey.put(chunkKey, ragDocumentMapper.findSemanticContextChunks(
+						chunk.documentId(),
+						chunk.sortOrder(),
+						PARENT_CONTEXT_WINDOW
+					));
 				} catch (RuntimeException exception) {
 					log.warn("Failed to load parent context for RAG document. documentId={} message={}", chunk.documentId(), exception.getMessage());
-					ragChunksByDocumentId.put(chunk.documentId(), List.of());
+					ragContextByChunkKey.put(chunkKey, List.of());
 				}
 			}
 			if (isLawTarget(chunk.target()) && !lawContextByChunkId.containsKey(chunk.chunkId())) {
@@ -1887,7 +1983,7 @@ public class LawAiAnswerService {
 					lawContextByChunkId.put(chunk.chunkId(), lawChunkMapper.findSemanticContextChunks(
 						chunk.documentId(),
 						chunk.sortOrder(),
-						18
+						PARENT_CONTEXT_WINDOW
 					));
 				} catch (RuntimeException exception) {
 					log.warn("Failed to load parent context for law document. documentId={} chunkId={} message={}",
@@ -1899,7 +1995,7 @@ public class LawAiAnswerService {
 		return chunks.stream()
 			.map(chunk -> {
 				List<LawSemanticChunkRow> documentChunks = isRagTarget(chunk.target())
-					? ragChunksByDocumentId.getOrDefault(chunk.documentId(), List.of())
+					? ragContextByChunkKey.getOrDefault(scoreKey(chunk.target(), chunk.chunkId()), List.of())
 					: lawContextByChunkId.getOrDefault(chunk.chunkId(), List.of());
 				return enrichChunkWithParentContext(chunk, documentChunks, query);
 			})
@@ -6902,14 +6998,20 @@ public class LawAiAnswerService {
 			} catch (RuntimeException exception) {
 				log.warn("AI RAG heading lexical search failed. keywords={} message={}", headingKeywords, exception.getMessage());
 			}
+			if (finishLexicalChunks(chunks, "").size() >= Math.min(limit, MIN_FOCUSED_LEXICAL_CHUNKS)) {
+				return chunks;
+			}
 		}
-		for (int start = 0; start < preparedKeywords.size(); start += 3) {
-			List<String> batch = preparedKeywords.subList(start, Math.min(start + 3, preparedKeywords.size()));
+		int textBatchCount = 0;
+		for (int start = 0; start < preparedKeywords.size() && textBatchCount < MAX_RAG_TEXT_BATCHES; start += RAG_LEXICAL_BATCH_SIZE) {
+			List<String> batch = preparedKeywords.subList(start, Math.min(start + RAG_LEXICAL_BATCH_SIZE, preparedKeywords.size()));
 			try {
 				chunks.addAll(ragDocumentMapper.findSemanticChunksByText(ragTargets, batch, perBatchLimit));
 			} catch (RuntimeException exception) {
 				log.warn("AI RAG lexical batch failed. keywords={} message={}", batch, exception.getMessage());
+				break;
 			}
+			textBatchCount++;
 			if (finishLexicalChunks(chunks, "").size() >= limit) {
 				break;
 			}
@@ -8776,7 +8878,7 @@ public class LawAiAnswerService {
 	// 메소드 설명: logTiming 처리 흐름을 수행합니다.
 	private void logTiming(String mode, String question, List<String> targets, int grounds, LawAiTiming timing) {
 		log.info(
-			"Law AI {} timing question=\"{}\" targets={} grounds={} cacheHit={} embeddingMs={} qdrantMs={} dbMs={} judgeMs={} answerMs={} totalMs={}",
+			"Law AI {} timing question=\"{}\" targets={} grounds={} cacheHit={} embeddingMs={} qdrantMs={} dbMs={} vectorDbMs={} lexicalMs={} plannerMs={} candidateBuildMs={} rerankMs={} intentFilterMs={} judgePrepMs={} parentContextMs={} fallbackMs={} groundsMs={} answerContextMs={} streamSendMs={} verifyMs={} failureLogMs={} unmeasuredMs={} judgeMs={} answerMs={} totalMs={}",
 			mode,
 			limitLogText(question),
 			targets == null ? List.of() : targets,
@@ -8785,6 +8887,21 @@ public class LawAiAnswerService {
 			timing == null ? 0 : timing.embeddingMs(),
 			timing == null ? 0 : timing.qdrantMs(),
 			timing == null ? 0 : timing.dbMs(),
+			timing == null ? 0 : timing.vectorDbMs(),
+			timing == null ? 0 : timing.lexicalMs(),
+			timing == null ? 0 : timing.plannerMs(),
+			timing == null ? 0 : timing.candidateBuildMs(),
+			timing == null ? 0 : timing.rerankMs(),
+			timing == null ? 0 : timing.intentFilterMs(),
+			timing == null ? 0 : timing.judgePrepMs(),
+			timing == null ? 0 : timing.parentContextMs(),
+			timing == null ? 0 : timing.fallbackMs(),
+			timing == null ? 0 : timing.groundsMs(),
+			timing == null ? 0 : timing.answerContextMs(),
+			timing == null ? 0 : timing.streamSendMs(),
+			timing == null ? 0 : timing.verifyMs(),
+			timing == null ? 0 : timing.failureLogMs(),
+			timing == null ? 0 : timing.unmeasuredMs(),
 			timing == null ? 0 : timing.judgeMs(),
 			timing == null ? 0 : timing.answerMs(),
 			timing == null ? 0 : timing.totalMs()
@@ -8818,6 +8935,20 @@ public class LawAiAnswerService {
 		private final AtomicLong embeddingMs = new AtomicLong();
 		private final AtomicLong qdrantMs = new AtomicLong();
 		private final AtomicLong dbMs = new AtomicLong();
+		private final AtomicLong vectorDbMs = new AtomicLong();
+		private final AtomicLong lexicalMs = new AtomicLong();
+		private final AtomicLong plannerMs = new AtomicLong();
+		private final AtomicLong candidateBuildMs = new AtomicLong();
+		private final AtomicLong rerankMs = new AtomicLong();
+		private final AtomicLong intentFilterMs = new AtomicLong();
+		private final AtomicLong judgePrepMs = new AtomicLong();
+		private final AtomicLong parentContextMs = new AtomicLong();
+		private final AtomicLong fallbackMs = new AtomicLong();
+		private final AtomicLong groundsMs = new AtomicLong();
+		private final AtomicLong answerContextMs = new AtomicLong();
+		private final AtomicLong streamSendMs = new AtomicLong();
+		private final AtomicLong verifyMs = new AtomicLong();
+		private final AtomicLong failureLogMs = new AtomicLong();
 		private final AtomicLong judgeMs = new AtomicLong();
 		private final AtomicLong answerMs = new AtomicLong();
 
@@ -8838,13 +8969,51 @@ public class LawAiAnswerService {
 
 		// 메소드 설명: snapshot 처리 흐름을 수행합니다.
 		private LawAiTiming snapshot(boolean cacheHit) {
+			long totalMs = totalElapsedMs();
+			// streamSendMs is diagnostic-only: delta sends occur inside answerMs, so
+			// including it in the residual calculation would double-count wall time.
+			long unmeasuredMs = LawAiTiming.unmeasuredWallClockMs(
+				totalMs,
+				embeddingMs.get(),
+				qdrantMs.get(),
+				vectorDbMs.get(),
+				lexicalMs.get(),
+				plannerMs.get(),
+				candidateBuildMs.get(),
+				rerankMs.get(),
+				intentFilterMs.get(),
+				judgePrepMs.get(),
+				parentContextMs.get(),
+				fallbackMs.get(),
+				groundsMs.get(),
+				answerContextMs.get(),
+				verifyMs.get(),
+				failureLogMs.get(),
+				judgeMs.get(),
+				answerMs.get()
+			);
 			return new LawAiTiming(
 				embeddingMs.get(),
 				qdrantMs.get(),
 				dbMs.get(),
+				vectorDbMs.get(),
+				lexicalMs.get(),
+				plannerMs.get(),
+				candidateBuildMs.get(),
+				rerankMs.get(),
+				intentFilterMs.get(),
+				judgePrepMs.get(),
+				parentContextMs.get(),
+				fallbackMs.get(),
+				groundsMs.get(),
+				answerContextMs.get(),
+				streamSendMs.get(),
+				verifyMs.get(),
+				failureLogMs.get(),
+				unmeasuredMs,
 				judgeMs.get(),
 				answerMs.get(),
-				totalElapsedMs(),
+				totalMs,
 				cacheHit
 			);
 		}

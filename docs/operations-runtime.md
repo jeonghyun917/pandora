@@ -41,11 +41,27 @@ Check current state:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\status-pandora.ps1
 ```
 
-Start/stop the development app:
+Start the development app in a visible console:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora.ps1 -Role app-dev -Port 8080
+.\scripts\start-pandora-console.cmd -Role app-dev -Port 8080
+```
+
+This is the preferred local development path on PCs where hidden PowerShell,
+Task Scheduler, or VBS launchers are blocked by endpoint security. Keep the
+console window open while using the app. Closing the console stops the app.
+
+Stop the development app from another console when needed:
+
+```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\stop-pandora.ps1 -Role app-dev -Port 8080
+```
+
+Legacy hidden start remains available, but it is not the recommended path on
+the current workstation:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora.ps1 -Role app-dev -Port 8080 -UseJar
 ```
 
 Promote a verified fat jar to batch runner:
@@ -55,16 +71,49 @@ Promote a verified fat jar to batch runner:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\promote-batch-runner.ps1
 ```
 
-Start/stop the batch runner:
+Start/stop the batch runner only after explicit operator approval:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora.ps1 -Role batch-runner -Port 18080
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora.ps1 -Role batch-runner -Port 18080 -ConfirmBatchRunner
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\stop-pandora.ps1 -Role batch-runner -Port 18080
 ```
 
 `law-ai.batch.scheduler-enabled` is disabled by default. `start-pandora.ps1`
 enables it only for `batch-runner`, so the 8080 development runtime cannot
 accidentally poll or ingest OpenAI Batch jobs.
+
+## Windows Service Option
+
+Use Windows services only through a service wrapper. Do not register `java.exe`
+directly with `sc.exe`; the Java process does not implement the Windows service
+control protocol by itself.
+
+Pandora service scripts use WinSW when a wrapper executable is available at
+`tools\winsw\WinSW.exe`, through `PANDORA_WINSW_EXE`, or through `-WinSWExe`.
+The scripts fail closed when the wrapper is missing.
+
+Render service configuration without installing:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora-service.ps1 -Action RenderConfig -Role app-dev -Port 8080
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora-service.ps1 -Action RenderConfig -Role batch-runner -Port 18080
+```
+
+Install and start the 8080 app service after placing WinSW:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora-service.ps1 -Action Install -Role app-dev -Port 8080
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora-service.ps1 -Action Start -Role app-dev -Port 8080
+```
+
+The default service start mode is `Manual`, so the app does not start on every
+Windows boot unless `-StartMode Automatic` is explicitly used during install.
+
+Mutating the 18080 batch service requires explicit confirmation:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora-service.ps1 -Action Start -Role batch-runner -Port 18080 -ConfirmBatchRunner
+```
 
 ## Admin And Debug API Protection
 

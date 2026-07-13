@@ -49,3 +49,14 @@ foreach ($pidFile in $pidFiles) {
     $state = if ($process) { "running" } else { "stale" }
     Write-Host ("{0}: pid={1} {2}" -f $pidFile, $pidText, $state)
 }
+
+Write-Host ""
+Write-Host "[pandora] Windows services"
+foreach ($serviceName in @('PandoraApp8080', 'PandoraBatch18080')) {
+    $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+    if ($service) {
+        Write-Host ("{0}: {1}, startType={2}" -f $serviceName, $service.Status, $service.StartType)
+    } else {
+        Write-Host ("{0}: not installed" -f $serviceName)
+    }
+}

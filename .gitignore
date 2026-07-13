@@ -15,6 +15,7 @@ tmp/
 .qdrant-initialized
 *.log
 logs/
+tools/winsw/*.exe
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/

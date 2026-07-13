@@ -584,7 +584,7 @@ export function LawSearchPage({ onAdmin, onDebug, onLogout }) {
             onChange={handleQueryChange}
             onKeyDown={handleSearchKeyDown}
             type="search"
-            placeholder="예: 개인정보 보호법은 어떤 것까지 해야 해?"
+            placeholder="예: 정보화사업 사전협의 대상은?"
           />
           <button type="submit" disabled={loading}>
             {searchMode === 'ai' ? '질문' : '검색'}

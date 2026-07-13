@@ -121,6 +121,12 @@ public interface RagDocumentMapper {
 
 	List<LawSemanticChunkRow> findSemanticChunksByDocumentId(@Param("documentId") long documentId);
 
+	List<LawSemanticChunkRow> findSemanticContextChunks(
+		@Param("documentId") long documentId,
+		@Param("sortOrder") int sortOrder,
+		@Param("window") int window
+	);
+
 	List<LawSemanticChunkRow> findSemanticIndexChunksByDocumentId(
 		@Param("documentId") long documentId,
 		@Param("chunkVersion") int chunkVersion

@@ -433,6 +433,42 @@
     ORDER BY c.sort_order
   </select>
 
+  <select id="findSemanticContextChunks" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="2">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.document_type AS target,
+      CAST(doc.document_id AS CHAR) AS externalId,
+      doc.title AS title,
+      doc.source_org AS agencyName,
+      CASE
+        WHEN doc.document_type = 'official_doc' THEN '공식 가이드 문서'
+        WHEN doc.document_type = 'internal_doc' THEN '내부 지침/매뉴얼'
+        WHEN doc.document_type = 'reference_doc' THEN '참고자료'
+        ELSE doc.document_type
+      END AS categoryName,
+      doc.published_date AS sourceDate,
+      NULL AS effectiveStatus,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      c.page_no AS pageNo,
+      c.source_path AS sourcePath,
+      COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash,
+      c.parent_section_title AS parentSectionTitle,
+      c.section_type AS sectionType
+    FROM rag_document_chunks c
+    JOIN rag_documents doc ON doc.document_id = c.document_id
+    WHERE c.document_id = #{documentId}
+      AND doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND <include refid="latestActiveChunkVersionFilter"/>
+      AND c.sort_order BETWEEN GREATEST(0, #{sortOrder} - #{window}) AND (#{sortOrder} + #{window})
+    ORDER BY c.sort_order
+  </select>
+
   <select id="findSemanticIndexChunksByDocumentId" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
     SELECT
       c.chunk_id AS chunkId,
