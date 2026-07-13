@@ -880,7 +880,7 @@ public class LawAiAnswerService {
 		);
 		finalScoreByChunkId = judgedEvidence.scoreByChunkId();
 		evidenceChunks = judgedEvidence.chunks();
-		String weakEvidenceReason = weakEvidenceRejectionReason(queryPlan, judgedEvidence);
+		evidenceChunks = filterConfiguredEntityAnchorChunks(evidenceChunks, queryPlan.profile());
 		evidenceChunks = preferOfficialSecurityReviewTargetEvidence(
 			normalized.query(),
 			evidenceChunks,
@@ -896,6 +896,7 @@ public class LawAiAnswerService {
 		if (!evidenceAfterNoiseFilter.isEmpty()) {
 			evidenceChunks = evidenceAfterNoiseFilter;
 		}
+		String weakEvidenceReason = weakEvidenceRejectionReason(queryPlan, judgedEvidence, evidenceChunks);
 		if (weakEvidenceReason != null) {
 			String noGroundMessage = weakEvidenceDiagnosticMessage(
 				weakEvidenceReason,
@@ -1217,6 +1218,18 @@ public class LawAiAnswerService {
 	}
 
 	String weakEvidenceRejectionReason(QuestionSearchPlan queryPlan, EvidenceJudge.Result judgedEvidence) {
+		return weakEvidenceRejectionReason(
+			queryPlan,
+			judgedEvidence,
+			judgedEvidence == null ? List.of() : judgedEvidence.chunks()
+		);
+	}
+
+	private String weakEvidenceRejectionReason(
+		QuestionSearchPlan queryPlan,
+		EvidenceJudge.Result judgedEvidence,
+		List<LawSemanticChunkRow> finalEvidenceChunks
+	) {
 		if (judgedEvidence == null) {
 			return "Evidence Judge 결과가 없어 답변 생성을 중단했습니다.";
 		}
@@ -1225,6 +1238,9 @@ public class LawAiAnswerService {
 			return "질문 유형상 직접근거가 필요한데 Evidence Judge가 직접근거를 확정하지 못했습니다.";
 		}
 		QuestionIntentProfile profile = queryPlan == null ? null : queryPlan.profile();
+		if (!hasConfiguredEntityAnchorCoverage(finalEvidenceChunks, profile)) {
+			return "Selected evidence does not contain the configured anchor for the question's core entity.";
+		}
 		if ("exploratory_lookup".equals(policy)) {
 			if (requiresStrictEvidence(profile, queryPlan == null ? "" : queryPlan.question())) {
 				return "탐색용 근거만 확인되어 직접 답변이 필요한 질문에는 답변을 생성하지 않습니다.";
@@ -3936,7 +3952,63 @@ public class LawAiAnswerService {
 			return false;
 		}
 		int requiredMatches = Math.min(2, profile.directEvidenceGroups().size());
-		return matchingGroupCount(normalizedChunkEvidenceText(chunk), profile.directEvidenceGroups()) >= requiredMatches;
+		return hasConfiguredEntityAnchor(chunk, profile)
+			&& matchingGroupCount(normalizedChunkEvidenceText(chunk), profile.directEvidenceGroups()) >= requiredMatches;
+	}
+
+	private boolean hasConfiguredEntityAnchor(LawSemanticChunkRow chunk, QuestionIntentProfile profile) {
+		if (chunk == null || profile == null) {
+			return false;
+		}
+		List<List<String>> anchorGroups = profile.configuredEntityAnchorGroups();
+		if (anchorGroups.isEmpty()) {
+			return true;
+		}
+		String text = normalizedChunkEvidenceText(chunk);
+		return anchorGroups.stream().anyMatch(group -> matchingGroupCount(text, List.of(group)) > 0);
+	}
+
+	private boolean hasConfiguredEntityAnchorCoverage(
+		List<LawSemanticChunkRow> chunks,
+		QuestionIntentProfile profile
+	) {
+		if (profile == null) {
+			return true;
+		}
+		List<List<String>> anchorGroups = profile.configuredEntityAnchorGroups();
+		if (anchorGroups.isEmpty()) {
+			return true;
+		}
+		if (chunks == null || chunks.isEmpty()) {
+			return false;
+		}
+		return anchorGroups.stream().allMatch(group -> chunks.stream()
+			.anyMatch(chunk -> matchingGroupCount(normalizedChunkEvidenceText(chunk), List.of(group)) > 0));
+	}
+
+	private List<LawSemanticChunkRow> configuredEntityAnchorMatchedChunks(
+		List<LawSemanticChunkRow> chunks,
+		QuestionIntentProfile profile
+	) {
+		if (chunks == null || chunks.isEmpty() || profile == null || profile.configuredEntityAnchorGroups().isEmpty()) {
+			return List.of();
+		}
+		return filterConfiguredEntityAnchorChunks(chunks, profile);
+	}
+
+	private List<LawSemanticChunkRow> filterConfiguredEntityAnchorChunks(
+		List<LawSemanticChunkRow> chunks,
+		QuestionIntentProfile profile
+	) {
+		if (chunks == null || chunks.isEmpty()) {
+			return List.of();
+		}
+		if (profile == null || profile.configuredEntityAnchorGroups().isEmpty()) {
+			return chunks;
+		}
+		return chunks.stream()
+			.filter(chunk -> hasConfiguredEntityAnchor(chunk, profile))
+			.toList();
 	}
 
 	private List<LawSemanticChunkRow> directEvidenceRescueChunks(List<LawSemanticChunkRow> chunks, String query) {
@@ -4169,6 +4241,7 @@ public class LawAiAnswerService {
 		}
 		LinkedHashSet<String> keywords = new LinkedHashSet<>();
 		keywords.addAll(queryPlan.focusedKeywords());
+		keywords.addAll(flattenGroups(profile.configuredEntityAnchorGroups()));
 		keywords.addAll(flattenGroups(profile.directEvidenceGroups()));
 		keywords.addAll(flattenGroups(profile.intentGroups()));
 		keywords.addAll(intentDirectFallbackKeywords(queryPlan.question()));
@@ -4280,6 +4353,10 @@ public class LawAiAnswerService {
 		List<String> requiredTerms = requiredExactTermsForQuery(query, terms);
 		List<LawSemanticChunkRow> candidates = chunks;
 		QuestionIntentProfile profile = QuestionIntentProfile.from(query);
+		List<LawSemanticChunkRow> entityAnchorMatched = configuredEntityAnchorMatchedChunks(candidates, profile);
+		if (!entityAnchorMatched.isEmpty()) {
+			candidates = entityAnchorMatched;
+		}
 		if (isPrivacyNoticeQuestion(profile)
 			&& (normalizedQuery.contains("처리목적") || normalizedQuery.contains("처리방침"))) {
 			List<LawSemanticChunkRow> policyOrPurposeChunks = candidates.stream()
@@ -8254,6 +8331,9 @@ public class LawAiAnswerService {
 
 	private boolean isDirectOrFocusedEvidenceChunk(LawSemanticChunkRow chunk, QuestionIntentProfile profile) {
 		if (chunk == null || profile == null) {
+			return false;
+		}
+		if (!hasConfiguredEntityAnchor(chunk, profile)) {
 			return false;
 		}
 		String text = normalizedChunkEvidenceText(chunk);

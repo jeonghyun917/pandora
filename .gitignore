@@ -1,5 +1,6 @@
 HELP.md
 target/
+target-stage/
 frontend/node_modules/
 frontend/dist/
 src/main/resources/application-local.properties

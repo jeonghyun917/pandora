@@ -26,6 +26,19 @@ runtime/batch/pandora-batch-runner.jar
 
 Do not copy a jar smaller than 10 MB into `runtime/batch`. A small jar usually means Maven `spring-boot:repackage` did not complete and the file is not a runnable Spring Boot fat jar.
 
+When `PandoraApp8080` is running, do not run a normal `mvn package` against
+`target/pandora-0.0.1-SNAPSHOT.jar`. Spring Boot repackaging replaces that
+archive in place, which can fail on Windows because the active service holds it.
+Build the replacement jar in the ignored staging directory first:
+
+```powershell
+.\mvnw.cmd -Papp-dev-staged-package -DskipTests package
+```
+
+This produces `target-stage/pandora-0.0.1-SNAPSHOT.jar`. Stop only the 8080
+service, verify the staged jar, replace the app-dev jar, then start 8080 again.
+The 18080 batch runner must not be stopped or promoted as part of this flow.
+
 Batch-runner process metadata is kept separately from the promoted jar:
 
 ```text
@@ -108,6 +121,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora-serv
 
 The default service start mode is `Manual`, so the app does not start on every
 Windows boot unless `-StartMode Automatic` is explicitly used during install.
+
+## Service-only Secrets
+
+Windows services do not inherit the interactive user's `OPENAI_API_KEY`. For a
+local service runtime, create the ignored service-only properties file from the
+current user environment:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\set-pandora-service-secrets.ps1 -Role app-dev -Port 8080 -FromCurrentUserEnvironment
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora-service.ps1 -Action RenderConfig -Role app-dev -Port 8080
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora-service.ps1 -Action Restart -Role app-dev -Port 8080
+```
+
+The generated `runtime\app-dev\pandora-service.properties` file is ignored by
+Git. It contains the service-only OpenAI key and is ACL-restricted to the local
+user, `SYSTEM`, and local administrators. Do not commit it or place the key in
+`application.properties`.
 
 Mutating the 18080 batch service requires explicit confirmation:
 

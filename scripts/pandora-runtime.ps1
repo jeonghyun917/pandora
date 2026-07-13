@@ -90,6 +90,7 @@ function Get-PandoraRuntimePaths {
         RuntimeDir = $runtimeDir
         LogDir = $logDir
         PidFile = $pidFile
+        ServiceProperties = (Join-Path $runtimeDir 'pandora-service.properties')
         OutLog = (Join-Path $logDir "pandora-$Port.out.log")
         ErrLog = (Join-Path $logDir "pandora-$Port.err.log")
     }
@@ -162,6 +163,10 @@ function Get-PandoraJavaArguments {
         [bool]$UseJar
     )
 
+    $runtimePaths = Get-PandoraRuntimePaths -ProjectDir $ProjectDir -Role $Role -Port $Port
+    $servicePropertiesUri = ([System.Uri]::new($runtimePaths.ServiceProperties)).AbsoluteUri
+    $servicePropertiesArgument = "--spring.config.additional-location=optional:$servicePropertiesUri"
+
     if ($Role -eq 'batch-runner') {
         $jar = Join-Path $ProjectDir 'runtime\batch\pandora-batch-runner.jar'
         if (-not (Test-Path -LiteralPath $jar)) {
@@ -179,6 +184,7 @@ function Get-PandoraJavaArguments {
             '-Dfile.encoding=UTF-8',
             '-jar',
             $jar,
+            $servicePropertiesArgument,
             '--law-ai.batch.scheduler-enabled=true',
             "--logging.file.name=$(Join-Path $ProjectDir "runtime\batch-runner\logs\batch-runner-$Port-spring.log")"
         )
@@ -201,6 +207,7 @@ function Get-PandoraJavaArguments {
             '-Dfile.encoding=UTF-8',
             '-jar',
             $jar,
+            $servicePropertiesArgument,
             '--law-ai.batch.scheduler-enabled=false',
             "--logging.file.name=$(Join-Path $ProjectDir "runtime\app-dev\logs\app-$Port-spring.log")"
         )
@@ -217,6 +224,7 @@ function Get-PandoraJavaArguments {
     return @(
         "@$argsPath",
         "--server.port=$Port",
+        $servicePropertiesArgument,
         '--law-ai.batch.scheduler-enabled=false',
         "--logging.file.name=$(Join-Path $ProjectDir "runtime\app-dev\logs\app-$Port-classes-spring.log")"
     )

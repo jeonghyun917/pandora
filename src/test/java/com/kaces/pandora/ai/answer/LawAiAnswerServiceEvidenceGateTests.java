@@ -53,6 +53,76 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void rejectsDirectEvidenceThatMissesConfiguredEntityAnchor() throws Exception {
+		String question = "전자정부 성과관리 실행계획의 예비검토는 어떤 사업을 대상으로 하는거야?";
+		LawSemanticChunkRow unrelatedSecurityReview = chunk(
+			1L,
+			"official_doc",
+			"2026년 정보화사업 보안성 검토 가이드",
+			"보안성 검토 대상",
+			"중앙행정기관이 추진하는 정보화사업은 보안성 검토 대상일 수 있습니다."
+		);
+
+		String reason = rejectionReason(
+			question,
+			result(List.of(unrelatedSecurityReview), true, true, true, true, 8, 4, 1, "direct")
+		);
+
+		assertThat(reason).contains("configured anchor");
+	}
+
+	@Test
+	void allowsDirectEvidenceThatCoversConfiguredEntityAnchor() throws Exception {
+		String question = "전자정부 성과관리 실행계획의 예비검토는 어떤 사업을 대상으로 하는거야?";
+		LawSemanticChunkRow directPreliminaryReview = chunk(
+			1L,
+			"official_doc",
+			"전자정부 성과관리 지침",
+			"예비검토 대상 사업",
+			"예비검토는 중앙행정기관이 추진하는 정보화사업에 적용됩니다."
+		);
+
+		String reason = rejectionReason(
+			question,
+			result(List.of(directPreliminaryReview), true, true, true, true, 8, 4, 1, "direct")
+		);
+
+		assertThat(reason).isNull();
+	}
+
+	@Test
+	void filtersUnanchoredCandidatesWhenConfiguredEntityAnchorIsAvailable() throws Exception {
+		String question = "전자정부 성과관리 실행계획의 예비검토는 어떤 사업을 대상으로 하는거야?";
+		LawSemanticChunkRow unrelatedSecurityReview = chunk(
+			1L,
+			"official_doc",
+			"2026년 정보화사업 보안성 검토 가이드",
+			"보안성 검토 대상",
+			"중앙행정기관이 추진하는 정보화사업은 보안성 검토 대상일 수 있습니다."
+		);
+		LawSemanticChunkRow preliminaryReview = chunk(
+			2L,
+			"official_doc",
+			"전자정부 성과관리 지침",
+			"예비검토 대상 사업",
+			"예비검토는 중앙행정기관이 추진하는 정보화사업에 적용됩니다."
+		);
+
+		LawAiAnswerService service = service();
+		try {
+			List<LawSemanticChunkRow> filtered = filterByQuestionIntent(
+				service,
+				List.of(unrelatedSecurityReview, preliminaryReview),
+				question
+			);
+
+			assertThat(filtered).containsExactly(preliminaryReview);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void allowsWeakPolicyForPureDefinitionQuestion() throws Exception {
 		String reason = rejectionReason(
 			"정의란 무엇?",
@@ -1095,8 +1165,32 @@ class LawAiAnswerServiceEvidenceGateTests {
 		int directEvidenceCount,
 		String selectionPolicy
 	) {
-		return new EvidenceJudge.Result(
+		return result(
 			List.of(),
+			directEvidenceRequired,
+			directEvidenceFound,
+			conceptEvidenceRequired,
+			conceptEvidenceFound,
+			topicAlignedCount,
+			relevantCount,
+			directEvidenceCount,
+			selectionPolicy
+		);
+	}
+
+	private EvidenceJudge.Result result(
+		List<LawSemanticChunkRow> chunks,
+		boolean directEvidenceRequired,
+		boolean directEvidenceFound,
+		boolean conceptEvidenceRequired,
+		boolean conceptEvidenceFound,
+		int topicAlignedCount,
+		int relevantCount,
+		int directEvidenceCount,
+		String selectionPolicy
+	) {
+		return new EvidenceJudge.Result(
+			chunks,
 			Map.of(),
 			directEvidenceRequired,
 			directEvidenceFound,

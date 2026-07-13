@@ -33,6 +33,9 @@ class QuestionSearchPlanTests {
 		assertThat(plan.expandedQueries()).hasSizeGreaterThan(1);
 		assertThat(plan.profile().preferredSectionTypes()).contains("target_scope");
 		assertThat(join(plan.expandedQueries())).containsAnyOf("예비검토", "정보화사업", "대상");
+		assertThat(plan.profile().configuredEntityAnchorGroups()).anySatisfy(group ->
+			assertThat(group).contains("예비검토", "전자정부 성과관리")
+		);
 	}
 
 	@Test

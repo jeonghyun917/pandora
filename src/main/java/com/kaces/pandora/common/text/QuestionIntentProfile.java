@@ -83,6 +83,18 @@ public record QuestionIntentProfile(
 		return sectionType != null && preferredSectionTypes.contains(sectionType);
 	}
 
+	/**
+	 * Returns only the entity anchors explicitly configured for final-evidence
+	 * validation. Broad aliases remain available for recall, while these anchors
+	 * prevent a similarly worded but different domain from becoming a direct answer.
+	 */
+	public List<List<String>> configuredEntityAnchorGroups() {
+		return distinctGroups(entities.stream()
+			.map(QuestionEntity::answerAnchors)
+			.filter(anchors -> anchors != null && !anchors.isEmpty())
+			.toList());
+	}
+
 	private static void addCommonIntent(
 		String normalized,
 		Set<String> intentTypes,

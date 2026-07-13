@@ -164,4 +164,18 @@
 		</plugins>
 	</build>
 
+	<!--
+		Build a complete replacement jar away from target/ when the app-dev
+		Windows service is still using target/pandora-0.0.1-SNAPSHOT.jar.
+		The staged artifact is promoted only after the service has stopped.
+	-->
+	<profiles>
+		<profile>
+			<id>app-dev-staged-package</id>
+			<build>
+				<directory>${project.basedir}/target-stage</directory>
+			</build>
+		</profile>
+	</profiles>
+
 </project>

@@ -63,6 +63,7 @@ final class QuestionIntentDictionary {
 			stringValue("entity." + id + ".label", id),
 			stringValue("entity." + id + ".type", "domain"),
 			values("entity." + id + ".aliases", List.of()),
+			values("entity." + id + ".anchors", List.of()),
 			values("entity." + id + ".targets", List.of()),
 			values("entity." + id + ".focused", List.of()),
 			values("entity." + id + ".section_types", List.of()),
