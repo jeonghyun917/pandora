@@ -162,6 +162,8 @@ public class OpenAiAnswerClient {
 			Answer naturally in Korean for a non-lawyer.
 			Use only the provided evidence and synthesize it into a direct answer.
 			Keep the answer concise: 2 short paragraphs or up to 4 bullets.
+			Keep each independently verifiable claim in its own sentence or bullet.
+			Do not combine separate rights, duties, exceptions, or procedures into one sentence.
 			Do not include evidence numbers or bracket citations like [1] in the answer body.
 			Do not use em dashes, en dashes, or decorative separators. Use Korean commas and periods instead.
 			If the evidence is insufficient, say what is missing instead of guessing.
@@ -180,7 +182,8 @@ public class OpenAiAnswerClient {
 
 			답변 지침:
 			- 첫 문장부터 결론을 말하고, 법령/문서 문구를 그대로 나열하지 마세요.
-			- 조건, 예외, 확인할 사항이 있으면 함께 묶어 설명하세요.
+			- 서로 다른 권리, 의무, 예외, 절차는 각각 별도 문장이나 불릿으로 나누세요.
+			- 결론에 필요한 조건이나 확인 사항은 해당 주장 바로 뒤에 설명하세요.
 			- 답변 본문에는 [1] 같은 근거 번호를 붙이지 마세요. 근거 목록은 별도로 제공됩니다.
 			- 확실하지 않은 세부 절차나 금액은 확인이 필요하다고 짧게 말하세요.
 			""".formatted(question, context);

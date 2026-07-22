@@ -3,6 +3,7 @@ package com.kaces.pandora.ai.answer;
 import com.kaces.pandora.common.text.KoreanQueryNormalizer;
 import com.kaces.pandora.common.text.QuestionIntentProfile;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
+import com.kaces.pandora.rag.chunk.RagChunkQualityStatus;
 import com.kaces.pandora.rag.common.HwpxTextCleaner;
 import java.util.List;
 
@@ -16,6 +17,16 @@ final class EvidenceReranker {
 		String body = normalize(chunk.chunkText());
 		String text = title + " " + body;
 		double score = 0.0;
+		RagChunkQualityStatus qualityStatus = RagChunkQualityStatus.from(chunk.qualityStatus());
+		if (qualityStatus == RagChunkQualityStatus.REJECT) {
+			return -10.0;
+		}
+		if (qualityStatus == RagChunkQualityStatus.CONTEXT_ONLY) {
+			score -= 1.5;
+		}
+		else if (qualityStatus == RagChunkQualityStatus.REVIEW) {
+			score -= 0.2;
+		}
 
 		int titleTermMatches = countTerms(title, profile.terms());
 		int bodyTermMatches = countTerms(body, profile.terms());

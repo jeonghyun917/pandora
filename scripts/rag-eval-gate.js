@@ -1,10 +1,28 @@
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
+const {
+  loadEvalCases,
+  selectEvalCases,
+  splitCaseIds,
+} = require('./lib/rag-eval-cases');
+const {
+  archivePaths,
+  assertEvaluationRuntimeReady,
+  buildCheckpointIdentity,
+  buildProvenance,
+  datasetHash,
+  determineRunScope,
+  evaluationBreakdown,
+  isCheckpointCompatible,
+  isRuntimeStable,
+  resolveReportPaths,
+  selectionHash,
+} = require('./lib/rag-eval-provenance');
 
 const baseUrl = process.env.RAG_EVAL_BASE_URL || 'http://127.0.0.1:8080';
 const endpoint = `${baseUrl.replace(/\/$/, '')}/api/law-data/ai/debug/evaluate/gate`;
-const outputPath = process.env.RAG_EVAL_OUTPUT || 'logs/rag-eval-gate-latest.json';
-const reportPath = process.env.RAG_EVAL_REPORT || 'logs/rag-eval-gate-latest.md';
+const runtimeInfoEndpoint = `${baseUrl.replace(/\/$/, '')}/api/law-data/ai/debug/runtime-info`;
 const casePaths = [
   path.resolve('src/main/resources/rag-evaluation-cases.tsv'),
   path.resolve('src/main/resources/rag-evaluation-cases.generated.tsv'),
@@ -15,17 +33,69 @@ const requestTimeoutMs = Number(process.env.RAG_EVAL_REQUEST_TIMEOUT_MS || 18000
 const interBatchSleepMs = Number(process.env.RAG_EVAL_INTER_BATCH_SLEEP_MS || 300);
 const caseLimit = Number(process.env.RAG_EVAL_CASE_LIMIT || 0);
 const caseIds = splitCaseIds(process.env.RAG_EVAL_CASE_IDS || '');
-const checkpointPath = process.env.RAG_EVAL_CHECKPOINT || 'logs/rag-eval-gate-checkpoint.json';
+let checkpointPath = process.env.RAG_EVAL_CHECKPOINT || 'logs/rag-eval-gate-targeted-checkpoint.json';
 const resumeFromCheckpoint = ['1', 'true', 'yes', 'y'].includes(
   String(process.env.RAG_EVAL_RESUME || '').trim().toLowerCase(),
 );
 
 async function main() {
-  const cases = selectCases(loadCases());
-  let body = await runEvaluationForCases(cases);
+  const allCases = loadCases();
+  const cases = selectCases(allCases);
+  const scope = determineRunScope(cases, allCases, caseIds, caseLimit);
+  const reportPaths = resolveReportPaths(scope);
+  checkpointPath = reportPaths.checkpointPath;
+  const runtimeInfo = await loadRuntimeInfo();
+  assertEvaluationRuntimeReady(runtimeInfo, scope);
+  const datasetHashValue = datasetHash(casePaths.filter((casePath) => fs.existsSync(casePath)));
+  const selectionHashValue = selectionHash(cases);
+  const checkpointIdentity = buildCheckpointIdentity({
+    scope,
+    baseUrl,
+    datasetHashValue,
+    selectionHashValue,
+    selectedCount: cases.length,
+    runtimeInfo,
+  });
+  if (resumeFromCheckpoint && !checkpointIdentity.indexRevision) {
+    console.warn('[rag-eval-gate] resume disabled: server index revision is unavailable');
+  }
+  const usesBatchCheckpoint = caseBatchSize > 0 && cases.length > caseBatchSize;
+  let body = await runEvaluationForCases(cases, checkpointIdentity);
   body = await retryEvaluationErrors(body);
-  writeJson(outputPath, body);
-  writeReport(reportPath, body, baseUrl);
+  const finalRuntimeInfo = await loadRuntimeInfo();
+  if (!isRuntimeStable(runtimeInfo, finalRuntimeInfo)) {
+    throw new Error('[rag-eval-gate] runtime identity changed or became unavailable during evaluation');
+  }
+  if (usesBatchCheckpoint) {
+    writeJson(checkpointPath, recomputeGate({
+      ...body,
+      checkpoint: true,
+      checkpointIdentity,
+      checkpointUpdatedAt: new Date().toISOString(),
+    }));
+  }
+  body = {
+    ...body,
+    provenance: buildProvenance({
+      scope,
+      baseUrl,
+      gitCommit: gitOutput(['rev-parse', 'HEAD']),
+      gitDirty: Boolean(gitOutput(['status', '--porcelain'])),
+      datasetHashValue,
+      selectionHashValue,
+      selectedCount: cases.length,
+      totalCaseCount: allCases.length,
+      runtimeInfo,
+    }),
+    breakdown: evaluationBreakdown(body.results ?? []),
+  };
+  writeJson(reportPaths.outputPath, body);
+  writeReport(reportPaths.reportPath, body, baseUrl);
+  if (archiveEnabled()) {
+    const archive = archivePaths(scope, runId(body.provenance.generatedAt));
+    writeJson(archive.outputPath, body);
+    writeReport(archive.reportPath, body, baseUrl);
+  }
   if (!body?.gatePassed) {
     const passed = body?.passed ?? 0;
     const total = body?.total ?? 0;
@@ -40,16 +110,74 @@ async function main() {
   console.log(`[rag-eval-gate] PASS ${body.passed}/${body.total} (${percent}%)`);
 }
 
-async function runEvaluationForCases(cases) {
+async function loadRuntimeInfo() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(runtimeInfoEndpoint, { signal: controller.signal });
+    if (response.ok) {
+      return { ...(await response.json()), source: 'server' };
+    }
+  } catch (error) {
+    console.warn(`[rag-eval-gate] runtime provenance unavailable: ${error?.message ?? error}`);
+  } finally {
+    clearTimeout(timer);
+  }
+  const environmentInfo = {
+    indexVersion: process.env.RAG_EVAL_INDEX_VERSION || null,
+    embeddingModel: process.env.RAG_EVAL_EMBEDDING_MODEL || null,
+    answerModel: process.env.RAG_EVAL_ANSWER_MODEL || null,
+    lawCollection: process.env.RAG_EVAL_LAW_COLLECTION || null,
+    ragCollection: process.env.RAG_EVAL_RAG_COLLECTION || null,
+    runtimeArtifactKind: process.env.RAG_EVAL_RUNTIME_ARTIFACT_KIND || null,
+    runtimeArtifactSha256: process.env.RAG_EVAL_RUNTIME_ARTIFACT_SHA256 || null,
+    runtimeArtifactSize: process.env.RAG_EVAL_RUNTIME_ARTIFACT_SIZE || null,
+    runtimeInstanceId: process.env.RAG_EVAL_RUNTIME_INSTANCE_ID || null,
+    runtimeConfigSha256: process.env.RAG_EVAL_RUNTIME_CONFIG_SHA256 || null,
+    indexRevision: process.env.RAG_EVAL_INDEX_REVISION || null,
+    qdrantReady: false,
+    qdrantSearchFailureCount: null,
+  };
+  return {
+    ...environmentInfo,
+    source: Object.values(environmentInfo).some(Boolean) ? 'environment' : 'unavailable',
+  };
+}
+
+function gitOutput(args) {
+  try {
+    return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return '';
+  }
+}
+
+function archiveEnabled() {
+  return !['0', 'false', 'no', 'n'].includes(String(process.env.RAG_EVAL_ARCHIVE ?? 'true').trim().toLowerCase());
+}
+
+function runId(isoTimestamp) {
+  return String(isoTimestamp)
+    .replace(/[-:]/g, '')
+    .replace('T', '-')
+    .replace(/\.(\d{3})Z$/, '-$1Z');
+}
+
+async function runEvaluationForCases(cases, expectedCheckpointIdentity = null) {
   if (!cases.length || caseBatchSize <= 0 || cases.length <= caseBatchSize) {
     return runEvaluation(cases.length ? { cases } : {}, "all");
   }
   const batches = chunk(cases, caseBatchSize);
   const selectedIds = new Set(cases.map((item) => item.id));
-  const checkpoint = resumeFromCheckpoint ? readJson(checkpointPath) : null;
-  const results = Array.isArray(checkpoint?.results)
-    ? checkpoint.results.filter((result) => selectedIds.has(result.id))
-    : [];
+  const checkpoint = resumeFromCheckpoint && expectedCheckpointIdentity ? readJson(checkpointPath) : null;
+  const checkpointCompatible = isCheckpointCompatible(checkpoint, expectedCheckpointIdentity);
+  if (checkpoint && !checkpointCompatible) {
+    console.warn('[rag-eval-gate] ignoring incompatible checkpoint');
+  }
+  if (checkpointCompatible) {
+    assertResultIds(Array.from(selectedIds), checkpoint?.results, 'checkpoint', { allowMissing: true });
+  }
+  const results = checkpointCompatible ? checkpoint.results.slice() : [];
   const completedIds = new Set(results.map((result) => result.id));
   const attempts = [];
   for (let index = 0; index < batches.length; index += 1) {
@@ -71,29 +199,37 @@ async function runEvaluationForCases(cases) {
       results.push(result);
       completedIds.add(result.id);
     }
-    writeJson(checkpointPath, recomputeGate({
-      results,
-      batchAttempts: attempts,
-      batchSize: caseBatchSize,
-      selectedCaseLimit: caseLimit > 0 ? caseLimit : null,
-      selectedCaseIds: caseIds,
-      checkpoint: true,
-      checkpointUpdatedAt: new Date().toISOString(),
-    }));
+    if (expectedCheckpointIdentity) {
+      writeJson(checkpointPath, recomputeGate({
+        results,
+        batchAttempts: attempts,
+        batchSize: caseBatchSize,
+        selectedCaseLimit: caseLimit > 0 ? caseLimit : null,
+        selectedCaseIds: caseIds,
+        checkpoint: true,
+        checkpointIdentity: expectedCheckpointIdentity,
+        checkpointUpdatedAt: new Date().toISOString(),
+      }));
+    }
     if (index < batches.length - 1 && interBatchSleepMs > 0) {
       await sleep(interBatchSleepMs);
     }
   }
-  return recomputeGate({
+  const combined = {
     results,
     batchAttempts: attempts,
     batchSize: caseBatchSize,
     selectedCaseLimit: caseLimit > 0 ? caseLimit : null,
     selectedCaseIds: caseIds,
-  });
+  };
+  assertResultIds(cases.map((item) => item.id), combined.results, 'combined evaluation');
+  return recomputeGate(combined);
 }
 
 async function runEvaluation(payload, label = "all") {
+  const requestedIds = Array.isArray(payload?.cases)
+    ? payload.cases.map((item) => item.id)
+    : loadCases().map((item) => item.id);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
   try {
@@ -106,7 +242,8 @@ async function runEvaluation(payload, label = "all") {
     const text = await response.text();
     const body = parseJson(text);
     if (!response.ok) {
-      if (isEvaluationResponse(body)) {
+      if (response.status === 409 && isCompletedFailingEvaluationResponse(body)) {
+        assertResultIds(requestedIds, body.results, label);
         return body;
       }
       const details = body
@@ -122,6 +259,7 @@ async function runEvaluation(payload, label = "all") {
     if (!body) {
       throw new Error(`evaluation ${label} HTTP ${response.status} ${response.statusText}: ${text.slice(0, 300)}`);
     }
+    assertResultIds(requestedIds, body.results, label);
     return body;
   } catch (error) {
     if (error?.name === "AbortError") {
@@ -131,6 +269,65 @@ async function runEvaluation(payload, label = "all") {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function assertResultIds(requestedIds, results, label, { allowMissing = false } = {}) {
+  if (!Array.isArray(results)) {
+    throw new Error(`evaluation ${label} response ID mismatch: results is not an array`);
+  }
+  const invalidRequestIndexes = invalidIdIndexes(requestedIds);
+  const responseIds = results.map((result) => result?.id);
+  const invalidResponseIndexes = invalidIdIndexes(responseIds);
+  const validRequestedIds = requestedIds.filter(isValidId);
+  const validResponseIds = responseIds.filter(isValidId);
+  const requestedSet = new Set(validRequestedIds);
+  const responseSet = new Set(validResponseIds);
+  const duplicateRequestIds = duplicateIds(validRequestedIds);
+  const duplicateResponseIds = duplicateIds(validResponseIds);
+  const missingResponseIds = validRequestedIds.filter((id) => !responseSet.has(id));
+  const unexpectedResponseIds = validResponseIds.filter((id) => !requestedSet.has(id));
+  const problems = [];
+  if (invalidRequestIndexes.length > 0) {
+    problems.push(`invalid request ID indexes=[${invalidRequestIndexes.join(', ')}]`);
+  }
+  if (duplicateRequestIds.length > 0) {
+    problems.push(`duplicate request IDs=[${duplicateRequestIds.join(', ')}]`);
+  }
+  if (invalidResponseIndexes.length > 0) {
+    problems.push(`invalid response ID indexes=[${invalidResponseIndexes.join(', ')}]`);
+  }
+  if (duplicateResponseIds.length > 0) {
+    problems.push(`duplicate response IDs=[${duplicateResponseIds.join(', ')}]`);
+  }
+  if (!allowMissing && missingResponseIds.length > 0) {
+    problems.push(`missing response IDs=[${missingResponseIds.join(', ')}]`);
+  }
+  if (unexpectedResponseIds.length > 0) {
+    problems.push(`unexpected response IDs=[${unexpectedResponseIds.join(', ')}]`);
+  }
+  if (problems.length > 0) {
+    throw new Error(`evaluation ${label} response ID mismatch: ${problems.join('; ')}`);
+  }
+}
+
+function isValidId(id) {
+  return typeof id === 'string' && id.length > 0;
+}
+
+function invalidIdIndexes(ids) {
+  return ids.flatMap((id, index) => (isValidId(id) ? [] : [index]));
+}
+
+function duplicateIds(ids) {
+  const seen = new Set();
+  const duplicates = new Set();
+  for (const id of ids) {
+    if (seen.has(id)) {
+      duplicates.add(id);
+    }
+    seen.add(id);
+  }
+  return Array.from(duplicates);
 }
 
 async function retryEvaluationErrors(body) {
@@ -213,96 +410,20 @@ function isEvaluationResponse(body) {
   );
 }
 
-function loadCases() {
-  const byId = new Map();
-  for (const casePath of casePaths) {
-    if (!fs.existsSync(casePath)) {
-      continue;
-    }
-    const rows = fs.readFileSync(casePath, 'utf8')
-      .split(/\r?\n/)
-      .filter((line) => line.trim() && !line.startsWith('#'))
-      .map((line) => line.split('\t'))
-      .filter((columns) => columns.length >= 8 && columns[0].trim().toLowerCase() !== 'id')
-      .map((columns) => ({
-        id: columns[0].trim(),
-        question: columns[1].trim(),
-        targets: splitList(columns[2]),
-        expectedTerms: splitList(columns[3]),
-        requiredMatches: parseRequiredMatches(columns[4]),
-        expectedTitleTerms: splitList(columns[5]),
-        expectedSectionTypes: splitList(columns[6]),
-        forbiddenTerms: splitList(columns[7]),
-        expectedDocumentTerms: splitList(columns[8]),
-        expectedPageNumbers: splitList(columns[9]),
-        expectedParentTerms: splitList(columns[10]),
-        answerDirection: (columns[11] ?? '').trim(),
-        expectedResultMsgs: expectedResultMsgs(columns[0], columns[12]),
-        answerVerificationRequired: parseOptionalBoolean(columns[13]),
-        expectedAnswerTerms: splitList(columns[14]),
-        forbiddenAnswerTerms: splitList(columns[15]),
-      }));
-    for (const row of rows) {
-      byId.set(row.id, row);
-    }
+function isCompletedFailingEvaluationResponse(body) {
+  if (!isEvaluationResponse(body) || body.gatePassed !== false) {
+    return false;
   }
-  return Array.from(byId.values());
+  const recomputed = recomputeGate(body);
+  return recomputed.failed > 0 && recomputed.gatePassed === false;
+}
+
+function loadCases() {
+  return loadEvalCases(casePaths);
 }
 
 function selectCases(cases) {
-  let selected = cases;
-  if (caseIds.length > 0) {
-    const allowed = new Set(caseIds);
-    selected = selected.filter((item) => allowed.has(item.id));
-  }
-  if (caseLimit > 0) {
-    selected = selected.slice(0, caseLimit);
-  }
-  return selected;
-}
-
-function splitList(value) {
-  if (!value || value.trim() === '-') {
-    return [];
-  }
-  return value.split('|').map((term) => term.trim()).filter(Boolean);
-}
-
-function splitCaseIds(value) {
-  if (!value || value.trim() === '-') {
-    return [];
-  }
-  return value.split(/[|,]/).map((term) => term.trim()).filter(Boolean);
-}
-
-function parseRequiredMatches(value) {
-  if (!value || !value.trim()) {
-    return null;
-  }
-  const parsed = Number.parseInt(value.trim(), 10);
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : null;
-}
-
-function parseOptionalBoolean(value) {
-  if (!value || !value.trim() || value.trim() === '-') {
-    return null;
-  }
-  const normalized = value.trim().toLowerCase();
-  if (['true', '1', 'yes', 'y'].includes(normalized)) {
-    return true;
-  }
-  if (['false', '0', 'no', 'n'].includes(normalized)) {
-    return false;
-  }
-  return null;
-}
-
-function expectedResultMsgs(id, value) {
-  const explicit = splitList(value);
-  if (explicit.length > 0) {
-    return explicit;
-  }
-  return String(id || '').trim().startsWith('no-') ? ['NO_GROUNDS'] : [];
+  return selectEvalCases(cases, { caseIds, caseLimit });
 }
 
 function chunk(values, size) {
@@ -354,6 +475,24 @@ function writeReport(filePath, body, baseUrl) {
   const lines = [
     '# RAG Eval Gate',
     '',
+    `- Scope: ${body.provenance?.runScope ?? 'unknown'}`,
+    `- Generated at: ${body.provenance?.generatedAt ?? '-'}`,
+    `- Workspace Git commit: ${body.provenance?.gitCommit ?? '-'}`,
+    `- Workspace Git dirty: ${Boolean(body.provenance?.gitDirty)}`,
+    `- Dataset hash: ${body.provenance?.datasetHash ?? '-'}`,
+    `- Selection hash: ${body.provenance?.selectionHash ?? '-'}`,
+    `- Index version: ${body.provenance?.indexVersion ?? '-'}`,
+    `- Embedding model: ${body.provenance?.embeddingModel ?? '-'}`,
+    `- Answer model: ${body.provenance?.answerModel ?? '-'}`,
+    `- Runtime artifact: ${body.provenance?.runtimeArtifactKind ?? '-'}`,
+    `- Runtime artifact SHA-256: ${body.provenance?.runtimeArtifactSha256 ?? '-'}`,
+    `- Runtime artifact size: ${body.provenance?.runtimeArtifactSize ?? '-'}`,
+    `- Runtime instance ID: ${body.provenance?.runtimeInstanceId ?? '-'}`,
+    `- Runtime config SHA-256: ${body.provenance?.runtimeConfigSha256 ?? '-'}`,
+    `- Index revision: ${body.provenance?.indexRevision ?? '-'}`,
+    `- Qdrant ready: ${body.provenance?.qdrantReady === true}`,
+    `- Qdrant search failures at start: ${body.provenance?.qdrantSearchFailureCount ?? '-'}`,
+    `- Execution port: ${body.provenance?.executionPort ?? '-'}`,
     `- Base URL: ${baseUrl}`,
     `- Total: ${body.total ?? 0}`,
     `- Passed: ${body.passed ?? 0}`,
@@ -362,6 +501,9 @@ function writeReport(filePath, body, baseUrl) {
     `- Gate passed: ${Boolean(body.gatePassed)}`,
     `- Batch size: ${body.batchSize ?? 'single request'}`,
     `- Failure causes: ${Object.keys(diagnosticCounts).length ? Object.entries(diagnosticCounts).map(([cause, count]) => `${cause}=${count}`).join(', ') : '-'}`,
+    `- Curated: ${body.breakdown?.curated?.passed ?? 0}/${body.breakdown?.curated?.total ?? 0}`,
+    `- Generated: ${body.breakdown?.generated?.passed ?? 0}/${body.breakdown?.generated?.total ?? 0}`,
+    `- Answer verification: ${body.breakdown?.answerVerification?.passed ?? 0}/${body.breakdown?.answerVerification?.required ?? 0}`,
     '',
     '| ID | Result | Likely Cause | Next Action | Missing Terms | Missing Title | Missing Section | Missing Doc | Missing Parent | Forbidden | Missing Answer | Unsupported Claims | Top Selected |',
     '|---|---:|---|---|---|---|---|---|---|---|---|---|---|',

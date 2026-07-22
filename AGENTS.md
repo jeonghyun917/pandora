@@ -17,6 +17,23 @@ logging a searchable failure over producing a plausible but ungrounded answer.
 - If a task discovers a bigger architecture issue, state the issue and handle the
   smallest safe slice that moves the system toward the agreed design.
 
+## Superpowers Workflow
+
+- Automatically use the relevant installed Superpowers skills for feature
+  design, behavior changes, bug fixes, refactoring, RAG quality changes, and
+  material code review. The user does not need to mention Superpowers explicitly.
+- Use `superpowers:brainstorming` before designing new behavior,
+  `superpowers:systematic-debugging` before proposing a bug fix,
+  `superpowers:test-driven-development` for code features and bug fixes, and
+  `superpowers:verification-before-completion` before claiming completion.
+- Use the smallest workflow that fits the task. Check for relevant skills, but
+  do not force a full feature-development lifecycle onto simple explanations,
+  status checks, or docs-only corrections.
+- An explicit `$superpowers:...` request overrides automatic skill selection.
+- Superpowers improves process discipline; it does not guarantee the absence of
+  hallucinations and does not replace the RAG Quality Rules below. Ground claims,
+  verify evidence, and fail closed when direct support is missing.
+
 ## Runtime Contract
 
 Use the documented runtime split:

@@ -585,6 +585,36 @@
     LIMIT #{limit}
   </select>
 
+  <select id="findCurrentIndexedSnapshot"
+          resultType="com.kaces.pandora.semantic.provenance.IndexContentSnapshot"
+          timeout="5">
+    SELECT
+      COUNT(*) AS currentIndexedCount,
+      CONCAT(
+        LPAD(HEX(BIT_XOR(CAST(CONV(SUBSTRING(SHA2(CONCAT(CAST(c.chunk_id AS CHAR), ':', c.content_hash), 256), 1, 16), 16, 10) AS UNSIGNED))), 16, '0'),
+        LPAD(HEX(BIT_XOR(CAST(CONV(SUBSTRING(SHA2(CONCAT(CAST(c.chunk_id AS CHAR), ':', c.content_hash), 256), 17, 16), 16, 10) AS UNSIGNED))), 16, '0'),
+        LPAD(HEX(BIT_XOR(CAST(CONV(SUBSTRING(SHA2(CONCAT(CAST(c.chunk_id AS CHAR), ':', c.content_hash), 256), 33, 16), 16, 10) AS UNSIGNED))), 16, '0'),
+        LPAD(HEX(BIT_XOR(CAST(CONV(SUBSTRING(SHA2(CONCAT(CAST(c.chunk_id AS CHAR), ':', c.content_hash), 256), 49, 16), 16, 10) AS UNSIGNED))), 16, '0')
+      ) AS contentFingerprint,
+      COALESCE(
+        DATE_FORMAT(
+          MAX(GREATEST(doc.updated_at, c.updated_at, e.updated_at)),
+          '%Y-%m-%dT%H:%i:%s.%f'
+        ),
+        ''
+      ) AS updatedWatermark
+    FROM law_api_chunk_embeddings e
+    JOIN law_api_document_chunks c ON c.chunk_id = e.chunk_id
+    JOIN law_api_documents doc ON doc.document_id = c.document_id
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND e.embedding_model = #{model}
+      AND e.vector_store = #{vectorStore}
+      AND e.status = 'INDEXED'
+      AND e.content_hash = c.content_hash
+      AND c.content_hash REGEXP '^[0-9A-Fa-f]{64}$'
+  </select>
+
   <insert id="upsertEmbeddingStatus">
     INSERT INTO law_api_chunk_embeddings (
       chunk_id, embedding_model, vector_store, vector_point_id, content_hash,

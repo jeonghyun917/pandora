@@ -14,8 +14,37 @@ public record RagDocumentChunkRow(
 	String sourcePath,
 	String sourceUrl,
 	int sortOrder,
-	String contentHash
+	String contentHash,
+	String qualityStatus,
+	String qualityReason
 ) {
+	public RagDocumentChunkRow {
+		qualityStatus = qualityStatus == null || qualityStatus.isBlank() ? "PASS" : qualityStatus;
+	}
+
+	public RagDocumentChunkRow(
+		long chunkId,
+		long documentId,
+		int chunkVersion,
+		String chunkNo,
+		String parentSectionTitle,
+		String chunkTitle,
+		String sectionType,
+		String chunkText,
+		String embeddingText,
+		Integer pageNo,
+		String sourcePath,
+		String sourceUrl,
+		int sortOrder,
+		String contentHash
+	) {
+		this(
+			chunkId, documentId, chunkVersion, chunkNo, parentSectionTitle, chunkTitle,
+			sectionType, chunkText, embeddingText, pageNo, sourcePath, sourceUrl,
+			sortOrder, contentHash, "PASS", null
+		);
+	}
+
 	public RagDocumentChunkRow(
 		long chunkId,
 		long documentId,
@@ -42,7 +71,9 @@ public record RagDocumentChunkRow(
 			sourcePath,
 			sourceUrl,
 			sortOrder,
-			contentHash
+			contentHash,
+			"PASS",
+			null
 		);
 	}
 }

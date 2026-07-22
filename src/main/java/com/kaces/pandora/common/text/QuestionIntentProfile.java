@@ -18,7 +18,9 @@ public record QuestionIntentProfile(
 	List<List<String>> intentGroups,
 	List<List<String>> directEvidenceGroups,
 	Set<String> preferredSectionTypes,
-	boolean focusedLexicalSearch
+	boolean focusedLexicalSearch,
+	List<String> policySearchKeywords,
+	Set<String> matchedPolicyIds
 ) {
 	private static final List<String> TARGET_SCOPE_CUES = List.of(
 		"대상", "대상사업", "대상기관", "대상시스템", "적용대상", "범위", "포함", "해당", "비대상", "제외",
@@ -30,12 +32,44 @@ public record QuestionIntentProfile(
 	private static final List<String> PROCEDURE_CUES = List.of(
 		"절차", "방법", "신청", "제출", "등록", "조회", "처리", "통보", "언제", "시기", "기한", "기간"
 	);
+	private static final List<String> EXPLICIT_PROCEDURE_CUES = List.of(
+		"절차", "방법", "어떻게", "언제", "시기", "기한", "기간"
+	);
 	private static final List<String> CONTRACT_CUES = List.of(
 		"수의계약", "계약방법", "계약방식", "계약인가", "계약가능", "구매계약", "카탈로그계약"
+	);
+	private static final List<String> DOCUMENT_NOUN_CUES = List.of(
+		"문서", "매뉴얼", "가이드", "가이드라인", "안내서", "해설서", "보고서", "보도자료", "사례집", "백서"
+	);
+	private static final List<String> DOCUMENT_PURPOSE_CONTEXT_CUES = List.of(
+		"목적", "취지", "발간 이유", "제작 이유", "만든 이유", "마련 이유", "왜 만든", "왜 발간", "왜 제작"
+	);
+	private static final List<String> DOCUMENT_IDENTITY_CUES = List.of(
+		"어떤문서야", "무슨문서야", "어느문서야",
+		"어떤문서인지", "무슨문서인지", "어느문서인지",
+		"어떤문서인가", "무슨문서인가", "어느문서인가",
+		"뭐야", "뭐지", "뭔지", "무엇인지", "무엇인가"
+	);
+	private static final Set<String> DOCUMENT_IDENTITY_RESPONSE_SUFFIXES = Set.of(
+		"", "알려줘", "알려주세요", "설명해줘", "설명해주세요", "말해줘", "말해주세요", "답해줘", "답해주세요"
 	);
 
 	public static QuestionIntentProfile from(String question) {
 		String normalized = KoreanQueryNormalizer.normalizeForMatch(question);
+		LinkedHashSet<String> matchedPolicyIds = new LinkedHashSet<>(
+			QuestionIntentDictionary.matchedPolicyIds(question, normalized)
+		);
+		LinkedHashSet<String> suppressedIntentIds = new LinkedHashSet<>();
+		matchedPolicyIds.forEach(policyId -> suppressedIntentIds.addAll(
+			QuestionIntentDictionary.values("policy." + policyId + ".suppress_intents", List.of())
+		));
+		boolean documentIdentityQuestion = isDocumentIdentityQuestion(normalized);
+		boolean documentPurposeQuestion = matchedPolicyIds.contains("document_purpose");
+		boolean documentPurposeContextQuestion = documentPurposeQuestion
+			|| (containsAny(normalized, DOCUMENT_NOUN_CUES)
+				&& containsAny(normalized, DOCUMENT_PURPOSE_CONTEXT_CUES));
+		boolean suppressProcedureIntent = documentIdentityQuestion
+			|| (documentPurposeContextQuestion && !containsAny(normalized, EXPLICIT_PROCEDURE_CUES));
 		List<String> terms = queryTerms(question);
 		LinkedHashSet<String> lexical = new LinkedHashSet<>();
 		LinkedHashSet<String> focused = new LinkedHashSet<>();
@@ -45,8 +79,9 @@ public record QuestionIntentProfile(
 		List<List<String>> intentGroups = new ArrayList<>();
 		List<List<String>> directEvidenceGroups = new ArrayList<>();
 		LinkedHashSet<String> sectionTypes = new LinkedHashSet<>();
+		LinkedHashSet<String> policySearchKeywords = new LinkedHashSet<>();
 		List<QuestionEntity> entities = QuestionIntentDictionary.matchedEntities(normalized);
-		List<List<String>> synonymGroups = QuestionIntentDictionary.matchedSynonymGroups(normalized);
+		List<List<String>> synonymGroups = QuestionIntentDictionary.matchedSynonymGroups(question);
 
 		for (String term : terms) {
 			lexical.add(term);
@@ -54,9 +89,50 @@ public record QuestionIntentProfile(
 		}
 		addEntities(entities, conceptGroups, lexical, focused, sectionTypes, preferredTargets, directEvidenceGroups);
 		addSynonymGroups(synonymGroups, conceptGroups, lexical);
-		addCommonIntent(normalized, intentTypes, intentGroups, directEvidenceGroups, sectionTypes);
-		addConfiguredIntents(normalized, intentTypes, intentGroups, directEvidenceGroups, sectionTypes);
-		addDomainConcepts(normalized, conceptGroups, intentGroups, directEvidenceGroups, lexical, focused, sectionTypes);
+		addCommonIntent(
+			normalized,
+			suppressProcedureIntent,
+			suppressedIntentIds,
+			intentTypes,
+			intentGroups,
+			directEvidenceGroups,
+			sectionTypes
+		);
+		addConfiguredIntents(
+			question,
+			normalized,
+			suppressProcedureIntent,
+			suppressedIntentIds,
+			intentTypes,
+			intentGroups,
+			directEvidenceGroups,
+			sectionTypes
+		);
+		addConfiguredPolicies(
+			matchedPolicyIds,
+			intentTypes,
+			conceptGroups,
+			directEvidenceGroups,
+			lexical,
+			focused,
+			policySearchKeywords,
+			sectionTypes,
+			preferredTargets
+		);
+		addDomainConcepts(
+			normalized,
+			conceptGroups,
+			intentGroups,
+			directEvidenceGroups,
+			lexical,
+			focused,
+			sectionTypes,
+			suppressedIntentIds
+		);
+		if (suppressProcedureIntent) {
+			intentTypes.remove("procedure");
+			sectionTypes.remove("procedure");
+		}
 
 		boolean focusedSearch = !focused.isEmpty()
 			|| !directEvidenceGroups.isEmpty()
@@ -75,7 +151,9 @@ public record QuestionIntentProfile(
 			distinctGroups(intentGroups),
 			distinctGroups(directEvidenceGroups),
 			Set.copyOf(sectionTypes),
-			focusedSearch
+			focusedSearch,
+			policySearchKeywords.stream().filter(value -> value.length() >= 2).distinct().limit(24).toList(),
+			Set.copyOf(matchedPolicyIds)
 		);
 	}
 
@@ -97,32 +175,37 @@ public record QuestionIntentProfile(
 
 	private static void addCommonIntent(
 		String normalized,
+		boolean suppressProcedureIntent,
+		Set<String> suppressedIntentIds,
 		Set<String> intentTypes,
 		List<List<String>> intentGroups,
 		List<List<String>> directEvidenceGroups,
 		Set<String> sectionTypes
 	) {
-		if (containsAny(normalized, TARGET_SCOPE_CUES)) {
+		if (!suppressedIntentIds.contains("target_scope") && containsAny(normalized, TARGET_SCOPE_CUES)) {
 			intentTypes.add("target_scope");
 			sectionTypes.add("target_scope");
 			intentGroups.add(List.of("대상", "대상사업", "대상기관", "대상시스템", "적용대상", "범위", "포함", "해당", "비대상", "제외"));
 		}
-		if (containsAny(normalized, REQUIREMENT_CUES)) {
+		if (!suppressedIntentIds.contains("required_documents") && containsAny(normalized, REQUIREMENT_CUES)) {
 			intentTypes.add("required_documents");
 			sectionTypes.add("requirement");
 			intentGroups.add(List.of("필수", "필수항목", "기재사항", "명시하여야", "요구사항", "제출서류", "평가요소", "평가방법"));
 		}
-		if (containsAny(normalized, PROCEDURE_CUES)) {
+		if (!suppressProcedureIntent
+			&& !suppressedIntentIds.contains("procedure")
+			&& containsAny(normalized, PROCEDURE_CUES)) {
 			intentTypes.add("procedure");
 			sectionTypes.add("procedure");
 			intentGroups.add(List.of("절차", "방법", "신청", "제출", "등록", "조회", "처리", "통보", "시기", "기간"));
 		}
-		if (containsAny(normalized, List.of("제외", "비대상", "면제", "생략"))) {
+		if (!suppressedIntentIds.contains("exception_scope")
+			&& containsAny(normalized, List.of("제외", "비대상", "면제", "생략"))) {
 			intentTypes.add("exception_scope");
 			sectionTypes.add("exception");
 			intentGroups.add(List.of("제외", "비대상", "면제", "생략", "예외"));
 		}
-		if (containsAny(normalized, CONTRACT_CUES)) {
+		if (!suppressedIntentIds.contains("contract_method") && containsAny(normalized, CONTRACT_CUES)) {
 			intentTypes.add("contract_method");
 			sectionTypes.add("procedure");
 			intentGroups.add(List.of("수의계약", "계약방법", "계약방식", "구매계약", "카탈로그계약"));
@@ -130,15 +213,22 @@ public record QuestionIntentProfile(
 	}
 
 	private static void addConfiguredIntents(
+		String question,
 		String normalized,
+		boolean suppressProcedureIntent,
+		Set<String> suppressedIntentIds,
 		Set<String> intentTypes,
 		List<List<String>> intentGroups,
 		List<List<String>> directEvidenceGroups,
 		Set<String> sectionTypes
 	) {
 		for (String intentId : QuestionIntentDictionary.keys("intents")) {
+			if (suppressedIntentIds.contains(intentId)
+				|| (suppressProcedureIntent && "procedure".equals(intentId))) {
+				continue;
+			}
 			List<String> cues = QuestionIntentDictionary.values("intent." + intentId + ".cues", List.of());
-			if (!containsAny(normalized, cues)) {
+			if (!QuestionIntentDictionary.matchesAny(question, normalized, cues)) {
 				continue;
 			}
 			intentTypes.add(intentId);
@@ -148,6 +238,68 @@ public record QuestionIntentProfile(
 				intentGroups.add(terms);
 			}
 			directEvidenceGroups.addAll(QuestionIntentDictionary.groups("intent." + intentId + ".direct", List.of()));
+		}
+	}
+
+	private static boolean isDocumentIdentityQuestion(String normalized) {
+		if (!containsAny(normalized, DOCUMENT_NOUN_CUES)) {
+			return false;
+		}
+		for (String cue : DOCUMENT_IDENTITY_CUES) {
+			int cueIndex = normalized.lastIndexOf(cue);
+			if (cueIndex < 0) {
+				continue;
+			}
+			String trailingText = normalized.substring(cueIndex + cue.length());
+			if (DOCUMENT_IDENTITY_RESPONSE_SUFFIXES.contains(trailingText)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static void addConfiguredPolicies(
+		Set<String> matchedPolicyIds,
+		Set<String> intentTypes,
+		List<List<String>> conceptGroups,
+		List<List<String>> directEvidenceGroups,
+		Set<String> lexical,
+		Set<String> focused,
+		Set<String> policySearchKeywords,
+		Set<String> sectionTypes,
+		Set<String> preferredTargets
+	) {
+		for (String policyId : matchedPolicyIds) {
+			policySearchKeywords.addAll(QuestionIntentDictionary.values(
+				"policy." + policyId + ".search",
+				List.of()
+			));
+		}
+		for (String policyId : matchedPolicyIds) {
+			intentTypes.addAll(QuestionIntentDictionary.values("policy." + policyId + ".intent_types", List.of()));
+			List<List<String>> configuredConcepts = QuestionIntentDictionary.groups(
+				"policy." + policyId + ".concepts",
+				List.of()
+			);
+			conceptGroups.addAll(configuredConcepts);
+			configuredConcepts.stream().flatMap(List::stream).forEach(value -> {
+				lexical.add(value);
+				policySearchKeywords.add(value);
+			});
+			List<List<String>> configuredDirectEvidence = QuestionIntentDictionary.groups(
+				"policy." + policyId + ".direct",
+				List.of()
+			);
+			directEvidenceGroups.addAll(configuredDirectEvidence);
+			configuredDirectEvidence.stream().flatMap(List::stream).forEach(policySearchKeywords::add);
+			List<String> configuredFocused = QuestionIntentDictionary.values(
+				"policy." + policyId + ".focused",
+				List.of()
+			);
+			focused.addAll(configuredFocused);
+			policySearchKeywords.addAll(configuredFocused);
+			sectionTypes.addAll(QuestionIntentDictionary.values("policy." + policyId + ".section_types", List.of()));
+			preferredTargets.addAll(QuestionIntentDictionary.values("policy." + policyId + ".targets", List.of()));
 		}
 	}
 
@@ -190,7 +342,8 @@ public record QuestionIntentProfile(
 		List<List<String>> directEvidenceGroups,
 		Set<String> lexical,
 		Set<String> focused,
-		Set<String> sectionTypes
+		Set<String> sectionTypes,
+		Set<String> suppressedIntentIds
 	) {
 		if (normalized.contains("과업심의")) {
 			conceptGroups.add(QuestionIntentDictionary.values(
@@ -335,6 +488,13 @@ public record QuestionIntentProfile(
 					"rfp.focused_requirement",
 					List.of("제안요청서에는 다음 각 호의 사항", "과업내용, 요구사항", "평가요소, 평가방법")
 				));
+				directEvidenceGroups.addAll(QuestionIntentDictionary.groups(
+					"rfp.direct_requirement",
+					List.of(
+						List.of("제안요청서에는 다음 각 호의 사항", "제안요청서 기재사항", "제안요청서에는"),
+						List.of("제안요청서에는 과업내용", "과업내용, 요구사항", "평가요소, 평가방법")
+					)
+				));
 			}
 		}
 		if (normalized.contains("공공데이터")) {
@@ -350,6 +510,13 @@ public record QuestionIntentProfile(
 				focused.addAll(QuestionIntentDictionary.values(
 					"public_data.focused_activation",
 					List.of("공공데이터 이용 활성화", "활성화에 필요한 사업", "기본목표와 추진방향")
+				));
+				directEvidenceGroups.addAll(QuestionIntentDictionary.groups(
+					"public_data.direct_activation",
+					List.of(
+						List.of("공공데이터 이용 활성화", "공공데이터 제공 및 이용 활성화", "이용 활성화 지원사업"),
+						List.of("활성화에 필요한 사업", "기본목표와 추진방향", "개방전략 수립", "지원하는 사업")
+					)
 				));
 			}
 		}
@@ -435,7 +602,8 @@ public record QuestionIntentProfile(
 				)
 			));
 		}
-		if (normalized.contains("개인정보")
+		if (!suppressedIntentIds.contains("privacy_notice")
+			&& normalized.contains("개인정보")
 			&& containsAny(normalized, List.of("처리목적", "처리방침", "고지", "통지", "알려야"))) {
 			conceptGroups.add(QuestionIntentDictionary.values(
 				"privacy_notice.concepts",
@@ -643,6 +811,14 @@ public record QuestionIntentProfile(
 			focused.addAll(QuestionIntentDictionary.values(
 				"traffic.crosswalk_focused",
 				List.of("횡단보도 앞에서 일시정지", "교차로 통행방법", "보행자의 보호")
+			));
+			directEvidenceGroups.addAll(QuestionIntentDictionary.groups(
+				"traffic.crosswalk_direct",
+				List.of(
+					List.of("횡단보도", "보행자보호의무", "보행자"),
+					List.of("일시정지", "정지하여야", "정지"),
+					List.of("우회전", "교차로통행방법")
+				)
 			));
 		}
 		if (KoreanQueryNormalizer.isProcurementCatalogContractQuestion(normalized)) {

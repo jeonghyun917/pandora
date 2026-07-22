@@ -2,6 +2,7 @@ package com.kaces.pandora.rag.importing;
 
 
 import com.kaces.pandora.rag.chunk.RagChunker;
+import com.kaces.pandora.rag.chunk.RagChunkQualityGate;
 import com.kaces.pandora.rag.document.RagDocumentMeta;
 import com.kaces.pandora.rag.document.RagDocumentType;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
@@ -27,6 +28,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -34,6 +37,7 @@ import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class RagImportService {
+	private static final Logger log = LoggerFactory.getLogger(RagImportService.class);
 	private static final List<String> SUPPORTED_EXTENSIONS = List.of(".pdf", ".docx", ".hwpx", ".txt", ".md");
 	private static final int ACTIVE_CHUNK_VERSION = RagChunker.V4_CHUNK_VERSION;
 	private static final Pattern DOCUMENT_DATE_PATTERN = Pattern.compile("^\\d{4}[.\\-/]\\s*\\d{1,2}(?:[.\\-/]\\s*\\d{1,2})?\\.?$");
@@ -43,6 +47,7 @@ public class RagImportService {
 	private final RagDocumentMapper mapper;
 	private final RagTextExtractor textExtractor;
 	private final RagChunker chunker;
+	private final RagChunkQualityGate chunkQualityGate;
 	private final OpenAiEmbeddingClient embeddingClient;
 	private final QdrantClient qdrantClient;
 	private final LawAiProperties properties;
@@ -52,6 +57,7 @@ public class RagImportService {
 		RagDocumentMapper mapper,
 		RagTextExtractor textExtractor,
 		RagChunker chunker,
+		RagChunkQualityGate chunkQualityGate,
 		OpenAiEmbeddingClient embeddingClient,
 		QdrantClient qdrantClient,
 		LawAiProperties properties,
@@ -60,6 +66,7 @@ public class RagImportService {
 		this.mapper = mapper;
 		this.textExtractor = textExtractor;
 		this.chunker = chunker;
+		this.chunkQualityGate = chunkQualityGate;
 		this.embeddingClient = embeddingClient;
 		this.qdrantClient = qdrantClient;
 		this.properties = properties;
@@ -218,8 +225,22 @@ public class RagImportService {
 		List<Long> oldChunkIds = mapper.findChunkIdsByDocumentId(documentId);
 		markEmbeddingsSuperseded(oldChunkIds);
 		mapper.deactivateChunksByDocumentIdAndVersion(documentId, ACTIVE_CHUNK_VERSION);
-		List<RagDocumentChunkRow> chunks = chunker.chunkV4(documentId, extracted, meta.sourceUrl(), title);
-		for (RagDocumentChunkRow chunk : chunks) {
+		List<RagDocumentChunkRow> rawChunks = chunker.chunkV4(documentId, extracted, meta.sourceUrl(), title);
+		RagChunkQualityGate.Result qualityResult = chunkQualityGate.evaluate(title, rawChunks);
+		if (qualityResult.searchableCount() == 0) {
+			throw new IllegalStateException(
+				"RAG chunk quality gate rejected all searchable chunks for " + file.getFileName()
+			);
+		}
+		log.info(
+			"RAG chunk quality gate documentId={} pass={} review={} contextOnly={} rejected={}",
+			documentId,
+			qualityResult.passCount(),
+			qualityResult.reviewCount(),
+			qualityResult.contextOnlyCount(),
+			qualityResult.rejectedCount()
+		);
+		for (RagDocumentChunkRow chunk : qualityResult.retainedChunks()) {
 			mapper.insertChunk(chunk);
 		}
 		if (!indexNow) {

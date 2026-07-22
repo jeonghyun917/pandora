@@ -147,4 +147,24 @@ class KoreanQueryNormalizerTests {
 		assertThat(KoreanQueryNormalizer.normalizeQueryTerm("횡단보도에서")).isEqualTo("횡단보도");
 		assertThat(KoreanQueryNormalizer.normalizeQueryTerm("공공데이터를")).isEqualTo("공공데이터");
 	}
+
+	@Test
+	void loadsSpecificEvidencePoliciesFromConfiguration() {
+		QuestionIntentProfile performance = QuestionIntentProfile.from("성과측정은 언제까지 완료해야 해?");
+		QuestionIntentProfile performancePlan = QuestionIntentProfile.from("IRM 업무성과계획 수립 대상은 어떤 시스템이야?");
+		QuestionIntentProfile privacy = QuestionIntentProfile.from("개인정보 보유기간이 끝나면 언제 파기해야 해?");
+
+		assertThat(performance.matchedPolicyIds()).contains("performance_measure_period");
+		assertThat(performance.directEvidenceGroups())
+			.anySatisfy(group -> assertThat(group).contains("평가기간", "월말까지"));
+		assertThat(performance.policySearchKeywords())
+			.contains("성과측정 기간", "평가기간", "월말까지")
+			.noneMatch(keyword -> keyword.matches(".*20\\d{2}.*"));
+		assertThat(performancePlan.matchedPolicyIds()).contains("performance_plan_scope");
+		assertThat(performancePlan.policySearchKeywords())
+			.contains("업무성과계획 수립 대상", "업무성과계획 등록");
+		assertThat(privacy.matchedPolicyIds()).contains("privacy_retention_destruction");
+		assertThat(privacy.directEvidenceGroups())
+			.anySatisfy(group -> assertThat(group).contains("지체없이파기", "파기하여야"));
+	}
 }

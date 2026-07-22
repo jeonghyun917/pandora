@@ -3,10 +3,12 @@ package com.kaces.pandora.ai.answer;
 import com.kaces.pandora.common.text.KoreanQueryNormalizer;
 import com.kaces.pandora.common.text.QuestionIntentProfile;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
+import com.kaces.pandora.rag.chunk.RagChunkQualityStatus;
 import com.kaces.pandora.rag.common.HwpxTextCleaner;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -17,7 +19,16 @@ import org.springframework.stereotype.Component;
 public class EvidenceJudge {
 
 	private static final int MIN_RELEVANT_RESULTS = 2;
-
+	private static final int UI_NAVIGATION_EXCLUSION_WINDOW = 16;
+	private static final List<String> UI_NAVIGATION_TERMS = List.of(
+		"메뉴", "화면", "클릭", "버튼", "경로", "navigation"
+	);
+	private static final List<String> UI_NAVIGATION_LOOKUP_TERMS = List.of(
+		"메뉴", "화면", "클릭", "버튼", "navigation"
+	);
+	private static final List<String> UI_NAVIGATION_EXCLUSION_CUES = List.of(
+		"말고", "아니라", "제외", "빼고"
+	);
 	public Result judge(
 		String question,
 		List<LawSemanticChunkRow> chunks,
@@ -27,9 +38,15 @@ public class EvidenceJudge {
 		if (chunks == null || chunks.isEmpty()) {
 			return new Result(List.of(), Map.of(), false, false, false, false, 0, 0, 0, "empty");
 		}
+		List<LawSemanticChunkRow> searchableChunks = chunks.stream()
+			.filter(chunk -> chunk != null && RagChunkQualityStatus.from(chunk.qualityStatus()).searchable())
+			.toList();
+		if (searchableChunks.isEmpty()) {
+			return new Result(List.of(), Map.of(), false, false, false, false, 0, 0, 0, "quality_filtered");
+		}
 
-		QuestionProfile profile = QuestionProfile.from(question);
-		List<JudgedChunk> judgedChunks = chunks.stream()
+		EvidenceQuestionProfile profile = buildQuestionProfile(question);
+		List<JudgedChunk> judgedChunks = searchableChunks.stream()
 			.map(chunk -> judgeChunk(profile, chunk, baseScoreByChunkId.getOrDefault(scoreKey(chunk), 0.0)))
 			.sorted(Comparator.comparingDouble(JudgedChunk::score).reversed())
 			.toList();
@@ -106,7 +123,7 @@ public class EvidenceJudge {
 	}
 
 	private List<JudgedChunk> withSupportingExploratoryChunks(
-		QuestionProfile profile,
+		EvidenceQuestionProfile profile,
 		List<JudgedChunk> directEvidenceChunks,
 		List<JudgedChunk> exploratoryLookupChunks,
 		int requestedLimit
@@ -162,7 +179,7 @@ public class EvidenceJudge {
 	}
 
 	private List<JudgedChunk> crossChunkDirectEvidenceChunks(
-		QuestionProfile profile,
+		EvidenceQuestionProfile profile,
 		List<JudgedChunk> chunks,
 		int requestedLimit
 	) {
@@ -175,9 +192,33 @@ public class EvidenceJudge {
 		if (eligibleChunks.isEmpty()) {
 			return List.of();
 		}
+		if (allowsCrossDocumentFamilyCoverage(profile)) {
+			return coveringDirectEvidenceChunks(profile, eligibleChunks, requestedLimit);
+		}
+		Map<String, List<JudgedChunk>> chunksByDocumentFamily = new LinkedHashMap<>();
+		for (JudgedChunk chunk : eligibleChunks) {
+			String familyKey = documentFamilyKey(chunk.chunk());
+			if (!familyKey.isBlank()) {
+				chunksByDocumentFamily.computeIfAbsent(familyKey, ignored -> new ArrayList<>()).add(chunk);
+			}
+		}
+		for (List<JudgedChunk> familyChunks : chunksByDocumentFamily.values()) {
+			List<JudgedChunk> coveringChunks = coveringDirectEvidenceChunks(profile, familyChunks, requestedLimit);
+			if (!coveringChunks.isEmpty()) {
+				return coveringChunks;
+			}
+		}
+		return List.of();
+	}
+
+	private List<JudgedChunk> coveringDirectEvidenceChunks(
+		EvidenceQuestionProfile profile,
+		List<JudgedChunk> chunks,
+		int requestedLimit
+	) {
 		java.util.LinkedHashSet<Integer> coveredGroups = new java.util.LinkedHashSet<>();
 		List<JudgedChunk> selected = new ArrayList<>();
-		for (JudgedChunk chunk : eligibleChunks) {
+		for (JudgedChunk chunk : chunks) {
 			List<Integer> matchedGroups = matchedDirectGroupIndexes(profile, chunk.chunk());
 			boolean addsCoverage = matchedGroups.stream().anyMatch(group -> !coveredGroups.contains(group));
 			if (!addsCoverage) {
@@ -189,15 +230,14 @@ public class EvidenceJudge {
 				break;
 			}
 		}
-		if (coveredGroups.size() < profile.requiredDirectEvidenceMatches()
-			|| !allowsCrossChunkDirectEvidence(profile, selected)) {
+		if (coveredGroups.size() < profile.requiredDirectEvidenceMatches()) {
 			return List.of();
 		}
 		int limit = Math.max(1, requestedLimit);
-		return selected.stream().limit(limit).toList();
+		return selected.size() <= limit ? selected : List.of();
 	}
 
-	private boolean isCrossChunkDirectEvidenceCandidate(QuestionProfile profile, JudgedChunk chunk) {
+	private boolean isCrossChunkDirectEvidenceCandidate(EvidenceQuestionProfile profile, JudgedChunk chunk) {
 		if (chunk.bodyDirectEvidenceMatches() <= 0 || isTableOfContentsLike(chunk.chunk())) {
 			return false;
 		}
@@ -220,7 +260,7 @@ public class EvidenceJudge {
 	}
 
 	private boolean passesDirectEvidenceHardContextGate(
-		QuestionProfile profile,
+		EvidenceQuestionProfile profile,
 		LawSemanticChunkRow chunk,
 		String body,
 		String documentTitle,
@@ -269,7 +309,7 @@ public class EvidenceJudge {
 	}
 
 	private boolean isExactLawArticleReferenceEvidence(
-		QuestionProfile profile,
+		EvidenceQuestionProfile profile,
 		LawSemanticChunkRow chunk,
 		String body,
 		String documentTitle,
@@ -305,7 +345,7 @@ public class EvidenceJudge {
 	}
 
 	private boolean isExactDocumentBodyAnchorEvidence(
-		QuestionProfile profile,
+		EvidenceQuestionProfile profile,
 		LawSemanticChunkRow chunk,
 		String body,
 		String documentTitle,
@@ -419,7 +459,7 @@ public class EvidenceJudge {
 		return references.stream().distinct().toList();
 	}
 
-	private List<Integer> matchedDirectGroupIndexes(QuestionProfile profile, LawSemanticChunkRow chunk) {
+	private List<Integer> matchedDirectGroupIndexes(EvidenceQuestionProfile profile, LawSemanticChunkRow chunk) {
 		String text = normalize(chunk.title() + " " + chunk.parentSectionTitle() + " " + chunk.chunkTitle() + " " + chunk.chunkText());
 		List<Integer> indexes = new ArrayList<>();
 		for (int i = 0; i < profile.directEvidenceGroups().size(); i++) {
@@ -430,63 +470,47 @@ public class EvidenceJudge {
 		return indexes;
 	}
 
-	private boolean allowsCrossChunkDirectEvidence(QuestionProfile profile, List<JudgedChunk> selectedChunks) {
-		if (selectedChunks == null
-			|| profile.directEvidenceGroups().size() < 2) {
-			return false;
-		}
-		if (selectedChunks.size() == 1) {
-			return matchedDirectGroupIndexes(profile, selectedChunks.get(0).chunk()).size() >= profile.requiredDirectEvidenceMatches();
-		}
-		if (isCrossConceptRelationQuestion(profile.normalizedQuestion())) {
-			return true;
-		}
-		return sharesDocumentFamily(selectedChunks);
-	}
-
-	private boolean sharesDocumentFamily(List<JudgedChunk> chunks) {
-		if (chunks.isEmpty()) {
-			return false;
-		}
-		String firstKey = documentFamilyKey(chunks.get(0).chunk());
-		if (firstKey.isBlank()) {
-			return false;
-		}
-		return chunks.stream()
-			.map(JudgedChunk::chunk)
-			.map(this::documentFamilyKey)
-			.allMatch(firstKey::equals);
+	private boolean allowsCrossDocumentFamilyCoverage(EvidenceQuestionProfile profile) {
+		return isProjectReviewPreConsultationRelationQuestion(profile.normalizedQuestion())
+			|| hasExplicitCrossConceptRelationCue(profile.normalizedQuestion());
 	}
 
 	private String documentFamilyKey(LawSemanticChunkRow chunk) {
-		return normalize(chunk.target() + " " + chunk.title());
+		String target = String.valueOf(chunk.target() == null ? "" : chunk.target()).trim();
+		if (chunk.documentId() > 0) {
+			return target + "|documentId:" + chunk.documentId();
+		}
+		String externalId = String.valueOf(chunk.externalId() == null ? "" : chunk.externalId()).trim();
+		return externalId.isBlank() ? "" : target + "|externalId:" + externalId;
 	}
 
-	private static boolean isCrossConceptRelationQuestion(String normalizedQuestion) {
+	private static boolean hasExplicitCrossConceptRelationCue(String normalizedQuestion) {
 		String normalized = normalize(normalizedQuestion);
+		String relationCueText = normalized
+			.replace("이해관계", "")
+			.replace("관계기관", "")
+			.replace("관계법령", "")
+			.replace("관계부처", "")
+			.replace("관계규정", "")
+			.replace("관계없이", "");
 		return normalized.contains("같이")
 			|| normalized.contains("함께")
 			|| normalized.contains("둘다")
 			|| normalized.contains("동시에")
-			|| normalized.contains("해야")
-			|| normalized.contains("필수")
-			|| normalized.contains("꼭")
-			|| normalized.contains("안해도")
-			|| normalized.contains("되나")
-			|| normalized.contains("될까")
-			|| normalized.contains("가능")
-			|| normalized.contains("면제")
-			|| normalized.contains("생략")
-			|| normalized.contains("관계")
-			|| normalized.contains("연관")
-			|| normalized.contains("이후")
-			|| normalized.contains("인가")
-			|| normalized.contains("인지")
-			|| normalized.contains("하면");
+			|| relationCueText.contains("의관계")
+			|| relationCueText.contains("상호관계")
+			|| relationCueText.contains("관계를")
+			|| relationCueText.contains("관계는")
+			|| relationCueText.endsWith("관계")
+			|| relationCueText.contains("연관성")
+			|| relationCueText.contains("연관관계")
+			|| relationCueText.contains("연관을")
+			|| relationCueText.contains("연관이")
+			|| relationCueText.endsWith("연관");
 	}
 
 	// 메소드 설명: judgeChunk 처리 흐름을 수행합니다.
-	private JudgedChunk judgeChunk(QuestionProfile profile, LawSemanticChunkRow chunk, double baseScore) {
+	private JudgedChunk judgeChunk(EvidenceQuestionProfile profile, LawSemanticChunkRow chunk, double baseScore) {
 		String body = normalize(chunk.chunkText());
 		String documentTitle = normalize(chunk.title());
 		String parentSectionTitle = normalize(chunk.parentSectionTitle());
@@ -1176,7 +1200,7 @@ public class EvidenceJudge {
 		return new JudgedChunk(chunk, score, topicAligned, relevant, directEvidence, directEvidenceMatches, bodyDirectEvidenceMatches);
 	}
 
-	private List<JudgedChunk> preferCommitteeExpansion(QuestionProfile profile, List<JudgedChunk> chunks) {
+	private List<JudgedChunk> preferCommitteeExpansion(EvidenceQuestionProfile profile, List<JudgedChunk> chunks) {
 		List<String> preferredTerms = profile.preferredCommitteeTerms();
 		if (preferredTerms.isEmpty() || chunks.size() <= 1) {
 			return chunks;
@@ -1187,7 +1211,7 @@ public class EvidenceJudge {
 		return preferredChunks.isEmpty() ? chunks : preferredChunks;
 	}
 
-	private List<JudgedChunk> preferSecurityReviewGuideEvidence(QuestionProfile profile, List<JudgedChunk> chunks) {
+	private List<JudgedChunk> preferSecurityReviewGuideEvidence(EvidenceQuestionProfile profile, List<JudgedChunk> chunks) {
 		if (!isSecurityReviewTargetQuestion(profile.normalizedQuestion()) || chunks.size() <= 1) {
 			return chunks;
 		}
@@ -1224,12 +1248,15 @@ public class EvidenceJudge {
 		if (normalizedQuestion == null || normalizedQuestion.isBlank()) {
 			return false;
 		}
+		if (explicitlyExcludesUiNavigation(normalizedQuestion)) {
+			return false;
+		}
 		boolean lookupCue = normalizedQuestion.contains("가이드")
 			|| normalizedQuestion.contains("매뉴얼")
 			|| normalizedQuestion.contains("안내")
 			|| normalizedQuestion.contains("사용법")
 			|| normalizedQuestion.contains("권한")
-			|| normalizedQuestion.contains("화면");
+			|| containsAny(normalizedQuestion, UI_NAVIGATION_LOOKUP_TERMS);
 		boolean strictDecisionCue = normalizedQuestion.contains("대상")
 			|| normalizedQuestion.contains("제외")
 			|| normalizedQuestion.contains("포함")
@@ -1248,7 +1275,41 @@ public class EvidenceJudge {
 		return lookupCue && !strictDecisionCue;
 	}
 
-	private boolean matchesExploratoryLookup(QuestionProfile profile, LawSemanticChunkRow chunk) {
+	private static boolean explicitlyExcludesUiNavigation(String normalizedQuestion) {
+		String question = normalize(normalizedQuestion);
+		for (String uiTerm : UI_NAVIGATION_TERMS) {
+			int uiStart = question.indexOf(uiTerm);
+			while (uiStart >= 0) {
+				int afterUi = uiStart + uiTerm.length();
+				int markerLimit = Math.min(question.length(), afterUi + UI_NAVIGATION_EXCLUSION_WINDOW);
+				for (String exclusionCue : UI_NAVIGATION_EXCLUSION_CUES) {
+					int markerStart = question.indexOf(exclusionCue, afterUi);
+					while (markerStart >= 0 && markerStart <= markerLimit) {
+						int afterMarker = markerStart + exclusionCue.length();
+						if (!isAdditiveNotExclusion(question, exclusionCue, markerStart)
+							&& !containsUiNavigationTermAfter(question, afterMarker)) {
+							return true;
+						}
+						markerStart = question.indexOf(exclusionCue, afterMarker);
+					}
+				}
+				uiStart = question.indexOf(uiTerm, afterUi);
+			}
+		}
+		return false;
+	}
+
+	private static boolean isAdditiveNotExclusion(String question, String exclusionCue, int markerStart) {
+		return "아니라".equals(exclusionCue)
+			&& markerStart >= 2
+			&& question.startsWith("뿐만아니라", markerStart - 2);
+	}
+
+	private static boolean containsUiNavigationTermAfter(String question, int start) {
+		return UI_NAVIGATION_TERMS.stream().anyMatch(term -> question.indexOf(term, start) >= 0);
+	}
+
+	private boolean matchesExploratoryLookup(EvidenceQuestionProfile profile, LawSemanticChunkRow chunk) {
 		if (isTableOfContentsLike(chunk)) {
 			return false;
 		}
@@ -1282,7 +1343,7 @@ public class EvidenceJudge {
 			|| termMatches >= Math.min(3, profile.terms().size());
 	}
 
-	private List<JudgedChunk> preferExploratoryTitleAnchors(QuestionProfile profile, List<JudgedChunk> chunks) {
+	private List<JudgedChunk> preferExploratoryTitleAnchors(EvidenceQuestionProfile profile, List<JudgedChunk> chunks) {
 		if (chunks == null || chunks.size() <= 1 || !isExploratoryLookupQuestion(profile.normalizedQuestion())) {
 			return chunks == null ? List.of() : chunks;
 		}
@@ -1304,7 +1365,7 @@ public class EvidenceJudge {
 		return selected;
 	}
 
-	private boolean isExploratoryComplementaryEvidence(QuestionProfile profile, LawSemanticChunkRow chunk) {
+	private boolean isExploratoryComplementaryEvidence(EvidenceQuestionProfile profile, LawSemanticChunkRow chunk) {
 		if (isTableOfContentsLike(chunk)) {
 			return false;
 		}
@@ -1328,13 +1389,13 @@ public class EvidenceJudge {
 		return titleAnchor && bodyIntent && enoughQuestionOverlap;
 	}
 
-	private List<String> exploratoryTitleAnchors(QuestionProfile profile) {
+	private List<String> exploratoryTitleAnchors(EvidenceQuestionProfile profile) {
 		java.util.LinkedHashSet<String> anchors = new java.util.LinkedHashSet<>();
 		anchors.addAll(exploratoryCoreTitleAnchors(profile));
 		return anchors.stream().toList();
 	}
 
-	private List<String> exploratoryCoreTitleAnchors(QuestionProfile profile) {
+	private List<String> exploratoryCoreTitleAnchors(EvidenceQuestionProfile profile) {
 		java.util.LinkedHashSet<String> anchors = new java.util.LinkedHashSet<>();
 		for (String requiredTerm : profile.requiredTerms()) {
 			String normalized = normalize(requiredTerm);
@@ -1361,12 +1422,23 @@ public class EvidenceJudge {
 
 	private boolean isExploratoryDescriptorTerm(String term) {
 		String normalized = normalize(term);
+		if (normalized.endsWith("뿐만")
+			&& UI_NAVIGATION_TERMS.stream().anyMatch(normalized::startsWith)) {
+			return true;
+		}
 		return Set.of(
 			"가이드",
 			"매뉴얼",
 			"안내",
 			"사용법",
 			"화면",
+			"말고",
+			"아니라",
+			"제외",
+			"빼고",
+			"뿐만",
+			"뿐만아니라",
+			"어디야",
 			"사용자",
 			"담당자",
 			"문서",
@@ -1375,7 +1447,7 @@ public class EvidenceJudge {
 	}
 
 	private boolean hasDefinitionSignal(
-		QuestionProfile profile,
+		EvidenceQuestionProfile profile,
 		String body,
 		String documentTitle,
 		String chunkHeading
@@ -1499,7 +1571,7 @@ public class EvidenceJudge {
 		return false;
 	}
 
-	private boolean hasStrongIntentSignal(QuestionProfile profile, String body, String chunkHeading) {
+	private boolean hasStrongIntentSignal(EvidenceQuestionProfile profile, String body, String chunkHeading) {
 		if (!profile.requiresStrongIntentSignal()) {
 			return true;
 		}
@@ -1524,7 +1596,7 @@ public class EvidenceJudge {
 			.toList();
 	}
 
-	private List<List<String>> questionAnchoredDirectEvidenceGroups(QuestionProfile profile) {
+	private List<List<String>> questionAnchoredDirectEvidenceGroups(EvidenceQuestionProfile profile) {
 		if (profile.directEvidenceGroups().isEmpty()) {
 			return List.of();
 		}
@@ -1546,7 +1618,7 @@ public class EvidenceJudge {
 		return containsAny(question, List.of("하드웨어", "hw", "hardware", "appliance"));
 	}
 
-	private List<String> questionDirectAnchorTerms(QuestionProfile profile) {
+	private List<String> questionDirectAnchorTerms(EvidenceQuestionProfile profile) {
 		String question = normalize(profile.normalizedQuestion());
 		LinkedHashSet<String> anchors = new LinkedHashSet<>();
 		for (String term : profile.terms()) {
@@ -1710,7 +1782,7 @@ public class EvidenceJudge {
 		};
 	}
 
-	private static boolean isOfficialReportBodyQuestion(QuestionProfile profile) {
+	private static boolean isOfficialReportBodyQuestion(EvidenceQuestionProfile profile) {
 		if (profile == null || !profile.preferredSectionTypes().contains("body")) {
 			return false;
 		}
@@ -1724,7 +1796,7 @@ public class EvidenceJudge {
 	}
 
 	private boolean isOfficialReportBodyEvidence(
-		QuestionProfile profile,
+		EvidenceQuestionProfile profile,
 		LawSemanticChunkRow chunk,
 		String body,
 		String documentTitle,
@@ -2134,7 +2206,12 @@ public class EvidenceJudge {
 			"매뉴얼에서",
 			"메뉴얼에서",
 			"가이드에서",
+			"가이드북에서",
 			"가이드라인에서",
+			"안내서에서",
+			"해설서에서",
+			"백서에서",
+			"보도자료에서",
 			"법에서",
 			"법령에서",
 			"법률에서",
@@ -2340,7 +2417,7 @@ public class EvidenceJudge {
 		return KoreanQueryNormalizer.normalizeForMatch(HwpxTextCleaner.clean(String.valueOf(value == null ? "" : value)));
 	}
 
-	private static boolean isPenaltyConsequenceQuestion(QuestionProfile profile) {
+	private static boolean isPenaltyConsequenceQuestion(EvidenceQuestionProfile profile) {
 		if (profile == null) {
 			return false;
 		}
@@ -2814,6 +2891,20 @@ public class EvidenceJudge {
 	) {
 	}
 
+	private static EvidenceQuestionProfile buildQuestionProfile(String question) {
+		QuestionProfile legacy = QuestionProfile.from(question);
+		return new EvidenceQuestionProfile(
+			legacy.normalizedQuestion(),
+			legacy.terms(),
+			legacy.requiredTerms(),
+			legacy.conceptGroups(),
+			legacy.intentGroups(),
+			legacy.directEvidenceGroups(),
+			legacy.preferredSectionTypes(),
+			legacy.definitionQuestion()
+		);
+	}
+
 	private record QuestionProfile(
 		String normalizedQuestion,
 		List<String> terms,
@@ -2862,351 +2953,7 @@ public class EvidenceJudge {
 					directEvidenceGroups.add(group);
 				}
 			}
-			if (isAutonomyPreConsultationProcedureQuestion(normalized)) {
-				directEvidenceGroups.clear();
-				directEvidenceGroups.add(List.of(
-					"협의절차전체흐름도",
-					"전체흐름도",
-					"사전협의요청서작성",
-					"사전협의요청서작성제출"
-				));
-				directEvidenceGroups.add(List.of(
-					"지방자치관련성검토",
-					"법령안검토",
-					"사무배분의적정성",
-					"자치권보장"
-				));
-				directEvidenceGroups.add(List.of(
-					"협의결과서통보",
-					"결과통보서송부",
-					"결과통보서",
-					"검토의견"
-				));
-			}
-
-			if (normalized.contains("사전협의")) {
-				conceptGroups.add(List.of("사전협의"));
-			}
-			if (normalized.contains("과업심의")) {
-				conceptGroups.add(List.of("과업심의", "과업내용", "과업범위", "대상사업", "소프트웨어사업", "sw사업"));
-			}
-			if (normalized.contains("제안요청서") || normalized.contains("rfp")) {
-				conceptGroups.add(List.of("제안요청서", "rfp"));
-			}
-			if (normalized.contains("하드웨어") || normalized.contains("hw") || normalized.contains("appliance")) {
-				conceptGroups.add(List.of("하드웨어", "hw", "appliance"));
-			}
-			if (normalized.contains("소프트웨어사업") || normalized.contains("sw사업") || normalized.contains("공공소프트웨어")) {
-				conceptGroups.add(List.of("소프트웨어사업", "sw사업", "소프트웨어와관련된서비스", "소프트웨어진흥법"));
-			}
-			if (KoreanQueryNormalizer.isProcurementCatalogContractQuestion(normalized)) {
-				for (List<String> group : KoreanQueryNormalizer.procurementCatalogConceptGroups(normalized)) {
-					if (!isConceptGroupCovered(conceptGroups, group)) {
-						conceptGroups.add(group);
-					}
-				}
-			}
-			if (normalized.contains("정보화사업")) {
-				conceptGroups.add(List.of("정보화사업", "정보시스템", "전자정부"));
-			}
-			if (normalized.contains("기타공공기관")) {
-				conceptGroups.add(List.of("기타공공기관", "공공기관", "중앙공공기관", "대상기관"));
-			}
-			if (isSecurityReviewQuestion(normalized)) {
-				conceptGroups.add(List.of("보안성검토", "보안성검토가이드", "정보화사업보안성검토", "국가정보보안기본지침"));
-			}
-			if (isPublicDataActivationQuestion(normalized)) {
-				conceptGroups.add(List.of("공공데이터", "공공데이터의제공및이용활성화", "공공데이터이용활성화"));
-				conceptGroups.add(List.of("활성화", "이용활성화", "제공및이용활성화", "개방", "활용"));
-			}
-			if (normalized.contains("사용자권한") || (terms.contains("사용자") && terms.contains("권한"))) {
-				conceptGroups.add(List.of("사용자권한", "사용자 권한", "관리자권한", "관리자 권한"));
-			}
-			if (normalized.contains("권한")) {
-				conceptGroups.add(List.of("권한", "권한부여", "권한 부여", "권한신청", "권한 신청", "권한승인", "권한 승인"));
-			}
 			addSpecificConceptGroups(terms, conceptGroups);
-
-			if (normalized.contains("대상") || isProjectReviewScopeQuestion(normalized)) {
-				intentGroups.add(List.of("대상사업", "대상기관", "적용대상", "대상", "비대상", "제외"));
-			}
-			if (normalized.contains("제외")) {
-				intentGroups.add(List.of("제외", "비대상", "제외대상", "대상아님", "대상이아님"));
-			}
-			if (normalized.contains("포함") || normalized.contains("해당")) {
-				intentGroups.add(List.of("포함", "해당", "비대상", "제외", "볼수없는"));
-			}
-			if (normalized.contains("필수") || normalized.contains("요소") || normalized.contains("항목")) {
-				intentGroups.add(List.of("명시하여야", "기재사항", "필수", "과업내용", "요구사항", "계약조건", "평가요소"));
-			}
-			if (normalized.contains("절차") || normalized.contains("방법")) {
-				intentGroups.add(List.of("절차", "방법", "신청", "제출", "검토", "통보"));
-			}
-			if (KoreanQueryNormalizer.isProcurementCatalogContractQuestion(normalized)) {
-				intentGroups.add(List.of(
-					"상용sw직접구매",
-					"상용소프트웨어직접구매",
-					"직접구매",
-					"수의계약",
-					"계약방법",
-					"계약방식",
-					"구매계약",
-					"조달"
-				));
-			}
-			if (normalized.contains("서류")) {
-				intentGroups.add(List.of("서류", "신청서", "제출서류", "첨부"));
-			}
-			if (normalized.contains("금액") || normalized.contains("비용")) {
-				intentGroups.add(List.of("금액", "비용", "만원", "대가", "지급"));
-			}
-			if (isScopeQuestion(normalized)) {
-				intentGroups.add(List.of("범위", "한도", "어디까지", "가능", "가능하다", "할수있다", "허용", "인정", "대상", "포함", "제외", "비대상", "해당"));
-			}
-			if (normalized.contains("보호")) {
-				intentGroups.add(List.of("보호", "보호조치", "비밀보장", "신변보호", "보호지원", "불이익조치", "인적사항", "공개", "보도", "동의없이", "책임감면"));
-			}
-			if (isTrafficCrosswalkStopQuestion(normalized)) {
-				intentGroups.add(List.of("정지", "일시정지", "정지하여야", "정지하거나", "멈추", "보행자보호의무", "보행자"));
-			}
-			if (isTemporalQuestion(normalized)) {
-				intentGroups.add(List.of("언제", "시기", "일정", "기한", "기간", "평가기간", "일이내", "까지", "월말", "마감"));
-			}
-			if (normalized.contains("방안") || normalized.contains("활성화")) {
-				intentGroups.add(List.of("방안", "추진방향", "기본목표", "지원", "지원사업", "필요한사업", "개방전략", "인식제고", "컨설팅", "시책"));
-			}
-			if (definitionQuestion) {
-				intentGroups.add(List.of("정의", "이란", "란"));
-			}
-
-			if (normalized.contains("사전협의") && normalized.contains("대상")) {
-				directEvidenceGroups.add(List.of(
-					"사전협의의 대상사업",
-					"사전협의 대상사업",
-					"전자정부 사전협의 대상 사업",
-					"예산과목 및 계약방식과 관계없이",
-					"예산과목및계약방식과관계없이"
-				));
-				directEvidenceGroups.add(List.of(
-					"대상기관이 추진하는 모든 정보화사업",
-					"대상기관",
-					"추진하는 모든 정보화사업",
-					"중앙공공기관",
-					"공공기관"
-				));
-			}
-			if (isProjectReviewPreConsultationRelationQuestion(normalized)) {
-				directEvidenceGroups.add(List.of(
-					"사전협의의 대상사업",
-					"사전협의 대상사업",
-					"전자정부 사전협의 대상 사업",
-					"예산과목 및 계약방식과 관계없이",
-					"예산과목및계약방식과관계없이"
-				));
-				directEvidenceGroups.add(List.of(
-					"대상기관이 추진하는 모든 정보화사업",
-					"대상기관",
-					"추진하는 모든 정보화사업",
-					"중앙공공기관",
-					"공공기관"
-				));
-			}
-			if (isProjectReviewScopeQuestion(normalized)) {
-				directEvidenceGroups.add(List.of(
-					"적용 대상 사업",
-					"적용대상사업",
-					"대상사업 국가기관등의 장이 발주하는 소프트웨어사업",
-					"대상사업",
-					"대상 사업",
-					"과업심의 대상",
-					"과업심의대상"
-				));
-				directEvidenceGroups.add(List.of(
-					"국가기관 등이 발주하는 모든 SW사업",
-					"국가기관등이 발주하는 모든 SW사업",
-					"국가기관등의 장이 발주하는 소프트웨어사업",
-					"국가기관등의장이발주하는소프트웨어사업",
-					"모든 SW사업",
-					"SW개발, 제작, 생산, 유통, 운영 및 유지",
-					"소프트웨어와 관련된 서비스"
-				));
-				directEvidenceGroups.add(List.of(
-					"단순 H/W",
-					"단순HW",
-					"H/W",
-					"HW",
-					"Appliance",
-					"하드웨어",
-					"단순 하드웨어",
-					"소프트웨어사업으로 볼 수 없는 경우는 비대상",
-					"소프트웨어사업으로볼수없는경우는비대상",
-					"소프트웨어사업으로 볼 수 없는",
-					"소프트웨어사업으로볼수없는",
-					"비대상"
-				));
-			}
-			if (isSecurityReviewQuestion(normalized) && normalized.contains("대상")) {
-				directEvidenceGroups.add(List.of(
-					"대상사업및시기",
-					"보안성검토대상",
-					"보안성검토대상사업",
-					"국가정보원검토대상",
-					"국정원검토대상",
-					"검토대상",
-					"검토대상정보화사업",
-					"검토대상사업",
-					"문체부검토대상",
-					"문화체육관광부검토대상"
-				));
-				directEvidenceGroups.add(List.of(
-					"정보통신망또는정보시스템구축",
-					"정보시스템구축",
-					"주요데이터베이스구축",
-					"민감정보",
-					"고유식별정보",
-					"주요정보통신기반시설",
-					"제어시스템"
-				));
-			}
-			if ((normalized.contains("제안요청서") || normalized.contains("rfp"))
-				&& (normalized.contains("필수") || normalized.contains("요소") || normalized.contains("항목") || normalized.contains("작성"))) {
-				directEvidenceGroups.add(List.of(
-					"제안요청서에는 다음 각 호의 사항",
-					"제안요청서 기재사항",
-					"제안요청서에는"
-				));
-				directEvidenceGroups.add(List.of(
-					"제안요청서에는 과업내용",
-					"제안요청서에는 과업내용, 요구사항",
-					"과업내용, 요구사항 2. 계약조건",
-					"평가요소, 평가방법"
-				));
-			}
-			if (normalized.contains("업무성과계획") && normalized.contains("제외")) {
-				directEvidenceGroups.add(List.of(
-					"업무성과계획수립대상제외",
-					"수립대상제외",
-					"업무성과계획대상제외"
-				));
-			}
-			if (normalized.contains("성과측정") && normalized.contains("완료")) {
-				directEvidenceGroups.add(List.of(
-					"성과측정완료여부",
-					"성과측정을완료",
-					"측정을완료",
-					"측정완료"
-				));
-			}
-			if (normalized.contains("성과측정") && isTemporalQuestion(normalized)) {
-				directEvidenceGroups.add(List.of(
-					"성과측정기간",
-					"성과측정 기간",
-					"성과측정대상",
-					"성과측정 대상",
-					"성과측정결과",
-					"성과측정 결과",
-					"성과측정"
-				));
-				directEvidenceGroups.add(List.of(
-					"평가기간",
-					"기간내",
-					"기간 내",
-					"월말까지",
-					"까지",
-					"2025.12",
-					"2026.10"
-				));
-			}
-			if (normalized.contains("보호") && isScopeQuestion(normalized)) {
-				directEvidenceGroups.add(List.of(
-					"보호조치",
-					"비밀보장",
-					"신변보호",
-					"보호지원",
-					"불이익조치",
-					"책임감면",
-					"인적사항",
-					"공개또는보도",
-					"동의없이",
-					"공개해서는아니",
-					"보도해서는아니"
-				));
-			}
-			if (isTrafficCrosswalkStopQuestion(normalized)) {
-				directEvidenceGroups.add(List.of(
-					"횡단보도",
-					"보행자보호의무",
-					"보행자 보호의무",
-					"보행자",
-					"자전거등"
-				));
-				directEvidenceGroups.add(List.of(
-					"일시정지",
-					"일시 정지",
-					"정지하여야",
-					"정지하거나",
-					"정지"
-				));
-				if (normalized.contains("우회전")) {
-					directEvidenceGroups.add(List.of(
-						"우회전",
-						"우회전하는 차",
-						"교차로통행방법",
-						"교차로 통행방법"
-					));
-				}
-			}
-			if (isPublicDataActivationQuestion(normalized)) {
-				directEvidenceGroups.add(List.of(
-					"공공데이터이용활성화",
-					"공공데이터의이용활성화",
-					"공공데이터제공및이용활성화",
-					"공공데이터의제공및이용활성화",
-					"이용활성화지원사업"
-				));
-				directEvidenceGroups.add(List.of(
-					"활성화에필요한사업",
-					"기본목표와추진방향",
-					"개방전략수립",
-					"지원하는사업",
-					"이용인식제고",
-					"품질진단컨설팅및품질개선등을지원하는사업"
-				));
-			}
-			if (isAiCommitteeFunctionQuestion(normalized)) {
-				conceptGroups.add(List.of(
-					"인공지능위원회",
-					"국가인공지능전략위원회",
-					"인공지능전략위원회",
-					"ai위원회"
-				));
-				intentGroups.add(List.of("심의", "의결", "심의의결", "역할", "기능"));
-				directEvidenceGroups.add(List.of(
-					"국가인공지능전략위원회",
-					"인공지능위원회",
-					"위원회를둔다",
-					"위원회라한다"
-				));
-				directEvidenceGroups.add(List.of(
-					"심의의결",
-					"심의·의결",
-					"심의",
-					"의결"
-				));
-			}
-			if (isCctvInvestigationProvisionQuestion(normalized)) {
-				conceptGroups.add(List.of("cctv", "영상정보처리기기", "개인영상정보"));
-				conceptGroups.add(List.of("수사기관", "범죄수사", "공소제기", "수사"));
-				directEvidenceGroups.add(List.of("cctv자료", "cctv영상", "개인영상정보", "영상정보처리기기"));
-				directEvidenceGroups.add(List.of("수사기관", "경찰이나검찰", "범죄수사", "범죄의수사"));
-				directEvidenceGroups.add(List.of("공소제기", "공소의제기", "공소제기유지", "법제18조제2항", "표준지침제40조"));
-				directEvidenceGroups.add(List.of("열람", "제공", "제3자제공", "동의없이제공"));
-			}
-			if (isPrivacyRetentionDestructionQuestion(normalized)) {
-				conceptGroups.add(List.of("개인정보", "개인정보보호법", "개인정보처리자"));
-				directEvidenceGroups.add(List.of("보유기간의경과", "보유기간경과", "보존기간경과", "개인정보의처리목적달성", "처리목적달성"));
-				directEvidenceGroups.add(List.of("지체없이파기", "지체없이그개인정보를파기", "파기하여야", "파기해야"));
-			}
 
 			return new QuestionProfile(
 				normalized,
@@ -3220,10 +2967,6 @@ public class EvidenceJudge {
 			);
 		}
 
-		boolean prefersSection(String sectionType) {
-			return sectionType != null && preferredSectionTypes.contains(sectionType);
-		}
-
 		private static boolean shouldUseExtractedDirectEvidenceGroups(QuestionIntentProfile extracted, String normalized) {
 			Set<String> intentTypes = extracted.intentTypes();
 			if (extracted.directEvidenceGroups().isEmpty()) {
@@ -3232,6 +2975,9 @@ public class EvidenceJudge {
 			boolean hasEntityDirectEvidence = extracted.entities().stream()
 				.anyMatch(entity -> !entity.directEvidenceGroups().isEmpty());
 			if (hasEntityDirectEvidence) {
+				return true;
+			}
+			if (!extracted.matchedPolicyIds().isEmpty()) {
 				return true;
 			}
 			if (isAutonomyPreConsultationQuestion(normalized)
@@ -3256,139 +3002,6 @@ public class EvidenceJudge {
 						|| normalized.contains("보안성검토")
 						|| normalized.contains("소프트웨어사업")
 				));
-		}
-
-		int requiredConceptMatches() {
-			if (conceptGroups.isEmpty()) {
-				return 0;
-			}
-			return conceptGroups.size() >= 2 ? 2 : 1;
-		}
-
-		int requiredDirectEvidenceMatches() {
-			if (directEvidenceGroups.isEmpty()) {
-				return 0;
-			}
-			return Math.min(2, directEvidenceGroups.size());
-		}
-
-		boolean committeeQuestion() {
-			return terms.stream().anyMatch(term -> term.endsWith("위원회") || term.endsWith("협의회"));
-		}
-
-		boolean trafficCrosswalkStopQuestion() {
-			return isTrafficCrosswalkStopQuestion(normalizedQuestion);
-		}
-
-		List<String> preferredCommitteeTerms() {
-			List<String> preferredTerms = new ArrayList<>();
-			for (String term : terms) {
-				if (!term.endsWith("위원회")
-					|| term.contains("전략위원회")
-					|| term.startsWith("국가")
-					|| term.length() <= "위원회".length() + 1) {
-					continue;
-				}
-				String subject = term.substring(0, term.length() - "위원회".length());
-				if (subject.length() >= 3) {
-					preferredTerms.add("국가" + subject + "전략위원회");
-					preferredTerms.add(subject + "전략위원회");
-				}
-			}
-			return preferredTerms.stream()
-				.map(EvidenceJudge::normalize)
-				.distinct()
-				.toList();
-		}
-
-		boolean requiresStrongIntentSignal() {
-			return normalizedQuestion.contains("대상")
-				|| normalizedQuestion.contains("안해도")
-				|| normalizedQuestion.contains("해야")
-				|| normalizedQuestion.contains("필요")
-				|| normalizedQuestion.contains("면제")
-				|| normalizedQuestion.contains("제외")
-				|| normalizedQuestion.contains("포함")
-				|| normalizedQuestion.contains("해당")
-				|| normalizedQuestion.contains("필수")
-				|| normalizedQuestion.contains("요소")
-				|| normalizedQuestion.contains("항목")
-				|| normalizedQuestion.contains("절차")
-				|| normalizedQuestion.contains("방법")
-				|| normalizedQuestion.contains("서류")
-				|| normalizedQuestion.contains("금액")
-				|| normalizedQuestion.contains("비용")
-				|| normalizedQuestion.contains("방안")
-				|| normalizedQuestion.contains("활성화")
-				|| isTemporalQuestion(normalizedQuestion)
-				|| isScopeQuestion(normalizedQuestion);
-		}
-
-		List<String> strongIntentCues() {
-			List<String> cues = new ArrayList<>();
-			if (normalizedQuestion.contains("대상")) {
-				cues.addAll(List.of(
-					"대상은",
-					"대상이다",
-					"대상이된다",
-					"대상사업은",
-					"적용대상",
-					"대상기관",
-					"검토대상",
-					"지원대상",
-					"표준화대상",
-					"적용범위",
-					"제공대상",
-					"포함한다",
-					"해당한다",
-					"제외한다",
-					"제외대상",
-					"비대상"
-				));
-			}
-			if (normalizedQuestion.contains("제외") || normalizedQuestion.contains("포함") || normalizedQuestion.contains("해당")) {
-				cues.addAll(List.of("제외한다", "제외대상", "비대상", "포함한다", "해당한다", "해당하지", "볼수없는"));
-			}
-			if (normalizedQuestion.contains("필수") || normalizedQuestion.contains("요소") || normalizedQuestion.contains("항목")) {
-				cues.addAll(List.of("명시하여야", "기재사항", "필수", "포함하여야", "요구사항", "평가요소", "평가방법", "다음각호의사항"));
-			}
-			if (normalizedQuestion.contains("절차") || normalizedQuestion.contains("방법")) {
-				cues.addAll(List.of("절차", "방법", "신청", "제출", "검토", "통보", "요청", "처리"));
-			}
-			if (KoreanQueryNormalizer.isProcurementCatalogContractQuestion(normalizedQuestion)) {
-				cues.addAll(List.of("상용sw직접구매", "상용소프트웨어직접구매", "직접구매", "수의계약", "계약방법", "계약방식", "구매계약"));
-			}
-			if (normalizedQuestion.contains("서류")) {
-				cues.addAll(List.of("서류", "신청서", "제출서류", "첨부", "증빙자료"));
-			}
-			if (normalizedQuestion.contains("금액") || normalizedQuestion.contains("비용")) {
-				cues.addAll(List.of("금액", "비용", "만원", "대가", "지급", "산정"));
-			}
-			if (normalizedQuestion.contains("방안") || normalizedQuestion.contains("활성화")) {
-				cues.addAll(List.of(
-					"활성화에필요한사업",
-					"기본목표와추진방향",
-					"개방전략수립",
-					"지원하는사업",
-					"이용인식제고",
-					"지원범위",
-					"기본계획"
-				));
-			}
-			if (isTemporalQuestion(normalizedQuestion)) {
-				cues.addAll(List.of("기간은", "기한은", "평가기간", "기간내", "월말까지", "일까지", "마감", "시기"));
-			}
-			if (isScopeQuestion(normalizedQuestion)) {
-				cues.addAll(List.of("할수있다", "가능하다", "가능", "허용", "인정", "범위", "한도", "보호조치", "지원"));
-			}
-			if (cues.isEmpty()) {
-				cues.addAll(flattenGroups(intentGroups));
-			}
-			return cues.stream()
-				.map(EvidenceJudge::normalize)
-				.filter(cue -> cue.length() >= 2)
-				.distinct()
-				.toList();
 		}
 
 		// 메소드 설명: isSecurityReviewQuestion 처리 흐름을 수행합니다.

@@ -20,6 +20,11 @@ public record LawAiSearchFailureLog(
 	int judgeCandidateCount,
 	int judgedCount,
 	int finalGroundCount,
+	int topicAlignedCount,
+	int relevantCount,
+	int directEvidenceCount,
+	String evidenceSelectionPolicy,
+	boolean documentScopeMismatch,
 	String resultMsg,
 	String publicMessage,
 	String diagnosticMessage

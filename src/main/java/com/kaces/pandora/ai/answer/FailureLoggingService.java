@@ -33,8 +33,9 @@ public class FailureLoggingService {
 			QuestionSearchPlan plan = QuestionSearchPlan.from(snapshot.question());
 			QuestionIntentProfile profile = plan.profile();
 			LawAiSearchFailureClassification safeClassification = classification == null
-				? classify(snapshot)
+				? classify(snapshot, profile)
 				: classification;
+			boolean documentScopeMismatch = documentScopeMismatch(snapshot.targets(), profile.preferredTargets());
 			searchFailureMapper.insertFailure(new LawAiSearchFailureLog(
 				snapshot.question(),
 				joinValues(snapshot.targets()),
@@ -55,6 +56,11 @@ public class FailureLoggingService {
 				snapshot.judgeCandidateCount(),
 				snapshot.judgedCount(),
 				snapshot.finalGroundCount(),
+				snapshot.topicAlignedCount(),
+				snapshot.relevantCount(),
+				snapshot.directEvidenceCount(),
+				snapshot.evidenceSelectionPolicy(),
+				documentScopeMismatch,
 				snapshot.resultMsg(),
 				publicMessage,
 				snapshot.diagnosticMessage()
@@ -65,6 +71,14 @@ public class FailureLoggingService {
 	}
 
 	LawAiSearchFailureClassification classify(LawAiSearchFailureSnapshot snapshot) {
+		QuestionIntentProfile profile = QuestionSearchPlan.from(snapshot.question()).profile();
+		return classify(snapshot, profile);
+	}
+
+	private LawAiSearchFailureClassification classify(
+		LawAiSearchFailureSnapshot snapshot,
+		QuestionIntentProfile profile
+	) {
 		return LawAiSearchFailureClassification.classify(
 			snapshot.resultMsg(),
 			snapshot.diagnosticMessage(),
@@ -80,8 +94,24 @@ public class FailureLoggingService {
 			snapshot.topicAlignedCount(),
 			snapshot.relevantCount(),
 			snapshot.directEvidenceCount(),
-			snapshot.evidenceSelectionPolicy()
+			snapshot.evidenceSelectionPolicy(),
+			documentScopeMismatch(snapshot.targets(), profile.preferredTargets())
 		);
+	}
+
+	private boolean documentScopeMismatch(List<String> selectedTargets, List<String> preferredTargets) {
+		if (selectedTargets == null || selectedTargets.isEmpty()
+			|| preferredTargets == null || preferredTargets.isEmpty()) {
+			return false;
+		}
+		java.util.Set<String> selected = selectedTargets.stream()
+			.filter(value -> value != null && !value.isBlank())
+			.map(String::trim)
+			.collect(java.util.stream.Collectors.toSet());
+		return preferredTargets.stream()
+			.filter(value -> value != null && !value.isBlank())
+			.map(String::trim)
+			.noneMatch(selected::contains);
 	}
 
 	private String joinValues(Iterable<String> values) {

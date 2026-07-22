@@ -145,6 +145,67 @@ Mutating the 18080 batch service requires explicit confirmation:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora-service.ps1 -Action Start -Role batch-runner -Port 18080 -ConfirmBatchRunner
 ```
 
+## App-dev 8080 Without Repeated UAC
+
+Do not grant the Codex or interactive development identity start rights on the
+current `PandoraApp8080` service. That service runs as `LocalSystem`, while its
+WinSW configuration and application JAR are in the developer-writable
+workspace. Write access to the executable chain plus service start access would
+allow modified code to run as `LocalSystem`.
+
+For app-dev, use a one-time transition from the LocalSystem service to a
+non-elevated, user-owned process. First inspect the plan without changing state:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\set-pandora-app8080-user-runtime.ps1 -Action Prepare -DryRun
+```
+
+Then run the transition. The script requests one UAC approval, verifies the
+fixed `PandoraApp8080` name/path/account, stops only that service, and changes
+only its start mode to `Disabled`:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\set-pandora-app8080-user-runtime.ps1 -Action Prepare
+```
+
+The pre-transition state is saved below the ignored app-dev runtime directory:
+
+```text
+runtime/app-dev/PandoraApp8080-user-runtime-transition.json
+```
+
+After the transition, deploy and restart 8080 without elevation:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy-pandora-app8080.ps1 `
+  -StagedJar .\target-stage\pandora-0.0.1-SNAPSHOT.jar `
+  -ExpectedSha256 <64-character SHA-256>
+```
+
+The deploy script has no role, port, or service-name override. It controls only
+app-dev 8080, validates the staged/deployed/runtime-reported JAR hashes, and
+verifies that observed 18080 and 6333 state did not change.
+
+The command remains running as the supervisor for the user-owned Java process.
+Keep its Codex terminal session open while 8080 is needed. This is required
+because the Codex sandbox terminates detached child processes when their command
+session ends. Stop the supervised runtime from another terminal with the normal
+app-dev command:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\stop-pandora.ps1 -Role app-dev -Port 8080
+```
+
+Rollback to the recorded Windows service state also requires UAC and is
+explicit:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\set-pandora-app8080-user-runtime.ps1 -Action Restore
+```
+
+This workflow intentionally means app-dev 8080 starts on demand rather than at
+Windows boot. It does not change the batch-runner 18080 or Qdrant 6333 lifecycle.
+
 ## Admin And Debug API Protection
 
 The following API families are protected by `pandora.admin-access`:

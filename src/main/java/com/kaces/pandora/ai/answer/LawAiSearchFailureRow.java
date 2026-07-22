@@ -24,6 +24,11 @@ public class LawAiSearchFailureRow {
 	private int judgeCandidateCount;
 	private int judgedCount;
 	private int finalGroundCount;
+	private int topicAlignedCount;
+	private int relevantCount;
+	private int directEvidenceCount;
+	private String evidenceSelectionPolicy;
+	private boolean documentScopeMismatch;
 	private String resultMsg;
 	private String publicMessage;
 	private String diagnosticMessage;
@@ -189,6 +194,46 @@ public class LawAiSearchFailureRow {
 
 	public void setFinalGroundCount(int finalGroundCount) {
 		this.finalGroundCount = finalGroundCount;
+	}
+
+	public int getTopicAlignedCount() {
+		return topicAlignedCount;
+	}
+
+	public void setTopicAlignedCount(int topicAlignedCount) {
+		this.topicAlignedCount = topicAlignedCount;
+	}
+
+	public int getRelevantCount() {
+		return relevantCount;
+	}
+
+	public void setRelevantCount(int relevantCount) {
+		this.relevantCount = relevantCount;
+	}
+
+	public int getDirectEvidenceCount() {
+		return directEvidenceCount;
+	}
+
+	public void setDirectEvidenceCount(int directEvidenceCount) {
+		this.directEvidenceCount = directEvidenceCount;
+	}
+
+	public String getEvidenceSelectionPolicy() {
+		return evidenceSelectionPolicy;
+	}
+
+	public void setEvidenceSelectionPolicy(String evidenceSelectionPolicy) {
+		this.evidenceSelectionPolicy = evidenceSelectionPolicy;
+	}
+
+	public boolean isDocumentScopeMismatch() {
+		return documentScopeMismatch;
+	}
+
+	public void setDocumentScopeMismatch(boolean documentScopeMismatch) {
+		this.documentScopeMismatch = documentScopeMismatch;
 	}
 
 	public String getResultMsg() {

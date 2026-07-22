@@ -56,6 +56,13 @@ public class LawAiAnswerController {
 			.body(answerService.defaultEvaluationCases());
 	}
 
+	@GetMapping("/debug/runtime-info")
+	public ResponseEntity<LawAiRuntimeInfo> runtimeInfo() {
+		return ResponseEntity.ok()
+			.contentType(MediaType.APPLICATION_JSON)
+			.body(answerService.runtimeInfo());
+	}
+
 	@GetMapping("/debug/failures")
 	public ResponseEntity<java.util.List<LawAiSearchFailureRow>> failures(
 		@RequestParam(required = false) Integer limit,

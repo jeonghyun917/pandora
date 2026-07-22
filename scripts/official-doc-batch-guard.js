@@ -87,6 +87,14 @@ AND (
 )`;
 }
 
+function searchableChunkPredicate() {
+  return "COALESCE(c.quality_status, 'PASS') IN ('PASS', 'REVIEW')";
+}
+
+function nonSearchableChunkPredicate() {
+  return "COALESCE(c.quality_status, 'PASS') NOT IN ('PASS', 'REVIEW')";
+}
+
 function backlogCount() {
   const [line] = db(`
 SELECT COUNT(*)
@@ -97,12 +105,70 @@ LEFT JOIN rag_chunk_embeddings e
  AND e.embedding_model='${q(model)}'
  AND e.vector_store='${q(vectorStore)}'
 WHERE ${candidateWhere()}
+AND ${searchableChunkPredicate()}
 AND (
   e.chunk_id IS NULL
   OR e.status IN ('FAILED','ERROR')
   OR COALESCE(e.content_hash, '') != COALESCE(c.content_hash, '')
 )`);
   return Number(line || 0);
+}
+
+function nonSearchableMissingCount() {
+  const [line] = db(`
+SELECT COUNT(*)
+FROM rag_document_chunks c
+JOIN rag_documents doc ON doc.document_id=c.document_id
+LEFT JOIN rag_chunk_embeddings e
+  ON e.chunk_id=c.chunk_id
+ AND e.embedding_model='${q(model)}'
+ AND e.vector_store='${q(vectorStore)}'
+WHERE ${candidateWhere()}
+AND ${nonSearchableChunkPredicate()}
+AND e.chunk_id IS NULL`);
+  return Number(line || 0);
+}
+
+function reconcileNonSearchableMissingRows() {
+  const pending = nonSearchableMissingCount();
+  if (!pending || dryRun) {
+    return pending;
+  }
+  db(`
+INSERT INTO rag_chunk_embeddings (
+  chunk_id, embedding_model, vector_store, vector_point_id, content_hash,
+  status, embedded_at, last_error_message
+)
+SELECT
+  c.chunk_id,
+  '${q(model)}',
+  '${q(vectorStore)}',
+  9000000000000000 + c.chunk_id,
+  COALESCE(c.content_hash, SHA2(COALESCE(c.embedding_text, c.chunk_text, ''), 256)),
+  'SUPERSEDED',
+  NOW(),
+  CONCAT(
+    'Excluded by v4 chunk quality gate: ',
+    COALESCE(c.quality_status, 'UNKNOWN'),
+    '/',
+    COALESCE(c.quality_reason, '')
+  )
+FROM rag_document_chunks c
+JOIN rag_documents doc ON doc.document_id=c.document_id
+LEFT JOIN rag_chunk_embeddings e
+  ON e.chunk_id=c.chunk_id
+ AND e.embedding_model='${q(model)}'
+ AND e.vector_store='${q(vectorStore)}'
+WHERE ${candidateWhere()}
+AND ${nonSearchableChunkPredicate()}
+AND e.chunk_id IS NULL
+ON DUPLICATE KEY UPDATE
+  vector_point_id = VALUES(vector_point_id),
+  content_hash = VALUES(content_hash),
+  status = VALUES(status),
+  embedded_at = VALUES(embedded_at),
+  last_error_message = VALUES(last_error_message)`);
+  return pending;
 }
 
 function activeJobs() {
@@ -223,6 +289,13 @@ async function main() {
       console.log(JSON.stringify({ status: "ACTIVE", query, actions }, null, 2));
       return;
     }
+  }
+
+  const nonSearchable = reconcileNonSearchableMissingRows();
+  if (nonSearchable) {
+    actions.push(dryRun
+      ? `non_searchable_missing=${nonSearchable}`
+      : `reconciled_non_searchable=${nonSearchable}`);
   }
 
   const backlog = backlogCount();

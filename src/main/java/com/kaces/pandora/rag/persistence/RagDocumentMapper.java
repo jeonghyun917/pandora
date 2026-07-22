@@ -7,6 +7,7 @@ import com.kaces.pandora.lawdata.persistence.LawDocumentRow;
 import com.kaces.pandora.rag.document.RagDocumentChunkRow;
 import com.kaces.pandora.rag.document.RagDocumentRow;
 import com.kaces.pandora.rag.importing.RagImportJobKey;
+import com.kaces.pandora.semantic.provenance.IndexContentSnapshot;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -179,6 +180,11 @@ public interface RagDocumentMapper {
 		@Param("documentTypes") List<String> documentTypes,
 		@Param("keywords") List<String> keywords,
 		@Param("limit") int limit
+	);
+
+	IndexContentSnapshot findCurrentIndexedSnapshot(
+		@Param("model") String model,
+		@Param("vectorStore") String vectorStore
 	);
 
 	void upsertEmbeddingStatus(

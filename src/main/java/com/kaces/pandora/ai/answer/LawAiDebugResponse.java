@@ -45,6 +45,8 @@ public record LawAiDebugResponse(
 		String agencyName,
 		String chunkNo,
 		String chunkTitle,
+		String parentSectionTitle,
+		String sectionType,
 		Integer pageNo,
 		String sourcePath,
 		double vectorScore,

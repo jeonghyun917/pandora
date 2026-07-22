@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.kaces.pandora.common.text.QuestionSearchPlan;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
+import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
+import com.kaces.pandora.rag.persistence.RagDocumentMapper;
 import com.kaces.pandora.semantic.config.LawAiProperties;
 import java.lang.reflect.Method;
 import java.util.List;
@@ -11,6 +13,25 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class LawAiAnswerServiceEvidenceGateTests {
+
+	@Test
+	void runtimeInfoUsesArtifactIdentityCapturedByTheService() throws Exception {
+		LawAiAnswerService service = service();
+		try {
+			java.lang.reflect.Field field = LawAiAnswerService.class.getDeclaredField("runtimeArtifactIdentity");
+			field.setAccessible(true);
+			RuntimeArtifactIdentity snapshot = new RuntimeArtifactIdentity("jar", "startup-sha256", 123L);
+			field.set(service, snapshot);
+
+			LawAiRuntimeInfo runtimeInfo = service.runtimeInfo();
+
+			assertThat(runtimeInfo.runtimeArtifactKind()).isEqualTo("jar");
+			assertThat(runtimeInfo.runtimeArtifactSha256()).isEqualTo("startup-sha256");
+			assertThat(runtimeInfo.runtimeArtifactSize()).isEqualTo(123L);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
 
 	@Test
 	void rejectsTopicAlignedPolicyForCarefulQuestion() throws Exception {
@@ -117,6 +138,95 @@ class LawAiAnswerServiceEvidenceGateTests {
 			);
 
 			assertThat(filtered).containsExactly(preliminaryReview);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void directEvidenceRescueRequiresEveryConfiguredAnchorMentionedInQuestion() throws Exception {
+		String question = "전자정부 성과관리 실행계획의 예비검토는 어떤 사업을 대상으로 하는거야?";
+		LawSemanticChunkRow wrongPreConsultation = chunk(
+			3L,
+			"official_doc",
+			"전자정부 성과관리 지침",
+			"사전협의 대상사업",
+			"사전협의의 대상사업은 중앙행정기관의 장이 추진하는 모든 정보화사업입니다."
+		);
+		LawSemanticChunkRow correctPreliminaryReview = chunk(
+			4L,
+			"official_doc",
+			"전자정부 성과관리 지침",
+			"예비검토 대상 사업",
+			"예비검토는 중앙행정기관의 장이 다음 해에 추진하는 정보화사업을 대상으로 합니다."
+		);
+
+		LawAiAnswerService service = service();
+		try {
+			List<LawSemanticChunkRow> rescued = directEvidenceRescueChunks(
+				service,
+				List.of(wrongPreConsultation, correctPreliminaryReview),
+				question
+			);
+
+			assertThat(rescued).containsExactly(correctPreliminaryReview);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void intentDirectEvidencePreserveRequiresEveryConfiguredAnchorMentionedInQuestion() throws Exception {
+		String question = "전자정부 성과관리 실행계획의 예비검토는 어떤 사업을 대상으로 하는거야?";
+		LawSemanticChunkRow wrongPreConsultation = chunk(
+			5L,
+			"official_doc",
+			"전자정부 성과관리 지침",
+			"사전협의 대상사업",
+			"사전협의의 대상사업은 중앙행정기관의 장이 추진하는 모든 정보화사업입니다."
+		);
+		LawSemanticChunkRow correctPreliminaryReview = chunk(
+			6L,
+			"official_doc",
+			"전자정부 성과관리 지침",
+			"예비검토 대상 사업",
+			"예비검토는 중앙행정기관의 장이 다음 해에 추진하는 정보화사업을 대상으로 합니다."
+		);
+
+		LawAiAnswerService service = service();
+		try {
+			List<LawSemanticChunkRow> preserved = intentDirectEvidenceChunks(
+				service,
+				List.of(wrongPreConsultation, correctPreliminaryReview),
+				question
+			);
+
+			assertThat(preserved).containsExactly(correctPreliminaryReview);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void directEvidenceRescueKeepsConfiguredAnchorFallbackWhenQuestionMentionsNoAnchor() throws Exception {
+		String question = "지능정보사회 실행계획의 어떤 사업이 대상이야?";
+		LawSemanticChunkRow preliminaryReview = chunk(
+			7L,
+			"official_doc",
+			"전자정부 성과관리 지침",
+			"예비검토 대상 사업",
+			"예비검토는 중앙행정기관의 장이 다음 해에 추진하는 정보화사업을 대상으로 합니다."
+		);
+
+		LawAiAnswerService service = service();
+		try {
+			List<LawSemanticChunkRow> rescued = directEvidenceRescueChunks(
+				service,
+				List.of(preliminaryReview),
+				question
+			);
+
+			assertThat(rescued).containsExactly(preliminaryReview);
 		} finally {
 			service.shutdownExecutors();
 		}
@@ -1015,6 +1125,423 @@ class LawAiAnswerServiceEvidenceGateTests {
 		}
 	}
 
+	@Test
+	void extractsGuideTitleBeforeTopicParticle() throws Exception {
+		LawAiAnswerService service = service();
+		try {
+			assertThat(documentTitleAnchorKeywords(
+				service,
+				"개인정보 처리 통합 안내서는 왜 만든거야?"
+			)).contains("개인정보 처리 통합 안내서");
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void extractsGuidebookCoreTitleAndEvidenceFromSharedReference() throws Exception {
+		String query = "행정안전부 재난현장 수습활동 가이드북에서 통합지원본부는 어떤 역할을 해?";
+		LawAiAnswerService service = service();
+		try {
+			assertThat(documentTitleAnchorKeywords(service, query))
+				.contains(
+					"행정안전부 재난현장 수습활동 가이드북",
+					"재난현장 수습활동 가이드북"
+				);
+			assertThat(documentEvidenceAnchorKeywords(service, query))
+				.anyMatch(anchor -> normalize(anchor).contains("통합지원본부"));
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void stripsPossessiveAgencyPrefixFromGuideTitleCore() throws Exception {
+		LawAiAnswerService service = service();
+		try {
+			assertThat(documentTitleAnchorKeywords(
+				service,
+				"개인정보위의 생성형 AI 개인정보 처리 안내서는 어떤 문서야?"
+			)).contains(
+				"개인정보위의 생성형 AI 개인정보 처리 안내서",
+				"생성형 AI 개인정보 처리 안내서"
+			);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void stripsAgencyAndYearTitlePrefixesRegardlessOfOrder() throws Exception {
+		String core = "재난현장 수습활동 가이드북";
+		LawAiAnswerService service = service();
+		try {
+			assertThat(documentTitleAnchorKeywords(
+				service,
+				"행정안전부 2025년 재난현장 수습활동 가이드북에서 역할을 알려줘"
+			)).contains(core);
+			assertThat(documentTitleAnchorKeywords(
+				service,
+				"2025년 행정안전부 재난현장 수습활동 가이드북에서 역할을 알려줘"
+			)).contains(core);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void stripsShortGovernmentAgencyPrefixFromGuideTitleCore() throws Exception {
+		LawAiAnswerService service = service();
+		try {
+			assertThat(documentTitleAnchorKeywords(
+				service,
+				"환경부 화학물질 관리 안내서에서 적용 기준을 알려줘"
+			)).contains(
+				"환경부 화학물질 관리 안내서",
+				"화학물질 관리 안내서"
+			);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void organizationLikeCommonPrefixDoesNotCreateBroaderTitleCore() throws Exception {
+		LawAiAnswerService service = service();
+		try {
+			assertThat(documentTitleAnchorKeywords(
+				service,
+				"거래처 개인정보 처리 안내서에서 적용 기준을 알려줘"
+			)).doesNotContain("개인정보 처리 안내서");
+			assertThat(documentTitleAnchorKeywords(
+				service,
+				"사업부 개인정보 처리 안내서에서 적용 기준을 알려줘"
+			)).doesNotContain("개인정보 처리 안내서");
+			assertThat(documentTitleAnchorKeywords(
+				service,
+				"변경신청 개인정보 처리 안내서에서 적용 기준을 알려줘"
+			)).doesNotContain("개인정보 처리 안내서");
+			assertThat(documentTitleAnchorKeywords(
+				service,
+				"데이터센터 개인정보 처리 안내서에서 적용 기준을 알려줘"
+			)).doesNotContain("개인정보 처리 안내서");
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void nonAgencyWordEndingInWiDoesNotCreateBroaderTitleCore() throws Exception {
+		LawAiAnswerService service = service();
+		try {
+			assertThat(documentTitleAnchorKeywords(
+				service,
+				"적용범위 상세 운영 안내서는 무엇이야?"
+			))
+				.contains("적용범위 상세 운영 안내서")
+				.doesNotContain("상세 운영 안내서");
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void ordinaryTopicParticleDoesNotCreateDocumentTitleAnchor() throws Exception {
+		LawAiAnswerService service = service();
+		try {
+			assertThat(documentTitleAnchorKeywords(
+				service,
+				"개인정보 처리방법은 무엇이야?"
+			)).isEmpty();
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void explicitGuideTitleUsesBoundedTitleLookupBeforeBroadText() throws Exception {
+		String query = "개인정보 처리 통합 안내서는 왜 만든거야?";
+		LawSemanticChunkRow titleHit = chunk(
+			2001L,
+			"official_doc",
+			"★개인정보 처리 통합 안내서(2025.7.)",
+			"p.2 발간 목적",
+			"개인정보 처리 현장에서 준수해야 하는 사항을 이해하기 쉽도록 안내하기 위해 발간하였다.",
+			2
+		);
+		LawSemanticChunkRow broadNoise = chunk(
+			2002L,
+			"official_doc",
+			"공공소프트웨어사업 안내",
+			"개인정보 처리 예시",
+			"통합 안내서 작성 예시를 설명한다.",
+			9
+		);
+		java.util.ArrayList<String> calls = new java.util.ArrayList<>();
+		java.util.concurrent.atomic.AtomicReference<List<String>> capturedTitles = new java.util.concurrent.atomic.AtomicReference<>();
+		RagDocumentMapper mapper = (RagDocumentMapper) java.lang.reflect.Proxy.newProxyInstance(
+			RagDocumentMapper.class.getClassLoader(),
+			new Class<?>[] {RagDocumentMapper.class},
+			(proxy, method, arguments) -> {
+				calls.add(method.getName());
+				if (List.of(
+					"findSemanticChunksByDocumentTitleAndTextScoped",
+					"findSemanticChunksByDocumentTitleWithTextHints",
+					"findSemanticChunksByDocumentTitleScoped"
+				).contains(method.getName())) {
+					List<String> titleKeywords = List.copyOf((List<String>) arguments[1]);
+					capturedTitles.set(titleKeywords);
+					return titleKeywords.contains("개인정보 처리 통합 안내서") ? List.of(titleHit) : List.of();
+				}
+				if ("findSemanticChunksByText".equals(method.getName())) {
+					return List.of(broadNoise);
+				}
+				return List.of();
+			}
+		);
+		LawAiAnswerService service = service(null, mapper);
+		try {
+			List<LawSemanticChunkRow> chunks = findLexicalChunks(
+				service,
+				QuestionSearchPlan.from(query),
+				List.of("official_doc"),
+				false
+			);
+
+			assertThat(capturedTitles.get()).contains("개인정보 처리 통합 안내서");
+			assertThat(calls).doesNotContain("findSemanticChunksByText");
+			assertThat(chunks).contains(titleHit).doesNotContain(broadNoise);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void intentSpecificTitleLookupPreservesStrictEvidenceAndContinuesScopedSearch() throws Exception {
+		String query = "개인정보 처리 통합 안내서에서 개인정보 보유기간이 지나면 언제 파기해야 해?";
+		LawSemanticChunkRow strictDirect = chunk(
+			2101L,
+			"official_doc",
+			"★개인정보 처리 통합 안내서(2025.7.)",
+			"p.34 보유기간 경과 후 파기",
+			"개인정보의 보유기간이 경과하거나 처리 목적이 달성된 경우 지체 없이 그 개인정보를 파기하여야 한다.",
+			34
+		);
+		LawSemanticChunkRow boundedOverview = chunk(
+			2102L,
+			"official_doc",
+			"★개인정보 처리 통합 안내서(2025.7.)",
+			"목차",
+			"개인정보 처리 통합 안내서 목차",
+			1
+		);
+		java.util.ArrayList<String> calls = new java.util.ArrayList<>();
+		java.util.concurrent.atomic.AtomicInteger strictScopedCalls = new java.util.concurrent.atomic.AtomicInteger();
+		RagDocumentMapper mapper = (RagDocumentMapper) java.lang.reflect.Proxy.newProxyInstance(
+			RagDocumentMapper.class.getClassLoader(),
+			new Class<?>[] {RagDocumentMapper.class},
+			(proxy, method, arguments) -> {
+				calls.add(method.getName());
+				if ("findSemanticChunksByDocumentTitleAndTextScoped".equals(method.getName())) {
+					return strictScopedCalls.incrementAndGet() == 1 ? List.of(strictDirect) : List.of();
+				}
+				if ("findSemanticChunksByDocumentTitleWithTextHints".equals(method.getName())) {
+					return List.of(boundedOverview);
+				}
+				if ("findSemanticChunksByDocumentTitleScoped".equals(method.getName())) {
+					return List.of();
+				}
+				if ("findSemanticChunksByText".equals(method.getName())) {
+					return List.of();
+				}
+				return List.of();
+			}
+		);
+		LawAiAnswerService service = service(null, mapper);
+		try {
+			List<LawSemanticChunkRow> chunks = findLexicalChunks(
+				service,
+				QuestionSearchPlan.from(query),
+				List.of("official_doc"),
+				false
+			);
+
+			assertThat(calls).contains("findSemanticChunksByDocumentTitleScoped");
+			assertThat(chunks).contains(strictDirect, boundedOverview);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void lawTitleOnlyHitDoesNotSuppressLawEvidenceTextFallback() throws Exception {
+		String query = "근로기준법에서 연차휴가 부여 의무를 설명해줘";
+		LawSemanticChunkRow titleOverview = chunk(
+			2201L,
+			"law",
+			"근로기준법",
+			"제1장 총칙",
+			"이 법은 근로조건의 기준을 정함을 목적으로 한다.",
+			null
+		);
+		LawSemanticChunkRow directArticle = chunk(
+			2202L,
+			"law",
+			"근로기준법",
+			"제60조 연차 유급휴가",
+			"사용자는 근로자에게 법정 요건에 따른 연차 유급휴가를 주어야 한다.",
+			null
+		);
+		java.util.ArrayList<String> calls = new java.util.ArrayList<>();
+		LawChunkMapper mapper = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
+			LawChunkMapper.class.getClassLoader(),
+			new Class<?>[] {LawChunkMapper.class},
+			(proxy, method, arguments) -> {
+				calls.add(method.getName());
+				if ("findSemanticChunksByDocumentTitleAndText".equals(method.getName())) {
+					return List.of();
+				}
+				if ("findSemanticChunksByDocumentTitle".equals(method.getName())) {
+					return List.of(titleOverview);
+				}
+				if ("findSemanticChunksByText".equals(method.getName())) {
+					return List.of(directArticle);
+				}
+				return List.of();
+			}
+		);
+		LawAiAnswerService service = service(mapper);
+		try {
+			List<LawSemanticChunkRow> chunks = findLexicalChunks(
+				service,
+				QuestionSearchPlan.from(query),
+				List.of("law"),
+				false
+			);
+
+			assertThat(calls).contains(
+				"findSemanticChunksByDocumentTitleAndText",
+				"findSemanticChunksByDocumentTitle",
+				"findSemanticChunksByText"
+			);
+			assertThat(chunks).contains(titleOverview, directArticle);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void strictLawTitleOnlyHitDoesNotSkipEvidenceTextFallback() throws Exception {
+		String query = "근로기준법에서 연차휴가 산정일수의 근거 조항을 찾아줘";
+		LawSemanticChunkRow titleOverview = chunk(
+			2301L,
+			"law",
+			"근로기준법",
+			"제1장 총칙",
+			"이 법은 근로조건의 기준을 정함을 목적으로 한다.",
+			null
+		);
+		LawSemanticChunkRow directArticle = chunk(
+			2302L,
+			"law",
+			"근로기준법",
+			"제60조 연차 유급휴가",
+			"연차 유급휴가의 산정일수와 부여 기준은 제60조에서 정한다.",
+			null
+		);
+		java.util.ArrayList<String> calls = new java.util.ArrayList<>();
+		LawChunkMapper mapper = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
+			LawChunkMapper.class.getClassLoader(),
+			new Class<?>[] {LawChunkMapper.class},
+			(proxy, method, arguments) -> {
+				calls.add(method.getName());
+				if ("findSemanticChunksByDocumentTitleAndText".equals(method.getName())) {
+					return List.of();
+				}
+				if ("findSemanticChunksByDocumentTitle".equals(method.getName())) {
+					return List.of(titleOverview);
+				}
+				if ("findSemanticChunksByText".equals(method.getName())) {
+					return List.of(directArticle);
+				}
+				return List.of();
+			}
+		);
+		LawAiAnswerService service = service(mapper);
+		try {
+			List<LawSemanticChunkRow> chunks = findLexicalChunks(
+				service,
+				QuestionSearchPlan.from(query),
+				List.of("law"),
+				false
+			);
+
+			assertThat(isStrictDocumentEvidenceAnchorQuestion(service, query)).isTrue();
+			assertThat(calls).contains("findSemanticChunksByText");
+			assertThat(chunks).contains(titleOverview, directArticle);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void ragKeywordPreparationRemovesInternalPeriodSectionType() throws Exception {
+		QuestionSearchPlan plan = QuestionSearchPlan.from("공익신고자 보호는 어디까지 가능해?");
+		java.util.ArrayList<String> keywords = new java.util.ArrayList<>(plan.focusedKeywords());
+		keywords.addAll(plan.lexicalKeywords());
+		LawAiAnswerService service = service();
+		try {
+			List<String> prepared = prepareRagKeywordBatches(service, keywords);
+			List<String> temporalPrepared = prepareRagKeywordBatches(
+				service,
+				List.of("period", "procedure", "평가기간", "보관기간")
+			);
+
+			assertThat(plan.profile().preferredSectionTypes()).contains("period");
+			assertThat(prepared).doesNotContain("period", "procedure", "target_scope");
+			assertThat(prepared).anyMatch(keyword -> keyword.contains("공익신고자") || keyword.contains("신고자 보호"));
+			assertThat(temporalPrepared).containsExactly("보관기간", "평가기간");
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void directEvidenceFallbackDoesNotSendInternalSectionTypesToLawSql() throws Exception {
+		java.util.concurrent.atomic.AtomicReference<List<String>> captured = new java.util.concurrent.atomic.AtomicReference<>();
+		LawChunkMapper mapper = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
+			LawChunkMapper.class.getClassLoader(),
+			new Class<?>[] {LawChunkMapper.class},
+			(proxy, method, arguments) -> {
+				if ("findSemanticChunksByText".equals(method.getName())) {
+					captured.set(List.copyOf((List<String>) arguments[1]));
+					return List.of();
+				}
+				throw new UnsupportedOperationException(method.getName());
+			}
+		);
+		LawAiAnswerService service = service(mapper);
+		try {
+			findDirectEvidenceFallbackChunks(
+				service,
+				QuestionSearchPlan.from("공익신고자 보호는 어디까지 가능해?"),
+				List.of("law"),
+				false
+			);
+
+			assertThat(captured.get()).isNotNull();
+			assertThat(captured.get()).doesNotContain("period", "procedure", "target_scope");
+			assertThat(captured.get()).anyMatch(keyword -> keyword.contains("공익신고자") || keyword.contains("신고자 보호"));
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
 	private String rejectionReason(String question, EvidenceJudge.Result result) throws Exception {
 		LawAiAnswerService service = service();
 		try {
@@ -1029,6 +1556,91 @@ class LawAiAnswerServiceEvidenceGateTests {
 		Method method = LawAiAnswerService.class.getDeclaredMethod("queryTerms", String.class);
 		method.setAccessible(true);
 		return (List<String>) method.invoke(service, query);
+	}
+
+	@SuppressWarnings("unchecked")
+	private List<String> prepareRagKeywordBatches(LawAiAnswerService service, List<String> keywords) throws Exception {
+		Method method = LawAiAnswerService.class.getDeclaredMethod("prepareRagKeywordBatches", List.class);
+		method.setAccessible(true);
+		return (List<String>) method.invoke(service, keywords);
+	}
+
+	@SuppressWarnings("unchecked")
+	private List<String> documentTitleAnchorKeywords(LawAiAnswerService service, String query) throws Exception {
+		Method method = LawAiAnswerService.class.getDeclaredMethod("documentTitleAnchorKeywords", String.class);
+		method.setAccessible(true);
+		return (List<String>) method.invoke(service, query);
+	}
+
+	@SuppressWarnings("unchecked")
+	private List<String> documentEvidenceAnchorKeywords(LawAiAnswerService service, String query) throws Exception {
+		Method method = LawAiAnswerService.class.getDeclaredMethod("documentEvidenceAnchorKeywords", String.class);
+		method.setAccessible(true);
+		return (List<String>) method.invoke(service, query);
+	}
+
+	@SuppressWarnings("unchecked")
+	private List<LawSemanticChunkRow> findLexicalChunks(
+		LawAiAnswerService service,
+		QuestionSearchPlan plan,
+		List<String> targets,
+		boolean includeFuture
+	) throws Exception {
+		Method method = LawAiAnswerService.class.getDeclaredMethod(
+			"findLexicalChunks",
+			QuestionSearchPlan.class,
+			List.class,
+			boolean.class
+		);
+		method.setAccessible(true);
+		return (List<LawSemanticChunkRow>) method.invoke(service, plan, targets, includeFuture);
+	}
+
+	@SuppressWarnings("unchecked")
+	private List<LawSemanticChunkRow> findDirectEvidenceFallbackChunks(
+		LawAiAnswerService service,
+		QuestionSearchPlan plan,
+		List<String> targets,
+		boolean includeFuture
+	) throws Exception {
+		Method method = LawAiAnswerService.class.getDeclaredMethod(
+			"findDirectEvidenceFallbackChunks",
+			QuestionSearchPlan.class,
+			List.class,
+			boolean.class
+		);
+		method.setAccessible(true);
+		return (List<LawSemanticChunkRow>) method.invoke(service, plan, targets, includeFuture);
+	}
+
+	@SuppressWarnings("unchecked")
+	private List<LawSemanticChunkRow> directEvidenceRescueChunks(
+		LawAiAnswerService service,
+		List<LawSemanticChunkRow> chunks,
+		String query
+	) throws Exception {
+		Method method = LawAiAnswerService.class.getDeclaredMethod(
+			"directEvidenceRescueChunks",
+			List.class,
+			String.class
+		);
+		method.setAccessible(true);
+		return (List<LawSemanticChunkRow>) method.invoke(service, chunks, query);
+	}
+
+	@SuppressWarnings("unchecked")
+	private List<LawSemanticChunkRow> intentDirectEvidenceChunks(
+		LawAiAnswerService service,
+		List<LawSemanticChunkRow> chunks,
+		String query
+	) throws Exception {
+		Method method = LawAiAnswerService.class.getDeclaredMethod(
+			"intentDirectEvidenceChunks",
+			List.class,
+			String.class
+		);
+		method.setAccessible(true);
+		return (List<LawSemanticChunkRow>) method.invoke(service, chunks, query);
 	}
 
 	@SuppressWarnings("unchecked")
@@ -1047,9 +1659,17 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	private LawAiAnswerService service() {
+		return service(null);
+	}
+
+	private LawAiAnswerService service(LawChunkMapper lawChunkMapper) {
+		return service(lawChunkMapper, null);
+	}
+
+	private LawAiAnswerService service(LawChunkMapper lawChunkMapper, RagDocumentMapper ragDocumentMapper) {
 		return new LawAiAnswerService(
-			null,
-			null,
+			lawChunkMapper,
+			ragDocumentMapper,
 			null,
 			null,
 			null,
@@ -1058,6 +1678,7 @@ class LawAiAnswerServiceEvidenceGateTests {
 			new ClaimVerifier(),
 			new AnswerVerificationService(new AnswerGuard(), new ClaimVerifier()),
 			new ParentContextAssembler(),
+			new EvidenceCandidateDiversifier(),
 			new FailureLoggingService(null),
 			null,
 			new LawAiProperties(null, null, null, null)
