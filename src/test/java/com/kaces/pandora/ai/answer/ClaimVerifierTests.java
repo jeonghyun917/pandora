@@ -72,7 +72,7 @@ class ClaimVerifierTests {
 
 		assertThat(verified).contains("과업심의 대상입니다");
 		assertThat(verified).doesNotContain("과태료는 500만원");
-		assertThat(verified).contains("추가 확인이 필요합니다");
+		assertThat(verified).doesNotContain("추가 확인이 필요합니다");
 	}
 
 	@Test
@@ -142,7 +142,7 @@ class ClaimVerifierTests {
 	}
 
 	@Test
-	void keepsCautionOnlyNegativeSentenceOutsideStrongClaimVerification() {
+	void failsClosedWhenCautionTextContainsAnUnsupportedProposition() {
 		String caution = "이 사업이 과업심의 대상인지 확인되지 않습니다.";
 
 		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(
@@ -154,8 +154,80 @@ class ClaimVerifierTests {
 			))
 		);
 
-		assertThat(result.insufficientEvidence()).isFalse();
-		assertThat(result.verifiedAnswer()).isEqualTo(caution);
+		assertThat(result.insufficientEvidence()).isTrue();
+		assertThat(result.verifiedAnswer()).isEqualTo(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE);
+		assertThat(result.unsupportedClaims()).containsExactly(caution);
+		assertThat(result.strongClaimCount()).isEqualTo(1);
+	}
+
+	@Test
+	void failsClosedWhenUnsupportedNounFormConclusionHasOnlyUnrelatedGrounds() {
+		String conclusion = "기관A 고위험 분류";
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(
+			conclusion,
+			List.of(ground(
+				"환경영향평가 안내",
+				"평가 대상",
+				"기관B는 환경영향평가 대상입니다."
+			))
+		);
+
+		assertThat(result.insufficientEvidence()).isTrue();
+		assertThat(result.verifiedAnswer()).isEqualTo(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE);
+		assertThat(result.unsupportedClaims()).containsExactly(conclusion);
+	}
+
+	@Test
+	void failsClosedWhenUnsupportedMarkdownBulletHasOnlyUnrelatedGrounds() {
+		String conclusion = "- 기관A 고위험 분류";
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(
+			conclusion,
+			List.of(ground(
+				"환경영향평가 안내",
+				"평가 대상",
+				"기관B는 환경영향평가 대상입니다."
+			))
+		);
+
+		assertThat(result.insufficientEvidence()).isTrue();
+		assertThat(result.verifiedAnswer()).isEqualTo(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE);
+		assertThat(result.unsupportedClaims()).containsExactly(conclusion);
+	}
+
+	@Test
+	void failsClosedWhenLabeledColonFragmentCarriesAnUnsupportedConclusion() {
+		String conclusion = "결론: 기관A 고위험 분류";
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(
+			conclusion,
+			List.of(ground(
+				"환경영향평가 안내",
+				"평가 대상",
+				"기관B는 환경영향평가 대상입니다."
+			))
+		);
+
+		assertThat(result.insufficientEvidence()).isTrue();
+		assertThat(result.verifiedAnswer()).isEqualTo(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE);
+		assertThat(result.unsupportedClaims()).containsExactly(conclusion);
+	}
+
+	@Test
+	void treatsBareStructuralLabelAsNonSubstantiveButStillFailsClosedWithoutSupport() {
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(
+			"결론:",
+			List.of(ground(
+				"환경영향평가 안내",
+				"평가 대상",
+				"기관B는 환경영향평가 대상입니다."
+			))
+		);
+
+		assertThat(result.insufficientEvidence()).isTrue();
+		assertThat(result.verifiedAnswer()).isEqualTo(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE);
+		assertThat(result.unsupportedClaims()).isEmpty();
 		assertThat(result.strongClaimCount()).isZero();
 	}
 
@@ -292,7 +364,7 @@ class ClaimVerifierTests {
 	}
 
 	@Test
-	void keepsCautiousFollowUpSentenceWithoutDowngradingSupportedAnswer() {
+	void removesUnsupportedCautiousFollowUpWhileKeepingSupportedAnswer() {
 		String answer = "데이터 전처리 절차는 오류 원인 분석, 대상 선정, 방법 결정 순서로 진행됩니다. 일정·비용·제출 양식 등 구체 내용은 문서에 불충분하니 별도 확인이 필요합니다.";
 
 		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(answer, List.of(ground(
@@ -302,9 +374,11 @@ class ClaimVerifierTests {
 		)));
 
 		assertThat(result.insufficientEvidence()).isFalse();
-		assertThat(result.unsupportedClaims()).isEmpty();
+		assertThat(result.unsupportedClaims()).containsExactly(
+			"일정·비용·제출 양식 등 구체 내용은 문서에 불충분하니 별도 확인이 필요합니다."
+		);
 		assertThat(result.verifiedAnswer()).contains("오류 원인 분석");
-		assertThat(result.verifiedAnswer()).contains("별도 확인이 필요합니다");
+		assertThat(result.verifiedAnswer()).doesNotContain("별도 확인이 필요합니다");
 	}
 
 	@Test
@@ -351,7 +425,7 @@ class ClaimVerifierTests {
 	}
 
 	@Test
-	void failsClosedWhenOnlyCautiousRemainderSurvives() {
+	void failsClosedWhenOnlyUnsupportedCautiousRemainderSurvives() {
 		String unsupportedClaim = "이 사업은 과업심의 대상입니다.";
 		String answer = unsupportedClaim + " 추가 확인이 필요합니다.";
 
@@ -362,7 +436,10 @@ class ClaimVerifierTests {
 		)));
 
 		assertThat(result.insufficientEvidence()).isTrue();
-		assertThat(result.unsupportedClaims()).containsExactly(unsupportedClaim);
+		assertThat(result.unsupportedClaims()).containsExactly(
+			unsupportedClaim,
+			"추가 확인이 필요합니다."
+		);
 	}
 
 	@Test
@@ -387,7 +464,7 @@ class ClaimVerifierTests {
 	}
 
 	@Test
-	void keepsSupportedNumericClaimsWhenEvidenceContainsNumbers() {
+	void removesUnsupportedCautiousFollowUpFromSupportedNumericClaim() {
 		String answer = "관광두레 주민사업체에는 최대 5년간 1억 1천만 원 상당 맞춤형 지원이 제공됩니다. 세부 조건은 공고별로 달라질 수 있으니 확인이 필요합니다.";
 
 		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(answer, List.of(ground(
@@ -397,9 +474,12 @@ class ClaimVerifierTests {
 		)));
 
 		assertThat(result.insufficientEvidence()).isFalse();
-		assertThat(result.unsupportedClaims()).isEmpty();
+		assertThat(result.unsupportedClaims()).containsExactly(
+			"세부 조건은 공고별로 달라질 수 있으니 확인이 필요합니다."
+		);
 		assertThat(result.verifiedAnswer()).contains("최대 5년간");
 		assertThat(result.verifiedAnswer()).contains("1억 1천만 원");
+		assertThat(result.verifiedAnswer()).doesNotContain("세부 조건은");
 	}
 
 	@Test

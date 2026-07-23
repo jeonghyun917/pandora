@@ -39,6 +39,11 @@ public class ClaimVerifier {
 		"어렵습니다", "판단해야", "달라질 수", "확정하기 어렵"
 	);
 
+	private static final Set<String> FORMAT_ONLY_LABELS = Set.of(
+		"결론", "주의", "참고", "안내", "요약", "근거", "답변", "설명", "출처",
+		"확인", "검토", "결과", "구분", "항목", "내용", "제목", "목차"
+	);
+
 	private final ClaimEvidenceMatcher evidenceMatcher;
 	private final ClaimEvidenceAtomizer claimAtomizer = new ClaimEvidenceAtomizer();
 
@@ -87,22 +92,21 @@ public class ClaimVerifier {
 		List<String> contradictedClaims = new ArrayList<>();
 		List<ClaimEvidenceLink> evidenceLinks = new ArrayList<>();
 		ClaimEvidenceMatcher.EvidenceIndex evidenceIndex = evidenceMatcher.index(grounds);
-		int strongClaims = 0;
-		int supportedStrongClaims = 0;
+		int substantiveClaims = 0;
+		int supportedSubstantiveClaims = 0;
 
 		for (String sentence : sentences) {
 			if (sentence.isBlank()) {
 				continue;
 			}
-			if (!isStrongClaim(sentence) || isCautionOnly(sentence)) {
-				kept.add(sentence);
+			if (isFormatOnlyStructuralLabel(sentence)) {
 				continue;
 			}
-			strongClaims++;
+			substantiveClaims++;
 			ClaimEvidenceMatcher.Match match = evidenceMatcher.match(sentence, evidenceIndex);
 			if (match.status() == ClaimEvidenceMatcher.Status.SUPPORTED) {
 				kept.add(sentence);
-				supportedStrongClaims++;
+				supportedSubstantiveClaims++;
 				evidenceLinks.add(ClaimEvidenceLink.from(sentence, match));
 				continue;
 			}
@@ -117,19 +121,6 @@ public class ClaimVerifier {
 			}
 		}
 
-		if (strongClaims == 0) {
-			return new VerificationResult(
-				answer,
-				false,
-				false,
-				List.of(),
-				List.of(),
-				List.of(),
-				List.of(),
-				0,
-				0
-			);
-		}
 		if (!contradictedClaims.isEmpty()) {
 			return result(
 				INSUFFICIENT_EVIDENCE_MESSAGE,
@@ -138,11 +129,11 @@ public class ClaimVerifier {
 				unsupportedNumericClaims,
 				contradictedClaims,
 				evidenceLinks,
-				strongClaims,
-				supportedStrongClaims
+				substantiveClaims,
+				supportedSubstantiveClaims
 			);
 		}
-		if (supportedStrongClaims == 0) {
+		if (supportedSubstantiveClaims == 0) {
 			return result(
 				INSUFFICIENT_EVIDENCE_MESSAGE,
 				true,
@@ -150,8 +141,8 @@ public class ClaimVerifier {
 				unsupportedNumericClaims,
 				contradictedClaims,
 				evidenceLinks,
-				strongClaims,
-				supportedStrongClaims
+				substantiveClaims,
+				supportedSubstantiveClaims
 			);
 		}
 
@@ -163,8 +154,8 @@ public class ClaimVerifier {
 			unsupportedNumericClaims,
 			contradictedClaims,
 			evidenceLinks,
-			strongClaims,
-			supportedStrongClaims
+			substantiveClaims,
+			supportedSubstantiveClaims
 		);
 	}
 
@@ -203,57 +194,16 @@ public class ClaimVerifier {
 			.toList();
 	}
 
-	private boolean isStrongClaim(String sentence) {
-		String normalized = normalize(sentence);
-		if (NUMBER_OR_DATE_CLAIM.matcher(sentence).find()) {
+	private boolean isFormatOnlyStructuralLabel(String atom) {
+		String label = String.valueOf(atom == null ? "" : atom)
+			.trim()
+			.replaceFirst("^(?:#{1,6}|[-*+>])\\s*", "")
+			.replaceFirst("[:：]\\s*$", "")
+			.trim();
+		if (label.isBlank() || label.matches("(?:\\d+|[IVXLCDMivxlcdm]+)[.)]?")) {
 			return true;
 		}
-		boolean explicitStrongCue = STRONG_CLAIM_CUES.stream()
-			.map(this::normalize)
-			.anyMatch(cue -> !cue.isBlank() && normalized.contains(cue));
-		return explicitStrongCue || ASSERTIVE_ENDING.matcher(sentence.trim()).find();
-	}
-
-	private boolean isCautious(String sentence) {
-		String normalized = normalize(sentence);
-		return CAUTION_CUES.stream()
-			.map(this::normalize)
-			.anyMatch(cue -> !cue.isBlank() && normalized.contains(cue));
-	}
-
-	private boolean isCautionOnly(String sentence) {
-		if (!isCautious(sentence) || NUMBER_OR_DATE_CLAIM.matcher(sentence).find()) {
-			return false;
-		}
-		if (hasStrongClaimBeforeCaution(sentence)) {
-			return false;
-		}
-		String remainder = normalize(sentence);
-		for (String cautionCue : CAUTION_CUES) {
-			String normalizedCue = normalize(cautionCue);
-			if (!normalizedCue.isBlank()) {
-				remainder = remainder.replace(normalizedCue, "");
-			}
-		}
-		String substantiveRemainder = remainder;
-		return STRONG_CLAIM_CUES.stream()
-			.map(this::normalize)
-			.noneMatch(cue -> !cue.isBlank() && substantiveRemainder.contains(cue));
-	}
-
-	private boolean hasStrongClaimBeforeCaution(String sentence) {
-		String normalized = normalize(sentence);
-		int firstCautionIndex = normalized.length();
-		for (String cautionCue : CAUTION_CUES) {
-			String normalizedCue = normalize(cautionCue);
-			int cueIndex = normalizedCue.isBlank() ? -1 : normalized.indexOf(normalizedCue);
-			if (cueIndex >= 0) {
-				firstCautionIndex = Math.min(firstCautionIndex, cueIndex);
-			}
-		}
-		return firstCautionIndex > 0
-			&& firstCautionIndex < normalized.length()
-			&& isStrongClaim(normalized.substring(0, firstCautionIndex));
+		return FORMAT_ONLY_LABELS.contains(normalize(label));
 	}
 
 	private boolean numericClaimsAreSupported(String sentence, List<LawAiAnswerGround> grounds) {
