@@ -1,6 +1,7 @@
 package com.kaces.pandora.ai.answer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -9,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class GroundedAnswerRepairServiceTests {
@@ -217,11 +219,18 @@ class GroundedAnswerRepairServiceTests {
 			));
 		}
 		AnswerVerificationService verifier = mock(AnswerVerificationService.class);
-		List<ClaimVerifier.ClaimEvidenceLink> supportedLinks = List.of(
-			link("지원 문장 2", "SUPPORTED", 2, "첫 번째 직접 근거이다."),
-			link("지원 문장 1", "SUPPORTED", 1, "1번째 직접 근거이다."),
-			link("중복 지원 문장", "SUPPORTED", 1, "1번째 직접 근거이다.")
-		);
+		List<ClaimVerifier.ClaimEvidenceLink> supportedLinks = new ArrayList<>();
+		supportedLinks.add(link("지원 문장 2", "SUPPORTED", 2, "첫 번째 직접 근거이다."));
+		supportedLinks.add(link("지원 문장 1", "SUPPORTED", 1, "1번째 직접 근거이다."));
+		supportedLinks.add(link("중복 지원 문장", "SUPPORTED", 1, "1번째 직접 근거이다."));
+		for (int number = 3; number <= GroundedAnswerRepairService.MAX_SELECTED_ATOMS + 3; number++) {
+			supportedLinks.add(link(
+				"지원 문장 " + number,
+				"SUPPORTED",
+				number,
+				number + "번째 직접 근거이다."
+			));
+		}
 		when(verifier.verify(QUESTION, REJECTED_DRAFT, grounds))
 			.thenReturn(alignmentFailure(REJECTED_DRAFT, supportedLinks));
 		when(verifier.verify(eq(QUESTION), anyString(), eq(grounds)))
@@ -257,6 +266,178 @@ class GroundedAnswerRepairServiceTests {
 			.doesNotContain("유출 금지 상위 문맥");
 		assertThat(result.diagnostics().selectedAtomCount()).isEqualTo(GroundedAnswerRepairService.MAX_SELECTED_ATOMS);
 		assertThat(rewriter.calls()).isEqualTo(1);
+	}
+
+	@Test
+	void rejectedDraftCannotBeReusedAsAnExactEvidenceAtom() {
+		LawAiAnswerGround ground = ground(1, REJECTED_DRAFT);
+		List<LawAiAnswerGround> grounds = List.of(ground);
+		AnswerVerificationService verifier = mock(AnswerVerificationService.class);
+		when(verifier.verify(QUESTION, REJECTED_DRAFT, grounds))
+			.thenReturn(claimFailure(REJECTED_DRAFT, List.of(), List.of()), supported(REJECTED_DRAFT));
+		when(verifier.verify(QUESTION, REPAIRED_ANSWER, grounds)).thenReturn(supported(REPAIRED_ANSWER));
+		RecordingRewriter rewriter = RecordingRewriter.returning(REPAIRED_ANSWER);
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(verifier, rewriter);
+
+		GroundedAnswerRepairService.Result result = service.verifyAndRepair(
+			QUESTION,
+			REJECTED_DRAFT,
+			grounds
+		);
+
+		assertThat(result.verifiedAnswer()).isEqualTo(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE);
+		assertThat(result.diagnostics().reason()).isEqualTo("NO_ALIGNED_SUPPORTED_ATOM");
+		assertThat(rewriter.calls()).isZero();
+	}
+
+	@Test
+	void evidenceAtomContainingTheEntireRejectedDraftIsExcluded() {
+		String shortDraft = "연차 유급휴가를 부여해야 합니다.";
+		String candidate = "사용자는 근로자에게 연차 유급휴가를 부여해야 합니다.";
+		LawAiAnswerGround ground = ground(1, candidate);
+		List<LawAiAnswerGround> grounds = List.of(ground);
+		AnswerVerificationService verifier = mock(AnswerVerificationService.class);
+		when(verifier.verify(QUESTION, shortDraft, grounds))
+			.thenReturn(claimFailure(shortDraft, List.of(), List.of()));
+		when(verifier.verify(QUESTION, candidate, grounds)).thenReturn(supported(candidate));
+		when(verifier.verify(QUESTION, REPAIRED_ANSWER, grounds)).thenReturn(supported(REPAIRED_ANSWER));
+		RecordingRewriter rewriter = RecordingRewriter.returning(REPAIRED_ANSWER);
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(verifier, rewriter);
+
+		GroundedAnswerRepairService.Result result = service.verifyAndRepair(
+			QUESTION,
+			shortDraft,
+			grounds
+		);
+
+		assertThat(result.verifiedAnswer()).isEqualTo(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE);
+		assertThat(result.diagnostics().reason()).isEqualTo("NO_ALIGNED_SUPPORTED_ATOM");
+		assertThat(rewriter.calls()).isZero();
+	}
+
+	@Test
+	void supportedClauseContainedInsideTheRejectedDraftRemainsEligibleForSalvage() {
+		String draftContainingSafeClause = "근거 없는 설명입니다. " + EVIDENCE;
+		LawAiAnswerGround ground = ground(1, EVIDENCE);
+		List<LawAiAnswerGround> grounds = List.of(ground);
+		AnswerVerificationService verifier = mock(AnswerVerificationService.class);
+		when(verifier.verify(QUESTION, draftContainingSafeClause, grounds))
+			.thenReturn(claimFailure(draftContainingSafeClause, List.of(), List.of()));
+		when(verifier.verify(QUESTION, EVIDENCE, grounds)).thenReturn(supported(EVIDENCE));
+		when(verifier.verify(QUESTION, REPAIRED_ANSWER, grounds)).thenReturn(supported(REPAIRED_ANSWER));
+		RecordingRewriter rewriter = RecordingRewriter.returning(REPAIRED_ANSWER);
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(verifier, rewriter);
+
+		GroundedAnswerRepairService.Result result = service.verifyAndRepair(
+			QUESTION,
+			draftContainingSafeClause,
+			grounds
+		);
+
+		assertThat(result.verifiedAnswer()).isEqualTo(REPAIRED_ANSWER);
+		assertThat(rewriter.atomCalls()).containsExactly(List.of(EVIDENCE));
+	}
+
+	@Test
+	void validatedSupportedLinksSuppressFallbackAtomsEvenFromEarlierGrounds() {
+		String earlierFallback = "첫 번째 fallback 근거입니다.";
+		String laterSupported = "두 번째 SUPPORTED 근거입니다.";
+		List<LawAiAnswerGround> grounds = List.of(
+			ground(1, earlierFallback),
+			ground(2, laterSupported)
+		);
+		AnswerVerificationService verifier = mock(AnswerVerificationService.class);
+		List<ClaimVerifier.ClaimEvidenceLink> links = List.of(
+			link("지원되는 초안 문장", "SUPPORTED", 2, laterSupported)
+		);
+		when(verifier.verify(QUESTION, REJECTED_DRAFT, grounds))
+			.thenReturn(alignmentFailure(REJECTED_DRAFT, links));
+		when(verifier.verify(eq(QUESTION), anyString(), eq(grounds)))
+			.thenAnswer(invocation -> invocation.getArgument(1).equals(REJECTED_DRAFT)
+				? alignmentFailure(REJECTED_DRAFT, links)
+				: supported(invocation.getArgument(1)));
+		RecordingRewriter rewriter = RecordingRewriter.returning(REPAIRED_ANSWER);
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(verifier, rewriter);
+
+		service.verifyAndRepair(QUESTION, REJECTED_DRAFT, grounds);
+
+		assertThat(rewriter.atomCalls()).containsExactly(List.of(laterSupported));
+	}
+
+	@Test
+	void unusableSupportedLinksAllowASeparateMatchedChildFallbackPhase() {
+		String unusableSupported = "문서 시행일은 2026년 1월 1일입니다.";
+		List<LawAiAnswerGround> grounds = List.of(
+			ground(1, EVIDENCE),
+			ground(2, unusableSupported)
+		);
+		AnswerVerificationService verifier = mock(AnswerVerificationService.class);
+		List<ClaimVerifier.ClaimEvidenceLink> links = List.of(
+			link("지원되는 초안 문장", "SUPPORTED", 2, unusableSupported)
+		);
+		when(verifier.verify(QUESTION, REJECTED_DRAFT, grounds))
+			.thenReturn(alignmentFailure(REJECTED_DRAFT, links));
+		when(verifier.verify(QUESTION, unusableSupported, grounds))
+			.thenReturn(alignmentFailure(unusableSupported, List.of(
+				link(unusableSupported, "SUPPORTED", 2, unusableSupported)
+			)));
+		when(verifier.verify(QUESTION, EVIDENCE, grounds)).thenReturn(supported(EVIDENCE));
+		when(verifier.verify(QUESTION, REPAIRED_ANSWER, grounds)).thenReturn(supported(REPAIRED_ANSWER));
+		RecordingRewriter rewriter = RecordingRewriter.returning(REPAIRED_ANSWER);
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(verifier, rewriter);
+
+		GroundedAnswerRepairService.Result result = service.verifyAndRepair(
+			QUESTION,
+			REJECTED_DRAFT,
+			grounds
+		);
+
+		assertThat(result.verifiedAnswer()).isEqualTo(REPAIRED_ANSWER);
+		assertThat(rewriter.atomCalls()).containsExactly(List.of(EVIDENCE));
+	}
+
+	@Test
+	void realVerificationAllowsRewriteOnlyForSupportedQuestionAlignedMatchedChildAtom() {
+		String question = "공공소프트웨어사업은 과업심의 대상인가?";
+		String alignedEvidence = "공공소프트웨어사업은 과업심의 대상입니다.";
+		List<LawAiAnswerGround> grounds = List.of(ground(1, alignedEvidence));
+		RecordingRewriter rewriter = RecordingRewriter.returning(alignedEvidence);
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(
+			realVerificationService(),
+			rewriter
+		);
+
+		GroundedAnswerRepairService.Result result = service.verifyAndRepair(
+			question,
+			"오늘은 비가 옵니다.",
+			grounds
+		);
+
+		assertThat(result.verifiedAnswer()).isEqualTo(alignedEvidence);
+		assertThat(result.insufficientEvidence()).isFalse();
+		assertThat(rewriter.atomCalls()).containsExactly(List.of(alignedEvidence));
+	}
+
+	@Test
+	void realVerificationRejectsSupportedButQuestionMisalignedMatchedChildAtom() {
+		String question = "공공소프트웨어사업은 과업심의 대상인가?";
+		String unrelatedEvidence = "정보화사업 사전협의 대상기관은 중앙행정기관입니다.";
+		List<LawAiAnswerGround> grounds = List.of(ground(1, unrelatedEvidence));
+		RecordingRewriter rewriter = RecordingRewriter.returning(unrelatedEvidence);
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(
+			realVerificationService(),
+			rewriter
+		);
+
+		GroundedAnswerRepairService.Result result = service.verifyAndRepair(
+			question,
+			"오늘은 비가 옵니다.",
+			grounds
+		);
+
+		assertThat(result.verifiedAnswer()).isEqualTo(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE);
+		assertThat(result.diagnostics().reason()).isEqualTo("NO_ALIGNED_SUPPORTED_ATOM");
+		assertThat(rewriter.calls()).isZero();
 	}
 
 	@Test
@@ -380,6 +561,30 @@ class GroundedAnswerRepairServiceTests {
 	}
 
 	@Test
+	void nullInitialVerificationFailsClosedWithoutCallingTheRewriter() {
+		List<LawAiAnswerGround> grounds = List.of(ground(1, EVIDENCE));
+		AnswerVerificationService verifier = mock(AnswerVerificationService.class);
+		when(verifier.verify(QUESTION, REJECTED_DRAFT, grounds)).thenReturn(null);
+		RecordingRewriter rewriter = RecordingRewriter.returning(REPAIRED_ANSWER);
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(verifier, rewriter);
+		AtomicReference<GroundedAnswerRepairService.Result> result = new AtomicReference<>();
+
+		assertThatCode(() -> result.set(service.verifyAndRepair(
+				QUESTION,
+				REJECTED_DRAFT,
+				grounds
+			)))
+			.doesNotThrowAnyException();
+
+		assertThat(result.get().verifiedAnswer()).isEqualTo(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE);
+		assertThat(result.get().insufficientEvidence()).isTrue();
+		assertThat(result.get().diagnostics()).isEqualTo(
+			new GroundedAnswerRepairService.Diagnostics(false, false, "INITIAL_VERIFICATION_NULL", 0)
+		);
+		assertThat(rewriter.calls()).isZero();
+	}
+
+	@Test
 	void reverifyExceptionFailsClosedWithoutASecondRewrite() {
 		LawAiAnswerGround ground = ground(1, EVIDENCE);
 		List<LawAiAnswerGround> grounds = List.of(ground);
@@ -408,6 +613,14 @@ class GroundedAnswerRepairServiceTests {
 		);
 		assertThat(result.diagnostics().toString()).doesNotContain("reverify secret");
 		assertThat(rewriter.calls()).isEqualTo(1);
+	}
+
+	private AnswerVerificationService realVerificationService() {
+		return new AnswerVerificationService(
+			new AnswerGuard(),
+			new ClaimVerifier(),
+			new AnswerQuestionAlignmentVerifier()
+		);
 	}
 
 	private GroundedAnswerRepairService.Result runRepairWithRewrite(

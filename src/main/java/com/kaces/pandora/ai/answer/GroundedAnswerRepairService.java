@@ -45,6 +45,15 @@ public class GroundedAnswerRepairService {
 				0
 			);
 		}
+		if (initial == null) {
+			return result(
+				syntheticFailure(draft, "INITIAL_VERIFICATION_NULL"),
+				false,
+				false,
+				"INITIAL_VERIFICATION_NULL",
+				0
+			);
+		}
 		if (!initial.insufficientEvidence()) {
 			return result(initial, false, false, "INITIAL_OK", 0);
 		}
@@ -52,7 +61,12 @@ public class GroundedAnswerRepairService {
 			return result(initial, false, false, "CONTRADICTION_OR_CONFLICT", 0);
 		}
 
-		List<String> selectedAtoms = selectSupportedAlignedAtoms(question, initial, safeGrounds);
+		List<String> selectedAtoms = selectSupportedAlignedAtoms(
+			question,
+			normalize(draft),
+			initial,
+			safeGrounds
+		);
 		if (selectedAtoms.isEmpty()) {
 			return result(initial, false, false, "NO_ALIGNED_SUPPORTED_ATOM", 0);
 		}
@@ -161,13 +175,36 @@ public class GroundedAnswerRepairService {
 
 	private List<String> selectSupportedAlignedAtoms(
 		String question,
+		String normalizedRejectedDraft,
 		AnswerVerificationService.Result initial,
 		List<LawAiAnswerGround> grounds
 	) {
 		if (grounds.isEmpty()) {
 			return List.of();
 		}
-		List<CandidateAtom> candidates = candidateAtoms(initial, grounds);
+		List<String> supportedAtoms = selectVerifiedAtoms(
+			question,
+			normalizedRejectedDraft,
+			supportedCandidateAtoms(initial, grounds),
+			grounds
+		);
+		if (!supportedAtoms.isEmpty()) {
+			return supportedAtoms;
+		}
+		return selectVerifiedAtoms(
+			question,
+			normalizedRejectedDraft,
+			fallbackCandidateAtoms(grounds),
+			grounds
+		);
+	}
+
+	private List<String> selectVerifiedAtoms(
+		String question,
+		String normalizedRejectedDraft,
+		List<CandidateAtom> candidates,
+		List<LawAiAnswerGround> grounds
+	) {
 		LinkedHashMap<String, String> selectedByKey = new LinkedHashMap<>();
 		int totalCharacters = 0;
 		for (CandidateAtom candidate : candidates) {
@@ -176,6 +213,10 @@ public class GroundedAnswerRepairService {
 			}
 			String atom = clean(candidate.text());
 			if (atom.isBlank() || atom.length() > MAX_ATOM_CHARACTERS) {
+				continue;
+			}
+			String normalizedAtom = normalize(atom);
+			if (reusesRejectedDraft(normalizedAtom, normalizedRejectedDraft)) {
 				continue;
 			}
 			AnswerVerificationService.Result verification;
@@ -206,6 +247,13 @@ public class GroundedAnswerRepairService {
 		return List.copyOf(selectedByKey.values());
 	}
 
+	private boolean reusesRejectedDraft(String normalizedAtom, String normalizedRejectedDraft) {
+		return !normalizedAtom.isBlank()
+			&& !normalizedRejectedDraft.isBlank()
+			&& (normalizedAtom.equals(normalizedRejectedDraft)
+				|| normalizedAtom.contains(normalizedRejectedDraft));
+	}
+
 	private boolean answerVerificationServiceInsufficient(String answer) {
 		return verificationService.isInsufficientEvidenceAnswer(answer);
 	}
@@ -227,7 +275,7 @@ public class GroundedAnswerRepairService {
 		return alignment != null && alignment.evaluated() && alignment.aligned();
 	}
 
-	private List<CandidateAtom> candidateAtoms(
+	private List<CandidateAtom> supportedCandidateAtoms(
 		AnswerVerificationService.Result initial,
 		List<LawAiAnswerGround> grounds
 	) {
@@ -263,7 +311,10 @@ public class GroundedAnswerRepairService {
 		supported.sort(Comparator
 			.comparingInt(CandidateAtom::groundIndex)
 			.thenComparingInt(CandidateAtom::sourceOrder));
+		return deduplicate(supported);
+	}
 
+	private List<CandidateAtom> fallbackCandidateAtoms(List<LawAiAnswerGround> grounds) {
 		List<CandidateAtom> fallback = new ArrayList<>();
 		for (int groundIndex = 0; groundIndex < grounds.size(); groundIndex++) {
 			LawAiAnswerGround ground = grounds.get(groundIndex);
@@ -272,22 +323,18 @@ public class GroundedAnswerRepairService {
 				fallback.add(new CandidateAtom(groundIndex, atomIndex, atoms.get(atomIndex)));
 			}
 		}
+		return deduplicate(fallback);
+	}
 
+	private List<CandidateAtom> deduplicate(List<CandidateAtom> candidates) {
 		LinkedHashMap<String, CandidateAtom> deduplicated = new LinkedHashMap<>();
-		for (CandidateAtom candidate : concat(supported, fallback)) {
+		for (CandidateAtom candidate : candidates) {
 			String key = normalize(candidate.text());
 			if (!key.isBlank()) {
 				deduplicated.putIfAbsent(key, candidate);
 			}
 		}
 		return List.copyOf(deduplicated.values());
-	}
-
-	private List<CandidateAtom> concat(List<CandidateAtom> first, List<CandidateAtom> second) {
-		List<CandidateAtom> combined = new ArrayList<>(first.size() + second.size());
-		combined.addAll(first);
-		combined.addAll(second);
-		return combined;
 	}
 
 	private List<String> atomize(String text) {
