@@ -232,6 +232,44 @@ class ClaimVerifierTests {
 	}
 
 	@Test
+	void verifiesNumericOnlyAtomAndRecordsUnsupportedNumber() {
+		String answer = "123";
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(
+			answer,
+			List.of(ground(
+				"환경영향평가 안내",
+				"평가 대상",
+				"기관B는 환경영향평가 대상입니다."
+			))
+		);
+
+		assertThat(result.insufficientEvidence()).isTrue();
+		assertThat(result.unsupportedClaims()).containsExactly(answer);
+		assertThat(result.unsupportedNumericClaims()).containsExactly(answer);
+		assertThat(result.strongClaimCount()).isEqualTo(1);
+	}
+
+	@Test
+	void preservesStructuralHeadingWhenFollowingSubstantiveAtomIsSupported() {
+		String answer = "결론:\n기관은 신청서를 제출해야 합니다.";
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(
+			answer,
+			List.of(ground(
+				"신청 절차 안내",
+				"신청 방법",
+				"기관은 신청서를 제출해야 합니다."
+			))
+		);
+
+		assertThat(result.insufficientEvidence()).isFalse();
+		assertThat(result.verifiedAnswer()).isEqualTo(answer);
+		assertThat(result.unsupportedClaims()).isEmpty();
+		assertThat(result.strongClaimCount()).isEqualTo(1);
+	}
+
+	@Test
 	void failsClosedWhenGenericNegativeAssertionHasOppositeEvidence() {
 		String claim = "기관은 자료를 공개하지 않습니다.";
 

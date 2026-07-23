@@ -33,12 +33,6 @@ public class ClaimVerifier {
 		"위반", "과태료", "벌칙", "기한", "금액", "불이익", "제재", "처분",
 		"보완", "예산 조정", "입찰 참가자격", "제한"
 	);
-	private static final List<String> CAUTION_CUES = List.of(
-		"확인되지", "확인할 필요", "확인이 필요", "확인해야", "추가 확인",
-		"별도 확인", "문서에 불충분", "문서상 불충분", "근거문서들만으로는", "명확하지",
-		"어렵습니다", "판단해야", "달라질 수", "확정하기 어렵"
-	);
-
 	private static final Set<String> FORMAT_ONLY_LABELS = Set.of(
 		"결론", "주의", "참고", "안내", "요약", "근거", "답변", "설명", "출처",
 		"확인", "검토", "결과", "구분", "항목", "내용", "제목", "목차"
@@ -100,6 +94,7 @@ public class ClaimVerifier {
 				continue;
 			}
 			if (isFormatOnlyStructuralLabel(sentence)) {
+				kept.add(sentence);
 				continue;
 			}
 			substantiveClaims++;
@@ -200,7 +195,7 @@ public class ClaimVerifier {
 			.replaceFirst("^(?:#{1,6}|[-*+>])\\s*", "")
 			.replaceFirst("[:：]\\s*$", "")
 			.trim();
-		if (label.isBlank() || label.matches("(?:\\d+|[IVXLCDMivxlcdm]+)[.)]?")) {
+		if (label.isBlank()) {
 			return true;
 		}
 		return FORMAT_ONLY_LABELS.contains(normalize(label));
