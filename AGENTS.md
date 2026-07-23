@@ -17,6 +17,17 @@ logging a searchable failure over producing a plausible but ungrounded answer.
 - If a task discovers a bigger architecture issue, state the issue and handle the
   smallest safe slice that moves the system toward the agreed design.
 
+## Shared Workspace Branch Policy
+
+- `C:\dev\workspace-egov\pandora` is the shared workspace and must remain on
+  `main`.
+- Do not run `git switch`, `git checkout`, or otherwise move this shared
+  workspace to a `codex/*` feature branch.
+- Create and use a separate Git worktree in a different directory for feature
+  branch work. Merge verified work back into `main` from this shared workspace.
+- Before changing shared Git state, verify the current branch, working tree, and
+  worktree list so another task's changes are not displaced.
+
 ## Superpowers Workflow
 
 - Automatically use the relevant installed Superpowers skills for feature
