@@ -271,7 +271,11 @@ public class LawAiAnswerService {
 		);
 		timing.answerMs.set(elapsedMillis(answerStart));
 		long verifyStart = System.nanoTime();
-		AnswerVerificationService.Result verified = answerVerificationService.verify(answer, retrieval.grounds());
+		AnswerVerificationService.Result verified = answerVerificationService.verify(
+			retrieval.query(),
+			answer,
+			retrieval.grounds()
+		);
 		timing.verifyMs.addAndGet(elapsedMillis(verifyStart));
 		String guardedAnswer = verified.verifiedAnswer();
 		boolean claimUnsupported = verified.insufficientEvidence();
@@ -372,7 +376,11 @@ public class LawAiAnswerService {
 			);
 			timing.answerMs.set(elapsedMillis(answerStart));
 			long verifyStart = System.nanoTime();
-			AnswerVerificationService.Result verified = answerVerificationService.verify(answer, retrieval.grounds());
+			AnswerVerificationService.Result verified = answerVerificationService.verify(
+				retrieval.query(),
+				answer,
+				retrieval.grounds()
+			);
 			timing.verifyMs.addAndGet(elapsedMillis(verifyStart));
 			String guardedAnswer = verified.verifiedAnswer();
 			boolean claimUnsupported = verified.insufficientEvidence();
@@ -1738,7 +1746,11 @@ public class LawAiAnswerService {
 				buildAnswerContext(retrieval, answerProfile),
 				answerProfile.maxOutputTokens()
 			);
-			AnswerVerificationService.Result verification = answerVerificationService.verify(answer, retrieval.grounds());
+			AnswerVerificationService.Result verification = answerVerificationService.verify(
+				evalCase.question(),
+				answer,
+				retrieval.grounds()
+			);
 			String verifiedAnswer = nullToEmpty(verification.verifiedAnswer());
 			List<String> answerTerms = expectedAnswerTerms == null || expectedAnswerTerms.isEmpty()
 				? expectedTerms.stream().limit(4).toList()

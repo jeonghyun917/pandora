@@ -99,7 +99,7 @@ class LawAiAnswerServiceClaimOutcomeTests {
 	@Test
 	void claimRejectionReturnsExplicitNonOkOutcomeAndSafeVerifiedAnswer() {
 		when(answerClient.answer(anyString(), anyString(), anyInt())).thenReturn(GENERATED_ANSWER);
-		when(answerVerificationService.verify(eq(GENERATED_ANSWER), anyList()))
+		when(answerVerificationService.verify(eq(QUESTION), eq(GENERATED_ANSWER), anyList()))
 			.thenReturn(verificationResult(GENERATED_ANSWER, SAFE_ANSWER, true));
 
 		LawAiAnswerResponse response = service.answer(request());
@@ -113,7 +113,7 @@ class LawAiAnswerServiceClaimOutcomeTests {
 	@Test
 	void claimRejectionIsNotCachedAcrossIdenticalRequests() {
 		when(answerClient.answer(anyString(), anyString(), anyInt())).thenReturn(GENERATED_ANSWER);
-		when(answerVerificationService.verify(eq(GENERATED_ANSWER), anyList()))
+		when(answerVerificationService.verify(eq(QUESTION), eq(GENERATED_ANSWER), anyList()))
 			.thenReturn(verificationResult(GENERATED_ANSWER, SAFE_ANSWER, true));
 
 		LawAiAnswerResponse first = service.answer(request());
@@ -128,7 +128,7 @@ class LawAiAnswerServiceClaimOutcomeTests {
 	void supportedRemainderAfterPartialSanitizationStaysOkAndIsCached() {
 		String supportedAnswer = "근거에는 법정 요건에 따른 연차 유급휴가 부여 의무가 명시되어 있습니다.";
 		when(answerClient.answer(anyString(), anyString(), anyInt())).thenReturn(GENERATED_ANSWER);
-		when(answerVerificationService.verify(eq(GENERATED_ANSWER), anyList()))
+		when(answerVerificationService.verify(eq(QUESTION), eq(GENERATED_ANSWER), anyList()))
 			.thenReturn(verificationResult(GENERATED_ANSWER, supportedAnswer, false));
 
 		LawAiAnswerResponse first = service.answer(request());
@@ -150,7 +150,7 @@ class LawAiAnswerServiceClaimOutcomeTests {
 				onDelta.accept(GENERATED_ANSWER);
 				return GENERATED_ANSWER;
 			});
-		when(answerVerificationService.verify(eq(GENERATED_ANSWER), anyList()))
+		when(answerVerificationService.verify(eq(QUESTION), eq(GENERATED_ANSWER), anyList()))
 			.thenReturn(verificationResult(GENERATED_ANSWER, SAFE_ANSWER, true));
 		CapturingEmitter emitter = new CapturingEmitter();
 
@@ -187,7 +187,7 @@ class LawAiAnswerServiceClaimOutcomeTests {
 				onDelta.accept(GENERATED_ANSWER);
 				return GENERATED_ANSWER;
 			});
-		when(answerVerificationService.verify(eq(GENERATED_ANSWER), anyList()))
+		when(answerVerificationService.verify(eq(QUESTION), eq(GENERATED_ANSWER), anyList()))
 			.thenReturn(verificationResult(GENERATED_ANSWER, verifiedAnswer, false));
 		CapturingEmitter emitter = new CapturingEmitter();
 
@@ -214,7 +214,7 @@ class LawAiAnswerServiceClaimOutcomeTests {
 	@Test
 	void streamingCacheHitDoneIncludesCachedResultMessage() throws Exception {
 		when(answerClient.answer(anyString(), anyString(), anyInt())).thenReturn(GENERATED_ANSWER);
-		when(answerVerificationService.verify(eq(GENERATED_ANSWER), anyList()))
+		when(answerVerificationService.verify(eq(QUESTION), eq(GENERATED_ANSWER), anyList()))
 			.thenReturn(verificationResult(GENERATED_ANSWER, SAFE_ANSWER, false));
 		LawAiAnswerResponse seeded = service.answer(request());
 		CapturingEmitter emitter = new CapturingEmitter();
