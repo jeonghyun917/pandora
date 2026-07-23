@@ -77,10 +77,6 @@ public class OpenAiAnswerClient extends GroundedAnswerRewriter {
 
 	@Override
 	public String rewrite(String question, List<String> supportedEvidenceAtoms) {
-		String apiKey = properties.openai().apiKey();
-		if (apiKey == null || apiKey.isBlank()) {
-			throw new IllegalStateException("OPENAI_API_KEY environment variable is required.");
-		}
 		List<String> safeAtoms = supportedEvidenceAtoms == null
 			? List.of()
 			: supportedEvidenceAtoms.stream()
@@ -90,22 +86,7 @@ public class OpenAiAnswerClient extends GroundedAnswerRewriter {
 		if (safeAtoms.isEmpty()) {
 			throw new IllegalArgumentException("Supported evidence atoms are required.");
 		}
-
-		Map<?, ?> response = restClient.post()
-			.uri("/v1/responses")
-			.header("Authorization", "Bearer " + apiKey)
-			.body(Map.of(
-				"model", properties.openai().answerModel(),
-				"instructions", repairInstructions(),
-				"input", repairUserInput(question, safeAtoms),
-				"reasoning", Map.of("effort", answerReasoningEffort()),
-				"text", Map.of("verbosity", "low"),
-				"max_output_tokens", Math.min(400, answerMaxOutputTokens())
-			))
-			.retrieve()
-			.body(Map.class);
-
-		return extractOutputText(response);
+		return String.join("\n", safeAtoms);
 	}
 
 	// 메소드 설명: answerStreaming 처리 흐름을 수행합니다.

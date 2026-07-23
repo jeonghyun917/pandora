@@ -11,6 +11,22 @@ import tools.jackson.databind.ObjectMapper;
 class OpenAiAnswerClientPromptTests {
 
 	@Test
+	void groundedRewritePreservesEveryPreverifiedAtomVerbatim() {
+		OpenAiAnswerClient client = new OpenAiAnswerClient(
+			new LawAiProperties(null, null, null, null),
+			new ObjectMapper()
+		);
+		List<String> atoms = List.of(
+			"정보화사업은 사업계획을 확정하기 전에 사전협의를 해야 합니다.",
+			"사전협의 결과를 반영한 뒤 사업을 추진합니다."
+		);
+
+		String rewritten = client.rewrite("정보화사업 사전협의는 언제 해야 해?", atoms);
+
+		assertThat(rewritten).isEqualTo(String.join("\n", atoms));
+	}
+
+	@Test
 	void asksForOneIndependentlyVerifiableClaimPerSentenceOrBullet() throws Exception {
 		OpenAiAnswerClient client = new OpenAiAnswerClient(
 			new LawAiProperties(null, null, null, null),
