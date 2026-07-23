@@ -41,6 +41,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -99,7 +100,7 @@ public class LawAiAnswerService {
 	private static final int CAREFUL_ANSWER_MAX_OUTPUT_TOKENS = 900;
 	private static final long ANSWER_CACHE_TTL_MILLIS = Duration.ofMinutes(10).toMillis();
 	private static final int MAX_ANSWER_CACHE_ENTRIES = 200;
-	private static final String ANSWER_PIPELINE_CACHE_VERSION = "answer-pipeline-v6";
+	private static final String ANSWER_PIPELINE_CACHE_VERSION = "answer-pipeline-v7";
 	private static final LawAiSearchFailureClassification CLAIM_UNSUPPORTED =
 		LawAiSearchFailureClassification.claimUnsupported();
 	private static final String PUBLIC_NO_GROUND_MESSAGE =
@@ -117,6 +118,7 @@ public class LawAiAnswerService {
 	private final AnswerGuard answerGuard;
 	private final ClaimVerifier claimVerifier;
 	private final AnswerVerificationService answerVerificationService;
+	private final GroundedAnswerRepairService groundedAnswerRepairService;
 	private final ParentContextAssembler parentContextAssembler;
 	private final EvidenceCandidateDiversifier evidenceCandidateDiversifier;
 	private final FailureLoggingService failureLoggingService;
@@ -143,6 +145,43 @@ public class LawAiAnswerService {
 		LawAiSearchFailureMapper searchFailureMapper,
 		LawAiProperties properties
 	) {
+		this(
+			lawChunkMapper,
+			ragDocumentMapper,
+			embeddingClient,
+			qdrantClient,
+			answerClient,
+			evidenceJudge,
+			answerGuard,
+			claimVerifier,
+			answerVerificationService,
+			parentContextAssembler,
+			evidenceCandidateDiversifier,
+			failureLoggingService,
+			searchFailureMapper,
+			properties,
+			null
+		);
+	}
+
+	@Autowired
+	public LawAiAnswerService(
+		LawChunkMapper lawChunkMapper,
+		RagDocumentMapper ragDocumentMapper,
+		OpenAiEmbeddingClient embeddingClient,
+		QdrantClient qdrantClient,
+		OpenAiAnswerClient answerClient,
+		EvidenceJudge evidenceJudge,
+		AnswerGuard answerGuard,
+		ClaimVerifier claimVerifier,
+		AnswerVerificationService answerVerificationService,
+		ParentContextAssembler parentContextAssembler,
+		EvidenceCandidateDiversifier evidenceCandidateDiversifier,
+		FailureLoggingService failureLoggingService,
+		LawAiSearchFailureMapper searchFailureMapper,
+		LawAiProperties properties,
+		GroundedAnswerRepairService groundedAnswerRepairService
+	) {
 		this.lawChunkMapper = lawChunkMapper;
 		this.ragDocumentMapper = ragDocumentMapper;
 		this.embeddingClient = embeddingClient;
@@ -154,6 +193,9 @@ public class LawAiAnswerService {
 		this.answerVerificationService = answerVerificationService == null
 			? new AnswerVerificationService(this.answerGuard, this.claimVerifier)
 			: answerVerificationService;
+		this.groundedAnswerRepairService = groundedAnswerRepairService == null
+			? new GroundedAnswerRepairService(this.answerVerificationService, answerClient)
+			: groundedAnswerRepairService;
 		this.parentContextAssembler = parentContextAssembler == null ? new ParentContextAssembler() : parentContextAssembler;
 		this.evidenceCandidateDiversifier = evidenceCandidateDiversifier == null
 			? new EvidenceCandidateDiversifier()
@@ -271,12 +313,14 @@ public class LawAiAnswerService {
 		);
 		timing.answerMs.set(elapsedMillis(answerStart));
 		long verifyStart = System.nanoTime();
-		AnswerVerificationService.Result verified = answerVerificationService.verify(
+		GroundedAnswerRepairService.Result repaired = groundedAnswerRepairService.verifyAndRepair(
 			retrieval.query(),
 			answer,
 			retrieval.grounds()
 		);
 		timing.verifyMs.addAndGet(elapsedMillis(verifyStart));
+		logRepairDiagnostics(retrieval.query(), repaired);
+		AnswerVerificationService.Result verified = repaired.verification();
 		String guardedAnswer = verified.verifiedAnswer();
 		boolean claimUnsupported = verified.insufficientEvidence();
 		String resultMsg = claimUnsupported ? CLAIM_UNSUPPORTED.failureType() : "OK";
@@ -376,12 +420,14 @@ public class LawAiAnswerService {
 			);
 			timing.answerMs.set(elapsedMillis(answerStart));
 			long verifyStart = System.nanoTime();
-			AnswerVerificationService.Result verified = answerVerificationService.verify(
+			GroundedAnswerRepairService.Result repaired = groundedAnswerRepairService.verifyAndRepair(
 				retrieval.query(),
 				answer,
 				retrieval.grounds()
 			);
 			timing.verifyMs.addAndGet(elapsedMillis(verifyStart));
+			logRepairDiagnostics(retrieval.query(), repaired);
+			AnswerVerificationService.Result verified = repaired.verification();
 			String guardedAnswer = verified.verifiedAnswer();
 			boolean claimUnsupported = verified.insufficientEvidence();
 			String resultMsg = claimUnsupported ? CLAIM_UNSUPPORTED.failureType() : "OK";
@@ -1746,11 +1792,13 @@ public class LawAiAnswerService {
 				buildAnswerContext(retrieval, answerProfile),
 				answerProfile.maxOutputTokens()
 			);
-			AnswerVerificationService.Result verification = answerVerificationService.verify(
+			GroundedAnswerRepairService.Result repaired = groundedAnswerRepairService.verifyAndRepair(
 				evalCase.question(),
 				answer,
 				retrieval.grounds()
 			);
+			logRepairDiagnostics(evalCase.question(), repaired);
+			AnswerVerificationService.Result verification = repaired.verification();
 			String verifiedAnswer = nullToEmpty(verification.verifiedAnswer());
 			if (hasExplicitAnswerOracle(evalCase)) {
 				AnswerOracleMatcher.Result oracleResult = AnswerOracleMatcher.evaluate(verifiedAnswer, evalCase);
@@ -9161,6 +9209,24 @@ public class LawAiAnswerService {
 	// 메소드 설명: elapsedMillis 처리 흐름을 수행합니다.
 	private static long elapsedMillis(long startNanos) {
 		return Math.max(0, (System.nanoTime() - startNanos) / 1_000_000);
+	}
+
+	private void logRepairDiagnostics(String question, GroundedAnswerRepairService.Result result) {
+		if (result == null || result.diagnostics() == null) {
+			return;
+		}
+		GroundedAnswerRepairService.Diagnostics diagnostics = result.diagnostics();
+		if ("INITIAL_OK".equals(diagnostics.reason())) {
+			return;
+		}
+		log.info(
+			"Law AI answer repair question=\"{}\" attempted={} accepted={} reason={} selectedAtomCount={}",
+			limitLogText(question),
+			diagnostics.attempted(),
+			diagnostics.accepted(),
+			diagnostics.reason(),
+			diagnostics.selectedAtomCount()
+		);
 	}
 
 	// 메소드 설명: logTiming 처리 흐름을 수행합니다.

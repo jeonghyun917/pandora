@@ -37,6 +37,10 @@ class LawAiAnswerServiceClaimOutcomeTests {
 	private static final String QUESTION = "연차 유급휴가의 기준을 알려줘";
 	private static final String GENERATED_ANSWER = "사용자는 언제나 30일의 휴가를 주어야 합니다.";
 	private static final String SAFE_ANSWER = "제공된 근거만으로는 30일의 휴가 의무를 확인할 수 없습니다.";
+	private static final String ALIGNED_EVIDENCE =
+		"사용자는 근로자에게 법정 요건에 따른 연차 유급휴가를 주어야 한다.";
+	private static final String REPAIRED_ANSWER =
+		"사용자는 법정 요건을 충족한 근로자에게 연차 유급휴가를 부여해야 합니다.";
 
 	private OpenAiAnswerClient answerClient;
 	private QdrantClient qdrantClient;
@@ -106,7 +110,7 @@ class LawAiAnswerServiceClaimOutcomeTests {
 
 		assertThat(response.resultCode()).isEqualTo("00");
 		assertThat(response.resultMsg()).isEqualTo("ANSWER_CLAIM_UNSUPPORTED");
-		assertThat(response.answer()).isEqualTo(SAFE_ANSWER);
+		assertThat(response.answer()).isEqualTo(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE);
 		assertThat(response.totalCnt()).isEqualTo(1);
 	}
 
@@ -139,6 +143,56 @@ class LawAiAnswerServiceClaimOutcomeTests {
 		assertThat(second.resultMsg()).isEqualTo("OK");
 		assertThat(second.timing().cacheHit()).isTrue();
 		verify(answerClient).answer(anyString(), anyString(), anyInt());
+	}
+
+	@Test
+	void successfulRepairReturnsOnlyTheReverifiedAnswerAndCachesThatFinalOkOutcome() {
+		when(answerClient.answer(anyString(), anyString(), anyInt())).thenReturn(GENERATED_ANSWER);
+		when(answerClient.rewrite(eq(QUESTION), anyList())).thenReturn(REPAIRED_ANSWER);
+		when(answerVerificationService.verify(eq(QUESTION), eq(GENERATED_ANSWER), anyList()))
+			.thenReturn(repairableVerificationResult());
+		when(answerVerificationService.verify(eq(QUESTION), eq(ALIGNED_EVIDENCE), anyList()))
+			.thenReturn(verificationResult(ALIGNED_EVIDENCE, ALIGNED_EVIDENCE, false));
+		when(answerVerificationService.verify(eq(QUESTION), eq(REPAIRED_ANSWER), anyList()))
+			.thenReturn(verificationResult(REPAIRED_ANSWER, REPAIRED_ANSWER, false));
+
+		LawAiAnswerResponse first = service.answer(request());
+		LawAiAnswerResponse second = service.answer(request());
+
+		assertThat(first.resultMsg()).isEqualTo("OK");
+		assertThat(first.answer()).isEqualTo(REPAIRED_ANSWER).doesNotContain(GENERATED_ANSWER);
+		assertThat(first.timing().cacheHit()).isFalse();
+		assertThat(second.answer()).isEqualTo(REPAIRED_ANSWER);
+		assertThat(second.timing().cacheHit()).isTrue();
+		verify(answerClient).answer(anyString(), anyString(), anyInt());
+		verify(answerClient).rewrite(eq(QUESTION), eq(List.of(ALIGNED_EVIDENCE)));
+	}
+
+	@Test
+	void failedRepairReturnsTheExactStandardResponseAndIsNeverCached() {
+		String unsupportedRewrite = "모든 근로자는 조건 없이 30일의 휴가를 받습니다.";
+		when(answerClient.answer(anyString(), anyString(), anyInt())).thenReturn(GENERATED_ANSWER);
+		when(answerClient.rewrite(eq(QUESTION), anyList())).thenReturn(unsupportedRewrite);
+		when(answerVerificationService.verify(eq(QUESTION), eq(GENERATED_ANSWER), anyList()))
+			.thenReturn(repairableVerificationResult());
+		when(answerVerificationService.verify(eq(QUESTION), eq(ALIGNED_EVIDENCE), anyList()))
+			.thenReturn(verificationResult(ALIGNED_EVIDENCE, ALIGNED_EVIDENCE, false));
+		when(answerVerificationService.verify(eq(QUESTION), eq(unsupportedRewrite), anyList()))
+			.thenReturn(verificationResult(
+				unsupportedRewrite,
+				ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE,
+				true
+			));
+
+		LawAiAnswerResponse first = service.answer(request());
+		LawAiAnswerResponse second = service.answer(request());
+
+		assertThat(first.resultMsg()).isEqualTo("ANSWER_CLAIM_UNSUPPORTED");
+		assertThat(first.answer()).isEqualTo(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE);
+		assertThat(second.resultMsg()).isEqualTo("ANSWER_CLAIM_UNSUPPORTED");
+		assertThat(second.timing().cacheHit()).isFalse();
+		verify(answerClient, times(2)).answer(anyString(), anyString(), anyInt());
+		verify(answerClient, times(2)).rewrite(eq(QUESTION), eq(List.of(ALIGNED_EVIDENCE)));
 	}
 
 	@Test
@@ -209,7 +263,7 @@ class LawAiAnswerServiceClaimOutcomeTests {
 			.map(LawAiAnswerResponse.class::cast)
 			.anySatisfy(response -> {
 				assertThat(response.resultMsg()).isEqualTo("ANSWER_CLAIM_UNSUPPORTED");
-				assertThat(response.answer()).isEqualTo(SAFE_ANSWER);
+				assertThat(response.answer()).isEqualTo(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE);
 			});
 		assertThat(emitter.data()).filteredOn(Map.class::isInstance)
 			.map(Map.class::cast)
@@ -236,6 +290,77 @@ class LawAiAnswerServiceClaimOutcomeTests {
 		invokeStream(emitter);
 
 		assertThat(deltaTexts(emitter)).containsExactly(verifiedAnswer);
+	}
+
+	@Test
+	void streamingRepairWithholdsRawDeltasAndEmitsOnlyTheFinalReverifiedAnswer() throws Exception {
+		when(answerClient.answerStreaming(anyString(), anyString(), any(), anyInt()))
+			.thenAnswer(invocation -> {
+				@SuppressWarnings("unchecked")
+				Consumer<String> onDelta = invocation.getArgument(2);
+				onDelta.accept(GENERATED_ANSWER);
+				return GENERATED_ANSWER;
+			});
+		when(answerClient.rewrite(eq(QUESTION), anyList())).thenReturn(REPAIRED_ANSWER);
+		when(answerVerificationService.verify(eq(QUESTION), eq(GENERATED_ANSWER), anyList()))
+			.thenReturn(repairableVerificationResult());
+		when(answerVerificationService.verify(eq(QUESTION), eq(ALIGNED_EVIDENCE), anyList()))
+			.thenReturn(verificationResult(ALIGNED_EVIDENCE, ALIGNED_EVIDENCE, false));
+		when(answerVerificationService.verify(eq(QUESTION), eq(REPAIRED_ANSWER), anyList()))
+			.thenReturn(verificationResult(REPAIRED_ANSWER, REPAIRED_ANSWER, false));
+		CapturingEmitter emitter = new CapturingEmitter();
+
+		invokeStream(emitter);
+
+		assertThat(deltaTexts(emitter)).containsExactly(REPAIRED_ANSWER);
+		assertThat(deltaTexts(emitter)).doesNotContain(GENERATED_ANSWER);
+		assertThat(emitter.data()).filteredOn(LawAiAnswerResponse.class::isInstance)
+			.map(LawAiAnswerResponse.class::cast)
+			.anySatisfy(response -> {
+				assertThat(response.resultMsg()).isEqualTo("OK");
+				assertThat(response.answer()).isEqualTo(REPAIRED_ANSWER);
+			});
+		verify(answerClient).rewrite(eq(QUESTION), eq(List.of(ALIGNED_EVIDENCE)));
+	}
+
+	@Test
+	void answerLevelEvaluationUsesTheSameRepairedAndReverifiedAnswer() {
+		when(answerClient.answer(anyString(), anyString(), anyInt())).thenReturn(GENERATED_ANSWER);
+		when(answerClient.rewrite(eq(QUESTION), anyList())).thenReturn(REPAIRED_ANSWER);
+		when(answerVerificationService.verify(eq(QUESTION), eq(GENERATED_ANSWER), anyList()))
+			.thenReturn(repairableVerificationResult());
+		when(answerVerificationService.verify(eq(QUESTION), eq(ALIGNED_EVIDENCE), anyList()))
+			.thenReturn(verificationResult(ALIGNED_EVIDENCE, ALIGNED_EVIDENCE, false));
+		when(answerVerificationService.verify(eq(QUESTION), eq(REPAIRED_ANSWER), anyList()))
+			.thenReturn(verificationResult(REPAIRED_ANSWER, REPAIRED_ANSWER, false));
+		LawAiEvalRequest.EvalCase evalCase = new LawAiEvalRequest.EvalCase(
+			"repair-eval-path",
+			QUESTION,
+			List.of("law"),
+			List.of("연차 유급휴가"),
+			1,
+			List.of("근로기준법"),
+			List.of("requirement"),
+			List.of(),
+			List.of(),
+			List.of(),
+			List.of(),
+			"법정 요건에 따른 부여 의무를 답한다",
+			List.of("OK"),
+			true,
+			List.of("법정 요건", "연차 유급휴가"),
+			List.of()
+		);
+
+		LawAiEvalResponse.CaseResult result = service.evaluate(
+			new LawAiEvalRequest(List.of(evalCase), List.of(), null)
+		).results().get(0);
+
+		assertThat(result.answerVerificationRequired()).isTrue();
+		assertThat(result.answerVerified()).isTrue();
+		assertThat(result.verifiedAnswer()).isEqualTo(REPAIRED_ANSWER);
+		assertThat(result.forbiddenAnswerMatchedTerms()).isEmpty();
+		verify(answerClient).rewrite(eq(QUESTION), eq(List.of(ALIGNED_EVIDENCE)));
 	}
 
 	@Test
@@ -301,19 +426,63 @@ class LawAiAnswerServiceClaimOutcomeTests {
 		String verifiedAnswer,
 		boolean insufficientEvidence
 	) {
+		ClaimVerifier.VerificationResult claimResult = new ClaimVerifier.VerificationResult(
+			verifiedAnswer,
+			insufficientEvidence,
+			!verifiedAnswer.equals(guardedAnswer),
+			insufficientEvidence ? List.of(GENERATED_ANSWER) : List.of(),
+			List.of(),
+			List.of(),
+			insufficientEvidence ? List.of() : List.of(new ClaimVerifier.ClaimEvidenceLink(
+				verifiedAnswer,
+				"SUPPORTED",
+				1,
+				ALIGNED_EVIDENCE,
+				2,
+				1.0,
+				1.0
+			)),
+			1,
+			insufficientEvidence ? 0 : 1
+		);
 		return new AnswerVerificationService.Result(
 			guardedAnswer,
+			claimResult,
+			insufficientEvidence
+				? AnswerQuestionAlignmentVerifier.AlignmentResult.claimInsufficient()
+				: new AnswerQuestionAlignmentVerifier.AlignmentResult(
+					true,
+					true,
+					"ALIGNED",
+					List.of(),
+					verifiedAnswer
+				)
+		);
+	}
+
+	private AnswerVerificationService.Result repairableVerificationResult() {
+		return new AnswerVerificationService.Result(
+			GENERATED_ANSWER,
 			new ClaimVerifier.VerificationResult(
-				verifiedAnswer,
-				insufficientEvidence,
-				!verifiedAnswer.equals(guardedAnswer),
-				insufficientEvidence ? List.of(GENERATED_ANSWER) : List.of(),
+				ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE,
+				true,
+				true,
+				List.of(GENERATED_ANSWER),
+				List.of(GENERATED_ANSWER),
 				List.of(),
-				List.of(),
-				List.of(),
-				1,
-				insufficientEvidence ? 0 : 1
-			)
+				List.of(new ClaimVerifier.ClaimEvidenceLink(
+					GENERATED_ANSWER,
+					"SUPPORTED",
+					1,
+					ALIGNED_EVIDENCE,
+					3,
+					1.0,
+					1.0
+				)),
+				2,
+				1
+			),
+			AnswerQuestionAlignmentVerifier.AlignmentResult.claimInsufficient()
 		);
 	}
 
