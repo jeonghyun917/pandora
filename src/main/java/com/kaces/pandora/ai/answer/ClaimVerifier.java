@@ -14,25 +14,8 @@ public class ClaimVerifier {
 	private static final Pattern SENTENCE_BOUNDARY = Pattern.compile(
 		"(?<=[!?])\\s+|(?<=[가-힣A-Za-z][.])\\s+|\\n+"
 	);
-	private static final Pattern NUMBER_OR_DATE_CLAIM = Pattern.compile(
-		"\\d[\\d,]*(?:\\.\\d+)?\\s*(?:년|월|일|개월|일내|일 이내|점|%|퍼센트|원|만원|억원|개|건|명|회|차|시간)?"
-	);
-	private static final Pattern ASSERTIVE_ENDING = Pattern.compile(
-		"(?:입니다|합니다|됩니다|있습니다|없습니다|아닙니다|해당합니다|포함됩니다|제외됩니다|요구됩니다"
-			+ "|않습니다|이다|한다|된다|있다|없다|아니다|않는다|않음"
-			+ "|이며|이고|있고|없고|하며|되고|되며|으며|하되|지만|습니다만|합니다만|됩니다만"
-			+ "|입니다만|아닙니다만|으나|는데|하나)[.!?]?$"
-	);
 	static final String INSUFFICIENT_EVIDENCE_MESSAGE =
 		"제공된 근거만으로는 답변을 확정하기 어렵습니다. 관련 법령명이나 문서 범위를 더 구체적으로 입력해 주세요.";
-	private static final List<String> STRONG_CLAIM_CUES = List.of(
-		"반드시", "항상", "무조건", "필수", "해야", "하여야", "대상입니다", "대상에 해당",
-		"대상 사업", "대상사업", "대상은", "대상에 포함",
-		"비대상", "제외", "면제", "불필요", "수의계약", "가능합니다", "불가능합니다",
-		"받아야", "제공해야", "제출해야", "설치해야", "고지해야", "알려야",
-		"위반", "과태료", "벌칙", "기한", "금액", "불이익", "제재", "처분",
-		"보완", "예산 조정", "입찰 참가자격", "제한"
-	);
 	private static final Set<String> FORMAT_ONLY_LABELS = Set.of(
 		"결론", "주의", "참고", "안내", "요약", "근거", "답변", "설명", "출처",
 		"확인", "검토", "결과", "구분", "항목", "내용", "제목", "목차"
