@@ -17,6 +17,7 @@ final class ExplicitOracleTermMatcher {
 	private static final List<String> CLAUSE_SEPARATORS = List.of("하지만", "그러나", "반면", "다만");
 	private static final List<String> LOCAL_POLARITY_BRIDGES = List.of(
 		"이라고는", "라고는", "이라고", "라는", "라고", "다고",
+		"한다면", "하면", "할경우", "하는경우", "한경우", "했을경우",
 		"단정해서는", "단정할수", "말할수", "볼수", "할수", "해서는",
 		"이라는것은", "라는것은", "인것은", "것은",
 		"반드시", "절대", "전혀",

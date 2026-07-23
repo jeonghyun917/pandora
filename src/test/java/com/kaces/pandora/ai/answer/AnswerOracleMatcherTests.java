@@ -224,6 +224,26 @@ class AnswerOracleMatcherTests {
 	}
 
 	@Test
+	void forbiddenPositiveExpressionDoesNotMatchAcrossConditionalNegationBridge() {
+		LawAiEvalRequest.EvalCase evalCase = oracleCase(
+			List.of(List.of("법령상 예외를 확인")),
+			List.of(),
+			List.of("공개장소에 자유롭게 설치")
+		);
+
+		for (String answer : List.of(
+			"법령상 예외를 확인해야 하며 공개장소에 자유롭게 설치하면 안 됩니다.",
+			"법령상 예외를 확인해야 하며 공개장소에 자유롭게 설치한다면 안 된다.",
+			"법령상 예외를 확인해야 하며 공개장소에 자유롭게 설치할 경우 안 됨."
+		)) {
+			AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(answer, evalCase);
+
+			assertThat(result.passed()).as(answer + ": " + result.message()).isTrue();
+			assertThat(result.forbiddenMatchedExpressions()).as(answer).isEmpty();
+		}
+	}
+
+	@Test
 	void negativePropositionMatchesGrammaticalAnCannotAssertForm() {
 		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
 			"무조건 30일이라고 단정해서는 안 됩니다. 설치 목적에 따라 기간을 정합니다",

@@ -390,6 +390,43 @@ class AnswerQuestionAlignmentVerifierTests {
 	}
 
 	@Test
+	void rejectsMetaPredicatesThatOnlyDescribeCheckingTheQuestion() {
+		for (String claim : List.of(
+			"공공소프트웨어사업은 과업심의 대상인지 확인합니다.",
+			"공공소프트웨어사업은 과업심의 대상인지 검토합니다.",
+			"공공소프트웨어사업은 과업심의 대상인지 문의합니다.",
+			"공공소프트웨어사업은 과업심의 대상인지 질문합니다.",
+			"공공소프트웨어사업은 과업심의 대상인지 알아봅니다."
+		)) {
+			AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+				"공공소프트웨어사업은 과업심의 대상인가?",
+				claimResult(supported(claim, "공공소프트웨어사업은 과업심의 대상입니다."))
+			);
+
+			assertThat(result.aligned()).as("claim=%s result=%s", claim, result).isFalse();
+			assertThat(result.missingGroups()).as(claim).contains("DIRECT_CONCLUSION");
+		}
+	}
+
+	@Test
+	void rejectsInterrogativeAndBareWhetherRestatements() {
+		for (String claim : List.of(
+			"공공소프트웨어사업은 과업심의 대상?",
+			"공공소프트웨어사업은 과업심의 대상인가?",
+			"공공소프트웨어사업은 과업심의 대상인가요?",
+			"공공소프트웨어사업은 과업심의 대상인지"
+		)) {
+			AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+				"공공소프트웨어사업은 과업심의 대상인가?",
+				claimResult(supported(claim, "공공소프트웨어사업은 과업심의 대상입니다."))
+			);
+
+			assertThat(result.aligned()).as("claim=%s result=%s", claim, result).isFalse();
+			assertThat(result.missingGroups()).as(claim).contains("DIRECT_CONCLUSION");
+		}
+	}
+
+	@Test
 	void failsClosedWhenQuestionHasNoUsableAlignmentProfile() {
 		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
 			"?",

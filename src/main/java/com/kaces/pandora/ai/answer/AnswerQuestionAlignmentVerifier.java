@@ -24,6 +24,25 @@ public class AnswerQuestionAlignmentVerifier {
 			+ "하여야\s*한다|해야\s*한다|할\s*수\s*있다|할\s*수\s*없다|"
 			+ "하지\s*않는다|금지된다|제외된다|비대상이다)(?:[.?!]|$)"
 	);
+	private static final List<String> NON_CONCLUSION_META_ENDINGS = List.of(
+		"확인합니다", "확인한다",
+		"검토합니다", "검토한다",
+		"문의합니다", "문의한다",
+		"질문합니다", "질문한다",
+		"알아봅니다", "알아본다",
+		"파악합니다", "파악한다",
+		"조사합니다", "조사한다",
+		"검증합니다", "검증한다",
+		"살펴봅니다", "살펴본다"
+	);
+	private static final List<String> NON_CONCLUSION_INTERROGATIVE_ENDINGS = List.of(
+		"인가요", "인가",
+		"인지요", "인지",
+		"일까요", "일까",
+		"할까요", "할까",
+		"하나요", "하나",
+		"여부"
+	);
 	private static final Pattern NUMERIC_AMOUNT_PATTERN = Pattern.compile(
 		"(?<!\\d)\\d+(?:,\\d{3})*(?:\\.\\d+)?\\s*(?:조원|억원|만원|원|%|퍼센트)"
 			+ "(?=(?:은|는|이|가|을|를|으로|에서|부터|까지|입니다|이다|이고|이며|[\\s,.!?]|$))"
@@ -142,10 +161,16 @@ public class AnswerQuestionAlignmentVerifier {
 			return false;
 		}
 		String trimmed = proposition.trim();
+		String normalized = normalize(trimmed);
+		if (trimmed.endsWith("?")
+			|| trimmed.endsWith("？")
+			|| NON_CONCLUSION_META_ENDINGS.stream().anyMatch(normalized::endsWith)
+			|| NON_CONCLUSION_INTERROGATIVE_ENDINGS.stream().anyMatch(normalized::endsWith)) {
+			return false;
+		}
 		if (DIRECT_CONCLUSION_PATTERN.matcher(trimmed).find()) {
 			return true;
 		}
-		String normalized = normalize(trimmed);
 		return relationRequirements.stream().allMatch(requirement -> requirement.matches(normalized))
 			&& List.of("대상", "비대상", "제외", "면제", "금지", "허용", "가능", "불가능")
 				.stream()

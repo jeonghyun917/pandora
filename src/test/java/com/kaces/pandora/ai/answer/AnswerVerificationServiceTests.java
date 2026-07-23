@@ -86,6 +86,47 @@ class AnswerVerificationServiceTests {
 		verify(alignmentVerifier, never()).verify(org.mockito.ArgumentMatchers.anyString(), anyListResult());
 	}
 
+	@Test
+	void questionAwareVerificationRejectsSupportedCheckingFrameAsNonresponsive() {
+		AnswerVerificationService service = new AnswerVerificationService(
+			new AnswerGuard(),
+			new ClaimVerifier(),
+			new AnswerQuestionAlignmentVerifier()
+		);
+		LawAiAnswerGround ground = new LawAiAnswerGround(
+			1,
+			1,
+			1,
+			"official_doc",
+			"공공소프트웨어사업 과업심의 안내",
+			"기관",
+			"공식 가이드 문서",
+			null,
+			null,
+			"page 1",
+			"적용 대상 사업",
+			1,
+			"공공소프트웨어사업은 과업심의 대상입니다.",
+			null,
+			null,
+			0.9
+		);
+
+		AnswerVerificationService.Result result = service.verify(
+			"공공소프트웨어사업은 과업심의 대상인가?",
+			"공공소프트웨어사업은 과업심의 대상인지 확인합니다.",
+			List.of(ground)
+		);
+
+		assertThat(result.claimResult().evidenceLinks())
+			.extracting(ClaimVerifier.ClaimEvidenceLink::relation)
+			.contains("SUPPORTED");
+		assertThat(result.alignmentResult().aligned()).isFalse();
+		assertThat(result.alignmentResult().missingGroups()).contains("DIRECT_CONCLUSION");
+		assertThat(result.insufficientEvidence()).isTrue();
+		assertThat(result.verifiedAnswer()).isEqualTo(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE);
+	}
+
 	private ClaimVerifier.VerificationResult supportedClaimResult() {
 		return new ClaimVerifier.VerificationResult(
 			"직접 답변입니다.",
