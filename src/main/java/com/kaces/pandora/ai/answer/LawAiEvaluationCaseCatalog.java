@@ -198,7 +198,7 @@ final class LawAiEvaluationCaseCatalog {
 						"answer oracle line " + lineNumber + ": quoted fields are not supported"
 					);
 				}
-				if (line.isBlank() || line.startsWith("#")) {
+				if (line.isBlank() || line.trim().startsWith("#")) {
 					continue;
 				}
 				String[] columns = line.split("\t", -1);

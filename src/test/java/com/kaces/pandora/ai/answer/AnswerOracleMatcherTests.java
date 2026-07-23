@@ -33,7 +33,7 @@ class AnswerOracleMatcherTests {
 		assertThat(missing.message())
 			.contains("missing proposition groups=기한 내|정해진 기한")
 			.contains("missing condition groups=등록 요청을 받은 경우|등록 요청 시");
-		assertThat(complete.passed()).isTrue();
+		assertThat(complete.passed()).as(complete.message()).isTrue();
 	}
 
 	@Test
@@ -125,6 +125,86 @@ class AnswerOracleMatcherTests {
 		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
 			"IRM 평가기간은 2025. 12. 17 ~ 2026. 10. 31입니다. 평가기간 중 요청 건수와 완료 건수를 집계합니다.",
 			defaultCase("irm-measure-period")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
+	void rejectsHardwareAliasInsideAViewSupersededByTheFinalAssertion() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"비대상이라는 견해도 있지만 실제로는 과업심의 대상입니다",
+			defaultCase("project-review-hardware-exclusion")
+		);
+
+		assertThat(result.passed()).isFalse();
+		assertThat(result.missingPropositionGroups()).isNotEmpty();
+	}
+
+	@Test
+	void rejectsThirtyDayAliasInsideAnExplanationSupersededByTheFinalAssertion() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"반드시 30일은 아니라는 설명도 있지만 실제로는 무조건 30일입니다. 설치 목적",
+			defaultCase("cctv-retention-not-fixed-30")
+		);
+
+		assertThat(result.passed()).isFalse();
+		assertThat(result.missingPropositionGroups()).isNotEmpty();
+	}
+
+	@Test
+	void rejectsPendingAliasInsideAnExplanationSupersededByTheFinalAssertion() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"아직 시행예정이라는 설명도 있지만 실제로는 이미 시행 중입니다. 공식 시행일을 명시해야 합니다",
+			defaultCase("ai-law-enforcement-date")
+		);
+
+		assertThat(result.passed()).isFalse();
+		assertThat(result.missingPropositionGroups()).isNotEmpty();
+	}
+
+	@Test
+	void forbiddenPositiveExpressionDoesNotMatchInsideModalNegation() {
+		LawAiEvalRequest.EvalCase evalCase = oracleCase(
+			List.of(List.of("법령상 예외를 확인")),
+			List.of(),
+			List.of("공개장소에 자유롭게 설치")
+		);
+
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"법령상 예외를 확인해야 하며 공개장소에 자유롭게 설치할 수 없습니다.",
+			evalCase
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+		assertThat(result.forbiddenMatchedExpressions()).isEmpty();
+	}
+
+	@Test
+	void negativePropositionMatchesModalCannotAssertForm() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"무조건 30일이라고 단정할 수 없습니다. 설치 목적에 따라 기간을 정합니다",
+			defaultCase("cctv-retention-not-fixed-30")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
+	void doubleNegationAffirmsThePositiveOraclePolarity() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"비대상이 아니라고 할 수 없습니다",
+			defaultCase("project-review-hardware-exclusion")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
+	void directConclusionRemainsValidWhenFollowedByADamanCondition() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"공개된 장소 CCTV 설치는 원칙적으로 금지입니다. 다만 법령상 예외 사유가 있는 경우에만 설치할 수 있습니다.",
+			defaultCase("cctv-public-place-rule")
 		);
 
 		assertThat(result.passed()).as(result.message()).isTrue();

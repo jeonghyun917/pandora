@@ -2,6 +2,7 @@ package com.kaces.pandora.ai.answer;
 
 import com.kaces.pandora.common.text.KoreanQueryNormalizer;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Adds material-token and local-polarity checks to the legacy fuzzy matcher for explicit answer oracles.
@@ -9,8 +10,20 @@ import java.util.List;
  */
 final class ExplicitOracleTermMatcher {
 
-	private static final List<String> GRAMMATICAL_NEGATIONS = List.of("아니", "않", "없", "불가");
+	private static final List<String> GRAMMATICAL_NEGATIONS = List.of("아닙", "아니", "않", "없", "불가");
 	private static final List<String> CLAUSE_SEPARATORS = List.of("하지만", "그러나", "반면", "다만");
+	private static final List<String> LOCAL_POLARITY_BRIDGES = List.of(
+		"이라고는", "라고는", "이라고", "라는", "라고", "다고",
+		"단정할수", "말할수", "볼수", "할수",
+		"이라는것은", "라는것은", "인것은", "것은",
+		"반드시", "절대", "전혀",
+		"으로", "은", "는", "이", "가", "도", "만", "지"
+	);
+	private static final Pattern SUPERSEDED_ATTRIBUTION = Pattern.compile(
+		"(?s)(^|[.!?\\r\\n])\\s*[^.!?\\r\\n]*?(?:이라는|라는)\\s*"
+			+ "(?:견해|설명|주장)(?:도|은|는)?\\s*"
+			+ "(?:(?:있지만|있으나|있었지만)|(?:있습니다|있다)?\\s*\\.?\\s*(?:하지만|그러나|반면))"
+	);
 
 	private ExplicitOracleTermMatcher() {
 	}
@@ -31,21 +44,24 @@ final class ExplicitOracleTermMatcher {
 		if (normalizedClause.contains(normalizedExpected)) {
 			return true;
 		}
-		List<String> materialTokens = java.util.Arrays.stream(expectedExpression.split("[^\\p{L}\\p{N}]+"))
+		List<String> materialTokens = materialTokens(expectedExpression);
+		return !materialTokens.isEmpty() && materialTokens.stream().allMatch(normalizedClause::contains);
+	}
+
+	private static List<String> materialTokens(String expectedExpression) {
+		return java.util.Arrays.stream(expectedExpression.split("[^\\p{L}\\p{N}]+"))
 			.map(KoreanQueryNormalizer::normalizeForMatch)
 			.map(ExplicitOracleTermMatcher::stripTrailingParticle)
 			.filter(token -> token.length() >= 2)
 			.filter(token -> !isPureNegation(token))
 			.toList();
-		return !materialTokens.isEmpty() && materialTokens.stream().allMatch(normalizedClause::contains);
 	}
 
 	private static boolean hasCompatiblePolarity(String clause, String expectedExpression) {
 		String normalizedClause = KoreanQueryNormalizer.normalizeForMatch(clause);
 		String normalizedExpected = KoreanQueryNormalizer.normalizeForMatch(expectedExpression);
 		int expectedNegation = firstNegationIndex(normalizedExpected);
-		boolean expectsNegation = expectedNegation >= 0;
-		String core = expectsNegation
+		String core = expectedNegation >= 0
 			? stripTrailingParticle(normalizedExpected.substring(0, expectedNegation))
 			: normalizedExpected;
 		if (core.isBlank()) {
@@ -53,15 +69,25 @@ final class ExplicitOracleTermMatcher {
 		}
 		int coreIndex = normalizedClause.indexOf(core);
 		if (coreIndex < 0) {
-			return !expectsNegation || containsNegation(normalizedClause);
+			if (expectedNegation >= 0) {
+				return false;
+			}
+			List<String> tokens = materialTokens(expectedExpression);
+			if (tokens.isEmpty()) {
+				return false;
+			}
+			String predicateAnchor = tokens.get(tokens.size() - 1);
+			int anchorIndex = normalizedClause.lastIndexOf(predicateAnchor);
+			return anchorIndex >= 0
+				&& localNegationParity(normalizedClause.substring(anchorIndex + predicateAnchor.length())) == 0;
 		}
-		String suffix = normalizedClause.substring(coreIndex + core.length());
-		boolean locallyNegated = startsWithLocalNegation(suffix);
-		return expectsNegation == locallyNegated;
+		String expectedSuffix = normalizedExpected.substring(core.length());
+		String answerSuffix = normalizedClause.substring(coreIndex + core.length());
+		return localNegationParity(expectedSuffix) == localNegationParity(answerSuffix);
 	}
 
 	private static List<String> clauses(String answer) {
-		String separated = answer;
+		String separated = SUPERSEDED_ATTRIBUTION.matcher(answer).replaceAll("$1");
 		for (String separator : CLAUSE_SEPARATORS) {
 			separated = separated.replace(separator, ".");
 		}
@@ -79,12 +105,35 @@ final class ExplicitOracleTermMatcher {
 			.orElse(-1);
 	}
 
-	private static boolean containsNegation(String value) {
-		return GRAMMATICAL_NEGATIONS.stream().anyMatch(value::contains);
-	}
-
 	private static boolean isPureNegation(String value) {
 		return GRAMMATICAL_NEGATIONS.stream().anyMatch(value::startsWith);
+	}
+
+	private static int localNegationParity(String suffix) {
+		String remaining = suffix;
+		int negations = 0;
+		for (int steps = 0; steps < 24 && !remaining.isBlank(); steps++) {
+			String marker = startsWith(remaining, GRAMMATICAL_NEGATIONS);
+			if (marker != null) {
+				negations++;
+				remaining = remaining.substring(marker.length());
+				continue;
+			}
+			String bridge = startsWith(remaining, LOCAL_POLARITY_BRIDGES);
+			if (bridge != null) {
+				remaining = remaining.substring(bridge.length());
+				continue;
+			}
+			break;
+		}
+		return negations % 2;
+	}
+
+	private static String startsWith(String value, List<String> prefixes) {
+		return prefixes.stream()
+			.filter(value::startsWith)
+			.findFirst()
+			.orElse(null);
 	}
 
 	private static String stripTrailingParticle(String value) {
@@ -96,11 +145,4 @@ final class ExplicitOracleTermMatcher {
 		return value;
 	}
 
-	private static boolean startsWithLocalNegation(String suffix) {
-		return suffix.matches(
-			"^(?:(?:이라고볼수|라고볼수|이라고|라고|이라는것은|라는것은|인것은|은|는|이|가|도|만))?"
-				+ "(?:(?:절대|전혀|반드시))?"
-				+ "(?:아니|않|없|불가).*"
-		);
-	}
 }

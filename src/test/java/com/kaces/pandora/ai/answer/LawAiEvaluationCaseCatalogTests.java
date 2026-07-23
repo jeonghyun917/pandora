@@ -197,6 +197,19 @@ class LawAiEvaluationCaseCatalogTests {
 	}
 
 	@Test
+	void oracleParserIgnoresLeadingSpaceComments() throws Exception {
+		List<LawAiEvalRequest.EvalCase> merged = merge(
+			List.of(baseCase("a"), baseCase("b")),
+			Set.of("a", "b"),
+			"  # comment with leading spaces\n" +
+			"a\tanswer a\t-\twrong a\n" +
+			"b\tanswer b\t-\twrong b\n"
+		);
+
+		assertThat(merged).extracting(LawAiEvalRequest.EvalCase::id).containsExactly("a", "b");
+	}
+
+	@Test
 	void correctedSemanticOraclesRequireDirectFactsInsteadOfCircularRestatements() {
 		List<LawAiEvalRequest.EvalCase> cases = LawAiEvaluationCaseCatalog.loadDefaultCases();
 		Map<String, String> directAnswers = Map.of(

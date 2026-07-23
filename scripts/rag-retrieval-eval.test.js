@@ -123,6 +123,16 @@ test('answer-oracle parser fails closed for quoted fields including quoted tabs 
   assert.throws(() => parse('a\t"answer\ncontinued"\t-\twrong'), /quoted fields are not supported/i);
 });
 
+test('answer-oracle parser ignores comments with leading spaces', () => {
+  const rows = caseParser.parseAnswerOraclesTsv([
+    'id\trequiredPropositionGroups\trequiredConditionGroups\tforbiddenAnswerExpressions',
+    '  # comment with leading spaces',
+    'a\tanswer\t-\twrong',
+  ].join('\n'));
+
+  assert.deepEqual(rows.map((row) => row.id), ['a']);
+});
+
 test('answer-oracle merge rejects duplicate, orphan, missing, and malformed rows', () => {
   const baseCases = [{ id: 'a' }, { id: 'b' }];
   const requiredOracleIds = new Set(['a', 'b']);
