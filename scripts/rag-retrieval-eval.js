@@ -24,17 +24,19 @@ const CASE_PATHS = [
   path.resolve('src/main/resources/rag-evaluation-cases.tsv'),
   path.resolve('src/main/resources/rag-evaluation-cases.generated.tsv'),
 ];
+const ANSWER_ORACLE_PATH = path.resolve('src/main/resources/rag-answer-evaluation-oracles.tsv');
+const DATASET_PATHS = [...CASE_PATHS, ANSWER_ORACLE_PATH];
 
 async function main() {
   const options = parseOptions(process.argv.slice(2), process.env);
-  const allCases = loadEvalCases(CASE_PATHS);
+  const allCases = loadEvalCases(CASE_PATHS, { answerOraclePath: ANSWER_ORACLE_PATH });
   const cases = selectEvalCases(allCases, options);
   if (cases.length === 0) {
     throw new Error('no evaluation cases selected');
   }
   const scope = determineRunScope(cases, allCases, options.caseIds, options.caseLimit);
   const outputPaths = resolveOutputPaths(scope, options);
-  const datasetHashValue = datasetHash(CASE_PATHS.filter((casePath) => fs.existsSync(casePath)));
+  const datasetHashValue = datasetHash(DATASET_PATHS.filter((casePath) => fs.existsSync(casePath)));
   const selectionHashValue = selectionHash(cases);
   const runtimeInfo = await loadRuntimeInfo(options.baseUrl, options.timeoutMs);
   assertEvaluationRuntimeReady(runtimeInfo, scope);

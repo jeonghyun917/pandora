@@ -27,6 +27,8 @@ const casePaths = [
   path.resolve('src/main/resources/rag-evaluation-cases.tsv'),
   path.resolve('src/main/resources/rag-evaluation-cases.generated.tsv'),
 ];
+const answerOraclePath = path.resolve('src/main/resources/rag-answer-evaluation-oracles.tsv');
+const datasetPaths = [...casePaths, answerOraclePath];
 const maxEvaluationErrorRetries = Number(process.env.RAG_EVAL_ERROR_RETRIES || 3);
 const caseBatchSize = Number(process.env.RAG_EVAL_CASE_BATCH_SIZE || 10);
 const requestTimeoutMs = Number(process.env.RAG_EVAL_REQUEST_TIMEOUT_MS || 180000);
@@ -46,7 +48,7 @@ async function main() {
   checkpointPath = reportPaths.checkpointPath;
   const runtimeInfo = await loadRuntimeInfo();
   assertEvaluationRuntimeReady(runtimeInfo, scope);
-  const datasetHashValue = datasetHash(casePaths.filter((casePath) => fs.existsSync(casePath)));
+  const datasetHashValue = datasetHash(datasetPaths.filter((casePath) => fs.existsSync(casePath)));
   const selectionHashValue = selectionHash(cases);
   const checkpointIdentity = buildCheckpointIdentity({
     scope,
@@ -419,7 +421,7 @@ function isCompletedFailingEvaluationResponse(body) {
 }
 
 function loadCases() {
-  return loadEvalCases(casePaths);
+  return loadEvalCases(casePaths, { answerOraclePath });
 }
 
 function selectCases(cases) {

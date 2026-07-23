@@ -1752,6 +1752,27 @@ public class LawAiAnswerService {
 				retrieval.grounds()
 			);
 			String verifiedAnswer = nullToEmpty(verification.verifiedAnswer());
+			if (hasExplicitAnswerOracle(evalCase)) {
+				AnswerOracleMatcher.Result oracleResult = AnswerOracleMatcher.evaluate(verifiedAnswer, evalCase);
+				List<String> missingGroups = new java.util.ArrayList<>();
+				missingGroups.addAll(oracleResult.missingPropositionGroups());
+				missingGroups.addAll(oracleResult.missingConditionGroups());
+				boolean passed = !verification.insufficientEvidence() && oracleResult.passed();
+				String supportMessage = verification.insufficientEvidence()
+					? "answer claims are not supported by selected grounds"
+					: "";
+				return new AnswerEvalResult(
+					passed,
+					oracleResult.matchedExpressions(),
+					List.copyOf(missingGroups),
+					oracleResult.forbiddenMatchedExpressions(),
+					verification.claimResult().unsupportedClaims(),
+					verification.claimResult().contradictedClaims(),
+					verification.claimResult().evidenceLinks(),
+					limitText(verifiedAnswer, 1_500),
+					passed ? "" : appendMessage(supportMessage, oracleResult.message())
+				);
+			}
 			List<String> answerTerms = expectedAnswerTerms == null || expectedAnswerTerms.isEmpty()
 				? expectedTerms.stream().limit(4).toList()
 				: expectedAnswerTerms;
@@ -1784,6 +1805,12 @@ public class LawAiAnswerService {
 		} catch (RuntimeException exception) {
 			return AnswerEvalResult.failed("Answer-level evaluation failed: " + exception.getMessage());
 		}
+	}
+
+	private boolean hasExplicitAnswerOracle(LawAiEvalRequest.EvalCase evalCase) {
+		return evalCase != null
+			&& evalCase.requiredPropositionGroups() != null
+			&& !evalCase.requiredPropositionGroups().isEmpty();
 	}
 
 	private String answerEvalFailureMessage(

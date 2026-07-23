@@ -94,6 +94,74 @@ test('case loading rejects duplicate IDs across files instead of overwriting the
   );
 });
 
+test('answer-oracle parser preserves AND groups and aliases', () => {
+  assert.equal(typeof caseParser.parseAnswerOraclesTsv, 'function');
+  const rows = caseParser.parseAnswerOraclesTsv([
+    'id\trequiredPropositionGroups\trequiredConditionGroups\tforbiddenAnswerExpressions',
+    'period\tnot fixed|not mandatory;purpose based|based on purpose\tinstallation purpose|stated purpose\talways 30 days|fixed at 30 days',
+  ].join('\n'));
+
+  assert.deepEqual(rows, [{
+    id: 'period',
+    requiredPropositionGroups: [
+      ['not fixed', 'not mandatory'],
+      ['purpose based', 'based on purpose'],
+    ],
+    requiredConditionGroups: [['installation purpose', 'stated purpose']],
+    forbiddenAnswerExpressions: ['always 30 days', 'fixed at 30 days'],
+  }]);
+});
+
+test('answer-oracle merge rejects duplicate, orphan, missing, and malformed rows', () => {
+  const baseCases = [{ id: 'a' }, { id: 'b' }];
+  const requiredOracleIds = new Set(['a', 'b']);
+  const parse = (rows) => caseParser.parseAnswerOraclesTsv([
+    'id\trequiredPropositionGroups\trequiredConditionGroups\tforbiddenAnswerExpressions',
+    ...rows,
+  ].join('\n'));
+  const merge = (rows) => caseParser.mergeAnswerOracles(baseCases, parse(rows), requiredOracleIds);
+
+  assert.throws(
+    () => merge(['a\tanswer\t-\twrong', 'a\tanswer\t-\twrong', 'b\tanswer\t-\twrong']),
+    /duplicate oracle id.*a/i,
+  );
+  assert.throws(
+    () => merge(['a\tanswer\t-\twrong', 'b\tanswer\t-\twrong', 'orphan\tanswer\t-\twrong']),
+    /orphan oracle id.*orphan/i,
+  );
+  assert.throws(
+    () => merge(['a\tanswer\t-\twrong']),
+    /missing oracle ids.*b/i,
+  );
+  assert.throws(
+    () => merge(['a\tanswer||alias\t-\twrong', 'b\tanswer\t-\twrong']),
+    /malformed proposition group.*a/i,
+  );
+  assert.throws(
+    () => merge(['a\tanswer\t-;condition\twrong', 'b\tanswer\t-\twrong']),
+    /malformed condition groups.*a/i,
+  );
+  assert.throws(
+    () => merge(['a\tanswer\t-\t-', 'b\tanswer\t-\twrong']),
+    /forbidden answer expression.*a/i,
+  );
+});
+
+test('bundled answer-oracle sidecar merges exactly 85 explicit cases', () => {
+  const repositoryRoot = path.resolve(__dirname, '..');
+  const cases = caseParser.loadEvalCases([
+    path.join(repositoryRoot, 'src', 'main', 'resources', 'rag-evaluation-cases.tsv'),
+    path.join(repositoryRoot, 'src', 'main', 'resources', 'rag-evaluation-cases.generated.tsv'),
+  ], {
+    answerOraclePath: path.join(repositoryRoot, 'src', 'main', 'resources', 'rag-answer-evaluation-oracles.tsv'),
+  });
+  const explicit = cases.filter((item) => item.requiredPropositionGroups.length > 0);
+
+  assert.equal(explicit.length, 85);
+  assert.equal(explicit.every((item) => item.answerVerificationRequired === true), true);
+  assert.equal(explicit.every((item) => item.forbiddenAnswerTerms.length > 0), true);
+});
+
 test('case selection rejects every requested ID that is missing', () => {
   const cases = [{ id: 'present' }];
 

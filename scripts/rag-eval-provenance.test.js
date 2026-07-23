@@ -23,10 +23,18 @@ const {
 } = require('./lib/rag-eval-provenance');
 
 const repositoryRoot = path.resolve(__dirname, '..');
-const evaluationCasePaths = [
+const baseEvaluationCasePaths = [
   path.join(repositoryRoot, 'src', 'main', 'resources', 'rag-evaluation-cases.tsv'),
   path.join(repositoryRoot, 'src', 'main', 'resources', 'rag-evaluation-cases.generated.tsv'),
 ];
+const answerOraclePath = path.join(
+  repositoryRoot,
+  'src',
+  'main',
+  'resources',
+  'rag-answer-evaluation-oracles.tsv',
+);
+const evaluationDatasetPaths = [...baseEvaluationCasePaths, answerOraclePath];
 
 async function runGateAgainstResults(requestedIds, results, options = {}) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pandora-rag-eval-'));
@@ -96,12 +104,12 @@ async function runGateAgainstResults(requestedIds, results, options = {}) {
     const address = server.address();
     const baseUrl = `http://127.0.0.1:${address.port}`;
     if (Object.hasOwn(options, 'checkpointResults')) {
-      const allCases = loadEvalCases(evaluationCasePaths);
+      const allCases = loadEvalCases(baseEvaluationCasePaths, { answerOraclePath });
       const selectedCases = selectEvalCases(allCases, { caseIds: requestedIds, caseLimit: 0 });
       const checkpointIdentity = buildCheckpointIdentity({
         scope: determineRunScope(selectedCases, allCases, requestedIds, 0),
         baseUrl,
-        datasetHashValue: datasetHash(evaluationCasePaths),
+        datasetHashValue: datasetHash(evaluationDatasetPaths),
         selectionHashValue: selectionHash(selectedCases),
         selectedCount: selectedCases.length,
         runtimeInfo: { ...runtimeInfo, source: 'server' },
@@ -156,6 +164,22 @@ async function runGateAgainstResults(requestedIds, results, options = {}) {
     fs.rmSync(tempDir, { force: true, recursive: true });
   }
 }
+
+test('dataset provenance hash changes when only the answer-oracle sidecar changes', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'rag-eval-dataset-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const basePath = path.join(directory, 'rag-evaluation-cases.tsv');
+  const generatedPath = path.join(directory, 'rag-evaluation-cases.generated.tsv');
+  const oraclePath = path.join(directory, 'rag-answer-evaluation-oracles.tsv');
+  fs.writeFileSync(basePath, 'base', 'utf8');
+  fs.writeFileSync(generatedPath, 'generated', 'utf8');
+  fs.writeFileSync(oraclePath, 'oracle-a', 'utf8');
+  const before = datasetHash([basePath, generatedPath, oraclePath]);
+
+  fs.writeFileSync(oraclePath, 'oracle-b', 'utf8');
+
+  assert.notEqual(datasetHash([basePath, generatedPath, oraclePath]), before);
+});
 
 test('full and targeted runs use separate latest and checkpoint files', () => {
   const cases = [{ id: 'a' }, { id: 'b' }];
