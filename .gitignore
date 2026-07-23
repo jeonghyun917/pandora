@@ -48,3 +48,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Codex isolated feature worktrees
+.worktrees/
