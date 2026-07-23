@@ -112,6 +112,17 @@ test('answer-oracle parser preserves AND groups and aliases', () => {
   }]);
 });
 
+test('answer-oracle parser fails closed for quoted fields including quoted tabs and newlines', () => {
+  const parse = (row) => caseParser.parseAnswerOraclesTsv([
+    'id\trequiredPropositionGroups\trequiredConditionGroups\tforbiddenAnswerExpressions',
+    row,
+  ].join('\n'));
+
+  assert.throws(() => parse('"a"\tanswer\t-\twrong'), /quoted fields are not supported/i);
+  assert.throws(() => parse('a\t"answer\talias"\t-\twrong'), /quoted fields are not supported/i);
+  assert.throws(() => parse('a\t"answer\ncontinued"\t-\twrong'), /quoted fields are not supported/i);
+});
+
 test('answer-oracle merge rejects duplicate, orphan, missing, and malformed rows', () => {
   const baseCases = [{ id: 'a' }, { id: 'b' }];
   const requiredOracleIds = new Set(['a', 'b']);

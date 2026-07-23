@@ -87,6 +87,56 @@ class AnswerOracleMatcherTests {
 			.containsExactly("소프트웨어사업으로 볼 수 없는|비대상");
 	}
 
+	@Test
+	void rejectsHardwareExclusionWhenTheExpectedConclusionIsNegated() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"비대상이 아니라 과업심의 대상입니다",
+			defaultCase("project-review-hardware-exclusion")
+		);
+
+		assertThat(result.passed()).isFalse();
+		assertThat(result.missingPropositionGroups()).isNotEmpty();
+	}
+
+	@Test
+	void rejectsRetentionAnswerThatAffirmsTheForbiddenThirtyDayConclusion() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"설치 목적에 따라 정하지만 무조건 30일입니다",
+			defaultCase("cctv-retention-not-fixed-30")
+		);
+
+		assertThat(result.passed()).isFalse();
+		assertThat(result.missingPropositionGroups()).isNotEmpty();
+	}
+
+	@Test
+	void rejectsEnforcementDateAnswerThatNegatesTheExpectedPendingStatus() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"아직 시행예정이 아니라 이미 시행 중입니다. 공식 시행일을 명시해야 합니다",
+			defaultCase("ai-law-enforcement-date")
+		);
+
+		assertThat(result.passed()).isFalse();
+		assertThat(result.missingPropositionGroups()).isNotEmpty();
+	}
+
+	@Test
+	void preservesDottedDatesWhileSplittingAnswerClauses() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"IRM 평가기간은 2025. 12. 17 ~ 2026. 10. 31입니다. 평가기간 중 요청 건수와 완료 건수를 집계합니다.",
+			defaultCase("irm-measure-period")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	private LawAiEvalRequest.EvalCase defaultCase(String id) {
+		return LawAiEvaluationCaseCatalog.loadDefaultCases().stream()
+			.filter(evalCase -> id.equals(evalCase.id()))
+			.findFirst()
+			.orElseThrow();
+	}
+
 	private LawAiEvalRequest.EvalCase oracleCase(
 		List<List<String>> propositions,
 		List<List<String>> conditions,

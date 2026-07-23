@@ -111,7 +111,11 @@ function parseEvalCasesTsv(text, source = 'evaluation TSV') {
 function parseAnswerOraclesTsv(text, source = 'answer oracle TSV') {
   const oracles = [];
   const ids = new Set();
-  for (const row of parseTsvRows(String(text ?? '').replace(/^\uFEFF/, ''), source)) {
+  const normalizedText = String(text ?? '').replace(/^\uFEFF/, '');
+  if (normalizedText.includes('"')) {
+    throw new Error(`${source}: quoted fields are not supported`);
+  }
+  for (const row of parseTsvRows(normalizedText, source)) {
     const columns = row.columns;
     const first = String(columns[0] ?? '').trim();
     const blank = columns.every((column) => !String(column ?? '').trim());

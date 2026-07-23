@@ -142,6 +142,48 @@ class LawAiAnswerServiceClaimOutcomeTests {
 	}
 
 	@Test
+	void explicitOracleEvaluationDoesNotMixLegacyFallbackAndReportsMissingAndForbiddenDiagnostics() {
+		String explicitAnswer = "법정 요건에 따른 연차 유급휴가입니다. 언제나 30일입니다.";
+		when(answerClient.answer(anyString(), anyString(), anyInt())).thenReturn(explicitAnswer);
+		when(answerVerificationService.verify(eq(QUESTION), eq(explicitAnswer), anyList()))
+			.thenReturn(verificationResult(explicitAnswer, explicitAnswer, false));
+		LawAiEvalRequest.EvalCase evalCase = new LawAiEvalRequest.EvalCase(
+			"explicit-service-path",
+			QUESTION,
+			List.of("law"),
+			List.of("연차 유급휴가"),
+			1,
+			List.of("근로기준법"),
+			List.of("requirement"),
+			List.of(),
+			List.of(),
+			List.of(),
+			List.of(),
+			"직접 결론과 조건을 답한다",
+			List.of("OK"),
+			true,
+			List.of("레거시 필수어"),
+			List.of("언제나 30일"),
+			List.of(List.of("법정 요건에 따른 연차 유급휴가")),
+			List.of(List.of("근로기간을 충족한 경우"))
+		);
+
+		LawAiEvalResponse.CaseResult result = service.evaluate(
+			new LawAiEvalRequest(List.of(evalCase), List.of(), null)
+		).results().get(0);
+
+		assertThat(result.answerVerificationRequired()).isTrue();
+		assertThat(result.answerVerified()).isFalse();
+		assertThat(result.matchedAnswerTerms()).containsExactly("법정 요건에 따른 연차 유급휴가");
+		assertThat(result.missingAnswerTerms()).containsExactly("근로기간을 충족한 경우");
+		assertThat(result.missingAnswerTerms()).doesNotContain("레거시 필수어");
+		assertThat(result.forbiddenAnswerMatchedTerms()).containsExactly("언제나 30일");
+		assertThat(result.message())
+			.contains("missing condition groups=근로기간을 충족한 경우")
+			.contains("matched forbidden expressions=언제나 30일");
+	}
+
+	@Test
 	void streamingClaimRejectionEmitsNonOkAnswerAndFailedDoneEvent() throws Exception {
 		when(answerClient.answerStreaming(anyString(), anyString(), any(), anyInt()))
 			.thenAnswer(invocation -> {

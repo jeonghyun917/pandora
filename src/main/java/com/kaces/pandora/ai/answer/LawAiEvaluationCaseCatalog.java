@@ -193,6 +193,11 @@ final class LawAiEvaluationCaseCatalog {
 				if (lineNumber == 1 && line.startsWith("\uFEFF")) {
 					line = line.substring(1);
 				}
+				if (line.contains("\"")) {
+					throw new IllegalArgumentException(
+						"answer oracle line " + lineNumber + ": quoted fields are not supported"
+					);
+				}
 				if (line.isBlank() || line.startsWith("#")) {
 					continue;
 				}

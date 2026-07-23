@@ -7,6 +7,7 @@ import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -79,10 +80,10 @@ class LawAiEvaluationCaseCatalogTests {
 
 		LawAiEvalRequest.EvalCase preConsultation = find(cases, "pre-consultation-exception");
 		assertThat(preConsultation.requiredPropositionGroups()).containsExactly(
-			List.of("사전협의 제외 대상", "사전협의 제외")
+			List.of("기관별 사업금액 기준 미만인 사업은 제외", "기관별 기준금액 미만 사업은 사전협의 제외")
 		);
 		assertThat(preConsultation.requiredConditionGroups()).containsExactly(
-			List.of("제외 요건", "제외 조건", "대상 여부 확인")
+			List.of("신규 사업은 금액 기준 미만이어도 사전협의 대상", "신규로 추진하는 사업은 대상에 포함")
 		);
 		assertThat(preConsultation.forbiddenAnswerTerms()).contains("제외사업 없음");
 	}
@@ -105,18 +106,37 @@ class LawAiEvaluationCaseCatalogTests {
 			).map(group -> group.get(0)).collect(java.util.stream.Collectors.joining(". "));
 			for (String allowedAlias : allowedAliases) {
 				for (String forbidden : evalCase.forbiddenAnswerTerms()) {
-					if (EvaluationTermMatcher.matchesAnswerTerm(allowedAlias, forbidden)) {
+					if (ExplicitOracleTermMatcher.matches(allowedAlias, forbidden)) {
 						collisions.add(evalCase.id() + ": " + allowedAlias + " <> " + forbidden);
 					}
 				}
 			}
 			for (String forbidden : evalCase.forbiddenAnswerTerms()) {
-				if (EvaluationTermMatcher.matchesAnswerTerm(representativeAllowedAnswer, forbidden)) {
+				if (ExplicitOracleTermMatcher.matches(representativeAllowedAnswer, forbidden)) {
 					collisions.add(evalCase.id() + " representative answer <> " + forbidden);
 				}
 			}
 		}
 		assertThat(collisions).isEmpty();
+	}
+
+	@Test
+	void everyBundledOracleAcceptsItsDirectRepresentativeAnswer() {
+		List<LawAiEvalRequest.EvalCase> oracleCases = LawAiEvaluationCaseCatalog.loadDefaultCases().stream()
+			.filter(evalCase -> !evalCase.requiredPropositionGroups().isEmpty())
+			.toList();
+
+		for (LawAiEvalRequest.EvalCase evalCase : oracleCases) {
+			String representativeAnswer = java.util.stream.Stream.concat(
+				evalCase.requiredPropositionGroups().stream(),
+				evalCase.requiredConditionGroups().stream()
+			).map(group -> group.get(0)).collect(java.util.stream.Collectors.joining(". "));
+			AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(representativeAnswer, evalCase);
+
+			assertThat(result.passed())
+				.as(evalCase.id() + ": " + result.message())
+				.isTrue();
+		}
 	}
 
 	@Test
@@ -155,6 +175,65 @@ class LawAiEvaluationCaseCatalogTests {
 			"b\tanswer\t-\twrong\n"))
 			.hasMessageContaining("forbidden answer expression")
 			.hasMessageContaining("a");
+	}
+
+	@Test
+	void oracleParserFailsClosedForQuotedFieldsIncludingQuotedTabsAndNewlines() {
+		List<LawAiEvalRequest.EvalCase> baseCases = List.of(baseCase("a"), baseCase("b"));
+		Set<String> requiredIds = Set.of("a", "b");
+
+		assertThatThrownBy(() -> merge(baseCases, requiredIds,
+			"\"a\"\tanswer\t-\twrong\n" +
+			"b\tanswer\t-\twrong\n"))
+			.hasMessageContaining("quoted fields are not supported");
+		assertThatThrownBy(() -> merge(baseCases, requiredIds,
+			"a\t\"answer\talias\"\t-\twrong\n" +
+			"b\tanswer\t-\twrong\n"))
+			.hasMessageContaining("quoted fields are not supported");
+		assertThatThrownBy(() -> merge(baseCases, requiredIds,
+			"a\t\"answer\ncontinued\"\t-\twrong\n" +
+			"b\tanswer\t-\twrong\n"))
+			.hasMessageContaining("quoted fields are not supported");
+	}
+
+	@Test
+	void correctedSemanticOraclesRequireDirectFactsInsteadOfCircularRestatements() {
+		List<LawAiEvalRequest.EvalCase> cases = LawAiEvaluationCaseCatalog.loadDefaultCases();
+		Map<String, String> directAnswers = Map.of(
+			"pre-consultation-exception",
+			"기관별 사업금액 기준 미만인 사업은 사전협의에서 제외되지만 신규 사업은 금액 기준 미만이어도 대상입니다.",
+			"security-review-exception",
+			"DB 구축이나 콘텐츠 제작 용역에서 참여 인력이 시스템에 접근하지 않으면 보안성검토 대상에서 제외됩니다. 참여 인력이 시스템에 접근하면 보안성검토 대상입니다.",
+			"security-review-skip-condition",
+			"DB 구축이나 콘텐츠 제작 용역에서 참여 인력이 시스템에 접근하지 않으면 보안성검토를 생략할 수 있습니다. 참여 인력이 시스템에 접근하면 보안성검토 대상입니다.",
+			"performance-measure-when",
+			"IRM 평가기간은 2025년 12월 17일부터 2026년 10월 31일까지이며 평가기간 동안 요청 수와 완료 수를 합산합니다.",
+			"irm-measure-period",
+			"IRM 평가기간은 2025년 12월 17일부터 2026년 10월 31일까지이며 평가기간 동안 요청 수와 완료 수를 합산합니다.",
+			"security-review-notice-result",
+			"검토기관이 보안성검토 결과를 검토 요청기관에 통보합니다.",
+			"commercial-sw-direct-buy-target",
+			"조달청 종합쇼핑몰 또는 디지털서비스몰에 등록된 상용소프트웨어는 직접구매 대상입니다. 품질 인증 소프트웨어는 가격이 5천만원 이상인 경우 직접구매 대상입니다."
+		);
+		Map<String, String> circularAnswers = Map.of(
+			"pre-consultation-exception", "사전협의 제외 대상에는 정해진 조건이 있으며 공식 기준을 확인해야 합니다.",
+			"security-review-exception", "보안성검토 생략 가능한 경우에는 정해진 조건이 있습니다.",
+			"security-review-skip-condition", "보안성검토를 생략할 수 있는 조건을 확인해야 합니다.",
+			"performance-measure-when", "IRM 성과측정은 정해진 평가기간에 하고 공식 일정을 확인합니다.",
+			"irm-measure-period", "정보자원관리 성과측정은 정해진 평가기간에 하고 공식 일정을 확인합니다.",
+			"security-review-notice-result", "보안성검토 결과 통보 절차를 따릅니다.",
+			"commercial-sw-direct-buy-target", "상용소프트웨어 직접구매 대상이면 직접구매하고 정해진 기준을 충족해야 합니다."
+		);
+
+		for (String id : directAnswers.keySet()) {
+			AnswerOracleMatcher.Result directResult = AnswerOracleMatcher.evaluate(directAnswers.get(id), find(cases, id));
+			assertThat(directResult.passed())
+				.as(id + " direct answer: " + directResult.message())
+				.isTrue();
+			assertThat(AnswerOracleMatcher.evaluate(circularAnswers.get(id), find(cases, id)).passed())
+				.as(id + " circular answer")
+				.isFalse();
+		}
 	}
 
 	private LawAiEvalRequest.EvalCase find(List<LawAiEvalRequest.EvalCase> cases, String id) {

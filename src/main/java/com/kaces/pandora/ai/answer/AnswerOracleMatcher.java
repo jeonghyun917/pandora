@@ -16,7 +16,7 @@ final class AnswerOracleMatcher {
 		List<String> missingPropositions = missingGroups(answer, propositions, matched);
 		List<String> missingConditions = missingGroups(answer, conditions, matched);
 		List<String> forbiddenMatched = forbidden.stream()
-			.filter(expression -> EvaluationTermMatcher.matchesAnswerTerm(answer, expression))
+			.filter(expression -> ExplicitOracleTermMatcher.matches(answer, expression))
 			.toList();
 		boolean passed = missingPropositions.isEmpty()
 			&& missingConditions.isEmpty()
@@ -39,7 +39,7 @@ final class AnswerOracleMatcher {
 		List<String> missing = new ArrayList<>();
 		for (List<String> group : groups) {
 			String matchingAlias = group.stream()
-				.filter(alias -> EvaluationTermMatcher.matchesAnswerTerm(answer, alias))
+				.filter(alias -> ExplicitOracleTermMatcher.matches(answer, alias))
 				.findFirst()
 				.orElse(null);
 			if (matchingAlias == null) {
