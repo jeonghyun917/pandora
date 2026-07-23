@@ -1,5 +1,6 @@
 package com.kaces.pandora.ai.answer;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 public record LawAiDebugResponse(
@@ -57,7 +58,8 @@ public record LawAiDebugResponse(
 		double finalScore,
 		boolean selected,
 		List<String> matchedTerms,
-		String snippet
+		String snippet,
+		@JsonInclude(JsonInclude.Include.NON_NULL) String matchedChildText
 	) {
 	}
 }

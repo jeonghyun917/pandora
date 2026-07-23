@@ -10,9 +10,33 @@ import com.kaces.pandora.semantic.config.LawAiProperties;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class LawAiAnswerServiceEvidenceGateTests {
+
+	@Test
+	void debugItemsExposeCompleteMatchedChildTextOnlyForMeasurementRequests() throws Exception {
+		LawAiAnswerService service = service();
+		try {
+			LawSemanticChunkRow matchedChild = chunk(
+				81L,
+				"official_doc",
+				"Measurement document",
+				"section 1",
+				"Complete matched-child text for retrieval coverage measurement."
+			);
+
+			List<LawAiDebugResponse.Item> normalItems = toDebugItems(service, List.of(matchedChild), false);
+			List<LawAiDebugResponse.Item> measurementItems = toDebugItems(service, List.of(matchedChild), true);
+
+			assertThat(normalItems).singleElement().extracting(LawAiDebugResponse.Item::matchedChildText).isNull();
+			assertThat(measurementItems).singleElement().extracting(LawAiDebugResponse.Item::matchedChildText)
+				.isEqualTo("Complete matched-child text for retrieval coverage measurement.");
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
 
 	@Test
 	void runtimeInfoUsesArtifactIdentityCapturedByTheService() throws Exception {
@@ -1683,6 +1707,57 @@ class LawAiAnswerServiceEvidenceGateTests {
 			null,
 			new LawAiProperties(null, null, null, null)
 		);
+	}
+
+	@SuppressWarnings("unchecked")
+	private List<LawAiDebugResponse.Item> toDebugItems(
+		LawAiAnswerService service,
+		List<LawSemanticChunkRow> chunks,
+		boolean includeMatchedChildText
+	) throws Exception {
+		Class<?> retrievalResultType = Class.forName("com.kaces.pandora.ai.answer.LawAiAnswerService$RetrievalResult");
+		Method empty = retrievalResultType.getDeclaredMethod(
+			"empty",
+			String.class,
+			String.class,
+			String.class,
+			List.class,
+			List.class,
+			List.class,
+			List.class,
+			List.class,
+			Map.class,
+			Map.class,
+			Map.class,
+			String.class,
+			List.class
+		);
+		empty.setAccessible(true);
+		Object retrieval = empty.invoke(
+			null,
+			"OK",
+			"official_doc",
+			"retrieval coverage",
+			List.of("official_doc"),
+			List.of(),
+			List.of(),
+			chunks,
+			chunks,
+			Map.of(),
+			Map.of(),
+			Map.of(),
+			"",
+			chunks
+		);
+		Method method = LawAiAnswerService.class.getDeclaredMethod(
+			"toDebugItems",
+			List.class,
+			retrievalResultType,
+			Set.class,
+			boolean.class
+		);
+		method.setAccessible(true);
+		return (List<LawAiDebugResponse.Item>) method.invoke(service, chunks, retrieval, Set.of(), includeMatchedChildText);
 	}
 
 	private double adjustedScore(

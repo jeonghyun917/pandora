@@ -7,9 +7,14 @@ public record LawAiDebugRequest(
 	List<String> targets,
 	String question,
 	Integer limit,
-	Boolean includeFuture
+	Boolean includeFuture,
+	Boolean includeMatchedChildText
 ) {
 	public boolean includeFutureEnabled() {
 		return includeFuture == null || includeFuture;
+	}
+
+	public boolean includeMatchedChildTextEnabled() {
+		return Boolean.TRUE.equals(includeMatchedChildText);
 	}
 }

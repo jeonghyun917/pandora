@@ -497,7 +497,7 @@ public class LawAiAnswerService {
 		), timing);
 		LawAiTiming snapshot = timing.snapshot(false);
 		logTiming("debug", retrieval.query(), retrieval.targets(), retrieval.grounds().size(), snapshot);
-		return toDebugResponse(retrieval, snapshot);
+		return toDebugResponse(retrieval, snapshot, request != null && request.includeMatchedChildTextEnabled());
 	}
 
 	// 메소드 설명: defaultEvaluationCases 처리 흐름을 수행합니다.
@@ -1465,7 +1465,11 @@ public class LawAiAnswerService {
 			+ "확인: DEBUG에서 후보 문서와 Judge 정책을 보고 검색 실패인지, 직접근거 부족인지, 청크 품질 문제인지 구분할 수 있습니다.";
 	}
 
-	private LawAiDebugResponse toDebugResponse(RetrievalResult retrieval, LawAiTiming timing) {
+	private LawAiDebugResponse toDebugResponse(
+		RetrievalResult retrieval,
+		LawAiTiming timing,
+		boolean includeMatchedChildText
+	) {
 		Set<String> selectedKeys = retrieval.answerChunks().stream()
 			.map(chunk -> scoreKey(chunk.target(), chunk.chunkId()))
 			.collect(java.util.stream.Collectors.toSet());
@@ -1494,14 +1498,14 @@ public class LawAiAnswerService {
 				new LawAiDebugResponse.Stage("grounds", retrieval.grounds().size(), "Grounds returned to the UI"),
 				new LawAiDebugResponse.Stage("selected", retrieval.answerChunks().size(), "Grounds compressed for answer generation")
 			),
-			toDebugItems(retrieval.vectorChunks(), retrieval, selectedKeys),
-			toDebugItems(retrieval.lexicalChunks(), retrieval, selectedKeys),
-			toDebugItems(retrieval.searchedChunks(), retrieval, selectedKeys),
-			toDebugItems(retrieval.rankedChunks(), retrieval, selectedKeys),
-			toDebugItems(retrieval.intentFilteredChunks(), retrieval, selectedKeys),
-			toDebugItems(retrieval.judgeCandidateChunks(), retrieval, selectedKeys),
-			toDebugItems(retrieval.judgedChunks(), retrieval, selectedKeys),
-			toDebugItems(retrieval.answerChunks(), retrieval, selectedKeys),
+			toDebugItems(retrieval.vectorChunks(), retrieval, selectedKeys, includeMatchedChildText),
+			toDebugItems(retrieval.lexicalChunks(), retrieval, selectedKeys, includeMatchedChildText),
+			toDebugItems(retrieval.searchedChunks(), retrieval, selectedKeys, includeMatchedChildText),
+			toDebugItems(retrieval.rankedChunks(), retrieval, selectedKeys, includeMatchedChildText),
+			toDebugItems(retrieval.intentFilteredChunks(), retrieval, selectedKeys, includeMatchedChildText),
+			toDebugItems(retrieval.judgeCandidateChunks(), retrieval, selectedKeys, includeMatchedChildText),
+			toDebugItems(retrieval.judgedChunks(), retrieval, selectedKeys, includeMatchedChildText),
+			toDebugItems(retrieval.answerChunks(), retrieval, selectedKeys, includeMatchedChildText),
 			retrieval.message(),
 			classification.failureType(),
 			classification.failureStage(),
@@ -1526,7 +1530,8 @@ public class LawAiAnswerService {
 	private List<LawAiDebugResponse.Item> toDebugItems(
 		List<LawSemanticChunkRow> chunks,
 		RetrievalResult retrieval,
-		Set<String> selectedKeys
+		Set<String> selectedKeys,
+		boolean includeMatchedChildText
 	) {
 		int[] rank = {1};
 		return chunks.stream()
@@ -1552,10 +1557,11 @@ public class LawAiAnswerService {
 					retrieval.combinedScoreByChunkId().getOrDefault(key, retrieval.baseScoreByChunkId().getOrDefault(key, 0.0)),
 					retrieval.baseScoreByChunkId().getOrDefault(key, 0.0),
 					retrieval.finalScoreByChunkId().getOrDefault(key, retrieval.baseScoreByChunkId().getOrDefault(key, 0.0)),
-					selectedKeys.contains(key),
-					matchedTerms(chunk, retrieval.query()),
-					snippet(chunk, retrieval.query())
-				);
+				selectedKeys.contains(key),
+				matchedTerms(chunk, retrieval.query()),
+				snippet(chunk, retrieval.query()),
+				includeMatchedChildText ? chunk.chunkText() : null
+			);
 			})
 			.toList();
 	}
@@ -1706,7 +1712,8 @@ public class LawAiAnswerService {
 			retrieval,
 			retrieval.answerChunks().stream()
 				.map(chunk -> scoreKey(chunk.target(), chunk.chunkId()))
-				.collect(java.util.stream.Collectors.toSet())
+				.collect(java.util.stream.Collectors.toSet()),
+			false
 		);
 		return new LawAiEvalResponse.CaseResult(
 			evalCase.id(),

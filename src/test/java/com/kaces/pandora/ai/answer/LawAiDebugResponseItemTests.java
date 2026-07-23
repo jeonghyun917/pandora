@@ -14,4 +14,11 @@ class LawAiDebugResponseItemTests {
 			.toList())
 			.contains("parentSectionTitle", "sectionType");
 	}
+
+	@Test
+	void matchedChildTextMeasurementFlagDefaultsToFalse() {
+		LawAiDebugRequest request = new LawAiDebugRequest(null, null, null, null, null, null);
+
+		assertThat(request.includeMatchedChildTextEnabled()).isFalse();
+	}
 }
