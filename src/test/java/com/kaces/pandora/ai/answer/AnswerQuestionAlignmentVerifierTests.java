@@ -390,6 +390,34 @@ class AnswerQuestionAlignmentVerifierTests {
 	}
 
 	@Test
+	void acceptsMetaPredicatesWhenTheyAreTheRequestedLexicalRelation() {
+		for (String predicate : List.of("검토", "확인", "조사")) {
+			String claim = "기관은 신청서를 " + predicate + "합니다.";
+
+			AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+				"기관은 신청서를 " + predicate + "하나요?",
+				claimResult(supported(claim, claim))
+			);
+
+			assertThat(result.aligned()).as("predicate=%s result=%s", predicate, result).isTrue();
+			assertThat(result.reasonCode()).as(predicate).isEqualTo("ALIGNED");
+		}
+	}
+
+	@Test
+	void doesNotTreatMetaPredicateStemInNounModifierAsRequestedAction() {
+		String claim = "공공소프트웨어사업은 검토 대상인지 검토합니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"공공소프트웨어사업은 검토 대상인가?",
+			claimResult(supported(claim, "공공소프트웨어사업은 검토 대상입니다."))
+		);
+
+		assertThat(result.aligned()).as(result.toString()).isFalse();
+		assertThat(result.missingGroups()).contains("DIRECT_CONCLUSION");
+	}
+
+	@Test
 	void rejectsMetaPredicatesThatOnlyDescribeCheckingTheQuestion() {
 		for (String claim : List.of(
 			"공공소프트웨어사업은 과업심의 대상인지 확인합니다.",

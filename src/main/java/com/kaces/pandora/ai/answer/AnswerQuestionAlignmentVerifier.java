@@ -24,16 +24,22 @@ public class AnswerQuestionAlignmentVerifier {
 			+ "하여야\s*한다|해야\s*한다|할\s*수\s*있다|할\s*수\s*없다|"
 			+ "하지\s*않는다|금지된다|제외된다|비대상이다)(?:[.?!]|$)"
 	);
-	private static final List<String> NON_CONCLUSION_META_ENDINGS = List.of(
-		"확인합니다", "확인한다",
-		"검토합니다", "검토한다",
-		"문의합니다", "문의한다",
-		"질문합니다", "질문한다",
-		"알아봅니다", "알아본다",
-		"파악합니다", "파악한다",
-		"조사합니다", "조사한다",
-		"검증합니다", "검증한다",
-		"살펴봅니다", "살펴본다"
+	private static final List<MetaPredicateFrame> NON_CONCLUSION_META_FRAMES = List.of(
+		new MetaPredicateFrame("확인", List.of("확인합니다", "확인한다")),
+		new MetaPredicateFrame("검토", List.of("검토합니다", "검토한다")),
+		new MetaPredicateFrame("문의", List.of("문의합니다", "문의한다")),
+		new MetaPredicateFrame("질문", List.of("질문합니다", "질문한다")),
+		new MetaPredicateFrame("알아보", List.of("알아봅니다", "알아본다")),
+		new MetaPredicateFrame("파악", List.of("파악합니다", "파악한다")),
+		new MetaPredicateFrame("조사", List.of("조사합니다", "조사한다")),
+		new MetaPredicateFrame("검증", List.of("검증합니다", "검증한다")),
+		new MetaPredicateFrame("살펴보", List.of("살펴봅니다", "살펴본다"))
+	);
+	private static final List<String> REQUESTED_META_PREDICATE_ENDINGS = List.of(
+		"하나요", "하나", "합니까",
+		"하는가요", "하는가", "하는지",
+		"할까요", "할까", "해요", "해",
+		"나요", "는가요", "는가", "는지"
 	);
 	private static final List<String> NON_CONCLUSION_INTERROGATIVE_ENDINGS = List.of(
 		"인가요", "인가",
@@ -162,9 +168,11 @@ public class AnswerQuestionAlignmentVerifier {
 		}
 		String trimmed = proposition.trim();
 		String normalized = normalize(trimmed);
+		String terminalMetaPredicateStem = terminalMetaPredicateStem(normalized);
 		if (trimmed.endsWith("?")
 			|| trimmed.endsWith("？")
-			|| NON_CONCLUSION_META_ENDINGS.stream().anyMatch(normalized::endsWith)
+			|| (terminalMetaPredicateStem != null
+				&& !requestsLexicalPredicate(terminalMetaPredicateStem, relationRequirements))
 			|| NON_CONCLUSION_INTERROGATIVE_ENDINGS.stream().anyMatch(normalized::endsWith)) {
 			return false;
 		}
@@ -175,6 +183,23 @@ public class AnswerQuestionAlignmentVerifier {
 			&& List.of("대상", "비대상", "제외", "면제", "금지", "허용", "가능", "불가능")
 				.stream()
 				.anyMatch(normalized::endsWith);
+	}
+
+	private static String terminalMetaPredicateStem(String normalizedProposition) {
+		return NON_CONCLUSION_META_FRAMES.stream()
+			.filter(frame -> frame.endings().stream().anyMatch(normalizedProposition::endsWith))
+			.map(MetaPredicateFrame::stem)
+			.findFirst()
+			.orElse(null);
+	}
+
+	private static boolean requestsLexicalPredicate(
+		String predicateStem,
+		List<RelationRequirement> relationRequirements
+	) {
+		return !relationRequirements.isEmpty()
+			&& relationRequirements.stream()
+				.anyMatch(requirement -> requirement.requestsLexicalPredicate(predicateStem));
 	}
 
 	private String directProposition(String claim) {
@@ -250,13 +275,24 @@ public class AnswerQuestionAlignmentVerifier {
 	private record CandidateResult(String claim, List<String> missingGroups) {
 	}
 
+	private record MetaPredicateFrame(String stem, List<String> endings) {
+	}
+
 	private enum RelationKind {
 		LEXICAL,
 		PERIOD_VALUE,
 		AMOUNT_VALUE
 	}
 
-	private record RelationRequirement(RelationKind kind, List<String> alternatives) {
+	private record RelationRequirement(
+		RelationKind kind,
+		List<String> alternatives,
+		boolean requestedPredicate
+	) {
+		private RelationRequirement(RelationKind kind, List<String> alternatives) {
+			this(kind, alternatives, false);
+		}
+
 		private boolean matches(String proposition) {
 			String source = String.valueOf(proposition == null ? "" : proposition);
 			String normalized = normalize(source);
@@ -265,6 +301,16 @@ public class AnswerQuestionAlignmentVerifier {
 				case AMOUNT_VALUE -> NUMERIC_AMOUNT_PATTERN.matcher(source).find();
 				case LEXICAL -> alternatives.stream().anyMatch(normalized::contains);
 			};
+		}
+
+		private boolean requestsLexicalPredicate(String predicateStem) {
+			if (kind != RelationKind.LEXICAL || !requestedPredicate) {
+				return false;
+			}
+			String normalizedStem = normalize(predicateStem);
+			return alternatives.stream()
+				.map(KoreanQueryNormalizer::normalizeQueryTerm)
+				.anyMatch(normalizedStem::equals);
 		}
 	}
 
@@ -427,6 +473,7 @@ public class AnswerQuestionAlignmentVerifier {
 				normalizedQuestion,
 				conditionGroups
 			);
+			addRequestedMetaPredicateRequirement(requirements, question);
 			if (containsAny(normalizedQuestion, "할수있", "가능한가", "가능한지", "허용")) {
 				addLexicalRequirement(requirements,
 					List.of("할수있", "가능", "허용", "할수없", "불가능", "금지"));
@@ -440,6 +487,21 @@ public class AnswerQuestionAlignmentVerifier {
 					.toList()));
 			}
 			return List.copyOf(requirements);
+		}
+
+		private static void addRequestedMetaPredicateRequirement(
+			List<RelationRequirement> requirements,
+			String question
+		) {
+			String normalizedQuestion = normalize(question);
+			NON_CONCLUSION_META_FRAMES.stream()
+				.filter(frame -> REQUESTED_META_PREDICATE_ENDINGS.stream()
+					.anyMatch(ending -> normalizedQuestion.endsWith(frame.stem() + ending)))
+				.map(MetaPredicateFrame::stem)
+				.findFirst()
+				.ifPresent(stem -> requirements.add(
+					new RelationRequirement(RelationKind.LEXICAL, List.of(stem), true)
+				));
 		}
 
 		private static void addConfiguredIntentRequirements(
