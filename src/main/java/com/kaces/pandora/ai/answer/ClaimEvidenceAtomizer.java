@@ -126,6 +126,14 @@ final class ClaimEvidenceAtomizer {
 	);
 
 	List<String> atomize(String text) {
+		return atomize(text, false);
+	}
+
+	List<String> atomizeForAlignment(String text) {
+		return atomize(text, true);
+	}
+
+	private List<String> atomize(String text, boolean strictCoordinatingBoundaries) {
 		if (text == null || text.isBlank()) {
 			return List.of();
 		}
@@ -133,7 +141,7 @@ final class ClaimEvidenceAtomizer {
 		for (String structural : STRUCTURAL_BOUNDARY.split(text.replace('\r', '\n'))) {
 			String deheaded = stripRepeatedOcrPageHeading(structural);
 			for (String assertion : splitIndependentAssertionCommas(deheaded)) {
-				for (String clause : splitConnectives(assertion)) {
+				for (String clause : splitConnectives(assertion, strictCoordinatingBoundaries)) {
 					String cleaned = LEADING_LIST_MARKER.matcher(clause)
 						.replaceFirst("")
 						.replaceAll("\\s+", " ")
@@ -208,7 +216,7 @@ final class ClaimEvidenceAtomizer {
 		return clauses;
 	}
 
-	private List<String> splitConnectives(String text) {
+	private List<String> splitConnectives(String text, boolean strictCoordinatingBoundaries) {
 		List<String> clauses = new ArrayList<>();
 		for (String exceptionBounded : splitExplicitExceptions(text)) {
 			MatcherState state = new MatcherState(exceptionBounded);
@@ -216,7 +224,11 @@ final class ClaimEvidenceAtomizer {
 			while (matcher.find()) {
 				String leftClause = state.currentClause(matcher.start());
 				String rightClause = rightClauseBeforeNextBoundary(exceptionBounded, matcher.end());
-				if (!isAtomicClauseBoundary(leftClause, rightClause)) {
+				if (!isAtomicClauseBoundary(
+					leftClause,
+					rightClause,
+					strictCoordinatingBoundaries
+				)) {
 					continue;
 				}
 				state.addBoundary(
@@ -267,13 +279,23 @@ final class ClaimEvidenceAtomizer {
 		return text.substring(start);
 	}
 
-	private boolean isAtomicClauseBoundary(String leftClause, String rightClause) {
+	private boolean isAtomicClauseBoundary(
+		String leftClause,
+		String rightClause,
+		boolean strictCoordinatingBoundaries
+	) {
 		String normalized = leftClause.replaceAll("[\\s,，]+", "");
 		if (!hasIndependentAssertion(rightClause)) {
 			return false;
 		}
 		Set<String> leftSubjects = explicitSubjects(leftClause, false);
 		Set<String> rightSubjects = explicitSubjects(rightClause, !leftSubjects.isEmpty());
+		if (strictCoordinatingBoundaries
+			&& !rightSubjects.isEmpty()
+			&& GENERAL_COORDINATED_PREDICATE.matcher(normalized).find()
+			&& !isNonAtomicPremise(normalized)) {
+			return true;
+		}
 		if (isRestrictiveRemainder(rightClause)
 			&& (!distinctNonEmpty(leftSubjects, rightSubjects)
 				|| !hasIndependentClassification(rightClause))) {

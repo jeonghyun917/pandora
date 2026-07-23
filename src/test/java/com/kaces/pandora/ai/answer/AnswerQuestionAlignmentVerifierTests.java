@@ -79,8 +79,35 @@ class AnswerQuestionAlignmentVerifierTests {
 	}
 
 	@Test
+	void rejectsSubjectAndPredicateSplitAcrossCoordinatedAtoms() {
+		String claim = "가명정보의 추가정보는 검토하고 일반정보는 별도 보관해야 합니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"가명정보의 추가정보는 별도 보관해야 하나?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).isFalse();
+		assertThat(result.missingGroups()).containsAnyOf("SUBJECT", "RELATION");
+	}
+
+	@Test
 	void rejectsQuestionConditionThatAppearsOnlyBeforeTheTerminalProposition() {
 		String claim = "예산 확정 전에 검토하는 것과 별개로 정보화사업은 사전협의를 해야 합니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"예산 확정 전에 정보화사업 사전협의를 해야 하나?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).isFalse();
+		assertThat(result.reasonCode()).isEqualTo("MISSING_CONDITION");
+		assertThat(result.missingGroups()).contains("CONDITION");
+	}
+
+	@Test
+	void rejectsConditionAndPredicateSplitAcrossCoordinatedAtoms() {
+		String claim = "예산 확정 전에는 준비 절차를 진행하고 정보화사업 사전협의는 계약 이후에 해야 합니다.";
 
 		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
 			"예산 확정 전에 정보화사업 사전협의를 해야 하나?",
@@ -120,6 +147,19 @@ class AnswerQuestionAlignmentVerifierTests {
 	}
 
 	@Test
+	void rejectsCurrencyUnitEmbeddedInsideANonAmountWord() {
+		String claim = "청년 지원 사업은 3원칙을 적용합니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"청년 지원 금액은 얼마인가?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).isFalse();
+		assertThat(result.missingGroups()).contains("RELATION");
+	}
+
+	@Test
 	void acceptsNumericAmountInTheTerminalProposition() {
 		String claim = "청년 지원 금액은 300만원입니다.";
 
@@ -134,6 +174,32 @@ class AnswerQuestionAlignmentVerifierTests {
 	@Test
 	void rejectsPeriodTopicWithoutAnActualPeriodValue() {
 		String claim = "사전협의 시기는 별도 안내이고 대상 기관은 협의를 해야 합니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"사전협의 시기는 언제인가?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).isFalse();
+		assertThat(result.missingGroups()).contains("RELATION");
+	}
+
+	@Test
+	void rejectsNonTemporalRoleFollowedByFromParticle() {
+		String claim = "사전협의는 담당자부터 확인해야 합니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"사전협의 시기는 언제인가?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).isFalse();
+		assertThat(result.missingGroups()).contains("RELATION");
+	}
+
+	@Test
+	void rejectsLegalCitationFollowedByUntilParticle() {
+		String claim = "사전협의는 제10조까지 적용합니다.";
 
 		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
 			"사전협의 시기는 언제인가?",

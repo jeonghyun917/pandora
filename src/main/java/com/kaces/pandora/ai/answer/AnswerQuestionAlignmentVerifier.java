@@ -26,11 +26,17 @@ public class AnswerQuestionAlignmentVerifier {
 	);
 	private static final Pattern NUMERIC_AMOUNT_PATTERN = Pattern.compile(
 		"(?<!\\d)\\d+(?:,\\d{3})*(?:\\.\\d+)?\\s*(?:조원|억원|만원|원|%|퍼센트)"
+			+ "(?=(?:은|는|이|가|을|를|으로|에서|부터|까지|입니다|이다|이고|이며|[\\s,.!?]|$))"
 	);
 	private static final Pattern PERIOD_VALUE_PATTERN = Pattern.compile(
-		"(?:\\d{1,4}(?:[./-]\\d{1,2}){1,2}|"
-			+ "\\d+(?:년|개월|월|일|주|시간|분|초)|"
-			+ "(?:\\S{1,30})?(?:이전에|전에|이후에|이후|부터|까지))(?=[\\s,.!?]|$)"
+		"(?:(?<![\\p{Alnum}제])\\d{4}(?:[./-]\\d{1,2}){1,2}|"
+			+ "(?<![\\p{Alnum}제])\\d+(?:년|개월|월|일|주|시간|분|초))"
+			+ "(?=(?:은|는|이|가|을|를|부터|까지|입니다|이다|이고|이며|[\\s,.!?]|$))|"
+			+ "(?:(?:[\\p{IsHangul}A-Za-z0-9]{2,20}\\s+){0,2}"
+			+ "(?:확정|계약|체결|신청|접수|제출|공고|시행|선정|승인|허가|등록|발주|착수|완료|종료|개시|도입|구축|운영|발생|통지|수립|"
+			+ "월말|연말|분기말|마감일|시행일|공고일|신청일|접수일|제출일|선정일|계약일|착수일|완료일|종료일)"
+			+ "(?:\\s*(?:일|시점))?\\s*(?:이전에|이전|전에는|전에|전|이후에|이후|후에는|후에|후|부터|까지))"
+			+ "(?=[\\s,.!?]|$)"
 	);
 	private static final Pattern PROPOSITION_BOUNDARY = Pattern.compile(
 		"(?:별개로|무관하게|관계없이|반면(?:에)?|한편|다만|그러나|하지만)[,，]?\\s*"
@@ -45,6 +51,7 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final List<String> CONDITION_SUFFIXES = List.of(
 		"이전에", "이전", "전까지", "전에", "후에", "이후에", "이후", "때에", "때", "시에", "중에", "경우에", "경우"
 	);
+	private final ClaimEvidenceAtomizer atomizer = new ClaimEvidenceAtomizer();
 
 	public AlignmentResult verify(String question, ClaimVerifier.VerificationResult claimResult) {
 		AlignmentProfile alignmentProfile = AlignmentProfile.from(question);
@@ -64,7 +71,7 @@ public class AnswerQuestionAlignmentVerifier {
 		}
 
 		List<CandidateResult> candidates = supportedLinks.stream()
-			.map(link -> assess(link, alignmentProfile))
+			.flatMap(link -> assess(link, alignmentProfile).stream())
 			.toList();
 		for (CandidateResult candidate : candidates) {
 			if (candidate.missingGroups().isEmpty()) {
@@ -79,12 +86,26 @@ public class AnswerQuestionAlignmentVerifier {
 		return AlignmentResult.failed(reasonCode(best.missingGroups()), best.missingGroups());
 	}
 
-	private CandidateResult assess(
+	private List<CandidateResult> assess(
 		ClaimVerifier.ClaimEvidenceLink link,
 		AlignmentProfile profile
 	) {
-		String claimProposition = directProposition(link.claim());
+		List<String> claimAtoms = atomizer.atomizeForAlignment(link.claim());
+		if (claimAtoms.isEmpty()) {
+			claimAtoms = List.of(String.valueOf(link.claim() == null ? "" : link.claim()));
+		}
 		String evidenceProposition = directProposition(link.evidenceSentence());
+		return claimAtoms.stream()
+			.map(claimAtom -> assessAtom(claimAtom, evidenceProposition, profile))
+			.toList();
+	}
+
+	private CandidateResult assessAtom(
+		String claimAtom,
+		String evidenceProposition,
+		AlignmentProfile profile
+	) {
+		String claimProposition = directProposition(claimAtom);
 		String normalizedClaimProposition = normalize(claimProposition);
 		LinkedHashSet<String> missing = new LinkedHashSet<>();
 		if (!matchesAllGroups(normalizedClaimProposition, profile.subjectGroups())) {
@@ -106,7 +127,7 @@ public class AnswerQuestionAlignmentVerifier {
 		if (claimHasRelation && !hasDirectConclusion(claimProposition, profile.relationRequirements())) {
 			missing.add(DIRECT_CONCLUSION);
 		}
-		return new CandidateResult(link.claim(), List.copyOf(missing));
+		return new CandidateResult(claimAtom, List.copyOf(missing));
 	}
 
 	private boolean matchesAllGroups(String text, List<List<String>> groups) {
@@ -231,7 +252,11 @@ public class AnswerQuestionAlignmentVerifier {
 			QuestionIntentProfile questionProfile = QuestionIntentProfile.from(question);
 			List<List<String>> conditionGroups = conditionGroups(question);
 			List<List<String>> subjectGroups = subjectGroups(questionProfile, conditionGroups);
-			List<RelationRequirement> relationRequirements = relationRequirements(questionProfile, question);
+			List<RelationRequirement> relationRequirements = relationRequirements(
+				questionProfile,
+				question,
+				conditionGroups
+			);
 			return new AlignmentProfile(
 				subjectGroups,
 				relationRequirements,
@@ -359,7 +384,8 @@ public class AnswerQuestionAlignmentVerifier {
 
 		private static List<RelationRequirement> relationRequirements(
 			QuestionIntentProfile profile,
-			String question
+			String question,
+			List<List<String>> conditionGroups
 		) {
 			String normalizedQuestion = normalize(question);
 			Set<String> intents = profile.intentTypes();
@@ -370,7 +396,12 @@ public class AnswerQuestionAlignmentVerifier {
 			if (amountRequested(normalizedQuestion)) {
 				requirements.add(new RelationRequirement(RelationKind.AMOUNT_VALUE, List.of()));
 			}
-			addConfiguredIntentRequirements(requirements, profile, normalizedQuestion);
+			addConfiguredIntentRequirements(
+				requirements,
+				profile,
+				normalizedQuestion,
+				conditionGroups
+			);
 			if (containsAny(normalizedQuestion, "할수있", "가능한가", "가능한지", "허용")) {
 				addLexicalRequirement(requirements,
 					List.of("할수있", "가능", "허용", "할수없", "불가능", "금지"));
@@ -389,7 +420,8 @@ public class AnswerQuestionAlignmentVerifier {
 		private static void addConfiguredIntentRequirements(
 			List<RelationRequirement> requirements,
 			QuestionIntentProfile profile,
-			String normalizedQuestion
+			String normalizedQuestion,
+			List<List<String>> conditionGroups
 		) {
 			for (QuestionIntentProfile.ConfiguredIntent intent : profile.configuredIntents()) {
 				if ("amount".equals(intent.id()) || "period".equals(intent.id())) {
@@ -397,14 +429,16 @@ public class AnswerQuestionAlignmentVerifier {
 				}
 				List<List<String>> anchoredDirectGroups = intent.directEvidenceGroups().stream()
 					.map(AlignmentProfile::normalizedValues)
-					.filter(group -> group.stream().anyMatch(normalizedQuestion::contains))
+					.filter(group -> group.stream().anyMatch(term ->
+						normalizedQuestion.contains(term) && !coveredByConditions(term, conditionGroups)))
 					.toList();
 				if (!anchoredDirectGroups.isEmpty()) {
 					anchoredDirectGroups.forEach(group -> addLexicalRequirement(requirements, group));
 					continue;
 				}
 				List<String> terms = normalizedValues(intent.terms());
-				if (terms.stream().anyMatch(normalizedQuestion::contains)) {
+				if (terms.stream().anyMatch(term ->
+					normalizedQuestion.contains(term) && !coveredByConditions(term, conditionGroups))) {
 					addLexicalRequirement(requirements, terms);
 				}
 			}
