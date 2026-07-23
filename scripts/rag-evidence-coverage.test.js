@@ -7,6 +7,7 @@ const {
   matchOracleGroup,
   parseJavaListConstant,
 } = require('./lib/rag-explicit-oracle-matcher');
+const retrievalMetrics = require('./lib/rag-retrieval-metrics');
 
 function canonicalJavaMarkers(name) {
   const source = fs.readFileSync(
@@ -179,4 +180,129 @@ test('ports the complete canonical Java marker tables without set differences', 
     canonicalJavaMarkers('LOCAL_POLARITY_BRIDGES'),
     LOCAL_POLARITY_BRIDGES,
   );
+});
+
+test('measures proposition and condition group coverage at every evidence stage', () => {
+  const evalCase = {
+    id: 'coverage-stages',
+    requiredPropositionGroups: [['must retain'], ['publish record', 'release record']],
+    requiredConditionGroups: [['before approval']],
+  };
+  const retained = {
+    target: 'law', chunkId: 1, title: 'must', snippet: 'retain',
+  };
+  const condition = {
+    target: 'law', chunkId: 2, chunkTitle: 'before approval',
+  };
+  const released = {
+    target: 'law', chunkId: 3, matchedChildText: 'release record',
+  };
+  const response = {
+    vectorHits: [retained, condition],
+    lexicalHits: [{ ...retained, snippet: 'different duplicate' }, released],
+    merged: [retained, condition, released],
+    reranked: [retained, released],
+    intentFiltered: [retained, released],
+    judgeCandidates: [retained, released],
+    judged: [retained],
+    selected: [retained],
+  };
+
+  const coverage = retrievalMetrics.measureRetrievalCase(evalCase, response, 10).evidenceCoverage;
+
+  assert.deepEqual(coverage.stages, {
+    candidateSources: { items: 3 },
+    merged: { items: 3 },
+    reranked: { items: 2 },
+    intentFiltered: { items: 2 },
+    judgeCandidates: { items: 2 },
+    judged: { items: 1 },
+    selected: { items: 1 },
+  });
+  assert.deepEqual(coverage.propositionGroups, [
+    {
+      id: 'proposition:1',
+      aliases: ['must retain'],
+      coverage: {
+        candidateSources: true, merged: true, reranked: true, intentFiltered: true,
+        judgeCandidates: true, judged: true, selected: true,
+      },
+      firstLossStage: 'survived',
+    },
+    {
+      id: 'proposition:2',
+      aliases: ['publish record', 'release record'],
+      coverage: {
+        candidateSources: true, merged: true, reranked: true, intentFiltered: true,
+        judgeCandidates: true, judged: false, selected: false,
+      },
+      firstLossStage: 'judged',
+    },
+  ]);
+  assert.deepEqual(coverage.conditionGroups, [
+    {
+      id: 'condition:1',
+      aliases: ['before approval'],
+      coverage: {
+        candidateSources: true, merged: true, reranked: false, intentFiltered: false,
+        judgeCandidates: false, judged: false, selected: false,
+      },
+      firstLossStage: 'reranked',
+    },
+  ]);
+});
+
+test('classifies groups missing from candidate sources and aggregates group summaries by type', () => {
+  const entered = {
+    id: 'entered',
+    requiredPropositionGroups: [['retain record']],
+    requiredConditionGroups: [['before approval']],
+  };
+  const enteredItem = { target: 'law', chunkId: 1, snippet: 'retain record before approval' };
+  const enteredResponse = {
+    vectorHits: [enteredItem], lexicalHits: [], merged: [enteredItem], reranked: [enteredItem],
+    intentFiltered: [enteredItem], judgeCandidates: [enteredItem], judged: [enteredItem], selected: [enteredItem],
+  };
+  const absent = {
+    id: 'absent',
+    requiredPropositionGroups: [['publish record']],
+    requiredConditionGroups: [],
+  };
+  const lateItem = { target: 'law', chunkId: 2, snippet: 'publish record' };
+  const absentResponse = {
+    vectorHits: [], lexicalHits: [], merged: [lateItem], reranked: [lateItem],
+    intentFiltered: [lateItem], judgeCandidates: [lateItem], judged: [lateItem], selected: [lateItem],
+  };
+
+  const enteredMeasured = retrievalMetrics.measureRetrievalCase(entered, enteredResponse, 10);
+  const absentMeasured = retrievalMetrics.measureRetrievalCase(absent, absentResponse, 10);
+  const summary = retrievalMetrics.summarizeRetrievalCases([enteredMeasured, absentMeasured], 10);
+
+  assert.equal(absentMeasured.evidenceCoverage.propositionGroups[0].firstLossStage, 'candidateSources');
+  assert.deepEqual(summary.evidenceCoverage.proposition, {
+    totalGroups: 2,
+    stages: {
+      candidateSources: { coveredGroups: 1, rate: 0.5 },
+      merged: { coveredGroups: 2, rate: 1 },
+      reranked: { coveredGroups: 2, rate: 1 },
+      intentFiltered: { coveredGroups: 2, rate: 1 },
+      judgeCandidates: { coveredGroups: 2, rate: 1 },
+      judged: { coveredGroups: 2, rate: 1 },
+      selected: { coveredGroups: 2, rate: 1 },
+    },
+    firstLossCounts: { survived: 1, candidateSources: 1 },
+  });
+  assert.deepEqual(summary.evidenceCoverage.condition, {
+    totalGroups: 1,
+    stages: {
+      candidateSources: { coveredGroups: 1, rate: 1 },
+      merged: { coveredGroups: 1, rate: 1 },
+      reranked: { coveredGroups: 1, rate: 1 },
+      intentFiltered: { coveredGroups: 1, rate: 1 },
+      judgeCandidates: { coveredGroups: 1, rate: 1 },
+      judged: { coveredGroups: 1, rate: 1 },
+      selected: { coveredGroups: 1, rate: 1 },
+    },
+    firstLossCounts: { survived: 1 },
+  });
 });

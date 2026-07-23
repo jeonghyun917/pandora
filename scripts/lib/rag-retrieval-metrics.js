@@ -8,6 +8,11 @@ const STAGE_NAMES = [
   'judged',
   'selected',
 ];
+const {
+  measureEvidenceCoverage,
+  summarizeEvidenceCoverage,
+  uniqueItems,
+} = require('./rag-evidence-coverage');
 
 const DOWNSTREAM_STAGES = STAGE_NAMES.slice(2);
 
@@ -51,6 +56,7 @@ function measureRetrievalCase(evalCase, response, k = 10) {
       ...Object.fromEntries(DOWNSTREAM_STAGES.map((stage) => [stage, candidateEntryHit && stages[stage].directHit])),
     },
     stages,
+    evidenceCoverage: measureEvidenceCoverage(evalCase, response, safeK),
   };
 }
 
@@ -129,6 +135,7 @@ function summarizeRetrievalCases(results, k = 10) {
       ])),
     },
     firstDropCounts,
+    evidenceCoverage: summarizeEvidenceCoverage(rows),
   };
 }
 
@@ -206,19 +213,6 @@ function uniqueTerms(values) {
     }
   }
   return Array.from(byNormalized.values());
-}
-
-function uniqueItems(items) {
-  const byKey = new Map();
-  for (const [index, item] of (items ?? []).entries()) {
-    const key = item?.chunkId == null
-      ? `position:${index}`
-      : `${item?.target ?? ''}:${item.chunkId}`;
-    if (!byKey.has(key)) {
-      byKey.set(key, item);
-    }
-  }
-  return Array.from(byKey.values());
 }
 
 function topK(items, k) {
