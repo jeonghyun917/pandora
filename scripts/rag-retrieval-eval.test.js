@@ -406,6 +406,237 @@ test('retrieval runner accepts explicit case IDs, case limit, K, and output path
   assert.equal(options.reportPath, 'logs/custom-retrieval.md');
 });
 
+test('retrieval runner accepts answer eval from environment and lets CLI override it', () => {
+  assert.equal(typeof retrievalRunner.parseOptions, 'function');
+
+  const fromEnvironment = retrievalRunner.parseOptions([], {
+    RAG_RETRIEVAL_ANSWER_EVAL: 'logs/environment-answer.json',
+  });
+  const fromCli = retrievalRunner.parseOptions([
+    '--answer-eval', 'logs/cli-answer.json',
+  ], {
+    RAG_RETRIEVAL_ANSWER_EVAL: 'logs/environment-answer.json',
+  });
+
+  assert.equal(fromEnvironment.answerEvalPath, 'logs/environment-answer.json');
+  assert.equal(fromCli.answerEvalPath, 'logs/cli-answer.json');
+  assert.throws(
+    () => retrievalRunner.parseOptions(['--answer-eval='], {}),
+    /--answer-eval.*requires a value/i,
+  );
+  assert.throws(
+    () => retrievalRunner.parseOptions(['--answer-eval', '   '], {}),
+    /--answer-eval.*requires a value/i,
+  );
+});
+
+test('debug measurement requests include matched child text and reject missing text fields', () => {
+  assert.equal(typeof retrievalRunner.buildDebugRequest, 'function');
+  const request = retrievalRunner.buildDebugRequest({
+    targets: ['law'],
+    question: 'What is required?',
+  }, { k: 7 });
+  assert.deepEqual(request, {
+    targets: ['law'],
+    question: 'What is required?',
+    limit: 7,
+    includeFuture: true,
+    includeMatchedChildText: true,
+  });
+
+  const item = {
+    parentSectionTitle: 'Parent',
+    sectionType: 'requirement',
+    matchedChildText: 'Complete child text.',
+  };
+  const valid = Object.fromEntries(retrievalMetrics.STAGE_NAMES.map((stage) => [stage, [item]]));
+  valid.resultMsg = 'OK';
+  assert.equal(retrievalRunner.assertDebugResponse(valid, { requireMatchedChildText: true }), valid);
+  assert.throws(
+    () => retrievalRunner.assertDebugResponse({
+      ...valid,
+      selected: [{ ...item, matchedChildText: undefined }],
+    }, { requireMatchedChildText: true }),
+    /selected\[0\].*matchedChildText.*string/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDebugResponse({
+      ...valid,
+      selected: [{ ...item, matchedChildText: null }],
+    }, { requireMatchedChildText: true }),
+    /selected\[0\].*matchedChildText.*string/i,
+  );
+});
+
+test('answer evaluation join normalizes provenance and rejects mismatches or invalid IDs', () => {
+  assert.equal(typeof retrievalRunner.prepareAnswerEvaluation, 'function');
+  const retrievalProvenance = {
+    baseUrl: 'http://127.0.0.1:8080',
+    runtimeArtifactSha256: 'abcdef',
+    runtimeInstanceId: 'runtime-a',
+    indexRevision: 'index-a',
+    datasetHash: 'dataset-a',
+    selectionHash: 'selection-a',
+  };
+  const answerEvaluation = {
+    provenance: {
+      ...retrievalProvenance,
+      baseUrl: 'http://127.0.0.1:8080/',
+      runtimeArtifactSha256: 'ABCDEF',
+    },
+    results: [
+      { id: 'case-a', verifiedAnswer: 'answer a', claimEvidenceLinks: [] },
+      { id: 'case-b', verifiedAnswer: 'answer b', claimEvidenceLinks: [] },
+    ],
+  };
+
+  const joined = retrievalRunner.prepareAnswerEvaluation(
+    answerEvaluation,
+    retrievalProvenance,
+    ['case-a', 'case-b'],
+  );
+  assert.equal(joined.get('case-b').verifiedAnswer, 'answer b');
+
+  for (const field of [
+    'baseUrl',
+    'runtimeArtifactSha256',
+    'runtimeInstanceId',
+    'indexRevision',
+    'datasetHash',
+    'selectionHash',
+  ]) {
+    const mismatched = structuredClone(answerEvaluation);
+    mismatched.provenance[field] = field === 'baseUrl'
+      ? 'http://127.0.0.1:9999'
+      : 'different';
+    assert.throws(
+      () => retrievalRunner.prepareAnswerEvaluation(
+        mismatched,
+        retrievalProvenance,
+        ['case-a', 'case-b'],
+      ),
+      new RegExp(`provenance mismatch.*${field}`, 'i'),
+      field,
+    );
+
+    const missing = structuredClone(answerEvaluation);
+    delete missing.provenance[field];
+    assert.throws(
+      () => retrievalRunner.prepareAnswerEvaluation(
+        missing,
+        retrievalProvenance,
+        ['case-a', 'case-b'],
+      ),
+      new RegExp(`provenance mismatch.*${field}`, 'i'),
+      `missing ${field}`,
+    );
+  }
+
+  assert.throws(
+    () => retrievalRunner.prepareAnswerEvaluation({
+      ...answerEvaluation,
+      results: [answerEvaluation.results[0], answerEvaluation.results[0]],
+    }, retrievalProvenance, ['case-a']),
+    /duplicate answer-eval IDs.*case-a/i,
+  );
+  assert.throws(
+    () => retrievalRunner.prepareAnswerEvaluation({
+      ...answerEvaluation,
+      results: [answerEvaluation.results[0]],
+    }, retrievalProvenance, ['case-a', 'case-b']),
+    /missing requested answer-eval IDs.*case-b/i,
+  );
+});
+
+test('answer evaluation join rejects results without measurable answer-stage fields', () => {
+  const provenance = {
+    baseUrl: 'http://127.0.0.1:8080',
+    runtimeArtifactSha256: 'abcdef',
+    runtimeInstanceId: 'runtime-a',
+    indexRevision: 'index-a',
+    datasetHash: 'dataset-a',
+    selectionHash: 'selection-a',
+  };
+  const answerEvaluation = {
+    provenance,
+    results: [{
+      id: 'case-a',
+      claimEvidenceLinks: [],
+      verifiedAnswer: 'answer a',
+    }],
+  };
+  const prepare = (result) => retrievalRunner.prepareAnswerEvaluation({
+    ...answerEvaluation,
+    results: [result],
+  }, provenance, ['case-a']);
+
+  assert.throws(
+    () => prepare({ id: 'case-a', verifiedAnswer: 'answer a' }),
+    /case-a.*claimEvidenceLinks.*array/i,
+  );
+  assert.throws(
+    () => prepare({ id: 'case-a', claimEvidenceLinks: {}, verifiedAnswer: 'answer a' }),
+    /case-a.*claimEvidenceLinks.*array/i,
+  );
+  assert.throws(
+    () => prepare({ id: 'case-a', claimEvidenceLinks: [] }),
+    /case-a.*verifiedAnswer.*string/i,
+  );
+  assert.throws(
+    () => prepare({ id: 'case-a', claimEvidenceLinks: [], verifiedAnswer: null }),
+    /case-a.*verifiedAnswer.*string/i,
+  );
+  assert.throws(
+    () => prepare({
+      id: 'case-a',
+      claimEvidenceLinks: [{ relation: 'SUPPORTED', evidenceSentence: null }],
+      verifiedAnswer: 'answer a',
+    }),
+    /case-a.*SUPPORTED.*evidenceSentence.*string/i,
+  );
+});
+
+test('Markdown evidence coverage shows both group types, first loss, and missing IDs by case', () => {
+  assert.equal(typeof retrievalRunner.formatEndToEndEvidenceCoverageMarkdown, 'function');
+  const markdown = retrievalRunner.formatEndToEndEvidenceCoverageMarkdown({
+    endToEndEvidenceCoverage: {
+      proposition: {
+        totalGroups: 2,
+        stages: {
+          candidateSources: { status: 'measured', coveredGroups: 2, rate: 1 },
+          supportedEvidence: { status: 'measured', coveredGroups: 1, rate: 0.5 },
+        },
+        firstLossCounts: { supportedEvidence: 1, survived: 1 },
+      },
+      condition: {
+        totalGroups: 1,
+        stages: {
+          candidateSources: { status: 'measured', coveredGroups: 1, rate: 1 },
+          supportedEvidence: { status: 'measured', coveredGroups: 1, rate: 1 },
+        },
+        firstLossCounts: { survived: 1 },
+      },
+    },
+    results: [{
+      id: 'case-a',
+      endToEndEvidenceCoverage: {
+        missingGroups: {
+          supportedEvidence: {
+            proposition: ['proposition:2'],
+            condition: [],
+          },
+        },
+      },
+    }],
+  });
+
+  assert.match(markdown, /Proposition group coverage/i);
+  assert.match(markdown, /Condition group coverage/i);
+  assert.match(markdown, /supportedEvidence.*1\/2.*50\.0%/i);
+  assert.match(markdown, /First loss.*supportedEvidence=1.*survived=1/i);
+  assert.match(markdown, /case-a.*supportedEvidence.*proposition:2/i);
+});
+
 test('debug response validator requires resultMsg and every retrieval stage array', () => {
   assert.equal(typeof retrievalRunner.assertDebugResponse, 'function');
   const valid = Object.fromEntries(retrievalMetrics.STAGE_NAMES.map((stage) => [stage, []]));

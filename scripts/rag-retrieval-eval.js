@@ -12,6 +12,11 @@ const {
   summarizeRetrievalCases,
 } = require('./lib/rag-retrieval-metrics');
 const {
+  END_TO_END_STAGES,
+  extendEvidenceCoverage,
+  summarizeEndToEndEvidenceCoverage,
+} = require('./lib/rag-evidence-coverage');
+const {
   assertEvaluationRuntimeReady,
   buildProvenance,
   datasetHash,
@@ -66,24 +71,41 @@ async function main() {
   }
 
   const successfulMeasurements = measurements.filter(Boolean);
+  const provenance = buildProvenance({
+    scope,
+    baseUrl: options.baseUrl,
+    gitCommit: gitOutput(['rev-parse', 'HEAD']),
+    gitDirty: Boolean(gitOutput(['status', '--porcelain'])),
+    datasetHashValue,
+    selectionHashValue,
+    selectedCount: cases.length,
+    totalCaseCount: allCases.length,
+    runtimeInfo,
+  });
+  const answerResults = options.answerEvalPath
+    ? prepareAnswerEvaluation(
+      readJson(options.answerEvalPath),
+      provenance,
+      cases.map((evalCase) => evalCase.id),
+    )
+    : null;
+  const casesById = new Map(cases.map((evalCase) => [evalCase.id, evalCase]));
+  for (const measurement of successfulMeasurements) {
+    measurement.endToEndEvidenceCoverage = extendEvidenceCoverage(
+      casesById.get(measurement.id),
+      measurement.evidenceCoverage,
+      answerResults?.get(measurement.id),
+    );
+  }
   const summary = summarizeRetrievalCases(successfulMeasurements, options.k);
+  summary.endToEndEvidenceCoverage = summarizeEndToEndEvidenceCoverage(successfulMeasurements);
   const body = {
     ...summary,
     selectedCases: cases.length,
     completedCases: successfulMeasurements.length,
     requestErrors: errors,
     complete: errors.length === 0 && successfulMeasurements.length === cases.length,
-    provenance: buildProvenance({
-      scope,
-      baseUrl: options.baseUrl,
-      gitCommit: gitOutput(['rev-parse', 'HEAD']),
-      gitDirty: Boolean(gitOutput(['status', '--porcelain'])),
-      datasetHashValue,
-      selectionHashValue,
-      selectedCount: cases.length,
-      totalCaseCount: allCases.length,
-      runtimeInfo,
-    }),
+    provenance,
     runtimeVerifiedAtEnd: true,
     results: successfulMeasurements,
   };
@@ -105,6 +127,7 @@ function parseOptions(argv = [], env = process.env) {
     baseUrl: env.RAG_RETRIEVAL_BASE_URL || env.RAG_EVAL_BASE_URL || 'http://127.0.0.1:8080',
     concurrency: positiveInteger(env.RAG_RETRIEVAL_CONCURRENCY, 2),
     timeoutMs: positiveInteger(env.RAG_RETRIEVAL_REQUEST_TIMEOUT_MS, 180000),
+    answerEvalPath: env.RAG_RETRIEVAL_ANSWER_EVAL || null,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -142,6 +165,14 @@ function parseOptions(argv = [], env = process.env) {
       case '--concurrency':
         values.concurrency = positiveInteger(readValue(), 2);
         break;
+      case '--answer-eval': {
+        const answerEvalPath = readValue();
+        if (!String(answerEvalPath).trim()) {
+          throw new Error('--answer-eval requires a value');
+        }
+        values.answerEvalPath = answerEvalPath;
+        break;
+      }
       default:
         throw new Error(`unknown option: ${flag}`);
     }
@@ -182,12 +213,7 @@ async function loadDebugResponse(evalCase, options) {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
-      body: JSON.stringify({
-        targets: evalCase.targets,
-        question: evalCase.question,
-        limit: options.k,
-        includeFuture: true,
-      }),
+      body: JSON.stringify(buildDebugRequest(evalCase, options)),
       signal: controller.signal,
     });
     const text = await response.text();
@@ -200,7 +226,7 @@ async function loadDebugResponse(evalCase, options) {
     if (!response.ok || !body) {
       throw new Error(`debug search HTTP ${response.status}: ${text.slice(0, 200)}`);
     }
-    return assertDebugResponse(body);
+    return assertDebugResponse(body, { requireMatchedChildText: true });
   } catch (error) {
     if (error?.name === 'AbortError') {
       throw new Error(`debug search timed out after ${options.timeoutMs}ms`);
@@ -211,7 +237,17 @@ async function loadDebugResponse(evalCase, options) {
   }
 }
 
-function assertDebugResponse(body) {
+function buildDebugRequest(evalCase, options) {
+  return {
+    targets: evalCase.targets,
+    question: evalCase.question,
+    limit: options.k,
+    includeFuture: true,
+    includeMatchedChildText: true,
+  };
+}
+
+function assertDebugResponse(body, { requireMatchedChildText = false } = {}) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw new Error('debug search response must be an object');
   }
@@ -230,6 +266,9 @@ function assertDebugResponse(body) {
         .filter((field) => !Object.hasOwn(item, field));
       if (missing.length > 0) {
         throw new Error(`debug search response ${stage}[${index}] missing ${missing.join(', ')}`);
+      }
+      if (requireMatchedChildText && typeof item.matchedChildText !== 'string') {
+        throw new Error(`debug search response ${stage}[${index}] matchedChildText must be a string`);
       }
     }
   }
@@ -300,8 +339,162 @@ function writeReport(filePath, body) {
     '|---|---:|---|---:|',
     ...caseRows.map((row) => `| ${row.map(escapeCell).join(' | ')} |`),
     '',
+    formatEndToEndEvidenceCoverageMarkdown(body),
+    '',
   ];
   fs.writeFileSync(filePath, `${lines.join('\n')}\n`, 'utf8');
+}
+
+function prepareAnswerEvaluation(answerEvaluation, retrievalProvenance, requestedIds) {
+  if (!answerEvaluation || typeof answerEvaluation !== 'object' || Array.isArray(answerEvaluation)) {
+    throw new Error('answer-eval must be a JSON object');
+  }
+  const mismatches = provenanceMismatches(answerEvaluation.provenance, retrievalProvenance);
+  if (mismatches.length > 0) {
+    throw new Error(`answer-eval provenance mismatch: ${mismatches.join(', ')}`);
+  }
+  if (!Array.isArray(answerEvaluation.results)) {
+    throw new Error('answer-eval results must be an array');
+  }
+  const byId = new Map();
+  const duplicateIds = new Set();
+  for (const result of answerEvaluation.results) {
+    const id = result?.id;
+    if (typeof id !== 'string' || id.length === 0) {
+      throw new Error('answer-eval result ID must be a non-empty string');
+    }
+    assertMeasurableAnswerResult(result, id);
+    if (byId.has(id)) {
+      duplicateIds.add(id);
+    }
+    byId.set(id, result);
+  }
+  if (duplicateIds.size > 0) {
+    throw new Error(`duplicate answer-eval IDs: ${Array.from(duplicateIds).join(', ')}`);
+  }
+  const missingIds = requestedIds.filter((id) => !byId.has(id));
+  if (missingIds.length > 0) {
+    throw new Error(`missing requested answer-eval IDs: ${missingIds.join(', ')}`);
+  }
+  return byId;
+}
+
+function assertMeasurableAnswerResult(result, id) {
+  if (!Array.isArray(result.claimEvidenceLinks)) {
+    throw new Error(`answer-eval result ${id} claimEvidenceLinks must be an array`);
+  }
+  if (typeof result.verifiedAnswer !== 'string') {
+    throw new Error(`answer-eval result ${id} verifiedAnswer must be a string`);
+  }
+  for (const link of result.claimEvidenceLinks) {
+    if (link?.relation === 'SUPPORTED' && typeof link.evidenceSentence !== 'string') {
+      throw new Error(`answer-eval result ${id} SUPPORTED evidenceSentence must be a string`);
+    }
+  }
+}
+
+function provenanceMismatches(answerProvenance, retrievalProvenance) {
+  const fields = [
+    'baseUrl',
+    'runtimeArtifactSha256',
+    'runtimeInstanceId',
+    'indexRevision',
+    'datasetHash',
+    'selectionHash',
+  ];
+  return fields.filter((field) => {
+    const answerValue = normalizedProvenanceValue(field, answerProvenance?.[field]);
+    const retrievalValue = normalizedProvenanceValue(field, retrievalProvenance?.[field]);
+    return answerValue == null || retrievalValue == null || answerValue !== retrievalValue;
+  });
+}
+
+function normalizedProvenanceValue(field, value) {
+  if (typeof value !== 'string' || value.length === 0) {
+    return null;
+  }
+  if (field === 'baseUrl') {
+    try {
+      return new URL(value).toString().replace(/\/+$/, '');
+    } catch {
+      return null;
+    }
+  }
+  if (field === 'runtimeArtifactSha256') {
+    return value.toLowerCase();
+  }
+  return value;
+}
+
+function readJson(filePath) {
+  let text;
+  try {
+    text = fs.readFileSync(filePath, 'utf8');
+  } catch (error) {
+    throw new Error(`cannot read answer-eval ${filePath}: ${error?.message ?? error}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`answer-eval is not valid JSON: ${filePath}`);
+  }
+}
+
+function formatEndToEndEvidenceCoverageMarkdown(body) {
+  const lines = ['## End-to-end Evidence Coverage', ''];
+  for (const [type, title] of [
+    ['proposition', 'Proposition group coverage'],
+    ['condition', 'Condition group coverage'],
+  ]) {
+    const summary = body?.endToEndEvidenceCoverage?.[type] ?? {
+      totalGroups: 0,
+      stages: {},
+      firstLossCounts: {},
+    };
+    lines.push(`### ${title}`, '');
+    lines.push('| Stage | Covered | Coverage | Status |');
+    lines.push('|---|---:|---:|---|');
+    for (const stage of END_TO_END_STAGES) {
+      const metrics = summary.stages?.[stage];
+      if (!metrics) {
+        continue;
+      }
+      const covered = metrics.status === 'measured'
+        ? fraction(metrics.coveredGroups, summary.totalGroups)
+        : '-';
+      lines.push(`| ${stage} | ${covered} | ${percent(metrics.rate)} | ${metrics.status} |`);
+    }
+    lines.push('');
+    lines.push(`- First loss: ${formatCounts(summary.firstLossCounts)}`);
+    lines.push('');
+  }
+  lines.push('### Case-level missing groups', '');
+  lines.push('| ID | Stage | Missing proposition groups | Missing condition groups |');
+  lines.push('|---|---|---|---|');
+  let missingRows = 0;
+  for (const result of body?.results ?? []) {
+    for (const stage of END_TO_END_STAGES) {
+      const missing = result?.endToEndEvidenceCoverage?.missingGroups?.[stage];
+      if (!missing) {
+        continue;
+      }
+      lines.push(`| ${[
+        result.id,
+        stage,
+        (missing.proposition ?? []).join(', ') || '-',
+        (missing.condition ?? []).join(', ') || '-',
+      ].map(escapeCell).join(' | ')} |`);
+      missingRows += 1;
+    }
+  }
+  if (missingRows === 0) {
+    lines.push('| - | - | - | - |');
+  }
+  return lines.join('\n');
+}
+
+function formatCounts(counts) {
+  return Object.entries(counts ?? {}).map(([label, count]) => `${label}=${count}`).join(', ') || '-';
 }
 
 function positiveInteger(value, fallback, allowZero = false) {
@@ -349,6 +542,9 @@ if (require.main === module) {
 
 module.exports = {
   assertDebugResponse,
+  buildDebugRequest,
+  formatEndToEndEvidenceCoverageMarkdown,
   main,
   parseOptions,
+  prepareAnswerEvaluation,
 };

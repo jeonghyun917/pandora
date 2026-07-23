@@ -7,6 +7,7 @@ const {
   matchOracleGroup,
   parseJavaListConstant,
 } = require('./lib/rag-explicit-oracle-matcher');
+const evidenceCoverage = require('./lib/rag-evidence-coverage');
 const retrievalMetrics = require('./lib/rag-retrieval-metrics');
 
 function canonicalJavaMarkers(name) {
@@ -305,4 +306,108 @@ test('classifies groups missing from candidate sources and aggregates group summ
     },
     firstLossCounts: { survived: 1 },
   });
+});
+
+test('measures supported evidence per sentence and the final verified answer independently', () => {
+  assert.equal(typeof evidenceCoverage.extendEvidenceCoverage, 'function');
+  const evalCase = {
+    id: 'answer-stages',
+    requiredPropositionGroups: [['direct rule'], ['split evidence']],
+    requiredConditionGroups: [['when filed']],
+  };
+  const retrievalItem = {
+    target: 'law',
+    chunkId: 1,
+    matchedChildText: 'direct rule and split evidence apply when filed',
+  };
+  const response = {
+    vectorHits: [retrievalItem],
+    lexicalHits: [],
+    merged: [retrievalItem],
+    reranked: [retrievalItem],
+    intentFiltered: [retrievalItem],
+    judgeCandidates: [retrievalItem],
+    judged: [retrievalItem],
+    selected: [retrievalItem],
+  };
+  const retrievalCoverage = evidenceCoverage.measureEvidenceCoverage(evalCase, response, 10);
+  const answerResult = {
+    claimEvidenceLinks: [
+      { relation: 'SUPPORTED', evidenceSentence: 'The direct rule applies when filed.' },
+      { relation: 'UNSUPPORTED', evidenceSentence: 'split evidence' },
+      { relation: 'SUPPORTED', evidenceSentence: 'split' },
+      { relation: 'SUPPORTED', evidenceSentence: 'evidence' },
+    ],
+    verifiedAnswer: 'The direct rule applies.',
+  };
+
+  const measured = evidenceCoverage.extendEvidenceCoverage(evalCase, retrievalCoverage, answerResult);
+
+  assert.deepEqual(measured.stages.supportedEvidence, { status: 'measured', items: 3 });
+  assert.deepEqual(measured.stages.verifiedAnswer, { status: 'measured', items: 1 });
+  assert.equal(measured.propositionGroups[0].coverage.supportedEvidence, true);
+  assert.equal(measured.propositionGroups[0].coverage.verifiedAnswer, true);
+  assert.equal(measured.propositionGroups[0].firstLossStage, 'survived');
+  assert.equal(measured.propositionGroups[1].coverage.supportedEvidence, false);
+  assert.equal(measured.propositionGroups[1].coverage.verifiedAnswer, false);
+  assert.equal(measured.propositionGroups[1].firstLossStage, 'supportedEvidence');
+  assert.equal(measured.conditionGroups[0].coverage.supportedEvidence, true);
+  assert.equal(measured.conditionGroups[0].coverage.verifiedAnswer, false);
+  assert.equal(measured.conditionGroups[0].firstLossStage, 'verifiedAnswer');
+  assert.deepEqual(measured.missingGroups.supportedEvidence, {
+    proposition: ['proposition:2'],
+    condition: [],
+  });
+  assert.deepEqual(measured.missingGroups.verifiedAnswer, {
+    proposition: ['proposition:2'],
+    condition: ['condition:1'],
+  });
+});
+
+test('marks answer stages not measured without an answer evaluation and summarizes all nine stages', () => {
+  assert.equal(typeof evidenceCoverage.summarizeEndToEndEvidenceCoverage, 'function');
+  const evalCase = {
+    id: 'retrieval-only',
+    requiredPropositionGroups: [['direct rule']],
+    requiredConditionGroups: [],
+  };
+  const retrievalItem = { target: 'law', chunkId: 1, matchedChildText: 'direct rule' };
+  const response = {
+    vectorHits: [retrievalItem],
+    lexicalHits: [],
+    merged: [retrievalItem],
+    reranked: [retrievalItem],
+    intentFiltered: [retrievalItem],
+    judgeCandidates: [retrievalItem],
+    judged: [retrievalItem],
+    selected: [retrievalItem],
+  };
+  const retrievalCoverage = evidenceCoverage.measureEvidenceCoverage(evalCase, response, 10);
+
+  const notMeasured = evidenceCoverage.extendEvidenceCoverage(evalCase, retrievalCoverage);
+
+  assert.deepEqual(notMeasured.stages.supportedEvidence, { status: 'not_measured', items: null });
+  assert.deepEqual(notMeasured.stages.verifiedAnswer, { status: 'not_measured', items: null });
+  assert.equal(notMeasured.propositionGroups[0].coverage.supportedEvidence, 'not_measured');
+  assert.equal(notMeasured.propositionGroups[0].coverage.verifiedAnswer, 'not_measured');
+  assert.equal(notMeasured.propositionGroups[0].firstLossStage, 'not_measured');
+
+  const measured = evidenceCoverage.extendEvidenceCoverage(evalCase, retrievalCoverage, {
+    claimEvidenceLinks: [{ relation: 'SUPPORTED', evidenceSentence: 'direct rule' }],
+    verifiedAnswer: 'direct rule',
+  });
+  const summary = evidenceCoverage.summarizeEndToEndEvidenceCoverage([
+    { endToEndEvidenceCoverage: measured },
+  ]);
+  assert.deepEqual(summary.proposition.stages.supportedEvidence, {
+    status: 'measured',
+    coveredGroups: 1,
+    rate: 1,
+  });
+  assert.deepEqual(summary.proposition.stages.verifiedAnswer, {
+    status: 'measured',
+    coveredGroups: 1,
+    rate: 1,
+  });
+  assert.deepEqual(summary.proposition.firstLossCounts, { survived: 1 });
 });
