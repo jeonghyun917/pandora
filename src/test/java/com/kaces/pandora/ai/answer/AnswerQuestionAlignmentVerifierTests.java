@@ -51,6 +51,34 @@ class AnswerQuestionAlignmentVerifierTests {
 	}
 
 	@Test
+	void rejectsPeriodWordsThatBelongToBackgroundInsteadOfTheAnswerPredicate() {
+		String claim = "정보화사업 사전협의 시기와 별개로 대상 기관은 중앙행정기관입니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"정보화사업 사전협의는 언제 해야 하나?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).isFalse();
+		assertThat(result.reasonCode()).isEqualTo("MISSING_RELATION");
+		assertThat(result.missingGroups()).contains("RELATION");
+	}
+
+	@Test
+	void doesNotTreatWonSyllableInsideSupportAsAnAmountAnswer() {
+		String claim = "청년 창업 지원 사업은 신청 대상입니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"청년 창업 지원 금액은 얼마인가?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).isFalse();
+		assertThat(result.reasonCode()).isEqualTo("MISSING_RELATION");
+		assertThat(result.missingGroups()).contains("RELATION");
+	}
+
+	@Test
 	void rejectsGenericObligationThatOmitsAnExplicitQuestionCondition() {
 		ClaimVerifier.VerificationResult claimResult = claimResult(supported(
 			"정보화사업은 사전협의를 해야 합니다.",
@@ -93,10 +121,77 @@ class AnswerQuestionAlignmentVerifierTests {
 			claimResult(supported(claim, claim))
 		);
 
-		assertThat(result.aligned()).isTrue();
+		assertThat(result.aligned()).as(result.toString()).isTrue();
 		assertThat(result.reasonCode()).isEqualTo("ALIGNED");
 		assertThat(result.missingGroups()).isEmpty();
 		assertThat(result.matchedClaim()).isEqualTo(claim);
+	}
+
+	@Test
+	void requiresEveryExplicitConditionInTheQuestion() {
+		String claim = "정보화사업은 예산 확정 전에 사전협의를 해야 합니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"예산 확정 전에 그리고 계약 체결 후에 정보화사업 사전협의를 해야 하나?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).isFalse();
+		assertThat(result.reasonCode()).isEqualTo("MISSING_CONDITION");
+		assertThat(result.missingGroups()).contains("CONDITION");
+	}
+
+	@Test
+	void configuredEntityAnchorsOverrideBroadRecallAliasesForFinalAnswers() {
+		String claim = "지능정보사회 실행계획은 정보화사업을 대상으로 합니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"지능정보사회 실행계획의 예비검토는 어떤 사업을 대상으로 하나?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).isFalse();
+		assertThat(result.reasonCode()).isEqualTo("MISSING_SUBJECT");
+		assertThat(result.missingGroups()).contains("SUBJECT");
+	}
+
+	@Test
+	void acceptsDirectStatutoryObligationFormulation() {
+		String claim = "정보화사업자는 자료를 제출하여야 한다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"정보화사업자는 자료를 제출해야 하나?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).as(result.toString()).isTrue();
+		assertThat(result.reasonCode()).isEqualTo("ALIGNED");
+	}
+
+	@Test
+	void acceptsDirectStatutoryPermissionFormulation() {
+		String claim = "신청인은 처리 결과 자료를 열람할 수 있다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"신청인은 처리 결과 자료를 열람할 수 있나?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).isTrue();
+		assertThat(result.reasonCode()).isEqualTo("ALIGNED");
+	}
+
+	@Test
+	void acceptsDirectNounFormContainingRequestedSubjectAndRelation() {
+		String claim = "공공소프트웨어사업 과업심의 대상";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"공공소프트웨어사업은 과업심의 대상인가?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).as(result.toString()).isTrue();
+		assertThat(result.reasonCode()).isEqualTo("ALIGNED");
 	}
 
 	@Test
