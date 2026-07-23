@@ -10,19 +10,21 @@ import java.util.regex.Pattern;
  */
 final class ExplicitOracleTermMatcher {
 
-	private static final List<String> GRAMMATICAL_NEGATIONS = List.of("아닙", "아니", "않", "없", "불가");
+	private static final List<String> GRAMMATICAL_NEGATIONS = List.of(
+		"안됩니다", "안된다", "안됨",
+		"아닙", "아니", "않", "없", "불가"
+	);
 	private static final List<String> CLAUSE_SEPARATORS = List.of("하지만", "그러나", "반면", "다만");
 	private static final List<String> LOCAL_POLARITY_BRIDGES = List.of(
 		"이라고는", "라고는", "이라고", "라는", "라고", "다고",
-		"단정할수", "말할수", "볼수", "할수",
+		"단정해서는", "단정할수", "말할수", "볼수", "할수", "해서는",
 		"이라는것은", "라는것은", "인것은", "것은",
 		"반드시", "절대", "전혀",
 		"으로", "은", "는", "이", "가", "도", "만", "지"
 	);
-	private static final Pattern SUPERSEDED_ATTRIBUTION = Pattern.compile(
-		"(?s)(^|[.!?\\r\\n])\\s*[^.!?\\r\\n]*?(?:이라는|라는)\\s*"
-			+ "(?:견해|설명|주장)(?:도|은|는)?\\s*"
-			+ "(?:(?:있지만|있으나|있었지만)|(?:있습니다|있다)?\\s*\\.?\\s*(?:하지만|그러나|반면))"
+	private static final Pattern SUPERSEDED_BY_FINAL_ASSERTION = Pattern.compile(
+		"(?s)(^|[.!?\\r\\n])\\s*[^.!?\\r\\n]*?(?:하지만|그러나|반면|지만|으나)"
+			+ "[,:;\\s]*(?=(?:실제로(?:는)?|사실상|사실은|결론적으로|결국|오히려))"
 	);
 
 	private ExplicitOracleTermMatcher() {
@@ -87,7 +89,7 @@ final class ExplicitOracleTermMatcher {
 	}
 
 	private static List<String> clauses(String answer) {
-		String separated = SUPERSEDED_ATTRIBUTION.matcher(answer).replaceAll("$1");
+		String separated = SUPERSEDED_BY_FINAL_ASSERTION.matcher(answer).replaceAll("$1");
 		for (String separator : CLAUSE_SEPARATORS) {
 			separated = separated.replace(separator, ".");
 		}

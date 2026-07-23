@@ -164,6 +164,30 @@ class AnswerOracleMatcherTests {
 	}
 
 	@Test
+	void rejectsAliasBeforeContrastWithAGenericFinalityMarker() {
+		for (String finalityMarker : List.of("실제로는", "사실상", "사실은", "결론적으로", "결국", "오히려")) {
+			AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+				"비대상으로 알려졌지만 " + finalityMarker + " 과업심의 대상입니다",
+				defaultCase("project-review-hardware-exclusion")
+			);
+
+			assertThat(result.passed()).as(finalityMarker + ": " + result.message()).isFalse();
+			assertThat(result.missingPropositionGroups()).as(finalityMarker).isNotEmpty();
+		}
+	}
+
+	@Test
+	void rejectsPendingAliasBeforeGenericFinalAssertion() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"아직 시행예정인 것으로 알려졌지만 실제로는 이미 시행 중입니다. 공식 시행일을 명시해야 합니다",
+			defaultCase("ai-law-enforcement-date")
+		);
+
+		assertThat(result.passed()).isFalse();
+		assertThat(result.missingPropositionGroups()).isNotEmpty();
+	}
+
+	@Test
 	void forbiddenPositiveExpressionDoesNotMatchInsideModalNegation() {
 		LawAiEvalRequest.EvalCase evalCase = oracleCase(
 			List.of(List.of("법령상 예외를 확인")),
@@ -178,6 +202,52 @@ class AnswerOracleMatcherTests {
 
 		assertThat(result.passed()).as(result.message()).isTrue();
 		assertThat(result.forbiddenMatchedExpressions()).isEmpty();
+	}
+
+	@Test
+	void forbiddenPositiveExpressionDoesNotMatchInsideGrammaticalAnNegation() {
+		LawAiEvalRequest.EvalCase evalCase = oracleCase(
+			List.of(List.of("법령상 예외를 확인")),
+			List.of(),
+			List.of("공개장소에 자유롭게 설치")
+		);
+
+		for (String ending : List.of("안 됩니다", "안 된다", "안 됨")) {
+			AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+				"법령상 예외를 확인해야 하며 공개장소에 자유롭게 설치해서는 " + ending,
+				evalCase
+			);
+
+			assertThat(result.passed()).as(ending + ": " + result.message()).isTrue();
+			assertThat(result.forbiddenMatchedExpressions()).as(ending).isEmpty();
+		}
+	}
+
+	@Test
+	void negativePropositionMatchesGrammaticalAnCannotAssertForm() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"무조건 30일이라고 단정해서는 안 됩니다. 설치 목적에 따라 기간을 정합니다",
+			defaultCase("cctv-retention-not-fixed-30")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
+	void lexicalAnnaeDoesNotCountAsGrammaticalAnNegation() {
+		LawAiEvalRequest.EvalCase evalCase = oracleCase(
+			List.of(List.of("법령상 예외를 확인")),
+			List.of(),
+			List.of("공개장소에 자유롭게 설치")
+		);
+
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"법령상 예외를 확인했으며 공개장소에 자유롭게 설치 안내를 제공합니다.",
+			evalCase
+		);
+
+		assertThat(result.passed()).isFalse();
+		assertThat(result.forbiddenMatchedExpressions()).containsExactly("공개장소에 자유롭게 설치");
 	}
 
 	@Test
