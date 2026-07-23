@@ -25,13 +25,12 @@ public class AnswerQuestionAlignmentVerifier {
 			+ "하지\s*않는다|금지된다|제외된다|비대상이다)(?:[.?!]|$)"
 	);
 	private static final Pattern NUMERIC_AMOUNT_PATTERN = Pattern.compile(
-		"(?:\\d[\\d,.]*\\s*(?:원|만원|억원|조원|%|퍼센트)|"
-			+ "(?:금액|비용|예산|한도|가격|대가)(?:은|는|이|가)?\\s*[^.!?]{0,30}(?:입니다|이다|한다|됩니다))"
+		"(?<!\\d)\\d+(?:,\\d{3})*(?:\\.\\d+)?\\s*(?:조원|억원|만원|원|%|퍼센트)"
 	);
 	private static final Pattern PERIOD_VALUE_PATTERN = Pattern.compile(
-		"(?:\\d{1,4}(?:년|월|일|시간|분|주|개월)|"
-			+ "(?:이전|이후|전|후)(?:에|까지|입니다|이다|부터)|"
-			+ "(?:까지|기한은|기간은|시기는)\\s*[^.!?]{0,30}(?:입니다|이다|한다|됩니다))"
+		"(?:\\d{1,4}(?:[./-]\\d{1,2}){1,2}|"
+			+ "\\d+(?:년|개월|월|일|주|시간|분|초)|"
+			+ "(?:\\S{1,30})?(?:이전에|전에|이후에|이후|부터|까지))(?=[\\s,.!?]|$)"
 	);
 	private static final Pattern PROPOSITION_BOUNDARY = Pattern.compile(
 		"(?:별개로|무관하게|관계없이|반면(?:에)?|한편|다만|그러나|하지만)[,，]?\\s*"
@@ -84,12 +83,11 @@ public class AnswerQuestionAlignmentVerifier {
 		ClaimVerifier.ClaimEvidenceLink link,
 		AlignmentProfile profile
 	) {
-		String claim = normalize(link.claim());
-		String combined = claim + normalize(link.evidenceSentence());
 		String claimProposition = directProposition(link.claim());
 		String evidenceProposition = directProposition(link.evidenceSentence());
+		String normalizedClaimProposition = normalize(claimProposition);
 		LinkedHashSet<String> missing = new LinkedHashSet<>();
-		if (!matchesAllGroups(combined, profile.subjectGroups())) {
+		if (!matchesAllGroups(normalizedClaimProposition, profile.subjectGroups())) {
 			missing.add(SUBJECT);
 		}
 		boolean claimHasRelation = profile.relationRequirements().stream()
@@ -102,7 +100,7 @@ public class AnswerQuestionAlignmentVerifier {
 			}
 		}
 		if (!profile.conditionGroups().stream()
-			.allMatch(group -> group.stream().allMatch(claim::contains))) {
+			.allMatch(group -> group.stream().allMatch(normalizedClaimProposition::contains))) {
 			missing.add(CONDITION);
 		}
 		if (claimHasRelation && !hasDirectConclusion(claimProposition, profile.relationRequirements())) {
@@ -218,11 +216,7 @@ public class AnswerQuestionAlignmentVerifier {
 			String normalized = normalize(source);
 			return switch (kind) {
 				case PERIOD_VALUE -> PERIOD_VALUE_PATTERN.matcher(source).find();
-				case AMOUNT_VALUE -> NUMERIC_AMOUNT_PATTERN.matcher(source).find()
-					|| List.of("금액은", "비용은", "예산은", "한도는", "가격은", "대가는")
-						.stream()
-						.map(AnswerQuestionAlignmentVerifier::normalize)
-						.anyMatch(normalized::contains);
+				case AMOUNT_VALUE -> NUMERIC_AMOUNT_PATTERN.matcher(source).find();
 				case LEXICAL -> alternatives.stream().anyMatch(normalized::contains);
 			};
 		}
@@ -264,11 +258,21 @@ public class AnswerQuestionAlignmentVerifier {
 			else {
 				String question = profile.normalizedQuestion();
 				for (QuestionEntity entity : profile.entities()) {
-					List<String> explicitAliases = normalizedValues(entity.aliases()).stream()
-						.filter(alias -> alias.length() >= 3 && question.contains(alias))
+					List<String> explicitAliases = minimalAliases(normalizedValues(entity.aliases()).stream()
+						.filter(alias -> alias.length() >= 2 && question.contains(alias))
+						.filter(alias -> !isSubjectStopTerm(alias))
+						.filter(alias -> belongsToEntityLabel(alias, entity.label()))
+						.toList());
+					List<List<String>> configuredSubjectGroups = entity.directEvidenceGroups().stream()
+						.map(AlignmentProfile::normalizedValues)
+						.filter(group -> group.stream().anyMatch(value -> explicitAliases.stream()
+							.anyMatch(alias -> sameConcept(value, alias))))
 						.toList();
-					if (!explicitAliases.isEmpty()) {
-						groups.add(explicitAliases);
+					if (!configuredSubjectGroups.isEmpty()) {
+						groups.addAll(configuredSubjectGroups);
+					}
+					else {
+						explicitAliases.forEach(alias -> groups.add(List.of(alias)));
 					}
 				}
 			}
@@ -301,6 +305,23 @@ public class AnswerQuestionAlignmentVerifier {
 				.anyMatch(anchor -> anchor.contains(term) || term.contains(anchor));
 		}
 
+		private static boolean belongsToEntityLabel(String alias, String label) {
+			String normalizedLabel = normalize(label);
+			return !normalizedLabel.isBlank()
+				&& (normalizedLabel.contains(alias) || alias.contains(normalizedLabel));
+		}
+
+		private static boolean sameConcept(String left, String right) {
+			return left.equals(right) || left.contains(right) || right.contains(left);
+		}
+
+		private static List<String> minimalAliases(List<String> aliases) {
+			return aliases.stream()
+				.filter(alias -> aliases.stream()
+					.noneMatch(other -> !other.equals(alias) && alias.contains(other)))
+				.toList();
+		}
+
 		private static boolean coveredByConditions(String term, List<List<String>> conditionGroups) {
 			return conditionGroups.stream()
 				.flatMap(List::stream)
@@ -321,6 +342,7 @@ public class AnswerQuestionAlignmentVerifier {
 				|| term.startsWith("비용")
 				|| term.startsWith("기간")
 				|| term.startsWith("시기")
+				|| term.startsWith("언제")
 				|| term.startsWith("얼마")
 				|| term.startsWith("어떤")
 				|| term.startsWith("무슨")
@@ -348,55 +370,10 @@ public class AnswerQuestionAlignmentVerifier {
 			if (amountRequested(normalizedQuestion)) {
 				requirements.add(new RelationRequirement(RelationKind.AMOUNT_VALUE, List.of()));
 			}
-			if (intents.contains("exception_scope") || containsAny(normalizedQuestion, "제외", "예외", "비대상", "면제", "안해도", "불필요")) {
-				addLexicalRequirement(requirements, profile,
-					List.of("제외", "예외", "비대상", "면제"));
-			}
-			if (intents.contains("contract_method")) {
-				addLexicalRequirement(requirements, profile,
-					List.of("수의계약", "계약방법", "계약방식"));
-			}
-			if (intents.contains("purchase_channel")) {
-				addLexicalRequirement(requirements, profile,
-					List.of("조달청", "나라장터", "종합쇼핑몰", "구매경로"));
-			}
-			if (intents.contains("penalty") || containsAny(normalizedQuestion, "금지", "할수없", "불가능", "하면안")) {
-				addLexicalRequirement(requirements, profile,
-					List.of("불이익", "제재", "처분", "과태료", "금지", "할수없", "불가능"));
-			}
-			if (intents.contains("review_required")) {
-				addLexicalRequirement(requirements, profile,
-					List.of("심의", "검토대상", "위원회"));
-			}
-			if (explicitTargetScope(normalizedQuestion)) {
-				addLexicalRequirement(requirements, profile,
-					List.of("대상", "범위", "포함", "해당"));
-			}
+			addConfiguredIntentRequirements(requirements, profile, normalizedQuestion);
 			if (containsAny(normalizedQuestion, "할수있", "가능한가", "가능한지", "허용")) {
-				addLexicalRequirement(requirements, profile,
+				addLexicalRequirement(requirements,
 					List.of("할수있", "가능", "허용", "할수없", "불가능", "금지"));
-			}
-			if (intents.contains("obligation")
-				&& !intents.contains("review_required")
-				&& containsAny(normalizedQuestion, "의무", "하여야", "해야", "반드시", "필요")) {
-				addLexicalRequirement(requirements, profile,
-					List.of("의무", "하여야", "해야", "반드시", "필요"));
-			}
-			if (intents.contains("procedure") && containsAny(normalizedQuestion, "절차", "방법", "어떻게")) {
-				addLexicalRequirement(requirements, profile,
-					List.of("절차", "방법", "신청", "제출"));
-			}
-			if (intents.contains("required_documents")) {
-				addLexicalRequirement(requirements, profile,
-					List.of("제출서류", "필수항목", "기재사항", "요구사항"));
-			}
-			if (intents.contains("definition")) {
-				addLexicalRequirement(requirements, profile,
-					List.of("정의", "개념", "의미", "말한다"));
-			}
-			if (intents.contains("operation_rule") && containsAny(normalizedQuestion, "기준", "요건", "관리", "운영", "준수")) {
-				addLexicalRequirement(requirements, profile,
-					List.of("기준", "요건", "관리", "운영", "준수"));
 			}
 			if (requirements.isEmpty() && !profile.intentGroups().isEmpty()) {
 				requirements.add(new RelationRequirement(RelationKind.LEXICAL, profile.intentGroups().stream()
@@ -409,36 +386,45 @@ public class AnswerQuestionAlignmentVerifier {
 			return List.copyOf(requirements);
 		}
 
-		private static void addLexicalRequirement(
+		private static void addConfiguredIntentRequirements(
 			List<RelationRequirement> requirements,
 			QuestionIntentProfile profile,
-			List<String> seeds
+			String normalizedQuestion
 		) {
-			List<String> normalizedSeeds = normalizedValues(seeds);
-			List<String> configured = java.util.stream.Stream.concat(
-				profile.intentGroups().stream(),
-				profile.directEvidenceGroups().stream()
-			)
-				.filter(group -> group.stream()
-					.map(AnswerQuestionAlignmentVerifier::normalize)
-					.anyMatch(term -> normalizedSeeds.stream()
-						.anyMatch(seed -> term.contains(seed) || seed.contains(term))))
-				.flatMap(List::stream)
+			for (QuestionIntentProfile.ConfiguredIntent intent : profile.configuredIntents()) {
+				if ("amount".equals(intent.id()) || "period".equals(intent.id())) {
+					continue;
+				}
+				List<List<String>> anchoredDirectGroups = intent.directEvidenceGroups().stream()
+					.map(AlignmentProfile::normalizedValues)
+					.filter(group -> group.stream().anyMatch(normalizedQuestion::contains))
+					.toList();
+				if (!anchoredDirectGroups.isEmpty()) {
+					anchoredDirectGroups.forEach(group -> addLexicalRequirement(requirements, group));
+					continue;
+				}
+				List<String> terms = normalizedValues(intent.terms());
+				if (terms.stream().anyMatch(normalizedQuestion::contains)) {
+					addLexicalRequirement(requirements, terms);
+				}
+			}
+		}
+
+		private static void addLexicalRequirement(
+			List<RelationRequirement> requirements,
+			List<String> alternatives
+		) {
+			List<String> normalizedAlternatives = alternatives.stream()
 				.map(AnswerQuestionAlignmentVerifier::normalize)
 				.filter(value -> value.length() >= 2)
 				.distinct()
 				.toList();
-			List<String> alternatives = configured.isEmpty() ? normalizedSeeds : configured;
-			String key = String.join("|", alternatives);
-			if (!alternatives.isEmpty() && requirements.stream()
+			String key = String.join("|", normalizedAlternatives);
+			if (!normalizedAlternatives.isEmpty() && requirements.stream()
 				.noneMatch(requirement -> requirement.kind() == RelationKind.LEXICAL
 					&& String.join("|", requirement.alternatives()).equals(key))) {
-				requirements.add(new RelationRequirement(RelationKind.LEXICAL, alternatives));
+				requirements.add(new RelationRequirement(RelationKind.LEXICAL, normalizedAlternatives));
 			}
-		}
-
-		private static boolean explicitTargetScope(String normalizedQuestion) {
-			return containsAny(normalizedQuestion, "대상", "범위", "포함", "해당");
 		}
 
 		private static boolean amountRequested(String normalizedQuestion) {

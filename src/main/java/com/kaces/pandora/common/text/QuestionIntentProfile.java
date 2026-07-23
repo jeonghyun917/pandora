@@ -173,6 +173,30 @@ public record QuestionIntentProfile(
 			.toList());
 	}
 
+	/**
+	 * Preserves the dictionary provenance needed by final-answer validation.
+	 * Retrieval uses the flattened groups above; answer alignment must evaluate
+	 * each requested intent independently so one broad group cannot hide another.
+	 */
+	public List<ConfiguredIntent> configuredIntents() {
+		return intentTypes.stream()
+			.sorted()
+			.map(intentId -> new ConfiguredIntent(
+				intentId,
+				QuestionIntentDictionary.values("intent." + intentId + ".terms", List.of()),
+				QuestionIntentDictionary.groups("intent." + intentId + ".direct", List.of())
+			))
+			.filter(intent -> !intent.terms().isEmpty() || !intent.directEvidenceGroups().isEmpty())
+			.toList();
+	}
+
+	public record ConfiguredIntent(
+		String id,
+		List<String> terms,
+		List<List<String>> directEvidenceGroups
+	) {
+	}
+
 	private static void addCommonIntent(
 		String normalized,
 		boolean suppressProcedureIntent,

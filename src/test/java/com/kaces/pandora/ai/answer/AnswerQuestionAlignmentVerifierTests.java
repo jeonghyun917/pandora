@@ -36,8 +36,8 @@ class AnswerQuestionAlignmentVerifierTests {
 	@Test
 	void rejectsTargetInstitutionClaimWhenQuestionAsksWhenPreConsultationIsRequired() {
 		ClaimVerifier.VerificationResult claimResult = claimResult(supported(
-			"중앙행정기관과 공공기관은 사전협의 대상기관입니다.",
-			"사전협의 대상기관은 중앙행정기관과 공공기관입니다."
+			"정보화사업 사전협의 대상기관은 중앙행정기관과 공공기관입니다.",
+			"정보화사업 사전협의 대상기관은 중앙행정기관과 공공기관입니다."
 		));
 
 		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
@@ -52,7 +52,7 @@ class AnswerQuestionAlignmentVerifierTests {
 
 	@Test
 	void rejectsPeriodWordsThatBelongToBackgroundInsteadOfTheAnswerPredicate() {
-		String claim = "정보화사업 사전협의 시기와 별개로 대상 기관은 중앙행정기관입니다.";
+		String claim = "정보화사업 사전협의 시기와 별개로 정보화사업 사전협의 대상 기관은 중앙행정기관입니다.";
 
 		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
 			"정보화사업 사전협의는 언제 해야 하나?",
@@ -62,6 +62,34 @@ class AnswerQuestionAlignmentVerifierTests {
 		assertThat(result.aligned()).isFalse();
 		assertThat(result.reasonCode()).isEqualTo("MISSING_RELATION");
 		assertThat(result.missingGroups()).contains("RELATION");
+	}
+
+	@Test
+	void rejectsQuestionSubjectThatAppearsOnlyBeforeTheTerminalProposition() {
+		String claim = "가명정보와 무관하게 일반정보는 별도 보관해야 합니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"가명정보의 추가정보는 별도 보관해야 하나?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).isFalse();
+		assertThat(result.reasonCode()).isEqualTo("MISSING_SUBJECT");
+		assertThat(result.missingGroups()).contains("SUBJECT");
+	}
+
+	@Test
+	void rejectsQuestionConditionThatAppearsOnlyBeforeTheTerminalProposition() {
+		String claim = "예산 확정 전에 검토하는 것과 별개로 정보화사업은 사전협의를 해야 합니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"예산 확정 전에 정보화사업 사전협의를 해야 하나?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).isFalse();
+		assertThat(result.reasonCode()).isEqualTo("MISSING_CONDITION");
+		assertThat(result.missingGroups()).contains("CONDITION");
 	}
 
 	@Test
@@ -76,6 +104,56 @@ class AnswerQuestionAlignmentVerifierTests {
 		assertThat(result.aligned()).isFalse();
 		assertThat(result.reasonCode()).isEqualTo("MISSING_RELATION");
 		assertThat(result.missingGroups()).contains("RELATION");
+	}
+
+	@Test
+	void rejectsAmountTopicWithoutAnActualAmountValue() {
+		String claim = "지원 금액은 별도 안내이고 신청 대상은 청년입니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"청년 지원 금액은 얼마인가?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).isFalse();
+		assertThat(result.missingGroups()).contains("RELATION");
+	}
+
+	@Test
+	void acceptsNumericAmountInTheTerminalProposition() {
+		String claim = "청년 지원 금액은 300만원입니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"청년 지원 금액은 얼마인가?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).as(result.toString()).isTrue();
+	}
+
+	@Test
+	void rejectsPeriodTopicWithoutAnActualPeriodValue() {
+		String claim = "사전협의 시기는 별도 안내이고 대상 기관은 협의를 해야 합니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"사전협의 시기는 언제인가?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).isFalse();
+		assertThat(result.missingGroups()).contains("RELATION");
+	}
+
+	@Test
+	void acceptsExplicitRelativePeriodInTheTerminalProposition() {
+		String claim = "사전협의는 예산 확정 전에 해야 합니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"사전협의 시기는 언제인가?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).as(result.toString()).isTrue();
 	}
 
 	@Test
@@ -98,7 +176,7 @@ class AnswerQuestionAlignmentVerifierTests {
 	@Test
 	void rejectsBackgroundClaimEvenWhenEvidenceContainsTheRequestedConclusion() {
 		ClaimVerifier.VerificationResult claimResult = claimResult(supported(
-			"가명정보는 보호 대상입니다.",
+			"가명정보의 추가정보는 보호 대상입니다.",
 			"가명정보의 추가정보는 가명정보와 분리하여 보관해야 합니다."
 		));
 
@@ -110,6 +188,57 @@ class AnswerQuestionAlignmentVerifierTests {
 		assertThat(result.aligned()).isFalse();
 		assertThat(result.reasonCode()).isEqualTo("MISSING_DIRECT_CONCLUSION");
 		assertThat(result.missingGroups()).contains("RELATION", "DIRECT_CONCLUSION");
+	}
+
+	@Test
+	void requiresEveryExplicitCompoundEntityComponent() {
+		String claim = "가명정보는 별도 보관해야 합니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"가명정보의 추가정보는 별도 보관해야 하나?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).isFalse();
+		assertThat(result.reasonCode()).isEqualTo("MISSING_SUBJECT");
+		assertThat(result.missingGroups()).contains("SUBJECT");
+	}
+
+	@Test
+	void acceptsDirectCompoundEntityConclusion() {
+		String claim = "가명정보의 추가정보는 별도 보관해야 합니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"가명정보의 추가정보는 별도 보관해야 하나?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).as(result.toString()).isTrue();
+	}
+
+	@Test
+	void rejectsConfiguredPrivacyNoticeIntentMissingFromTheConclusion() {
+		String claim = "온라인 서비스 개인정보 처리방침은 별도로 보관해야 합니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"온라인 서비스 개인정보 처리방침을 고지해야 하나?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).isFalse();
+		assertThat(result.missingGroups()).contains("RELATION");
+	}
+
+	@Test
+	void acceptsConfiguredPrivacyNoticeIntentInTheConclusion() {
+		String claim = "온라인 서비스 개인정보 처리방침을 공개하여 고지해야 합니다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"온라인 서비스 개인정보 처리방침을 고지해야 하나?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).as(result.toString()).isTrue();
 	}
 
 	@Test
