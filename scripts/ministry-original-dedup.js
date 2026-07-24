@@ -14,12 +14,13 @@ const command = args._[0];
 const repository = path.resolve(__dirname, "..");
 const root = path.resolve(args.root || path.join(repository, "data", "rag-upload", "ministry_docs"));
 const mysql = process.env.MARIADB_EXE || "C:\\Program Files\\MariaDB 12.2\\bin\\mariadb.exe";
+const usage = "Usage: node scripts/ministry-original-dedup.js <plan|apply> [--root PATH] [--manifest FILE] [--output DIR]";
 
-if (!["plan", "apply"].includes(command)) {
-  fail("Usage: node scripts/ministry-original-dedup.js <plan|apply> [--root PATH] [--manifest FILE] [--output DIR]");
-}
-
-if (command === "plan") {
+if (args.help) {
+  console.log(usage);
+} else if (!["plan", "apply"].includes(command)) {
+  fail(usage);
+} else if (command === "plan") {
   runPlan().catch(fail);
 } else {
   runApply().catch(fail);

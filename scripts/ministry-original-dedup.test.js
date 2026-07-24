@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -88,4 +89,16 @@ test("manifest validation rejects changed digest and paths outside root", () => 
 
   manifest.groups[0].duplicates[0].path = path.join(root, "a", "guide-2.pdf");
   assert.throws(() => validateManifest(manifest), /digest/i);
+});
+
+test("CLI help exits successfully without attempting a cleanup command", () => {
+  const result = spawnSync(
+    process.execPath,
+    [path.join(__dirname, "ministry-original-dedup.js"), "--help"],
+    { encoding: "utf8", windowsHide: true },
+  );
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /Usage: node scripts\/ministry-original-dedup\.js/);
+  assert.equal(result.stderr, "");
 });
