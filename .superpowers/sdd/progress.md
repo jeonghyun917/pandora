@@ -159,5 +159,9 @@ aligned evidence atoms before attempting broader generation changes.
   relaxing final verification. Focused tests pass 353/353, the fresh full Maven
   suite passes 852/852, `git diff --check` passes, and the final independent
   review reports zero Critical, Important, or Minor findings. Exact 85-case
-  runtime re-evaluation remains.
+  runtime re-evaluation remains. The final JAR was deployed only to 8080 with
+  SHA-256 `084E5968EA9B3FBC9348D231F7EBD37EF5C0AC8F6BBC3642A851DEDCEC17ED2D`;
+  the first one-case live evaluation is paused because sending the question and
+  retrieved internal-document content to the configured OpenAI answer model
+  requires explicit payload/destination authorization.
 - [ ] Task 8: merge verified work without moving the shared workspace.
