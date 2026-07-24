@@ -49,6 +49,10 @@ public class AnswerVerificationService {
 		return claimVerifier.isInsufficientEvidenceAnswer(answer);
 	}
 
+	boolean matchesQuestionSubjects(String question, String structuralContext) {
+		return alignmentVerifier.matchesQuestionSubjects(question, structuralContext);
+	}
+
 	public record Result(
 		String guardedAnswer,
 		ClaimVerifier.VerificationResult claimResult,

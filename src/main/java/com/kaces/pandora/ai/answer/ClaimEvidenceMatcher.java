@@ -95,6 +95,11 @@ public class ClaimEvidenceMatcher {
 	private static final Pattern GENERIC_TARGET_DEFINITION_LABEL = Pattern.compile(
 		"^적용대상(?:은|는|이|가).*(?:입니다|이다|임)$"
 	);
+	private static final Pattern EXPLICIT_TARGET_LABEL_VALUE = Pattern.compile(
+		"^(?:(?:(?:적용\\s*)?대상\\s*사업\\s*[:：]\\s*)"
+			+ "|(?:적용\\s+대상\\s+사업\\s+))(.{4,})$",
+		Pattern.CASE_INSENSITIVE
+	);
 	private static final Pattern ATTRIBUTIVE_OBJECT_SEQUENCE = Pattern.compile(
 		"(?:^|\\s)[\\p{IsHangul}a-z0-9()·ㆍ/\\-]{2,}?(?:이|가)\\s+"
 			+ "[^.!?;；\\n]{0,100}?(?:한|하는|할|된|되는|될|던)\\s+"
@@ -388,7 +393,7 @@ public class ClaimEvidenceMatcher {
 				|| !numbersInOrder(orderedClaimNumbers, sentence.orderedNumbers())) {
 				continue;
 			}
-			ClaimSemantics evidenceSemantics = ClaimSemantics.from(sentence.text());
+			ClaimSemantics evidenceSemantics = ClaimSemantics.from(sentence.semanticText());
 			double coverage = (double) overlap / Math.max(1, new LinkedHashSet<>(claimTokens).size());
 			if (conditionalGenericBusinessSubjectAligned(claimSemantics, evidenceSemantics)) {
 				coverage = Math.max(
@@ -403,7 +408,7 @@ public class ClaimEvidenceMatcher {
 			Relation relation = relation(claimSemantics, evidenceSemantics, sentence.anchorContext());
 			double score = overlap + (coverage * 3.0d)
 				+ (relation == Relation.COMPATIBLE ? 1.5d : 0.0d)
-				+ exactPhraseBonus(claim, sentence.text());
+				+ exactPhraseBonus(claim, sentence.semanticText());
 			Candidate candidate = new Candidate(sentence, overlap, coverage, score);
 			if (relation == Relation.CONTRADICTED) {
 				contradicted.add(candidate);
@@ -554,6 +559,10 @@ public class ClaimEvidenceMatcher {
 					+ String.valueOf(ground.chunkTitle()) + " "
 					+ String.valueOf(ground.categoryName())
 			).replaceAll("\\s+", " ").trim();
+			String structuralScopeContext = (
+				String.valueOf(ground.title()) + " "
+					+ String.valueOf(ground.chunkTitle())
+			).replaceAll("\\s+", " ").trim();
 			String structuralContext = String.join(
 				"\n",
 				String.valueOf(ground.chunkTitle()),
@@ -572,21 +581,27 @@ public class ClaimEvidenceMatcher {
 				ground.number(),
 				ground.matchedChildText(),
 				anchorContext,
-				denseStructuralContext
+				structuralScopeContext,
+				denseStructuralContext,
+				true
 			);
 			addEvidenceFragments(
 				unique,
 				ground.number(),
 				ground.snippet(),
 				anchorContext,
-				denseStructuralContext
+				"",
+				denseStructuralContext,
+				false
 			);
 			addEvidenceFragments(
 				unique,
 				ground.number(),
 				ground.parentContextText(),
 				anchorContext,
-				denseStructuralContext
+				"",
+				denseStructuralContext,
+				false
 			);
 		}
 		return List.copyOf(unique.values());
@@ -597,7 +612,9 @@ public class ClaimEvidenceMatcher {
 		int groundNumber,
 		String text,
 		String anchorContext,
-		boolean denseStructuralContext
+		String structuralScopeContext,
+		boolean denseStructuralContext,
+		boolean allowStructuralScopeProjection
 	) {
 		if (text == null || text.isBlank()) {
 			return;
@@ -610,17 +627,54 @@ public class ClaimEvidenceMatcher {
 			String normalizedText = normalize(cleaned);
 			String key = groundNumber + "|" + normalizedText + "|" + denseStructuralContext;
 			if (!normalizedText.isBlank()) {
+				boolean explicitTargetLabel = EXPLICIT_TARGET_LABEL_VALUE.matcher(cleaned).matches();
 				unique.putIfAbsent(key, new EvidenceSentence(
 					groundNumber,
+					cleaned,
 					cleaned,
 					tokenize(cleaned),
 					ClaimNumericNormalizer.tokens(cleaned),
 					ClaimNumericNormalizer.orderedTokens(cleaned),
-					anchorContext,
+					explicitTargetLabel ? "" : anchorContext,
 					denseStructuralContext
 				));
 			}
+			String projected = allowStructuralScopeProjection && !denseStructuralContext
+				? projectExplicitTargetLabelValue(cleaned, structuralScopeContext)
+				: "";
+			String normalizedProjection = normalize(projected);
+			if (!normalizedProjection.isBlank()) {
+				String projectionKey = groundNumber + "|" + normalizedProjection + "|projection";
+				unique.putIfAbsent(projectionKey, new EvidenceSentence(
+					groundNumber,
+					cleaned,
+					projected,
+					tokenize(projected),
+					ClaimNumericNormalizer.tokens(projected),
+					ClaimNumericNormalizer.orderedTokens(projected),
+					"",
+					false
+				));
+			}
 		}
+	}
+
+	private String projectExplicitTargetLabelValue(String fragment, String anchorContext) {
+		Matcher matcher = EXPLICIT_TARGET_LABEL_VALUE.matcher(
+			String.valueOf(fragment == null ? "" : fragment).trim()
+		);
+		if (!matcher.matches()) {
+			return "";
+		}
+		Set<String> scopes = ClaimSemantics.namedTargetScopes(anchorContext);
+		if (scopes.size() != 1) {
+			return "";
+		}
+		String value = matcher.group(1).trim();
+		if (value.isBlank() || value.length() > 360) {
+			return "";
+		}
+		return value + "은 " + scopes.iterator().next() + " 대상입니다.";
 	}
 
 	private Relation relation(ClaimSemantics claim, ClaimSemantics evidence, String evidenceAnchorContext) {
@@ -1289,6 +1343,7 @@ public class ClaimEvidenceMatcher {
 	private record EvidenceSentence(
 		int groundNumber,
 		String text,
+		String semanticText,
 		List<String> tokens,
 		Set<String> numbers,
 		List<String> orderedNumbers,

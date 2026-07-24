@@ -103,3 +103,54 @@ Next bounded quality task: improve direct proposition and required-condition
 coverage without weakening the verifier. The 85-case gate has 80 missing-
 proposition cases and 74 missing-condition cases, so rank and retain question-
 aligned evidence atoms before attempting broader generation changes.
+
+## 2026-07-23 evidence coverage measurement
+
+- [x] Shared workspace verified clean on `main`; isolated worktree created at
+  `.worktrees/rag-evidence-coverage` on `codex/rag-evidence-coverage`.
+- [x] Baseline full Maven suite passed: 828/828.
+- [x] Design committed: `5f1c4aba`.
+- [x] TDD execution plan committed: `4052f597`.
+- [x] Task 1: complete (`4052f597..ab5b3f89`, review approved);
+  focused 56/56 and full Maven 830/830 passed. Controller confirmed the
+  unchanged `/api/law-data/ai/debug/**` admin protection and that the normal UI
+  request omits the measurement flag. Minor final-review follow-ups: consider a
+  serialization-level null-omission test and replace reflective service testing
+  with a public debug/MVC path test if that boundary changes later.
+- [x] Task 2: complete (`ab5b3f89..5be26ce4`, review approved after polarity
+  hardening); Node 19/19 and representative Java matcher 20/20 passed.
+  Canonical UTF-8 Java source is parsed in tests and matches Node marker tables
+  with negations 8/8, bridges 33/33, and zero missing/extra entries.
+- [x] Task 3: complete (`5be26ce4..ce3490b2`, review approved); new and
+  legacy Node evaluation tests 42/42 passed, with all seven stages, per-item
+  matching, candidate-source de-duplication, stable IDs, and first-loss
+  summaries verified.
+- [x] Task 4: complete (`ce3490b2..ef779cd3`, review approved); original RED
+  was legacy 42 passing plus 6 intended failures. Independent review found two
+  fail-closed gaps, fixed with RED 47/49 then GREEN 49/49. Final task review
+  reported zero Critical, Important, or Minor findings.
+- [x] Task 5: collect the 85-case diagnosis. The authoritative 85-case run on
+  runtime `257e4771-82ee-4def-ad98-50e76e36e00a` had 1/85 verified answers,
+  zero evaluation errors, 82 missing-proposition cases, and 74
+  missing-condition cases. Proposition coverage fell from 73/111 at selected
+  grounds to 7/111 supported-evidence groups; condition coverage fell from
+  31/77 to 3/77. Repair diagnostics were 13 `REWRITE_ACCEPTED` and 72
+  `NO_ALIGNED_SUPPORTED_ATOM`. Twenty-five cases had all required groups in
+  selected grounds but still missed them in the answer; 23 of those had no
+  supported-evidence group. Canonical artifacts:
+  `logs/rag-eval-gate-evidence-coverage-85-20260724.json` and
+  `logs/rag-evidence-coverage-85-20260724.json`.
+- [x] Task 6: apply only the measurement-justified generalized fix. The TDD
+  slice preserves raw evidence provenance, lets an otherwise claim-supported
+  matched-child atom borrow only missing subject/direct-conclusion alignment
+  from an unambiguous structural title, and projects only explicit
+  matched-child target-project label/value forms under one named procedure
+  scope. Missing conditions, unlabeled phrases, dense structural sources,
+  compound scopes, snippets, parent context, and category-only procedure names
+  remain ineligible. Focused tests pass 324/324. Independent review approved the
+  final slice with zero Critical, Important, or Minor findings after broad
+  anchor-context and raw-label bypasses were closed.
+- [ ] Task 7: self-review and complete verification. Static diff validation
+  passes and the full Maven suite passes 842/842; exact 85-case runtime
+  re-evaluation remains.
+- [ ] Task 8: merge verified work without moving the shared workspace.

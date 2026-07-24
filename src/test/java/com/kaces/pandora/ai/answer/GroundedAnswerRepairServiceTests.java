@@ -419,6 +419,73 @@ class GroundedAnswerRepairServiceTests {
 	}
 
 	@Test
+	void structuralTitleMaySupplyOnlyTheMissingSubjectForAnOtherwiseAlignedMatchedChildAtom() {
+		String question = "과업심의 대상은?";
+		String directEvidence = "대상사업 : 국가기관등의 장이 발주하는 소프트웨어사업";
+		String rewritten = "국가기관등의 장이 발주하는 소프트웨어사업은 과업심의 대상입니다.";
+		List<LawAiAnswerGround> grounds = List.of(ground(
+			1,
+			directEvidence,
+			"공공소프트웨어사업 과업심의 가이드",
+			null
+		));
+		AnswerVerificationService verificationService = realVerificationService();
+		AnswerVerificationService.Result atomVerification = verificationService.verify(
+			question,
+			directEvidence,
+			grounds
+		);
+		assertThat(atomVerification.claimResult().insufficientEvidence()).isFalse();
+		assertThat(atomVerification.alignmentResult().missingGroups())
+			.containsExactly("SUBJECT", "DIRECT_CONCLUSION");
+		RecordingRewriter rewriter = RecordingRewriter.returning(rewritten);
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(
+			verificationService,
+			rewriter
+		);
+
+		GroundedAnswerRepairService.Result result = service.verifyAndRepair(
+			question,
+			"과업심의 대상은 소프트웨어사업과 무관합니다.",
+			grounds
+		);
+
+		assertThat(result.diagnostics().reason()).isEqualTo("REWRITE_ACCEPTED");
+		assertThat(result.verifiedAnswer()).isEqualTo(rewritten);
+		assertThat(result.insufficientEvidence()).isFalse();
+		assertThat(rewriter.atomCalls()).containsExactly(List.of(directEvidence));
+	}
+
+	@Test
+	void structuralTitleCannotSupplyAConditionMissingFromTheMatchedChildAtom() {
+		String question = "계약 전에 과업심의 대상은?";
+		String directEvidence = "대상사업 : 국가기관등의 장이 발주하는 소프트웨어사업";
+		List<LawAiAnswerGround> grounds = List.of(ground(
+			1,
+			directEvidence,
+			"공공소프트웨어사업 과업심의 가이드",
+			null
+		));
+		RecordingRewriter rewriter = RecordingRewriter.returning(
+			"국가기관등의 장이 계약 전에 발주하는 소프트웨어사업은 과업심의 대상입니다."
+		);
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(
+			realVerificationService(),
+			rewriter
+		);
+
+		GroundedAnswerRepairService.Result result = service.verifyAndRepair(
+			question,
+			"과업심의 대상은 소프트웨어사업과 무관합니다.",
+			grounds
+		);
+
+		assertThat(result.diagnostics().reason()).isEqualTo("NO_ALIGNED_SUPPORTED_ATOM");
+		assertThat(result.insufficientEvidence()).isTrue();
+		assertThat(rewriter.calls()).isZero();
+	}
+
+	@Test
 	void realVerificationRejectsSupportedButQuestionMisalignedMatchedChildAtom() {
 		String question = "공공소프트웨어사업은 과업심의 대상인가?";
 		String unrelatedEvidence = "정보화사업 사전협의 대상기관은 중앙행정기관입니다.";

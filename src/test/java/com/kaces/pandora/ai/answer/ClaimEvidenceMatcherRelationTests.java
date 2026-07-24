@@ -2852,6 +2852,239 @@ class ClaimEvidenceMatcherRelationTests {
 	}
 
 	@Test
+	void singleProcedureTitleMayScopeAnExplicitTargetLabelValueFromTheMatchedChild() {
+		String source = "대상사업 : 국가기관등의 장이 발주하는 소프트웨어사업";
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"국가기관등의 장이 발주하는 소프트웨어사업은 과업심의 대상입니다.",
+			List.of(ground(
+				"공공소프트웨어사업 과업심의 가이드",
+				source
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(match.evidenceSentence()).isEqualTo(source);
+	}
+
+	@Test
+	void explicitTargetLabelColonVariantsRemainSupported() {
+		String claim =
+			"국가기관등의 장이 발주하는 소프트웨어사업은 과업심의 대상입니다.";
+		for (String source : List.of(
+			"대상사업 : 국가기관등의 장이 발주하는 소프트웨어사업",
+			"적용대상사업: 국가기관등의 장이 발주하는 소프트웨어사업",
+			"적용 대상 사업 : 국가기관등의 장이 발주하는 소프트웨어사업"
+		)) {
+			ClaimEvidenceMatcher.Match match = matcher.match(
+				claim,
+				List.of(ground("공공소프트웨어사업 과업심의 가이드", source))
+			);
+
+			assertThat(match.status()).as("source=%s", source)
+				.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+			assertThat(match.evidenceSentence()).isEqualTo(source);
+		}
+	}
+
+	@Test
+	void singleProcedureTitleMayScopeAnExplicitHeadingValueFromTheMatchedChild() {
+		String source = "적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)";
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"국가기관 등이 발주하는 모든 SW사업은 과업심의 대상입니다.",
+			List.of(ground(
+				"공공소프트웨어사업 과업심의 가이드",
+				source
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(match.evidenceSentence()).isEqualTo(source);
+	}
+
+	@Test
+	void procedureTitleCannotSupplyAConditionMissingFromTheExplicitTargetLabelValue() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"국가기관등의 장이 발주하는 소프트웨어사업은 계약 전에 과업심의 대상입니다.",
+			List.of(ground(
+				"공공소프트웨어사업 과업심의 가이드",
+				"대상사업 : 국가기관등의 장이 발주하는 소프트웨어사업"
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void projectedTargetValueCannotBorrowAClaimConditionFromMetadata() {
+		String claim =
+			"시범사업인 경우 국가기관등의 장이 발주하는 소프트웨어사업은 과업심의 대상입니다.";
+		for (String source : explicitTargetSources()) {
+			List<LawAiAnswerGround> grounds = List.of(
+				groundWithMetadata(
+					"공공소프트웨어사업 과업심의 가이드. 시범사업인 경우",
+					"근거",
+					"공식 가이드 문서",
+					source,
+					null
+				),
+				groundWithMetadata(
+					"공공소프트웨어사업 과업심의 가이드",
+					"적용 대상 사업. 시범사업인 경우",
+					"공식 가이드 문서",
+					source,
+					null
+				),
+				groundWithMetadata(
+					"공공소프트웨어사업 과업심의 가이드",
+					"근거",
+					"공식 가이드 문서. 시범사업인 경우",
+					source,
+					null
+				)
+			);
+
+			for (LawAiAnswerGround ground : grounds) {
+				assertThat(matcher.match(claim, List.of(ground)).status())
+					.as("source=%s", source)
+					.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+			}
+		}
+	}
+
+	@Test
+	void categoryCannotCreateOrSuppressTheProcedureScopeForAProjectedTargetValue() {
+		String claim =
+			"국가기관등의 장이 발주하는 소프트웨어사업은 과업심의 대상입니다.";
+		for (String source : explicitTargetSources()) {
+			LawAiAnswerGround categoryOnlyScope = groundWithMetadata(
+				"공식 문서",
+				"근거",
+				"과업심의 가이드",
+				source,
+				null
+			);
+			LawAiAnswerGround validTitleWithUnrelatedCategory = groundWithMetadata(
+				"공공소프트웨어사업 과업심의 가이드",
+				"근거",
+				"사전협의 가이드",
+				source,
+				null
+			);
+
+			assertThat(matcher.match(claim, List.of(categoryOnlyScope)).status())
+				.as("source=%s", source)
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+			assertThat(matcher.match(claim, List.of(validTitleWithUnrelatedCategory)).status())
+				.as("source=%s", source)
+				.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		}
+	}
+
+	@Test
+	void targetProjectionIsForbiddenForSnippetParentAndDenseStructuralSources() {
+		String claim =
+			"국가기관등의 장이 발주하는 소프트웨어사업은 과업심의 대상입니다.";
+		String title = "공공소프트웨어사업 과업심의 가이드";
+		for (String source : explicitTargetSources()) {
+			LawAiAnswerGround snippetOnly = groundWithEvidenceFields(
+				title,
+				"근거",
+				"공식 가이드 문서",
+				source,
+				"",
+				null
+			);
+			LawAiAnswerGround parentOnly = groundWithEvidenceFields(
+				title,
+				"근거",
+				"공식 가이드 문서",
+				"",
+				"",
+				source
+			);
+			LawAiAnswerGround denseStructural = groundWithEvidenceFields(
+				title,
+				"목차",
+				"공식 가이드 문서",
+				source,
+				source,
+				"목차\n대상 사업 및 시기\n추진체계\n역할\n추진절차"
+			);
+
+			for (LawAiAnswerGround ground : List.of(snippetOnly, parentOnly, denseStructural)) {
+				assertThat(matcher.match(claim, List.of(ground)).status())
+					.as("source=%s", source)
+					.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+			}
+		}
+	}
+
+	@Test
+	void explicitRawTargetLabelCannotBorrowMetadataOrNonMatchedChildEvidence() {
+		String source = "적용 대상 사업 국가기관등의 장이 발주하는 소프트웨어사업";
+		String conditionalClaim =
+			"시범사업인 경우 국가기관등의 장이 발주하는 소프트웨어사업은 적용 대상 사업입니다.";
+		LawAiAnswerGround metadataCondition = groundWithMetadata(
+			"적용 대상 안내. 시범사업인 경우",
+			"근거",
+			"공식 가이드 문서",
+			source,
+			null
+		);
+		String directClaim =
+			"국가기관등의 장이 발주하는 소프트웨어사업은 적용 대상 사업입니다.";
+		LawAiAnswerGround snippetOnly = groundWithEvidenceFields(
+			"적용 대상 안내",
+			"근거",
+			"공식 가이드 문서",
+			source,
+			"",
+			null
+		);
+		LawAiAnswerGround parentOnly = groundWithEvidenceFields(
+			"적용 대상 안내",
+			"근거",
+			"공식 가이드 문서",
+			"",
+			"",
+			source
+		);
+
+		assertThat(matcher.match(conditionalClaim, List.of(metadataCondition)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		assertThat(matcher.match(directClaim, List.of(snippetOnly)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		assertThat(matcher.match(directClaim, List.of(parentOnly)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void procedureTitleCannotProjectAnUnlabeledNounPhraseAsATargetRule() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"국가기관등의 장이 발주하는 소프트웨어사업은 과업심의 대상입니다.",
+			List.of(ground(
+				"공공소프트웨어사업 과업심의 가이드",
+				"국가기관등의 장이 발주하는 소프트웨어사업"
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void compoundProcedureTitleCannotProjectATargetLabelValueIntoOneProcedure() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"국가기관등의 장이 발주하는 소프트웨어사업은 과업심의 대상입니다.",
+			List.of(ground(
+				"과업심의 및 사전협의 통합 가이드",
+				"대상사업 : 국가기관등의 장이 발주하는 소프트웨어사업"
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
 	void compoundProcedureContextCannotBeBorrowedAsASingleNamedScope() {
 		ClaimEvidenceMatcher.Match match = matcher.match(
 			"이 사업은 자치분권 사전협의 대상입니다.",
@@ -3262,6 +3495,64 @@ class ClaimEvidenceMatcherRelationTests {
 			parentContextText,
 			List.of(1L),
 			"matched_child_parent"
+		);
+	}
+
+	private LawAiAnswerGround groundWithMetadata(
+		String title,
+		String chunkTitle,
+		String categoryName,
+		String matchedChildText,
+		String parentContextText
+	) {
+		return groundWithEvidenceFields(
+			title,
+			chunkTitle,
+			categoryName,
+			matchedChildText,
+			matchedChildText,
+			parentContextText
+		);
+	}
+
+	private List<String> explicitTargetSources() {
+		return List.of(
+			"대상사업 : 국가기관등의 장이 발주하는 소프트웨어사업",
+			"적용대상사업: 국가기관등의 장이 발주하는 소프트웨어사업",
+			"적용 대상 사업 : 국가기관등의 장이 발주하는 소프트웨어사업",
+			"적용 대상 사업 국가기관등의 장이 발주하는 소프트웨어사업"
+		);
+	}
+
+	private LawAiAnswerGround groundWithEvidenceFields(
+		String title,
+		String chunkTitle,
+		String categoryName,
+		String snippet,
+		String matchedChildText,
+		String parentContextText
+	) {
+		return new LawAiAnswerGround(
+			1,
+			1,
+			1,
+			"official_doc",
+			title,
+			"기관",
+			categoryName,
+			null,
+			null,
+			"page 1",
+			chunkTitle,
+			1,
+			snippet,
+			null,
+			null,
+			0.9,
+			matchedChildText,
+			parentContextText,
+			List.of(1L),
+			parentContextText == null ? "matched_child_only" : "matched_child_parent"
 		);
 	}
 }

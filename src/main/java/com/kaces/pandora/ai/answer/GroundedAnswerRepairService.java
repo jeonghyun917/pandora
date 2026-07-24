@@ -6,6 +6,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -14,6 +15,11 @@ public class GroundedAnswerRepairService {
 	static final int MAX_SELECTED_ATOMS = 6;
 	static final int MAX_ATOM_CHARACTERS = 360;
 	static final int MAX_TOTAL_ATOM_CHARACTERS = 1_500;
+	private static final String SUBJECT = "SUBJECT";
+	private static final Set<String> STRUCTURAL_ALIGNMENT_GAPS = Set.of(
+		SUBJECT,
+		"DIRECT_CONCLUSION"
+	);
 
 	private final AnswerVerificationService verificationService;
 	private final GroundedAnswerRewriter rewriter;
@@ -225,10 +231,15 @@ public class GroundedAnswerRepairService {
 			} catch (RuntimeException exception) {
 				continue;
 			}
-			if (!isFullySupportedAndAligned(verification)) {
+			String verifiedAtom = verifiedAtomForCandidate(
+				question,
+				candidate,
+				verification,
+				grounds
+			);
+			if (verifiedAtom.isBlank()) {
 				continue;
 			}
-			String verifiedAtom = clean(verification.verifiedAnswer());
 			if (verifiedAtom.isBlank()
 				|| verifiedAtom.length() > MAX_ATOM_CHARACTERS
 				|| answerVerificationServiceInsufficient(verifiedAtom)) {
@@ -258,12 +269,62 @@ public class GroundedAnswerRepairService {
 		return verificationService.isInsufficientEvidenceAnswer(answer);
 	}
 
+	private String verifiedAtomForCandidate(
+		String question,
+		CandidateAtom candidate,
+		AnswerVerificationService.Result verification,
+		List<LawAiAnswerGround> grounds
+	) {
+		if (isFullySupportedAndAligned(verification)) {
+			return clean(verification.verifiedAnswer());
+		}
+		if (!isStructurallySubjectAligned(question, candidate, verification, grounds)) {
+			return "";
+		}
+		return clean(verification.claimResult().verifiedAnswer());
+	}
+
+	private boolean isStructurallySubjectAligned(
+		String question,
+		CandidateAtom candidate,
+		AnswerVerificationService.Result verification,
+		List<LawAiAnswerGround> grounds
+	) {
+		if (!isFullyClaimSupported(verification)
+			|| candidate.groundIndex() < 0
+			|| candidate.groundIndex() >= grounds.size()) {
+			return false;
+		}
+		AnswerQuestionAlignmentVerifier.AlignmentResult alignment = verification.alignmentResult();
+		if (alignment == null
+			|| !alignment.evaluated()
+			|| alignment.aligned()
+			|| !alignment.missingGroups().contains(SUBJECT)
+			|| !STRUCTURAL_ALIGNMENT_GAPS.containsAll(alignment.missingGroups())) {
+			return false;
+		}
+		LawAiAnswerGround ground = grounds.get(candidate.groundIndex());
+		String structuralContext = clean(
+			clean(ground.title()) + " " + clean(ground.chunkTitle())
+		);
+		return verificationService.matchesQuestionSubjects(question, structuralContext);
+	}
+
 	private boolean isFullySupportedAndAligned(AnswerVerificationService.Result verification) {
-		if (verification == null || verification.insufficientEvidence()) {
+		if (!isFullyClaimSupported(verification)) {
+			return false;
+		}
+		AnswerQuestionAlignmentVerifier.AlignmentResult alignment = verification.alignmentResult();
+		return alignment != null && alignment.evaluated() && alignment.aligned();
+	}
+
+	private boolean isFullyClaimSupported(AnswerVerificationService.Result verification) {
+		if (verification == null) {
 			return false;
 		}
 		ClaimVerifier.VerificationResult claimResult = verification.claimResult();
 		if (claimResult == null
+			|| claimResult.insufficientEvidence()
 			|| claimResult.strongClaimCount() <= 0
 			|| claimResult.supportedStrongClaimCount() != claimResult.strongClaimCount()
 			|| !claimResult.unsupportedClaims().isEmpty()
@@ -271,8 +332,7 @@ public class GroundedAnswerRepairService {
 			|| !claimResult.contradictedClaims().isEmpty()) {
 			return false;
 		}
-		AnswerQuestionAlignmentVerifier.AlignmentResult alignment = verification.alignmentResult();
-		return alignment != null && alignment.evaluated() && alignment.aligned();
+		return true;
 	}
 
 	private List<CandidateAtom> supportedCandidateAtoms(

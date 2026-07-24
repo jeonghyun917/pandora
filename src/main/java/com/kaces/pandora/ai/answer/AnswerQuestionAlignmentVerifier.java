@@ -78,6 +78,14 @@ public class AnswerQuestionAlignmentVerifier {
 	);
 	private final ClaimEvidenceAtomizer atomizer = new ClaimEvidenceAtomizer();
 
+	boolean matchesQuestionSubjects(String question, String structuralContext) {
+		AlignmentProfile alignmentProfile = AlignmentProfile.from(question);
+		String normalizedContext = normalize(structuralContext);
+		return !normalizedContext.isBlank()
+			&& !alignmentProfile.subjectGroups().isEmpty()
+			&& matchesAllGroups(normalizedContext, alignmentProfile.subjectGroups());
+	}
+
 	public AlignmentResult verify(String question, ClaimVerifier.VerificationResult claimResult) {
 		AlignmentProfile alignmentProfile = AlignmentProfile.from(question);
 		if (!alignmentProfile.usable()) {
