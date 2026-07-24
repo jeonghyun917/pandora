@@ -149,6 +149,21 @@ class KoreanQueryNormalizerTests {
 	}
 
 	@Test
+	void stripsQuotedClassificationParticlesFromCoreTerms() {
+		assertThat(KoreanQueryNormalizer.normalizeQueryTerm("개인정보라고")).isEqualTo("개인정보");
+		assertThat(KoreanQueryNormalizer.normalizeQueryTerm("개인정보라고도")).isEqualTo("개인정보");
+	}
+
+	@Test
+	void excludesLowInformationConditionTokensFromSearchPlan() {
+		QuestionSearchPlan plan = QuestionSearchPlan.from("이메일 만으로도 개인정보라고 볼수있나?");
+
+		assertThat(plan.lexicalKeywords())
+			.contains("이메일", "개인정보")
+			.doesNotContain("만으로", "만으로도", "개인정보라고");
+	}
+
+	@Test
 	void loadsSpecificEvidencePoliciesFromConfiguration() {
 		QuestionIntentProfile performance = QuestionIntentProfile.from("성과측정은 언제까지 완료해야 해?");
 		QuestionIntentProfile performancePlan = QuestionIntentProfile.from("IRM 업무성과계획 수립 대상은 어떤 시스템이야?");

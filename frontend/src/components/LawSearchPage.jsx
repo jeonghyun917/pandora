@@ -715,7 +715,15 @@ export function LawSearchPage({ onAdmin, onDebug, onLogout }) {
                   </span>
                   <div className="result-main">
                     <div className="result-title-row">
-                      {item.snippet && <span className="result-match-badge">{aiAnswer ? `근거 ${item.groundNumber}` : '본문 일치'}</span>}
+                      {item.snippet && (
+                        <span className="result-match-badge">
+                          {aiAnswer
+                            ? item.evidenceRole === 'related_definition'
+                              ? `관련 정의 ${item.groundNumber}`
+                              : `근거 ${item.groundNumber}`
+                            : '본문 일치'}
+                        </span>
+                      )}
                       {isFutureEffectiveItem(item) && (
                         <span className="future-effective-badge future-effective-badge-inline">미래시행</span>
                       )}
@@ -836,6 +844,7 @@ function normalizeGround(ground, menu) {
     snippet: ground.snippet || '',
     sourcePath: '',
     groundNumber: ground.number,
+    evidenceRole: ground.evidenceRole || 'direct',
     raw: ground,
   };
 }

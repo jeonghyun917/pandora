@@ -144,3 +144,4 @@ no-qdrant-points-runtime	현재 Qdrant rag_chunks_v4 points 수와 Spring 18080 
 no-openai-cost-runtime	이번 달 OpenAI 임베딩 비용이 얼마인지 알려줘	official_doc|law|admrul	-	0	-	-	비용|OpenAI|임베딩				운영 비용 정보는 현재 문서 근거가 없으면 답하지 않는다	NO_GROUNDS
 no-nonexistent-ministry-manual	해양수산부 양자컴퓨팅 민원처리 매뉴얼을 찾아줘	official_doc	-	0	-	-	해양수산부|양자컴퓨팅				수집된 문서에 없는 매뉴얼은 근거 없음으로 멈춘다	NO_GROUNDS
 public-data-obligation-system	공공기관 시스템은 공공데이터를 꼭 제공해야하나?	law|admrul|official_doc|internal_doc	공공데이터|제공|제공하여야|제공대상	2	공공데이터	requirement|target_scope	추측|아마|Qdrant|OpenAI	공공데이터			공공데이터 제공 의무 또는 제공 대상 여부를 직접근거로 답한다	OK
+privacy-email-personal-info	이메일 만으로도 개인정보라고 볼 수 있나?	official_doc|law|admrul	이메일 주소|개인정보에 해당|개인정보	2	개인정보 분쟁조정 사례집	body	과업심의	개인정보 분쟁조정 사례집	46	이메일 주소	이메일 주소가 식별 가능성과 결합 가능성에 따라 개인정보에 해당할 수 있음을 직접 근거로 답한다

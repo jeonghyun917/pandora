@@ -15,6 +15,12 @@ class RagDocumentMapperXmlTests {
 	private static final String MAPPER_RESOURCE = "mapper/law/RagDocumentMapper.xml";
 	private static final String HEADING_STATEMENT =
 		"com.kaces.pandora.rag.persistence.RagDocumentMapper.findSemanticChunksByHeadingText";
+	private static final String TEXT_STATEMENT =
+		"com.kaces.pandora.rag.persistence.RagDocumentMapper.findSemanticChunksByText";
+	private static final String LEGACY_TEXT_STATEMENT =
+		"com.kaces.pandora.rag.persistence.RagDocumentMapper.findSemanticChunksByLegacyText";
+	private static final String MISSING_INDEX_STATEMENT =
+		"com.kaces.pandora.rag.persistence.RagDocumentMapper.countMissingChunkSearchTerms";
 
 	@Test
 	void headingSearchFiltersAndRanksHeadingFieldsWithoutSearchingBodyText() throws Exception {
@@ -57,11 +63,58 @@ class RagDocumentMapperXmlTests {
 			"WHEN doc.title LIKE CONCAT('%', ?, '%') THEN 1");
 	}
 
+	@Test
+	void textSearchUsesExactTermIndexInsteadOfLeadingWildcardScan() throws Exception {
+		Configuration configuration = parseMapper();
+		String sql = configuration.getMappedStatement(TEXT_STATEMENT)
+			.getBoundSql(java.util.Map.of(
+				"documentTypes", java.util.List.of("official_doc"),
+				"keywords", java.util.List.of("개인정보", "이메일"),
+				"limit", 30
+			))
+			.getSql();
+
+		assertThat(sql)
+			.contains("rag_chunk_search_terms")
+			.contains("WITH query_terms(query_term) AS")
+			.contains("COUNT(DISTINCT query_term.query_term) AS matched_term_count")
+			.contains("search_term.term LIKE CONCAT(query_term.query_term, '%')")
+			.contains("ORDER BY matched_term_count DESC, term_score DESC");
+		assertThat(sql).doesNotContain("chunk_text LIKE CONCAT('%'");
+		String finalOrderBy = sql.substring(sql.lastIndexOf("ORDER BY")).replaceAll("\\s+", " ");
+		assertThat(finalOrderBy)
+			.contains("matched.matched_term_count DESC")
+			.contains("matched.term_score DESC");
+	}
+
+	@Test
+	void migrationFallbackIsIsolatedFromTheIndexedSearchStatement() throws Exception {
+		Configuration configuration = parseMapper();
+		Map<String, Object> parameters = Map.of(
+			"documentTypes", List.of("official_doc"),
+			"keywords", List.of("privacy", "email"),
+			"limit", 30
+		);
+		String indexedSql = configuration.getMappedStatement(TEXT_STATEMENT)
+			.getBoundSql(parameters)
+			.getSql();
+		String legacySql = configuration.getMappedStatement(LEGACY_TEXT_STATEMENT)
+			.getBoundSql(parameters)
+			.getSql();
+		String missingSql = configuration.getMappedStatement(MISSING_INDEX_STATEMENT)
+			.getBoundSql(Map.of())
+			.getSql();
+
+		assertThat(indexedSql).doesNotContain("chunk_text LIKE CONCAT('%'");
+		assertThat(legacySql).contains("chunk_text LIKE CONCAT('%'");
+		assertThat(missingSql)
+			.contains("rag_chunk_search_index_state")
+			.contains("state.content_hash")
+			.doesNotContain("rag_chunk_search_terms term");
+	}
+
 	private String headingSearchSql() throws Exception {
-		Configuration configuration = new Configuration();
-		try (InputStream input = Resources.getResourceAsStream(MAPPER_RESOURCE)) {
-			new XMLMapperBuilder(input, configuration, MAPPER_RESOURCE, configuration.getSqlFragments()).parse();
-		}
+		Configuration configuration = parseMapper();
 		MappedStatement statement = configuration.getMappedStatement(HEADING_STATEMENT);
 		Map<String, Object> parameters = Map.of(
 			"documentTypes", List.of("official_doc"),
@@ -69,6 +122,14 @@ class RagDocumentMapperXmlTests {
 			"limit", 6
 		);
 		return statement.getBoundSql(parameters).getSql().replaceAll("\\s+", " ").trim();
+	}
+
+	private Configuration parseMapper() throws Exception {
+		Configuration configuration = new Configuration();
+		try (InputStream input = Resources.getResourceAsStream(MAPPER_RESOURCE)) {
+			new XMLMapperBuilder(input, configuration, MAPPER_RESOURCE, configuration.getSqlFragments()).parse();
+		}
+		return configuration;
 	}
 
 	private void assertOrdered(String text, String... fragments) {

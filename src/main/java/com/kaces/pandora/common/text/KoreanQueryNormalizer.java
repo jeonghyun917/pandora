@@ -79,7 +79,9 @@ public final class KoreanQueryNormalizer {
 			"있어",
 			"관련",
 			"대해",
-			"대한"
+			"대한",
+			"만으로",
+			"만으로도"
 		).contains(normalized);
 	}
 
@@ -133,7 +135,11 @@ public final class KoreanQueryNormalizer {
 				return protectedTerm;
 			}
 		}
-		for (String suffix : List.of("으로", "에서", "에게", "까지", "부터", "하고", "하면", "은", "는", "이", "가", "을", "를", "에", "의", "와", "과", "도")) {
+		for (String suffix : List.of(
+			"이라고", "라고",
+			"으로", "에서", "에게", "까지", "부터", "하고", "하면",
+			"은", "는", "이", "가", "을", "를", "에", "의", "와", "과", "도"
+		)) {
 			if (term.endsWith(suffix) && term.length() > suffix.length() + 1) {
 				return term.substring(0, term.length() - suffix.length());
 			}

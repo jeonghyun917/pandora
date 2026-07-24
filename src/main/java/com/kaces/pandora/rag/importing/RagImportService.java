@@ -8,6 +8,7 @@ import com.kaces.pandora.rag.document.RagDocumentType;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import com.kaces.pandora.rag.document.RagDocumentChunkRow;
 import com.kaces.pandora.rag.persistence.RagDocumentMapper;
+import com.kaces.pandora.rag.search.RagChunkSearchIndexService;
 import com.kaces.pandora.rag.document.RagDocumentRow;
 import com.kaces.pandora.rag.importing.RagImportJobKey;
 import com.kaces.pandora.semantic.config.LawAiProperties;
@@ -48,6 +49,7 @@ public class RagImportService {
 	private final RagTextExtractor textExtractor;
 	private final RagChunker chunker;
 	private final RagChunkQualityGate chunkQualityGate;
+	private final RagChunkSearchIndexService searchIndexService;
 	private final OpenAiEmbeddingClient embeddingClient;
 	private final QdrantClient qdrantClient;
 	private final LawAiProperties properties;
@@ -58,6 +60,7 @@ public class RagImportService {
 		RagTextExtractor textExtractor,
 		RagChunker chunker,
 		RagChunkQualityGate chunkQualityGate,
+		RagChunkSearchIndexService searchIndexService,
 		OpenAiEmbeddingClient embeddingClient,
 		QdrantClient qdrantClient,
 		LawAiProperties properties,
@@ -67,6 +70,7 @@ public class RagImportService {
 		this.textExtractor = textExtractor;
 		this.chunker = chunker;
 		this.chunkQualityGate = chunkQualityGate;
+		this.searchIndexService = searchIndexService;
 		this.embeddingClient = embeddingClient;
 		this.qdrantClient = qdrantClient;
 		this.properties = properties;
@@ -243,6 +247,7 @@ public class RagImportService {
 		for (RagDocumentChunkRow chunk : qualityResult.retainedChunks()) {
 			mapper.insertChunk(chunk);
 		}
+		searchIndexService.rebuildDocument(documentId, ACTIVE_CHUNK_VERSION);
 		if (!indexNow) {
 			return new ImportOutcome(false, 0);
 		}

@@ -290,6 +290,55 @@ CREATE INDEX IF NOT EXISTS idx_rag_document_chunks_section
 CREATE INDEX IF NOT EXISTS idx_rag_document_chunks_quality
 	ON rag_document_chunks (quality_status, chunk_version, use_yn);
 
+CREATE TABLE IF NOT EXISTS rag_chunk_search_terms (
+    term VARCHAR(80) NOT NULL COMMENT 'normalized exact search term',
+    chunk_id BIGINT NOT NULL COMMENT 'RAG chunk id',
+    document_id BIGINT NOT NULL COMMENT 'RAG document id',
+    field_kind VARCHAR(30) NOT NULL COMMENT 'document_title, parent_title, chunk_title, body',
+    weight SMALLINT NOT NULL DEFAULT 1 COMMENT 'field relevance weight',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created time',
+    PRIMARY KEY (term, chunk_id),
+    KEY idx_rag_chunk_search_terms_chunk (chunk_id),
+    KEY idx_rag_chunk_search_terms_document (document_id, chunk_id),
+    CONSTRAINT fk_rag_chunk_search_terms_chunk
+        FOREIGN KEY (chunk_id) REFERENCES rag_document_chunks (chunk_id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_rag_chunk_search_terms_document
+        FOREIGN KEY (document_id) REFERENCES rag_documents (document_id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS rag_chunk_search_index_state (
+    chunk_id BIGINT NOT NULL COMMENT 'RAG chunk id',
+    document_id BIGINT NOT NULL COMMENT 'RAG document id',
+    index_version INT NOT NULL DEFAULT 2 COMMENT 'lexical index format version',
+    content_hash CHAR(64) NULL COMMENT 'indexed chunk content hash',
+    term_count INT NOT NULL DEFAULT 0 COMMENT 'number of indexed terms',
+    completed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'index completion time',
+    PRIMARY KEY (chunk_id),
+    KEY idx_rag_chunk_search_index_state_document (document_id, chunk_id),
+    CONSTRAINT fk_rag_chunk_search_index_state_chunk
+        FOREIGN KEY (chunk_id) REFERENCES rag_document_chunks (chunk_id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_rag_chunk_search_index_state_document
+        FOREIGN KEY (document_id) REFERENCES rag_documents (document_id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS rag_search_index_control (
+    index_name VARCHAR(60) NOT NULL,
+    index_version INT NOT NULL DEFAULT 2,
+    status VARCHAR(20) NOT NULL DEFAULT 'BUILDING' COMMENT 'BUILDING, READY',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (index_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO rag_search_index_control (index_name, index_version, status)
+VALUES ('rag_chunk_terms', 2, 'BUILDING')
+ON DUPLICATE KEY UPDATE
+    status = IF(index_version = VALUES(index_version), status, 'BUILDING'),
+    index_version = VALUES(index_version);
+
 CREATE TABLE IF NOT EXISTS rag_chunk_embeddings (
     chunk_id BIGINT NOT NULL COMMENT 'RAG chunk id',
     embedding_model VARCHAR(100) NOT NULL COMMENT 'embedding model',

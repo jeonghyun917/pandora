@@ -6,11 +6,13 @@ import com.kaces.pandora.common.text.QuestionSearchPlan;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
 import com.kaces.pandora.rag.persistence.RagDocumentMapper;
+import com.kaces.pandora.rag.search.RagChunkSearchIndexService;
 import com.kaces.pandora.semantic.config.LawAiProperties;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
 
@@ -51,6 +53,16 @@ class LawAiAnswerServiceEvidenceGateTests {
 		);
 
 		assertThat(reason).contains("직접 답하는 근거가 없어");
+	}
+
+	@Test
+	void rejectsCrossChunkPolicyWhenNoSingleDirectGroundWasConfirmed() throws Exception {
+		String reason = rejectionReason(
+			"이메일만으로 개인정보라고 볼 수 있나?",
+			result(true, true, true, true, 8, 4, 0, "cross_chunk_direct")
+		);
+
+		assertThat(reason).contains("단일 직접근거");
 	}
 
 	@Test
@@ -144,38 +156,6 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
-	void directEvidenceRescueRequiresEveryConfiguredAnchorMentionedInQuestion() throws Exception {
-		String question = "전자정부 성과관리 실행계획의 예비검토는 어떤 사업을 대상으로 하는거야?";
-		LawSemanticChunkRow wrongPreConsultation = chunk(
-			3L,
-			"official_doc",
-			"전자정부 성과관리 지침",
-			"사전협의 대상사업",
-			"사전협의의 대상사업은 중앙행정기관의 장이 추진하는 모든 정보화사업입니다."
-		);
-		LawSemanticChunkRow correctPreliminaryReview = chunk(
-			4L,
-			"official_doc",
-			"전자정부 성과관리 지침",
-			"예비검토 대상 사업",
-			"예비검토는 중앙행정기관의 장이 다음 해에 추진하는 정보화사업을 대상으로 합니다."
-		);
-
-		LawAiAnswerService service = service();
-		try {
-			List<LawSemanticChunkRow> rescued = directEvidenceRescueChunks(
-				service,
-				List.of(wrongPreConsultation, correctPreliminaryReview),
-				question
-			);
-
-			assertThat(rescued).containsExactly(correctPreliminaryReview);
-		} finally {
-			service.shutdownExecutors();
-		}
-	}
-
-	@Test
 	void intentDirectEvidencePreserveRequiresEveryConfiguredAnchorMentionedInQuestion() throws Exception {
 		String question = "전자정부 성과관리 실행계획의 예비검토는 어떤 사업을 대상으로 하는거야?";
 		LawSemanticChunkRow wrongPreConsultation = chunk(
@@ -202,31 +182,6 @@ class LawAiAnswerServiceEvidenceGateTests {
 			);
 
 			assertThat(preserved).containsExactly(correctPreliminaryReview);
-		} finally {
-			service.shutdownExecutors();
-		}
-	}
-
-	@Test
-	void directEvidenceRescueKeepsConfiguredAnchorFallbackWhenQuestionMentionsNoAnchor() throws Exception {
-		String question = "지능정보사회 실행계획의 어떤 사업이 대상이야?";
-		LawSemanticChunkRow preliminaryReview = chunk(
-			7L,
-			"official_doc",
-			"전자정부 성과관리 지침",
-			"예비검토 대상 사업",
-			"예비검토는 중앙행정기관의 장이 다음 해에 추진하는 정보화사업을 대상으로 합니다."
-		);
-
-		LawAiAnswerService service = service();
-		try {
-			List<LawSemanticChunkRow> rescued = directEvidenceRescueChunks(
-				service,
-				List.of(preliminaryReview),
-				question
-			);
-
-			assertThat(rescued).containsExactly(preliminaryReview);
 		} finally {
 			service.shutdownExecutors();
 		}
@@ -1614,21 +1569,6 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@SuppressWarnings("unchecked")
-	private List<LawSemanticChunkRow> directEvidenceRescueChunks(
-		LawAiAnswerService service,
-		List<LawSemanticChunkRow> chunks,
-		String query
-	) throws Exception {
-		Method method = LawAiAnswerService.class.getDeclaredMethod(
-			"directEvidenceRescueChunks",
-			List.class,
-			String.class
-		);
-		method.setAccessible(true);
-		return (List<LawSemanticChunkRow>) method.invoke(service, chunks, query);
-	}
-
-	@SuppressWarnings("unchecked")
 	private List<LawSemanticChunkRow> intentDirectEvidenceChunks(
 		LawAiAnswerService service,
 		List<LawSemanticChunkRow> chunks,
@@ -1682,6 +1622,208 @@ class LawAiAnswerServiceEvidenceGateTests {
 			new FailureLoggingService(null),
 			null,
 			new LawAiProperties(null, null, null, null)
+		);
+	}
+
+	@Test
+	void lexicalSearchMergesExactAndLegacyResultsUntilTheExactIndexIsReady() throws Exception {
+		RagDocumentMapper mapper = org.mockito.Mockito.mock(RagDocumentMapper.class);
+		RagChunkSearchIndexService indexService = org.mockito.Mockito.mock(RagChunkSearchIndexService.class);
+		org.mockito.Mockito.when(indexService.isReady()).thenReturn(false, true);
+		LawSemanticChunkRow exact = chunk(1L, "official_doc", "정확 인덱스", "정의", "개인정보 정의");
+		LawSemanticChunkRow legacy = chunk(2L, "official_doc", "기존 검색", "사례", "이메일 사례");
+		org.mockito.Mockito.when(mapper.findSemanticChunksByText(
+			org.mockito.ArgumentMatchers.anyList(),
+			org.mockito.ArgumentMatchers.anyList(),
+			org.mockito.ArgumentMatchers.anyInt()
+		)).thenReturn(List.of(exact));
+		org.mockito.Mockito.when(mapper.findSemanticChunksByLegacyText(
+			org.mockito.ArgumentMatchers.anyList(),
+			org.mockito.ArgumentMatchers.anyList(),
+			org.mockito.ArgumentMatchers.anyInt()
+		)).thenReturn(List.of(legacy));
+		LawAiAnswerService service = service(mapper, indexService);
+		try {
+			List<LawSemanticChunkRow> building = queryRagLexicalChunks(
+				service,
+				List.of("official_doc"),
+				List.of("privacy"),
+				10
+			);
+			List<LawSemanticChunkRow> ready = queryRagLexicalChunks(
+				service,
+				List.of("official_doc"),
+				List.of("privacy"),
+				10
+			);
+
+			org.mockito.Mockito.verify(mapper).findSemanticChunksByLegacyText(
+				List.of("official_doc"),
+				List.of("privacy"),
+				10
+			);
+			org.mockito.Mockito.verify(mapper, org.mockito.Mockito.times(2)).findSemanticChunksByText(
+				List.of("official_doc"),
+				List.of("privacy"),
+				10
+			);
+			assertThat(building).containsExactly(exact, legacy);
+			assertThat(ready).containsExactly(exact);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void lexicalFailureRetriesEveryPreparedCoreTermSeparately() throws Exception {
+		RagDocumentMapper mapper = org.mockito.Mockito.mock(RagDocumentMapper.class);
+		RagChunkSearchIndexService indexService = org.mockito.Mockito.mock(RagChunkSearchIndexService.class);
+		org.mockito.Mockito.when(indexService.isReady()).thenReturn(true);
+		org.mockito.Mockito.when(mapper.findSemanticChunksByHeadingText(
+			org.mockito.ArgumentMatchers.anyList(),
+			org.mockito.ArgumentMatchers.anyList(),
+			org.mockito.ArgumentMatchers.anyInt()
+		)).thenReturn(List.of());
+		org.mockito.Mockito.when(mapper.findSemanticChunksByText(
+			org.mockito.ArgumentMatchers.anyList(),
+			org.mockito.ArgumentMatchers.anyList(),
+			org.mockito.ArgumentMatchers.anyInt()
+		)).thenThrow(new IllegalStateException("timeout")).thenReturn(List.of());
+		LawAiAnswerService service = service(mapper, indexService);
+		try {
+			findRagChunksByText(service, List.of("official_doc"), List.of("email", "privacy"), 20);
+
+			@SuppressWarnings("unchecked")
+			ArgumentCaptor<List<String>> keywords = ArgumentCaptor.forClass(List.class);
+			org.mockito.Mockito.verify(mapper, org.mockito.Mockito.times(3)).findSemanticChunksByText(
+				org.mockito.ArgumentMatchers.anyList(),
+				keywords.capture(),
+				org.mockito.ArgumentMatchers.anyInt()
+			);
+			assertThat(keywords.getAllValues())
+				.containsExactly(List.of("privacy", "email"), List.of("privacy"), List.of("email"));
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void directRequiredResultWithNoDirectEvidenceCannotBePromotedByIntentHeuristics() throws Exception {
+		LawSemanticChunkRow conceptOnly = chunk(
+			901L,
+			"official_doc",
+			"개인정보 정의 안내서",
+			"개인정보의 정의",
+			"개인정보는 살아 있는 개인에 관한 정보입니다."
+		);
+		EvidenceJudge.Result judged = result(
+			List.of(conceptOnly),
+			true,
+			false,
+			true,
+			true,
+			1,
+			1,
+			0,
+			"concept_relevant"
+		);
+		LawAiAnswerService service = service();
+		try {
+			EvidenceJudge.Result preserved = preserveIntentDirectEvidenceChunks(
+				service,
+				judged,
+				List.of(conceptOnly),
+				"이메일 만으로도 개인정보라고 볼 수 있나?"
+			);
+
+			assertThat(preserved).isSameAs(judged);
+			assertThat(preserved.directEvidenceCount()).isZero();
+			assertThat(preserved.selectionPolicy()).isEqualTo("concept_relevant");
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private List<LawSemanticChunkRow> queryRagLexicalChunks(
+		LawAiAnswerService service,
+		List<String> targets,
+		List<String> keywords,
+		int limit
+	) throws Exception {
+		Method method = LawAiAnswerService.class.getDeclaredMethod(
+			"queryRagLexicalChunks",
+			List.class,
+			List.class,
+			int.class
+		);
+		method.setAccessible(true);
+		return (List<LawSemanticChunkRow>) method.invoke(service, targets, keywords, limit);
+	}
+
+	@SuppressWarnings("unchecked")
+	private List<LawSemanticChunkRow> findRagChunksByText(
+		LawAiAnswerService service,
+		List<String> targets,
+		List<String> keywords,
+		int limit
+	) throws Exception {
+		Method method = LawAiAnswerService.class.getDeclaredMethod(
+			"findRagChunksByText",
+			List.class,
+			List.class,
+			int.class
+		);
+		method.setAccessible(true);
+		return (List<LawSemanticChunkRow>) method.invoke(service, targets, keywords, limit);
+	}
+
+	private EvidenceJudge.Result preserveIntentDirectEvidenceChunks(
+		LawAiAnswerService service,
+		EvidenceJudge.Result judged,
+		List<LawSemanticChunkRow> chunks,
+		String query
+	) throws Exception {
+		Method method = LawAiAnswerService.class.getDeclaredMethod(
+			"preserveIntentDirectEvidenceChunks",
+			EvidenceJudge.Result.class,
+			List.class,
+			String.class,
+			Map.class,
+			Map.class
+		);
+		method.setAccessible(true);
+		return (EvidenceJudge.Result) method.invoke(
+			service,
+			judged,
+			chunks,
+			query,
+			Map.of(),
+			Map.of()
+		);
+	}
+
+	private LawAiAnswerService service(
+		RagDocumentMapper ragDocumentMapper,
+		RagChunkSearchIndexService indexService
+	) {
+		return new LawAiAnswerService(
+			null,
+			ragDocumentMapper,
+			null,
+			null,
+			null,
+			new EvidenceJudge(),
+			new AnswerGuard(),
+			new ClaimVerifier(),
+			new AnswerVerificationService(new AnswerGuard(), new ClaimVerifier()),
+			new ParentContextAssembler(),
+			new EvidenceCandidateDiversifier(),
+			new FailureLoggingService(null),
+			null,
+			new LawAiProperties(null, null, null, null),
+			null,
+			indexService
 		);
 	}
 

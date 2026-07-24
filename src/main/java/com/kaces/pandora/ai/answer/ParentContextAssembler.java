@@ -17,6 +17,16 @@ public class ParentContextAssembler {
 		Map<String, Double> scoreByChunkId,
 		Function<LawSemanticChunkRow, String> snippetFactory
 	) {
+		return toGrounds(chunks, matchedChunkByKey, scoreByChunkId, snippetFactory, "direct");
+	}
+
+	public List<LawAiAnswerGround> toGrounds(
+		List<LawSemanticChunkRow> chunks,
+		Map<String, LawSemanticChunkRow> matchedChunkByKey,
+		Map<String, Double> scoreByChunkId,
+		Function<LawSemanticChunkRow, String> snippetFactory,
+		String evidenceRole
+	) {
 		if (chunks == null || chunks.isEmpty()) {
 			return List.of();
 		}
@@ -27,7 +37,8 @@ public class ParentContextAssembler {
 				chunk,
 				matchedChunkByKey == null ? null : matchedChunkByKey.get(scoreKey(chunk.target(), chunk.chunkId())),
 				scoreByChunkId,
-				snippetFactory
+				snippetFactory,
+				evidenceRole
 			))
 			.toList();
 	}
@@ -37,7 +48,8 @@ public class ParentContextAssembler {
 		LawSemanticChunkRow chunk,
 		LawSemanticChunkRow matchedChunk,
 		Map<String, Double> scoreByChunkId,
-		Function<LawSemanticChunkRow, String> snippetFactory
+		Function<LawSemanticChunkRow, String> snippetFactory,
+		String evidenceRole
 	) {
 		String displayKey = scoreKey(chunk.target(), chunk.chunkId());
 		String matchedKey = matchedChunk == null ? displayKey : scoreKey(matchedChunk.target(), matchedChunk.chunkId());
@@ -64,8 +76,13 @@ public class ParentContextAssembler {
 			limitText(cleanDisplayText(matchedChildText), 1_200),
 			parentContextText == null ? null : limitText(cleanDisplayText(parentContextText), 2_800),
 			contextChunkIds(chunk, matchedChunk),
-			contextPolicy
+			contextPolicy,
+			normalizeEvidenceRole(evidenceRole)
 		);
+	}
+
+	private String normalizeEvidenceRole(String role) {
+		return "related_definition".equals(role) ? "related_definition" : "direct";
 	}
 
 	private double score(Map<String, Double> scoreByChunkId, String matchedKey, String displayKey) {

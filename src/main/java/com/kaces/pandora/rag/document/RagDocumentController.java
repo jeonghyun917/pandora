@@ -13,6 +13,7 @@ import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import com.kaces.pandora.rag.persistence.RagDocumentMapper;
 import com.kaces.pandora.rag.document.RagDocumentRow;
 import java.net.MalformedURLException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -150,10 +151,10 @@ public class RagDocumentController {
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		return ResponseEntity.ok()
 			.contentType(MediaType.parseMediaType(mimeType == null ? MediaType.APPLICATION_OCTET_STREAM_VALUE : mimeType))
-			.header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
-				.filename(document.fileName() == null ? file.getFileName().toString() : document.fileName())
-				.build()
-				.toString())
+			.header(
+				HttpHeaders.CONTENT_DISPOSITION,
+				inlineDisposition(document.fileName() == null ? file.getFileName().toString() : document.fileName())
+			)
 			.body(resource);
 	}
 
@@ -165,11 +166,18 @@ public class RagDocumentController {
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		return ResponseEntity.ok()
 			.contentType(MediaType.APPLICATION_PDF)
-			.header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
-				.filename((document == null ? "preview" : document.title()) + ".pdf")
-				.build()
-			.toString())
+			.header(
+				HttpHeaders.CONTENT_DISPOSITION,
+				inlineDisposition((document == null ? "preview" : document.title()) + ".pdf")
+			)
 			.body(resource);
+	}
+
+	static String inlineDisposition(String fileName) {
+		return ContentDisposition.inline()
+			.filename(fileName, StandardCharsets.UTF_8)
+			.build()
+			.toString();
 	}
 
 	@GetMapping(value = "/{documentId}/preview.html", produces = MediaType.TEXT_HTML_VALUE)

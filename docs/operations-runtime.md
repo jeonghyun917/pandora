@@ -225,6 +225,24 @@ pandora.admin-access.token=${PANDORA_ADMIN_TOKEN:}
 
 Remote admin access requires `X-Pandora-Admin-Token` when `PANDORA_ADMIN_TOKEN` is configured.
 
+## RAG Lexical Index Migration
+
+The application creates the exact-term lexical index schema at startup. Existing
+RAG chunks continue to use the bounded legacy lexical query while the index is
+`BUILDING`; indexed lookup becomes active only after every searchable current
+chunk has a completion marker matching its content hash.
+
+After deploying a build that introduces or changes the lexical index, backfill it
+against the app-dev instance:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\backfill-rag-search-index.ps1
+```
+
+The command is idempotent. Do not promote the build to the batch runner merely to
+perform this migration. For a non-local deployment, set `PANDORA_ADMIN_TOKEN` or
+pass `-AdminToken`; the script sends it as `X-Pandora-Admin-Token`.
+
 ## Backup Rule
 
 Before destructive index maintenance, major reindexing, or Qdrant cleanup:
