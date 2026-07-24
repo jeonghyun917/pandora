@@ -66,6 +66,12 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final Pattern PROPOSITION_BOUNDARY = Pattern.compile(
 		"(?:별개로|무관하게|관계없이|반면(?:에)?|한편|다만|그러나|하지만)[,，]?\\s*"
 	);
+	private static final List<Pattern> CLASSIFICATION_RELATION_PATTERNS = List.of(
+		Pattern.compile("(?<![\\p{IsHangul}\\p{Alnum}])([\\p{IsHangul}\\p{Alnum}]{2,})(?:이라고|라고)\\s*볼\\s*수\\s*(?:있|없)"),
+		Pattern.compile("(?<![\\p{IsHangul}\\p{Alnum}])([\\p{IsHangul}\\p{Alnum}]{2,})(?:으로|로)\\s*볼\\s*수\\s*(?:있|없)"),
+		Pattern.compile("(?<![\\p{IsHangul}\\p{Alnum}])([\\p{IsHangul}\\p{Alnum}]{2,})에\\s*해당하"),
+		Pattern.compile("(?<![\\p{IsHangul}\\p{Alnum}])([\\p{IsHangul}\\p{Alnum}]{2,})(?:인가요|인가|인지요|인지)(?:[?？]|\\s|$)")
+	);
 	private static final Set<String> SUBJECT_STOP_TERMS = Set.of(
 		"사업", "기관", "정보", "내용", "기준", "관련", "경우", "여부", "설명", "안내", "그리고",
 		"대상", "범위", "포함", "해당", "제외", "예외", "비대상", "면제",
@@ -322,11 +328,21 @@ public class AnswerQuestionAlignmentVerifier {
 		private static AlignmentProfile from(String question) {
 			QuestionIntentProfile questionProfile = QuestionIntentProfile.from(question);
 			List<List<String>> conditionGroups = conditionGroups(question);
-			List<List<String>> subjectGroups = subjectGroups(questionProfile, conditionGroups);
+			ClassificationFrame classificationFrame = ClassificationFrame.from(question);
 			List<RelationRequirement> relationRequirements = relationRequirements(
 				questionProfile,
 				question,
-				conditionGroups
+				conditionGroups,
+				classificationFrame
+			);
+			List<List<String>> subjectGroups = subjectGroups(
+				questionProfile,
+				conditionGroups,
+				relationRequirements.size() == 1
+					&& relationRequirements.get(0).kind() == RelationKind.LEXICAL
+					&& relationRequirements.get(0).alternatives().equals(classificationFrame.relationTerms())
+					? classificationFrame
+					: ClassificationFrame.empty()
 			);
 			return new AlignmentProfile(
 				subjectGroups,
@@ -341,7 +357,8 @@ public class AnswerQuestionAlignmentVerifier {
 
 		private static List<List<String>> subjectGroups(
 			QuestionIntentProfile profile,
-			List<List<String>> conditionGroups
+			List<List<String>> conditionGroups,
+			ClassificationFrame classificationFrame
 		) {
 			List<List<String>> groups = new ArrayList<>();
 			List<List<String>> configuredAnchors = profile.configuredEntityAnchorGroups().stream()
@@ -375,6 +392,7 @@ public class AnswerQuestionAlignmentVerifier {
 			for (String term : profile.terms()) {
 				String normalized = normalize(term);
 				if (normalized.length() < 2
+					|| classificationFrame.matchesRelationTerm(normalized)
 					|| isSubjectStopTerm(normalized)
 					|| coveredByConditions(normalized, conditionGroups)
 					|| coveredBySubjectGroups(normalized, groups)
@@ -456,7 +474,8 @@ public class AnswerQuestionAlignmentVerifier {
 		private static List<RelationRequirement> relationRequirements(
 			QuestionIntentProfile profile,
 			String question,
-			List<List<String>> conditionGroups
+			List<List<String>> conditionGroups,
+			ClassificationFrame classificationFrame
 		) {
 			String normalizedQuestion = normalize(question);
 			Set<String> intents = profile.intentTypes();
@@ -485,6 +504,9 @@ public class AnswerQuestionAlignmentVerifier {
 					.filter(value -> value.length() >= 2)
 					.distinct()
 					.toList()));
+			}
+			if (requirements.isEmpty() && !classificationFrame.relationTerms().isEmpty()) {
+				addLexicalRequirement(requirements, classificationFrame.relationTerms());
 			}
 			return List.copyOf(requirements);
 		}
@@ -607,6 +629,37 @@ public class AnswerQuestionAlignmentVerifier {
 				}
 			}
 			return List.copyOf(result);
+		}
+
+		private record ClassificationFrame(List<String> relationTerms) {
+			private boolean matchesRelationTerm(String term) {
+				return relationTerms.stream().anyMatch(relation ->
+					term.equals(relation)
+						|| term.equals(relation + "로")
+						|| term.equals(relation + "으로")
+						|| term.equals(relation + "라고")
+						|| term.equals(relation + "이라고")
+				);
+			}
+
+			private static ClassificationFrame from(String question) {
+				String source = String.valueOf(question == null ? "" : question);
+				for (Pattern pattern : CLASSIFICATION_RELATION_PATTERNS) {
+					java.util.regex.Matcher matcher = pattern.matcher(source);
+					if (!matcher.find()) {
+						continue;
+					}
+					String relationTerm = KoreanQueryNormalizer.normalizeQueryTerm(matcher.group(1));
+					if (relationTerm.length() >= 2 && !KoreanQueryNormalizer.isWeakQuestionTerm(relationTerm)) {
+						return new ClassificationFrame(List.of(relationTerm));
+					}
+				}
+				return empty();
+			}
+
+			private static ClassificationFrame empty() {
+				return new ClassificationFrame(List.of());
+			}
 		}
 	}
 }

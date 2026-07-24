@@ -14,6 +14,12 @@ class KoreanQueryNormalizerTests {
 	}
 
 	@Test
+	void stripsClassificationParticlesFromCoreTerms() {
+		assertThat(KoreanQueryNormalizer.normalizeQueryTerm("개인정보라고")).isEqualTo("개인정보");
+		assertThat(KoreanQueryNormalizer.isWeakQuestionTerm("만으로도")).isTrue();
+	}
+
+	@Test
 	void expandsCommitteeLikeSearchKeywords() {
 		assertThat(KoreanQueryNormalizer.expandSearchKeywords("인공지능위원회"))
 			.contains("인공지능위원회", "국가인공지능전략위원회", "인공지능전략위원회");

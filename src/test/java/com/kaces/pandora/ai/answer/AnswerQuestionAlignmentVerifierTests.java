@@ -390,6 +390,52 @@ class AnswerQuestionAlignmentVerifierTests {
 	}
 
 	@Test
+	void acceptsNaturalClassificationQuestionWithDirectClassificationEvidence() {
+		String claim =
+			"신청인의 회사 이메일 주소는 다른 정보와 쉽게 결합하여 신청인을 알아볼 수 있는 정보로서 "
+				+ "개인정보에 해당한다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"이메일 만으로도 개인정보라고 볼 수 있나?",
+			claimResult(supported(claim, claim))
+		);
+
+		assertThat(result.aligned()).as(result.toString()).isTrue();
+		assertThat(result.reasonCode()).isEqualTo("ALIGNED");
+	}
+
+	@Test
+	void acceptsEquivalentNaturalClassificationForms() {
+		String claim = "이메일 주소는 다른 정보와 쉽게 결합하여 개인을 알아볼 수 있으면 개인정보에 해당한다.";
+
+		for (String question : List.of(
+			"이메일 주소를 개인정보로 볼 수 있나?",
+			"이메일 주소는 개인정보인가?",
+			"이메일 주소는 개인정보에 해당하나?"
+		)) {
+			AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+				question,
+				claimResult(supported(claim, claim))
+			);
+
+			assertThat(result.aligned()).as("question=%s result=%s", question, result).isTrue();
+		}
+	}
+
+	@Test
+	void rejectsClassificationEvidenceThatOmitsTheQuestionSubject() {
+		String unrelatedClaim = "주민등록번호는 개인정보에 해당한다.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult result = verifier.verify(
+			"이메일 주소를 개인정보로 볼 수 있나?",
+			claimResult(supported(unrelatedClaim, unrelatedClaim))
+		);
+
+		assertThat(result.aligned()).as(result.toString()).isFalse();
+		assertThat(result.missingGroups()).contains("SUBJECT");
+	}
+
+	@Test
 	void acceptsMetaPredicatesWhenTheyAreTheRequestedLexicalRelation() {
 		for (String predicate : List.of("검토", "확인", "조사")) {
 			String claim = "기관은 신청서를 " + predicate + "합니다.";

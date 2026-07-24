@@ -419,6 +419,38 @@ class GroundedAnswerRepairServiceTests {
 	}
 
 	@Test
+	void realVerificationRepairsFromDirectEmailPersonalInformationGround() {
+		String question = "이메일 만으로도 개인정보라고 볼 수 있나?";
+		String directEvidence =
+			"신청인의 회사 이메일 주소는 그 자체로 혹은 다른 정보와 쉽게 결합하여 신청인을 알아볼 수 있는 정보로서 "
+				+ "「개인정보 보호법」 제2조 제1호에 따른 개인정보에 해당한다.";
+		String rejectedDraft =
+			"이메일 주소도 다른 정보와 결합하면 자연인을 알아볼 수 있으면 개인정보에 해당한다.";
+		List<LawAiAnswerGround> grounds = List.of(ground(1, directEvidence));
+		RecordingRewriter rewriter = RecordingRewriter.returning(directEvidence);
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(
+			realVerificationService(),
+			rewriter
+		);
+		AnswerVerificationService.Result directVerification =
+			realVerificationService().verify(question, directEvidence, grounds);
+
+		assertThat(directVerification.insufficientEvidence())
+			.withFailMessage(directVerification.toString())
+			.isFalse();
+
+		GroundedAnswerRepairService.Result result = service.verifyAndRepair(
+			question,
+			rejectedDraft,
+			grounds
+		);
+
+		assertThat(result.verifiedAnswer()).isEqualTo(directEvidence);
+		assertThat(result.insufficientEvidence()).isFalse();
+		assertThat(rewriter.atomCalls()).containsExactly(List.of(directEvidence));
+	}
+
+	@Test
 	void realVerificationRejectsSupportedButQuestionMisalignedMatchedChildAtom() {
 		String question = "공공소프트웨어사업은 과업심의 대상인가?";
 		String unrelatedEvidence = "정보화사업 사전협의 대상기관은 중앙행정기관입니다.";
