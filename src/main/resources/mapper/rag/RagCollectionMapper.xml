@@ -125,6 +125,24 @@
     WHERE article_id = #{articleId}
   </update>
 
+  <select id="findAttachment" resultType="com.kaces.pandora.rag.collecting.RagCollectedAttachmentRow">
+    SELECT
+      attachment_id AS attachmentId,
+      article_id AS articleId,
+      url,
+      file_name AS fileName,
+      extension,
+      mime_type AS mimeType,
+      file_hash AS fileHash,
+      local_path AS localPath,
+      document_id AS documentId,
+      status
+    FROM rag_source_attachments
+    WHERE article_id = #{articleId}
+      AND url = #{url}
+    LIMIT 1
+  </select>
+
   <insert id="upsertAttachment">
     INSERT INTO rag_source_attachments (
       article_id, url, file_name, extension, mime_type, file_hash, local_path, document_id, status, last_error_message

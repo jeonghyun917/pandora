@@ -26,8 +26,15 @@ public class RagMinistryCollectionController {
 		@RequestParam(defaultValue = "ALL") String agency,
 		@RequestParam(defaultValue = "true") boolean fillQueue,
 		@RequestParam(defaultValue = "20") int maxArticles,
-		@RequestParam(defaultValue = "3") int maxAttachmentsPerArticle
+		@RequestParam(defaultValue = "3") int maxAttachmentsPerArticle,
+		@RequestParam(defaultValue = "false") boolean refreshExisting
 	) {
-		return ResponseEntity.ok(collectionService.collect(agency, fillQueue, maxArticles, maxAttachmentsPerArticle));
+		return ResponseEntity.ok(collectionService.collect(
+			agency,
+			fillQueue,
+			maxArticles,
+			maxAttachmentsPerArticle,
+			refreshExisting
+		));
 	}
 }
