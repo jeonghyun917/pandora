@@ -453,7 +453,68 @@ class GroundedAnswerRepairServiceTests {
 		assertThat(result.diagnostics().reason()).isEqualTo("REWRITE_ACCEPTED");
 		assertThat(result.verifiedAnswer()).isEqualTo(rewritten);
 		assertThat(result.insufficientEvidence()).isFalse();
-		assertThat(rewriter.atomCalls()).containsExactly(List.of(directEvidence));
+		assertThat(rewriter.atomCalls()).containsExactly(List.of(rewritten));
+	}
+
+	@Test
+	void flattenedOcrTargetLabelIsDeterministicallyProjectedBeforeVerbatimRewrite() {
+		String question = "과업심의 대상은?";
+		String directEvidence =
+			"적용 대상 사업 p.5 적용 대상 사업 적용 대상 사업 p.5 적용 대상 사업 "
+				+ "적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함) "
+				+ "- 소프트웨어의 개발·운영과 관련된 경제활동 ※ 단순 H/W 도입은 비대상";
+		String expected =
+			"국가기관 등이 발주하는 모든 SW사업(상용SW포함)은 과업심의 대상입니다.";
+		List<LawAiAnswerGround> grounds = List.of(ground(
+			1,
+			directEvidence,
+			"공공소프트웨어사업 과업심의 가이드(2022. 12.)",
+			null
+		));
+		AnswerVerificationService verificationService = realVerificationService();
+		RecordingRewriter rewriter = RecordingRewriter.joiningAtoms();
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(
+			verificationService,
+			rewriter
+		);
+
+		GroundedAnswerRepairService.Result result = service.verifyAndRepair(
+			question,
+			"과업심의 대상은 소프트웨어사업과 무관합니다.",
+			grounds
+		);
+
+		assertThat(result.diagnostics().reason()).isEqualTo("REWRITE_ACCEPTED");
+		assertThat(result.verifiedAnswer()).isEqualTo(expected);
+		assertThat(result.insufficientEvidence()).isFalse();
+		assertThat(rewriter.atomCalls()).containsExactly(List.of(expected));
+	}
+
+	@Test
+	void relationGapCannotUseStructuralTitleWithoutAnExplicitTargetLabel() {
+		String question = "과업심의 대상은?";
+		String directEvidence = "국가기관등의 장이 발주하는 소프트웨어사업";
+		List<LawAiAnswerGround> grounds = List.of(ground(
+			1,
+			directEvidence,
+			"공공소프트웨어사업 과업심의 가이드",
+			null
+		));
+		RecordingRewriter rewriter = RecordingRewriter.joiningAtoms();
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(
+			realVerificationService(),
+			rewriter
+		);
+
+		GroundedAnswerRepairService.Result result = service.verifyAndRepair(
+			question,
+			"과업심의 대상은 소프트웨어사업과 무관합니다.",
+			grounds
+		);
+
+		assertThat(result.diagnostics().reason()).isEqualTo("NO_ALIGNED_SUPPORTED_ATOM");
+		assertThat(result.insufficientEvidence()).isTrue();
+		assertThat(rewriter.calls()).isZero();
 	}
 
 	@Test
@@ -843,20 +904,26 @@ class GroundedAnswerRepairServiceTests {
 	private static final class RecordingRewriter extends GroundedAnswerRewriter {
 		private final String result;
 		private final RuntimeException exception;
+		private final boolean joinAtoms;
 		private final List<String> questions = new ArrayList<>();
 		private final List<List<String>> atomCalls = new ArrayList<>();
 
-		private RecordingRewriter(String result, RuntimeException exception) {
+		private RecordingRewriter(String result, RuntimeException exception, boolean joinAtoms) {
 			this.result = result;
 			this.exception = exception;
+			this.joinAtoms = joinAtoms;
 		}
 
 		static RecordingRewriter returning(String result) {
-			return new RecordingRewriter(result, null);
+			return new RecordingRewriter(result, null, false);
 		}
 
 		static RecordingRewriter throwing(RuntimeException exception) {
-			return new RecordingRewriter(null, exception);
+			return new RecordingRewriter(null, exception, false);
+		}
+
+		static RecordingRewriter joiningAtoms() {
+			return new RecordingRewriter(null, null, true);
 		}
 
 		@Override
@@ -866,7 +933,7 @@ class GroundedAnswerRepairServiceTests {
 			if (exception != null) {
 				throw exception;
 			}
-			return result;
+			return joinAtoms ? String.join("\n", supportedEvidenceAtoms) : result;
 		}
 
 		int calls() {

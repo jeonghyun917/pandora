@@ -2902,6 +2902,153 @@ class ClaimEvidenceMatcherRelationTests {
 	}
 
 	@Test
+	void flattenedOcrHeadingsProjectOnlyTheBoundedExplicitTargetValue() {
+		String source =
+			"적용 대상 사업 p.5 적용 대상 사업 적용 대상 사업 p.5 적용 대상 사업 "
+				+ "적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함) "
+				+ "- 소프트웨어의 개발·운영과 관련된 경제활동 ※ 단순 H/W 도입은 비대상";
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"국가기관 등이 발주하는 모든 SW사업(상용SW포함)은 과업심의 대상입니다.",
+			List.of(ground(
+				"공공소프트웨어사업 과업심의 가이드(2022. 12.)",
+				source
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(match.evidenceSentence())
+			.contains("국가기관 등이 발주하는 모든 SW사업(상용SW포함)")
+			.doesNotContain("과업심의 대상입니다");
+	}
+
+	@Test
+	void flattenedExplicitLabelBlockCannotLendAMetadataOnlyConditionToDerivedAtoms() {
+		String source =
+			"적용 대상 사업 p.5 적용 대상 사업 적용 대상 사업 p.5 적용 대상 사업 "
+				+ "적용 대상 사업 국가기관등의 장이 발주하는 소프트웨어사업은 과업심의 대상입니다.";
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"시범사업인 경우 국가기관등의 장이 발주하는 소프트웨어사업은 과업심의 대상입니다.",
+			List.of(groundWithMetadata(
+				"공공소프트웨어사업 과업심의 가이드. 시범사업인 경우",
+				"p.5 적용 대상 사업",
+				"공식 가이드 문서",
+				source,
+				null
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void limitingOrExceptionalDiscardedTailBlocksTargetProjection() {
+		String claim = "소프트웨어사업은 과업심의 대상입니다.";
+		for (String source : List.of(
+			"대상사업 : 소프트웨어사업 - 총사업비 1억원 이상인 경우",
+			"대상사업 : 소프트웨어사업 ※ 예외인 경우에만 적용",
+			"대상사업 : 소프트웨어사업 - 설명 ※ 계약 전에 한함",
+			"대상사업 : 소프트웨어사업 - 계약 전",
+			"대상사업 : 소프트웨어사업 - 1억원 미만 소프트웨어사업으로 볼 수 없는 경우는 비대상",
+			"대상사업 : 소프트웨어사업 - 계약 전 소프트웨어사업으로 볼 수 없는 경우는 비대상",
+			"대상사업 : 소프트웨어사업 - 일부만 소프트웨어의 개발·운영과 관련된 경제활동을 말한다",
+			"대상사업 : 소프트웨어사업 - 소프트웨어의 개발·운영 중 공공기관 발주분을 말한다",
+			"대상사업 : 소프트웨어사업 - 소프트웨어의 개발·운영과 관련된 경제활동에 한함"
+		)) {
+			ClaimEvidenceMatcher.Match match = matcher.match(
+				claim,
+				List.of(ground("공공소프트웨어사업 과업심의 가이드", source))
+			);
+
+			assertThat(match.status()).as("source=%s", source)
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
+	void discardedExclusionThatOverlapsTheProjectedValueBlocksProjection() {
+		for (List<String> example : List.of(
+			List.of(
+				"H/W 및 S/W 사업은 과업심의 대상입니다.",
+				"대상사업 : H/W 및 S/W 사업 - 단순 H/W 도입은 비대상"
+			),
+			List.of(
+				"소프트웨어사업 및 정보화사업은 과업심의 대상입니다.",
+				"대상사업 : 소프트웨어사업 및 정보화사업"
+					+ " - 정보화사업으로 볼 수 없는 경우는 비대상"
+			)
+		)) {
+			ClaimEvidenceMatcher.Match match = matcher.match(
+				example.get(0),
+				List.of(ground(
+					"공공소프트웨어사업 과업심의 가이드",
+					example.get(1)
+				))
+			);
+
+			assertThat(match.status()).as("source=%s", example.get(1))
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
+	void differentExplicitTargetValuesInOneMatchedChildRemainAmbiguous() {
+		String source =
+			"대상사업 : 국가기관등의 장이 발주하는 소프트웨어사업 "
+				+ "□ 대상사업 : 국가기관등의 장이 발주하는 1억원 이상 소프트웨어사업";
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"국가기관등의 장이 발주하는 소프트웨어사업은 과업심의 대상입니다.",
+			List.of(ground(
+				"공공소프트웨어사업 과업심의 가이드",
+				source
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void unsafeOrUnseparatedAdditionalTargetLabelsBlockTheWholeProjection() {
+		String claim = "소프트웨어사업은 과업심의 대상입니다.";
+		for (String source : List.of(
+			"대상사업 : " + "가".repeat(361) + " □ 대상사업 : 소프트웨어사업",
+			"대상사업 : 소프트웨어사업 대상사업 : 정보화사업"
+		)) {
+			ClaimEvidenceMatcher.Match match = matcher.match(
+				claim,
+				List.of(ground("공공소프트웨어사업 과업심의 가이드", source))
+			);
+
+			assertThat(match.status()).as("source=%s", source)
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
+	void multilineExplicitTargetLabelAfterIntroductionStillProjects() {
+		String source = "적용 안내\n대상사업 : 소프트웨어사업";
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"소프트웨어사업은 과업심의 대상입니다.",
+			List.of(ground("공공소프트웨어사업 과업심의 가이드", source))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(match.evidenceSentence()).isEqualTo(source.replaceAll("\\s+", " ").trim());
+	}
+
+	@Test
+	void plainTargetBusinessHeadingWithoutColonCannotCreateAProcedureRelation() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"국가기관등의 장이 발주하는 소프트웨어사업은 과업심의 대상입니다.",
+			List.of(ground(
+				"공공소프트웨어사업 과업심의 가이드",
+				"대상사업 국가기관등의 장이 발주하는 소프트웨어사업"
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
 	void procedureTitleCannotSupplyAConditionMissingFromTheExplicitTargetLabelValue() {
 		ClaimEvidenceMatcher.Match match = matcher.match(
 			"국가기관등의 장이 발주하는 소프트웨어사업은 계약 전에 과업심의 대상입니다.",

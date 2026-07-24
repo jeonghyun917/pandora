@@ -164,6 +164,13 @@ public class ClaimVerifier {
 		return INSUFFICIENT_EVIDENCE_MESSAGE.equals(answer == null ? "" : answer.trim());
 	}
 
+	String projectStructuralTargetAtom(String matchedChildText, String structuralScopeContext) {
+		return evidenceMatcher.projectExplicitTargetLabelValue(
+			matchedChildText,
+			structuralScopeContext
+		);
+	}
+
 	private List<String> splitSentences(String answer) {
 		return SENTENCE_BOUNDARY.splitAsStream(answer)
 			.map(String::trim)

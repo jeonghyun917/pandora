@@ -18,6 +18,7 @@ public class GroundedAnswerRepairService {
 	private static final String SUBJECT = "SUBJECT";
 	private static final Set<String> STRUCTURAL_ALIGNMENT_GAPS = Set.of(
 		SUBJECT,
+		"RELATION",
 		"DIRECT_CONCLUSION"
 	);
 
@@ -278,13 +279,10 @@ public class GroundedAnswerRepairService {
 		if (isFullySupportedAndAligned(verification)) {
 			return clean(verification.verifiedAnswer());
 		}
-		if (!isStructurallySubjectAligned(question, candidate, verification, grounds)) {
-			return "";
-		}
-		return clean(verification.claimResult().verifiedAnswer());
+		return structurallyAlignedProjection(question, candidate, verification, grounds);
 	}
 
-	private boolean isStructurallySubjectAligned(
+	private String structurallyAlignedProjection(
 		String question,
 		CandidateAtom candidate,
 		AnswerVerificationService.Result verification,
@@ -293,7 +291,7 @@ public class GroundedAnswerRepairService {
 		if (!isFullyClaimSupported(verification)
 			|| candidate.groundIndex() < 0
 			|| candidate.groundIndex() >= grounds.size()) {
-			return false;
+			return "";
 		}
 		AnswerQuestionAlignmentVerifier.AlignmentResult alignment = verification.alignmentResult();
 		if (alignment == null
@@ -301,13 +299,31 @@ public class GroundedAnswerRepairService {
 			|| alignment.aligned()
 			|| !alignment.missingGroups().contains(SUBJECT)
 			|| !STRUCTURAL_ALIGNMENT_GAPS.containsAll(alignment.missingGroups())) {
-			return false;
+			return "";
 		}
 		LawAiAnswerGround ground = grounds.get(candidate.groundIndex());
 		String structuralContext = clean(
 			clean(ground.title()) + " " + clean(ground.chunkTitle())
 		);
-		return verificationService.matchesQuestionSubjects(question, structuralContext);
+		if (!verificationService.matchesQuestionSubjects(question, structuralContext)) {
+			return "";
+		}
+		String projected = clean(verificationService.projectStructuralTargetAtom(
+			matchedChildText(ground),
+			structuralContext
+		));
+		if (projected.isBlank()) {
+			return "";
+		}
+		AnswerVerificationService.Result projectedVerification;
+		try {
+			projectedVerification = verificationService.verify(question, projected, grounds);
+		} catch (RuntimeException exception) {
+			return "";
+		}
+		return isFullySupportedAndAligned(projectedVerification)
+			? clean(projectedVerification.verifiedAnswer())
+			: "";
 	}
 
 	private boolean isFullySupportedAndAligned(AnswerVerificationService.Result verification) {

@@ -150,7 +150,14 @@ aligned evidence atoms before attempting broader generation changes.
   remain ineligible. Focused tests pass 324/324. Independent review approved the
   final slice with zero Critical, Important, or Minor findings after broad
   anchor-context and raw-label bypasses were closed.
-- [ ] Task 7: self-review and complete verification. Static diff validation
-  passes and the full Maven suite passes 842/842; exact 85-case runtime
-  re-evaluation remains.
+- [ ] Task 7: self-review and complete verification. Runtime smoke exposed that
+  structural atoms were selected but the verbatim rewriter could not restore
+  the missing subject. A bounded deterministic projection now uses only an
+  explicit matched-child target label/value plus one procedure scope, then
+  fully re-verifies the projected atom. Three review cycles closed discarded
+  condition tails, overlapping exclusions, and narrowing definitions without
+  relaxing final verification. Focused tests pass 353/353, the fresh full Maven
+  suite passes 852/852, `git diff --check` passes, and the final independent
+  review reports zero Critical, Important, or Minor findings. Exact 85-case
+  runtime re-evaluation remains.
 - [ ] Task 8: merge verified work without moving the shared workspace.

@@ -53,6 +53,13 @@ public class AnswerVerificationService {
 		return alignmentVerifier.matchesQuestionSubjects(question, structuralContext);
 	}
 
+	String projectStructuralTargetAtom(String matchedChildText, String structuralScopeContext) {
+		return claimVerifier.projectStructuralTargetAtom(
+			matchedChildText,
+			structuralScopeContext
+		);
+	}
+
 	public record Result(
 		String guardedAnswer,
 		ClaimVerifier.VerificationResult claimResult,

@@ -95,9 +95,35 @@ public class ClaimEvidenceMatcher {
 	private static final Pattern GENERIC_TARGET_DEFINITION_LABEL = Pattern.compile(
 		"^적용대상(?:은|는|이|가).*(?:입니다|이다|임)$"
 	);
-	private static final Pattern EXPLICIT_TARGET_LABEL_VALUE = Pattern.compile(
-		"^(?:(?:(?:적용\\s*)?대상\\s*사업\\s*[:：]\\s*)"
-			+ "|(?:적용\\s+대상\\s+사업\\s+))(.{4,})$",
+	private static final Pattern EXPLICIT_TARGET_LABEL_PREFIX = Pattern.compile(
+		"(?<![\\p{IsHangul}A-Za-z0-9])"
+			+ "(?:(?:(?:적용\\s*)?대상\\s*사업)\\s*([:：])\\s*"
+			+ "|(?:적용\\s+대상\\s+사업)\\s+)",
+		Pattern.CASE_INSENSITIVE
+	);
+	private static final Pattern EXPLICIT_TARGET_VALUE_BOUNDARY = Pattern.compile(
+		"\\s+(?:(?:[-–—])\\s+|[\\[<※•‣□○]|(?i:p[.]\\d{1,4})\\s)"
+	);
+	private static final Pattern OCR_PAGE_MARKER = Pattern.compile(
+		"(?i)(?<![\\p{Alnum}])p[.]\\d{1,4}(?!\\d)"
+	);
+	private static final Pattern TRAILING_LINE_BREAK = Pattern.compile("\\R\\s*$");
+	private static final Pattern NUMERIC_LIMITING_TAIL = Pattern.compile(
+		"\\d+(?:[.,]\\d+)?(?:조원|억원|만원|원|%|퍼센트|년|개월|월|일|명|건|회|개)?"
+			+ "(?:이상|이하|초과|미만)"
+	);
+	private static final Pattern TEMPORAL_LIMITING_TAIL = Pattern.compile(
+		"(?:계약|신청|제출|발주|수행|검사|완료|착수|승인|심의|협의|납품|도입)"
+			+ ".{0,12}?(?:전|후|이전|이후|까지|부터|동안|이내|기한)"
+	);
+	private static final Pattern SOFTWARE_HARDWARE_EXCLUSION = Pattern.compile(
+		"^(?:단순)?hw(?:도입|구매|장비|사업)?(?:은|는|이|가)?"
+			+ "(?:비대상|제외)(?:이다|입니다)?$",
+		Pattern.CASE_INSENSITIVE
+	);
+	private static final Pattern SOFTWARE_ACTIVITY_DEFINITION = Pattern.compile(
+		"^sw(?:의)?(?:개발운영|운영개발)(?:과|와)?"
+			+ "관련된경제활동(?:이다|입니다)?$",
 		Pattern.CASE_INSENSITIVE
 	);
 	private static final Pattern ATTRIBUTIVE_OBJECT_SEQUENCE = Pattern.compile(
@@ -619,6 +645,15 @@ public class ClaimEvidenceMatcher {
 		if (text == null || text.isBlank()) {
 			return;
 		}
+		boolean explicitTargetLabelBlock = containsExplicitTargetLabel(text);
+		if (allowStructuralScopeProjection && !denseStructuralContext) {
+			addProjectedEvidence(
+				unique,
+				groundNumber,
+				text.replaceAll("\\s+", " ").trim(),
+				projectExplicitTargetLabelValue(text, structuralScopeContext)
+			);
+		}
 		for (String fragment : atomizer.atomize(text)) {
 			String cleaned = fragment.replaceAll("\\s+", " ").trim();
 			if (cleaned.length() < 4) {
@@ -627,7 +662,8 @@ public class ClaimEvidenceMatcher {
 			String normalizedText = normalize(cleaned);
 			String key = groundNumber + "|" + normalizedText + "|" + denseStructuralContext;
 			if (!normalizedText.isBlank()) {
-				boolean explicitTargetLabel = EXPLICIT_TARGET_LABEL_VALUE.matcher(cleaned).matches();
+				boolean explicitTargetLabel = explicitTargetLabelBlock
+					|| containsExplicitTargetLabel(cleaned);
 				unique.putIfAbsent(key, new EvidenceSentence(
 					groundNumber,
 					cleaned,
@@ -639,42 +675,191 @@ public class ClaimEvidenceMatcher {
 					denseStructuralContext
 				));
 			}
-			String projected = allowStructuralScopeProjection && !denseStructuralContext
-				? projectExplicitTargetLabelValue(cleaned, structuralScopeContext)
-				: "";
-			String normalizedProjection = normalize(projected);
-			if (!normalizedProjection.isBlank()) {
-				String projectionKey = groundNumber + "|" + normalizedProjection + "|projection";
-				unique.putIfAbsent(projectionKey, new EvidenceSentence(
-					groundNumber,
-					cleaned,
-					projected,
-					tokenize(projected),
-					ClaimNumericNormalizer.tokens(projected),
-					ClaimNumericNormalizer.orderedTokens(projected),
-					"",
-					false
-				));
-			}
 		}
 	}
 
-	private String projectExplicitTargetLabelValue(String fragment, String anchorContext) {
-		Matcher matcher = EXPLICIT_TARGET_LABEL_VALUE.matcher(
-			String.valueOf(fragment == null ? "" : fragment).trim()
-		);
-		if (!matcher.matches()) {
-			return "";
+	private void addProjectedEvidence(
+		Map<String, EvidenceSentence> unique,
+		int groundNumber,
+		String rawEvidence,
+		String projected
+	) {
+		String normalizedProjection = normalize(projected);
+		if (normalizedProjection.isBlank()) {
+			return;
 		}
+		String projectionKey = groundNumber + "|" + normalizedProjection + "|projection";
+		unique.putIfAbsent(projectionKey, new EvidenceSentence(
+			groundNumber,
+			rawEvidence,
+			projected,
+			tokenize(projected),
+			ClaimNumericNormalizer.tokens(projected),
+			ClaimNumericNormalizer.orderedTokens(projected),
+			"",
+			false
+		));
+	}
+
+	String projectExplicitTargetLabelValue(String fragment, String anchorContext) {
 		Set<String> scopes = ClaimSemantics.namedTargetScopes(anchorContext);
 		if (scopes.size() != 1) {
 			return "";
 		}
-		String value = matcher.group(1).trim();
-		if (value.isBlank() || value.length() > 360) {
+		ExplicitTargetParse parsed = parseExplicitTargetLabels(fragment);
+		if (parsed.unsafe() || parsed.values().size() != 1) {
 			return "";
 		}
-		return value + "은 " + scopes.iterator().next() + " 대상입니다.";
+		return parsed.values().iterator().next()
+			+ "은 "
+			+ scopes.iterator().next()
+			+ " 대상입니다.";
+	}
+
+	private boolean containsExplicitTargetLabel(String text) {
+		return parseExplicitTargetLabels(text).labelPresent();
+	}
+
+	private ExplicitTargetParse parseExplicitTargetLabels(String text) {
+		String source = String.valueOf(text == null ? "" : text).trim();
+		Set<String> values = new LinkedHashSet<>();
+		boolean labelPresent = false;
+		boolean unsafe = false;
+		Matcher labels = EXPLICIT_TARGET_LABEL_PREFIX.matcher(source);
+		while (labels.find()) {
+			String remainder = source.substring(labels.end()).trim();
+			if (remainder.isBlank()) {
+				continue;
+			}
+			if (!isStructuralTargetLabelPosition(source, labels.start())) {
+				labelPresent = true;
+				unsafe = true;
+				continue;
+			}
+			labelPresent = true;
+			Matcher boundary = EXPLICIT_TARGET_VALUE_BOUNDARY.matcher(remainder);
+			boolean hasBoundary = boundary.find();
+			String value = (hasBoundary ? remainder.substring(0, boundary.start()) : remainder)
+				.replaceAll("^[•‣□○※*]+\\s*", "")
+				.replaceAll("\\s+", " ")
+				.trim();
+			String normalizedValue = normalize(value);
+			boolean repeatedHeadingNoise = Set.of("대상사업", "적용대상사업")
+					.contains(normalizedValue)
+				|| OCR_PAGE_MARKER.matcher(value).lookingAt()
+				|| EXPLICIT_TARGET_LABEL_PREFIX.matcher(value).lookingAt();
+			if (repeatedHeadingNoise) {
+				continue;
+			}
+			if (value.length() < 4
+				|| value.length() > 360
+				|| EXPLICIT_TARGET_LABEL_PREFIX.matcher(value).find()
+				|| value.matches("^[은는이가].*")
+				|| (hasBoundary && hasUnsafeDiscardedTail(
+					remainder.substring(boundary.end()),
+					value
+				))) {
+				unsafe = true;
+				continue;
+			}
+			values.add(value);
+		}
+		return new ExplicitTargetParse(labelPresent, unsafe, Set.copyOf(values));
+	}
+
+	private boolean hasUnsafeDiscardedTail(String discardedTail, String projectedValue) {
+		String source = String.valueOf(discardedTail == null ? "" : discardedTail).trim();
+		if (source.isBlank()) {
+			return false;
+		}
+		Matcher boundaries = EXPLICIT_TARGET_VALUE_BOUNDARY.matcher(source);
+		int segmentStart = 0;
+		while (boundaries.find()) {
+			if (!isSafeDiscardedTargetSegment(
+				source.substring(segmentStart, boundaries.start()),
+				projectedValue
+			)) {
+				return true;
+			}
+			segmentStart = boundaries.end();
+		}
+		return !isSafeDiscardedTargetSegment(source.substring(segmentStart), projectedValue);
+	}
+
+	private boolean isSafeDiscardedTargetSegment(String segment, String projectedValue) {
+		String normalizedSegment = canonicalSoftwareTerm(normalize(segment));
+		if (normalizedSegment.isBlank()) {
+			return true;
+		}
+		String normalizedValue = canonicalSoftwareTerm(normalize(projectedValue));
+		if (isSafeNonMemberExclusion(normalizedSegment, normalizedValue)) {
+			return true;
+		}
+		if (hasNarrowingSemantics(normalizedSegment)) {
+			return false;
+		}
+		return normalizedValue.contains("sw")
+			&& !normalizedValue.contains("hw")
+			&& SOFTWARE_ACTIVITY_DEFINITION.matcher(normalizedSegment).matches();
+	}
+
+	private boolean hasNarrowingSemantics(String normalizedSegment) {
+		return NUMERIC_LIMITING_TAIL.matcher(normalizedSegment).find()
+			|| TEMPORAL_LIMITING_TAIL.matcher(normalizedSegment).find()
+			|| List.of(
+				"경우",
+				"조건",
+				"요건",
+				"예외",
+				"다만",
+				"한하여",
+				"제외",
+				"비대상",
+				"면제",
+				"금지",
+				"불가",
+				"대상",
+				"않",
+				"없",
+				"에만",
+				"만적용"
+			).stream().anyMatch(normalizedSegment::contains);
+	}
+
+	private boolean isSafeNonMemberExclusion(String normalizedSegment, String normalizedValue) {
+		return normalizedValue.contains("sw")
+			&& !normalizedValue.contains("hw")
+			&& !normalizedSegment.contains("sw")
+			&& SOFTWARE_HARDWARE_EXCLUSION.matcher(normalizedSegment).matches();
+	}
+
+	private boolean isStructuralTargetLabelPosition(String source, int start) {
+		String before = source.substring(0, Math.max(0, start));
+		if (TRAILING_LINE_BREAK.matcher(before).find()) {
+			return true;
+		}
+		String trimmedBefore = before.stripTrailing();
+		if (trimmedBefore.isBlank()) {
+			return true;
+		}
+		char preceding = trimmedBefore.charAt(trimmedBefore.length() - 1);
+		if ("\n\r•‣□○※".indexOf(preceding) >= 0) {
+			return true;
+		}
+		String residual = OCR_PAGE_MARKER.matcher(before).replaceAll(" ");
+		residual = residual.replaceAll(
+			"(?i)(?<![\\p{IsHangul}A-Za-z0-9])(?:(?:적용\\s*)?대상\\s*사업)",
+			" "
+		);
+		residual = residual.replaceAll("[\\s:：•‣□○※*]+", "");
+		return residual.isBlank();
+	}
+
+	private record ExplicitTargetParse(
+		boolean labelPresent,
+		boolean unsafe,
+		Set<String> values
+	) {
 	}
 
 	private Relation relation(ClaimSemantics claim, ClaimSemantics evidence, String evidenceAnchorContext) {
