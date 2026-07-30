@@ -25,6 +25,11 @@
     <result property="judgeCandidateCount" column="judge_candidate_count"/>
     <result property="judgedCount" column="judged_count"/>
     <result property="finalGroundCount" column="final_ground_count"/>
+	<result property="topicAlignedCount" column="topic_aligned_count"/>
+	<result property="relevantCount" column="relevant_count"/>
+	<result property="directEvidenceCount" column="direct_evidence_count"/>
+	<result property="evidenceSelectionPolicy" column="evidence_selection_policy"/>
+	<result property="documentScopeMismatch" column="document_scope_mismatch"/>
     <result property="resultMsg" column="result_msg"/>
     <result property="publicMessage" column="public_message"/>
     <result property="diagnosticMessage" column="diagnostic_message"/>
@@ -70,6 +75,11 @@
       judge_candidate_count,
       judged_count,
       final_ground_count,
+	  topic_aligned_count,
+	  relevant_count,
+	  direct_evidence_count,
+	  evidence_selection_policy,
+	  document_scope_mismatch,
       result_msg,
       public_message,
       diagnostic_message
@@ -93,6 +103,11 @@
       #{failure.judgeCandidateCount},
       #{failure.judgedCount},
       #{failure.finalGroundCount},
+	  #{failure.topicAlignedCount},
+	  #{failure.relevantCount},
+	  #{failure.directEvidenceCount},
+	  #{failure.evidenceSelectionPolicy},
+	  #{failure.documentScopeMismatch},
       #{failure.resultMsg},
       #{failure.publicMessage},
       #{failure.diagnosticMessage}
@@ -121,6 +136,11 @@
       judge_candidate_count,
       judged_count,
       final_ground_count,
+	  topic_aligned_count,
+	  relevant_count,
+	  direct_evidence_count,
+	  evidence_selection_policy,
+	  document_scope_mismatch,
       result_msg,
       public_message,
       diagnostic_message,
@@ -214,6 +234,11 @@
       judge_candidate_count,
       judged_count,
       final_ground_count,
+	  topic_aligned_count,
+	  relevant_count,
+	  direct_evidence_count,
+	  evidence_selection_policy,
+	  document_scope_mismatch,
       result_msg,
       public_message,
       diagnostic_message,

@@ -6,8 +6,19 @@ public record LawAiSearchFailureClassification(
 	boolean retryable,
 	boolean evalCandidate
 ) {
+	private static final String PIPELINE_INCONSISTENT = "PIPELINE_RESULT_INCONSISTENT";
+	private static final String PIPELINE_STAGE = "PIPELINE";
 	private static final LawAiSearchFailureClassification NONE =
 		new LawAiSearchFailureClassification("NONE", "NONE", false, false);
+
+	public LawAiSearchFailureClassification {
+		failureType = normalizedClassificationValue(failureType, PIPELINE_INCONSISTENT);
+		failureStage = normalizedClassificationValue(failureStage, PIPELINE_STAGE);
+		if (PIPELINE_INCONSISTENT.equals(failureType)) {
+			retryable = false;
+			evalCandidate = false;
+		}
+	}
 
 	static LawAiSearchFailureClassification none() {
 		return NONE;
@@ -34,6 +45,44 @@ public record LawAiSearchFailureClassification(
 		int directEvidenceCount,
 		String evidenceSelectionPolicy
 	) {
+		return classify(
+			resultMsg,
+			diagnosticMessage,
+			qdrantHitCount,
+			vectorChunkCount,
+			lexicalChunkCount,
+			mergedCount,
+			rankedCount,
+			intentFilteredCount,
+			judgeCandidateCount,
+			judgedCount,
+			finalGroundCount,
+			topicAlignedCount,
+			relevantCount,
+			directEvidenceCount,
+			evidenceSelectionPolicy,
+			false
+		);
+	}
+
+	static LawAiSearchFailureClassification classify(
+		String resultMsg,
+		String diagnosticMessage,
+		int qdrantHitCount,
+		int vectorChunkCount,
+		int lexicalChunkCount,
+		int mergedCount,
+		int rankedCount,
+		int intentFilteredCount,
+		int judgeCandidateCount,
+		int judgedCount,
+		int finalGroundCount,
+		int topicAlignedCount,
+		int relevantCount,
+		int directEvidenceCount,
+		String evidenceSelectionPolicy,
+		boolean documentScopeMismatch
+	) {
 		if ("OK".equals(resultMsg) && finalGroundCount > 0) {
 			return none();
 		}
@@ -43,6 +92,9 @@ public record LawAiSearchFailureClassification(
 		}
 		if (diagnostic.contains("근거를 만들어내") || diagnostic.contains("문서를 있다고 말")) {
 			return new LawAiSearchFailureClassification("UNSUPPORTED_FABRICATION_REQUEST", "PRECHECK", false, false);
+		}
+		if (documentScopeMismatch) {
+			return new LawAiSearchFailureClassification("DOCUMENT_SCOPE_MISMATCH", "TARGET_SCOPE", false, false);
 		}
 		if (qdrantHitCount > 0 && vectorChunkCount == 0 && lexicalChunkCount == 0) {
 			return new LawAiSearchFailureClassification("INDEX_DB_MAPPING_MISMATCH", "DB_LOOKUP", false, false);
@@ -69,12 +121,12 @@ public record LawAiSearchFailureClassification(
 			return new LawAiSearchFailureClassification("JUDGE_REJECTED_ALL", "EVIDENCE_JUDGE", true, true);
 		}
 		if (finalGroundCount == 0 && judgedCount > 0) {
-			return new LawAiSearchFailureClassification("GROUND_TEXT_FILTERED", "GROUND_BUILD", true, true);
+			return new LawAiSearchFailureClassification("CHUNK_QUALITY_REJECTED", "GROUND_BUILD", true, true);
 		}
 		if ("NO_GROUNDS".equals(resultMsg)) {
-			return new LawAiSearchFailureClassification("NO_GROUNDS_UNCLASSIFIED", stageFromPolicy(evidenceSelectionPolicy), true, true);
+			return new LawAiSearchFailureClassification("EVIDENCE_SELECTION_REJECTED", stageFromPolicy(evidenceSelectionPolicy), true, true);
 		}
-		return new LawAiSearchFailureClassification("UNKNOWN", "UNKNOWN", true, true);
+		return new LawAiSearchFailureClassification(PIPELINE_INCONSISTENT, PIPELINE_STAGE, false, false);
 	}
 
 	private static boolean mentionsDirectEvidence(String diagnostic) {
@@ -83,8 +135,15 @@ public record LawAiSearchFailureClassification(
 
 	private static String stageFromPolicy(String evidenceSelectionPolicy) {
 		if (evidenceSelectionPolicy == null || evidenceSelectionPolicy.isBlank() || "empty".equals(evidenceSelectionPolicy)) {
-			return "RETRIEVAL";
+			return "EVIDENCE_SELECTION";
 		}
 		return "EVIDENCE_JUDGE";
+	}
+
+	private static String normalizedClassificationValue(String value, String fallback) {
+		if (value == null || value.isBlank() || "UNKNOWN".equalsIgnoreCase(value.trim())) {
+			return fallback;
+		}
+		return value.trim();
 	}
 }

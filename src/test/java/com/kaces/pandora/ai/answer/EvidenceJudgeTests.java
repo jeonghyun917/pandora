@@ -243,14 +243,20 @@ class EvidenceJudgeTests {
 
 	@Test
 	void targetQuestionCanUseSplitScopeEvidenceFromSameDocument() {
-		LawSemanticChunkRow targetHeading = chunk(
+		LawSemanticChunkRow targetHeading = chunkInDocument(
 			1,
+			101,
+			"project-review-guide-v1",
+			"official_doc",
 			"공공소프트웨어사업 과업심의 가이드",
 			"p.5 적용 대상 사업",
 			"적용 대상 사업."
 		);
-		LawSemanticChunkRow targetBody = chunk(
+		LawSemanticChunkRow targetBody = chunkInDocument(
 			2,
+			101,
+			"project-review-guide-v1",
+			"official_doc",
 			"공공소프트웨어사업 과업심의 가이드",
 			"p.5 상세 설명",
 			"국가기관 등이 발주하는 모든 SW사업이다. 소프트웨어의 개발, 제작, 생산, 유통, 운영 및 유지관리와 관련 서비스를 포함한다."
@@ -272,6 +278,230 @@ class EvidenceJudgeTests {
 		assertThat(result.chunks()).containsExactly(targetHeading, targetBody);
 		assertThat(result.chunks()).doesNotContain(adjacentOperation);
 		assertThat(result.directEvidenceFound()).isTrue();
+	}
+
+	@Test
+	void embeddedRelationWordsDoNotAuthorizeCrossDocumentEvidenceCombination() {
+		LawSemanticChunkRow requiredItemsLead = chunkInDocument(
+			401,
+			4010,
+			"rfp-a",
+			"official_doc",
+			"관계기관용 제안요청서 작성 가이드 A",
+			"기재사항",
+			"제안요청서에는 다음 각 호의 사항을 명시하여야 한다."
+		);
+		LawSemanticChunkRow requiredItemsDetail = chunkInDocument(
+			402,
+			4020,
+			"rfp-b",
+			"official_doc",
+			"이해관계자용 협상계약 평가기준 B",
+			"평가항목",
+			"제안요청서 평가 기준은 평가요소, 평가방법으로 구성한다."
+		);
+
+		for (String question : List.of(
+			"관계기관이 제안요청서에 필수로 넣어야 할 내용은?",
+			"계약방식과 관계없이 제안요청서에 필수로 넣어야 할 내용은?",
+			"이해관계자가 제안요청서에 필수로 넣어야 할 내용은?",
+			"관계 법령에 따라 제안요청서에 필수로 넣어야 할 내용은?",
+			"기관의 관계 법령에 따라 제안요청서에 필수로 넣어야 할 내용은?",
+			"기관의 관계 규정에 따라 제안요청서에 필수로 넣어야 할 내용은?",
+			"관계 부처가 제안요청서에 필수로 넣어야 할 내용은?",
+			"관계 규정상 제안요청서에 필수로 넣어야 할 내용은?"
+		)) {
+			EvidenceJudge.Result result = judge.judge(
+				question,
+				List.of(requiredItemsLead, requiredItemsDetail),
+				Map.of("official_doc:401", 0.6, "official_doc:402", 0.5),
+				8
+			);
+
+			assertThat(result.directEvidenceFound()).as(question).isFalse();
+			assertThat(result.chunks()).as(question).isEmpty();
+		}
+	}
+
+	@Test
+	void explicitRelationCuesStillAuthorizeCrossDocumentEvidenceCombination() {
+		LawSemanticChunkRow requiredItemsLead = chunkInDocument(
+			411,
+			4110,
+			"rfp-a",
+			"official_doc",
+			"제안요청서 작성 가이드 A",
+			"기재사항",
+			"제안요청서에는 다음 각 호의 사항을 명시하여야 한다."
+		);
+		LawSemanticChunkRow requiredItemsDetail = chunkInDocument(
+			412,
+			4120,
+			"rfp-b",
+			"official_doc",
+			"협상계약 평가기준 B",
+			"평가항목",
+			"제안요청서 평가 기준은 평가요소, 평가방법으로 구성한다."
+		);
+
+		for (String question : List.of(
+			"제안요청서에 필수로 넣어야 할 내용을 같이 알려줘",
+			"제안요청서에 필수로 넣어야 할 내용을 함께 알려줘",
+			"제안요청서에 필수로 넣어야 할 내용을 둘 다 알려줘",
+			"제안요청서에 필수로 넣어야 할 내용을 동시에 알려줘",
+			"제안요청서 기재사항과 평가요소의 관계를 알려줘",
+			"제안요청서 기재사항과 평가요소의 연관성을 알려줘"
+		)) {
+			EvidenceJudge.Result result = judge.judge(
+				question,
+				List.of(requiredItemsLead, requiredItemsDetail),
+				Map.of("official_doc:411", 0.6, "official_doc:412", 0.5),
+				8
+			);
+
+			assertThat(result.directEvidenceFound()).as(question).isTrue();
+			assertThat(result.chunks()).as(question).containsExactly(requiredItemsLead, requiredItemsDetail);
+		}
+	}
+
+	@Test
+	void ordinaryCoverageDoesNotMergeDifferentRecordsWithIdenticalTitles() {
+		LawSemanticChunkRow requiredItemsLead = chunkInDocument(
+			421,
+			4210,
+			"rfp-2025",
+			"official_doc",
+			"공공정보화사업 제안요청서 작성 가이드",
+			"기재사항",
+			"제안요청서에는 다음 각 호의 사항을 명시하여야 한다."
+		);
+		LawSemanticChunkRow requiredItemsDetailFromDifferentRecord = chunkInDocument(
+			422,
+			4220,
+			"rfp-2026",
+			"official_doc",
+			"공공정보화사업 제안요청서 작성 가이드",
+			"평가항목",
+			"제안요청서 평가 기준은 평가요소, 평가방법으로 구성한다."
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"제안요청서에 필수로 넣어야 할 내용은?",
+			List.of(requiredItemsLead, requiredItemsDetailFromDifferentRecord),
+			Map.of("official_doc:421", 0.6, "official_doc:422", 0.5),
+			8
+		);
+
+		assertThat(result.directEvidenceFound()).isFalse();
+		assertThat(result.chunks()).isEmpty();
+	}
+
+	@Test
+	void ordinaryCoverageFallsBackToSharedExternalIdWhenDocumentIdIsUnavailable() {
+		LawSemanticChunkRow requiredItemsLead = chunkInDocument(
+			431,
+			0,
+			"rfp-stable-id",
+			"official_doc",
+			"공공정보화사업 제안요청서 작성 가이드",
+			"기재사항",
+			"제안요청서에는 다음 각 호의 사항을 명시하여야 한다."
+		);
+		LawSemanticChunkRow requiredItemsDetail = chunkInDocument(
+			432,
+			0,
+			"rfp-stable-id",
+			"official_doc",
+			"공공정보화사업 제안요청서 작성 가이드",
+			"평가항목",
+			"제안요청서 평가 기준은 평가요소, 평가방법으로 구성한다."
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"제안요청서에 필수로 넣어야 할 내용은?",
+			List.of(requiredItemsLead, requiredItemsDetail),
+			Map.of("official_doc:431", 0.6, "official_doc:432", 0.5),
+			8
+		);
+
+		assertThat(result.directEvidenceFound()).isTrue();
+		assertThat(result.chunks()).containsExactly(requiredItemsLead, requiredItemsDetail);
+	}
+
+	@Test
+	void splitDirectCoverageFailsClosedWhenRequestedLimitCannotReturnAllCoveringChunks() {
+		LawSemanticChunkRow requiredItemsLead = chunkInDocument(
+			435,
+			4350,
+			"rfp-limit",
+			"official_doc",
+			"공공정보화사업 제안요청서 작성 가이드",
+			"기재사항",
+			"제안요청서에는 다음 각 호의 사항을 명시하여야 한다."
+		);
+		LawSemanticChunkRow requiredItemsDetail = chunkInDocument(
+			436,
+			4350,
+			"rfp-limit",
+			"official_doc",
+			"공공정보화사업 제안요청서 작성 가이드",
+			"평가항목",
+			"제안요청서 평가 기준은 평가요소, 평가방법으로 구성한다."
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"제안요청서에 필수로 넣어야 할 내용은?",
+			List.of(requiredItemsLead, requiredItemsDetail),
+			Map.of("official_doc:435", 0.6, "official_doc:436", 0.5),
+			1
+		);
+
+		assertThat(result.directEvidenceRequired()).isTrue();
+		assertThat(result.directEvidenceFound()).isFalse();
+		assertThat(result.chunks()).isEmpty();
+		assertThat(result.selectionPolicy()).isEqualTo("no_direct_evidence");
+	}
+
+	@Test
+	void lowerRankedSameDocumentFamilyCoverageSurvivesHigherRankedWrongFamilyChunk() {
+		LawSemanticChunkRow highRankedWrongFamily = chunkInDocument(
+			441,
+			4410,
+			"rfp-wrong-family",
+			"official_doc",
+			"별도 제안요청서 작성 안내",
+			"기재사항",
+			"제안요청서에는 다음 각 호의 사항을 명시하여야 한다."
+		);
+		LawSemanticChunkRow validFamilyLead = chunkInDocument(
+			442,
+			4420,
+			"rfp-valid-family",
+			"official_doc",
+			"공공정보화사업 제안요청서 작성 가이드",
+			"기재사항",
+			"제안요청서에는 다음 각 호의 사항을 명시하여야 한다."
+		);
+		LawSemanticChunkRow validFamilyBody = chunkInDocument(
+			443,
+			4420,
+			"rfp-valid-family",
+			"official_doc",
+			"공공정보화사업 제안요청서 작성 가이드",
+			"평가항목",
+			"제안요청서 평가 기준은 평가요소, 평가방법으로 구성한다."
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"제안요청서에 필수로 넣어야 할 내용은?",
+			List.of(highRankedWrongFamily, validFamilyLead, validFamilyBody),
+			Map.of("official_doc:441", 4.0, "official_doc:442", 0.4, "official_doc:443", 0.3),
+			8
+		);
+
+		assertThat(result.directEvidenceFound()).isTrue();
+		assertThat(result.chunks()).containsExactly(validFamilyLead, validFamilyBody);
+		assertThat(result.chunks()).doesNotContain(highRankedWrongFamily);
 	}
 
 	@Test
@@ -299,6 +529,35 @@ class EvidenceJudgeTests {
 		assertThat(result.chunks()).isEmpty();
 		assertThat(result.directEvidenceRequired()).isTrue();
 		assertThat(result.directEvidenceFound()).isFalse();
+	}
+
+	@Test
+	void ordinaryObligationQuestionDoesNotMergeRequiredEvidenceGroupsAcrossDocumentFamilies() {
+		LawSemanticChunkRow requirementHeadingOnly = chunk(
+			301,
+			"official_doc",
+			"공공정보화사업 제안요청서 작성 가이드",
+			"제안요청서 기재사항",
+			"제안요청서에는 다음 각 호의 사항을 명시하여야 한다."
+		);
+		LawSemanticChunkRow evaluationItemsOnly = chunk(
+			302,
+			"admrul",
+			"지방자치단체 협상계약 평가기준",
+			"평가항목",
+			"제안요청서 평가 기준은 평가요소, 평가방법으로 구성한다."
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"제안요청서에 필수로 넣어야 할 내용은?",
+			List.of(requirementHeadingOnly, evaluationItemsOnly),
+			Map.of("official_doc:301", 0.6, "admrul:302", 0.58),
+			8
+		);
+
+		assertThat(result.directEvidenceRequired()).isTrue();
+		assertThat(result.directEvidenceFound()).isFalse();
+		assertThat(result.chunks()).isEmpty();
 	}
 
 	@Test
@@ -1204,6 +1463,176 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void explicitUiNavigationExclusionDoesNotReintroduceMenuFragmentsAsExploratorySupport() {
+		LawSemanticChunkRow approvalEvidence = chunk(
+			1,
+			"IRM 사용자 권한 안내",
+			"p.18 권한 승인",
+			"개별기관 관리자가 정보등록 담당자의 사용자 권한 신청을 승인한다."
+		);
+		LawSemanticChunkRow expiryEvidence = chunk(
+			2,
+			"IRM 사용자 권한 안내",
+			"p.19 권한 회수",
+			"사용자 권한 부여날짜를 설정하고 권한 만료 시 자동 회수한다."
+		);
+		LawSemanticChunkRow navigationDump = chunk(
+			3,
+			"IRM 정보자원 등록관리 업무 담당자 기본 교육자료",
+			"p.34 사용자관리 메뉴",
+			"IRM 사용자관리 권한/메뉴관리 사용자 권한 관리 기준 화면 목록. "
+				+ "IRM > 자원관리 > 정보자원 등록 > 현행정보시스템 "
+				+ "(해당 시스템 행 Double Click) 후 상세 화면에서 버튼을 클릭한다."
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"IRM 사용자관리 메뉴 조각 말고 사용자 권한 관리 기준은?",
+			List.of(navigationDump, approvalEvidence, expiryEvidence),
+			Map.of("official_doc:3", 1.0, "official_doc:1", 0.4, "official_doc:2", 0.3),
+			8
+		);
+
+		assertThat(result.directEvidenceFound()).isTrue();
+		assertThat(result.chunks()).contains(approvalEvidence, expiryEvidence);
+		assertThat(result.chunks()).doesNotContain(navigationDump);
+	}
+
+	@Test
+	void uiNavigationQuestionKeepsExploratoryMenuEvidenceWhenNavigationIsRequested() {
+		LawSemanticChunkRow navigation = chunk(
+			1,
+			"IRM 사용자 안내",
+			"p.7 사용자 권한 화면",
+			"IRM 메뉴에서 사용자관리 > 권한/메뉴관리 화면으로 이동하고 목록 버튼을 클릭한다."
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"IRM 메뉴에서 사용자 권한 화면은 어디야?",
+			List.of(navigation),
+			Map.of("official_doc:1", 0.8),
+			8
+		);
+
+		assertThat(result.chunks()).containsExactly(navigation);
+		assertThat(result.selectionPolicy()).isEqualTo("exploratory_lookup");
+	}
+
+	@Test
+	void uiNavigationReplacementOrAdditionKeepsExploratoryLookup() {
+		LawSemanticChunkRow navigation = chunk(
+			1,
+			"IRM 사용자 안내",
+			"p.7 사용자 권한 화면",
+			"IRM 메뉴 화면 경로에서 사용자 권한 버튼 위치를 확인하고 클릭한다."
+		);
+		List<String> questions = List.of(
+			"메뉴 말고 버튼 위치는 어디야?",
+			"메뉴가 아니라 화면 경로",
+			"메뉴뿐만 아니라 화면 경로도 알려줘",
+			"사용자 권한 기준 말고 메뉴 위치",
+			"사용자 권한 화면 경로는 어디야?"
+		);
+
+		for (String question : questions) {
+			EvidenceJudge.Result result = judge.judge(
+				question,
+				List.of(navigation),
+				Map.of("official_doc:1", 0.8),
+				8
+			);
+
+			assertThat(result.selectionPolicy())
+				.as("question=%s profile=%s result=%s", question, QuestionIntentProfile.from(question), result)
+				.isEqualTo("exploratory_lookup");
+			assertThat(result.chunks()).as("question=%s", question).containsExactly(navigation);
+		}
+	}
+
+	@Test
+	void nonUiRouteQuestionsDoNotEnableExploratoryLookup() {
+		LawSemanticChunkRow privacyLeak = chunk(
+			1,
+			"개인정보 침해 대응 안내",
+			"p.4 개인정보 유출 경로",
+			"개인정보 유출 경로와 사고 원인을 조사하고 침해 사실을 통지한다."
+		);
+		LawSemanticChunkRow infection = chunk(
+			2,
+			"감염병 대응 안내",
+			"p.5 감염 경로",
+			"감염 경로와 접촉 이력을 확인하여 방역 조치를 실시한다."
+		);
+
+		EvidenceJudge.Result privacyResult = judge.judge(
+			"개인정보 유출 경로는?",
+			List.of(privacyLeak),
+			Map.of("official_doc:1", 0.8),
+			8
+		);
+		EvidenceJudge.Result infectionResult = judge.judge(
+			"감염 경로를 알려줘",
+			List.of(infection),
+			Map.of("official_doc:2", 0.8),
+			8
+		);
+
+		assertThat(privacyResult.selectionPolicy()).isNotEqualTo("exploratory_lookup");
+		assertThat(infectionResult.selectionPolicy()).isNotEqualTo("exploratory_lookup");
+	}
+
+	@Test
+	void explicitUiNavigationExclusionFailsClosedWithoutDirectEvidence() {
+		LawSemanticChunkRow navigationOnly = chunk(
+			1,
+			"IRM 정보자원 등록관리 업무 담당자 기본 교육자료",
+			"p.34 사용자관리 메뉴",
+			"IRM 사용자관리 권한/메뉴관리 사용자 권한 관리 기준 화면 목록. "
+				+ "IRM > 자원관리 > 현행정보시스템 행 Double Click 후 버튼을 클릭한다."
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"IRM 사용자관리 메뉴 조각 말고 사용자 권한 관리 기준은?",
+			List.of(navigationOnly),
+			Map.of("official_doc:1", 1.0),
+			8
+		);
+
+		assertThat(result.directEvidenceRequired()).isTrue();
+		assertThat(result.directEvidenceFound()).isFalse();
+		assertThat(result.chunks()).isEmpty();
+		assertThat(result.selectionPolicy()).isEqualTo("no_direct_evidence");
+	}
+
+	@Test
+	void excludeAndOmitUiNavigationMarkersStillFailClosed() {
+		LawSemanticChunkRow navigationOnly = chunk(
+			1,
+			"IRM 정보자원 등록관리 업무 담당자 기본 교육자료",
+			"p.34 사용자관리 메뉴",
+			"IRM 사용자관리 권한/메뉴관리 사용자 권한 관리 기준 화면 목록. "
+				+ "IRM > 자원관리 > 현행정보시스템 행 Double Click 후 버튼을 클릭한다."
+		);
+		List<String> questions = List.of(
+			"IRM 사용자관리 메뉴 경로를 제외하고 사용자 권한 관리 기준은?",
+			"IRM 사용자관리 화면 버튼을 빼고 사용자 권한 관리 기준은?"
+		);
+
+		for (String question : questions) {
+			EvidenceJudge.Result result = judge.judge(
+				question,
+				List.of(navigationOnly),
+				Map.of("official_doc:1", 1.0),
+				8
+			);
+
+			assertThat(result.directEvidenceRequired()).as("question=%s", question).isTrue();
+			assertThat(result.directEvidenceFound()).as("question=%s", question).isFalse();
+			assertThat(result.chunks()).as("question=%s", question).isEmpty();
+			assertThat(result.selectionPolicy()).as("question=%s", question).isEqualTo("no_direct_evidence");
+		}
+	}
+
+	@Test
 	void procurementCatalogContractQuestionKeepsDirectPurchaseContextAndRejectsLoosePrivateContractLaw() {
 		LawSemanticChunkRow loosePrivateContractLaw = chunk(
 			1,
@@ -1848,6 +2277,40 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void guidebookMarkerBuildsDirectBodyAnchorsForRoleQuestion() {
+		LawSemanticChunkRow navigationOnly = chunk(
+			1,
+			"official_doc",
+			"행정안전부 재난현장 수습활동 가이드북",
+			"p.2 목차 통합지원본부",
+			"목차. 통합지원본부 23",
+			"목차",
+			"body"
+		);
+		LawSemanticChunkRow directRole = chunk(
+			2,
+			"official_doc",
+			"행정안전부 재난현장 수습활동 가이드북",
+			"p.23 통합지원본부 역할",
+			"통합지원본부는 재난현장 상황을 파악하고 역할분담을 조정하며 필요한 자원을 동원하고 배분한다.",
+			"통합지원본부",
+			"body"
+		);
+
+		EvidenceJudge.Result result = judge.judge(
+			"행정안전부 재난현장 수습활동 가이드북에서 통합지원본부는 어떤 역할을 해?",
+			List.of(navigationOnly, directRole),
+			Map.of("official_doc:1", 0.95, "official_doc:2", 0.4),
+			6
+		);
+
+		assertThat(result.directEvidenceRequired()).isTrue();
+		assertThat(result.directEvidenceFound()).isTrue();
+		assertThat(result.selectionPolicy()).isEqualTo("direct");
+		assertThat(result.chunks()).contains(directRole).doesNotContain(navigationOnly);
+	}
+
+	@Test
 	void acceptsExactLawTitleAndArticleReferenceAsDirectEvidence() {
 		LawSemanticChunkRow looseDiscipline = chunk(
 			1,
@@ -2007,6 +2470,38 @@ class EvidenceJudgeTests {
 			"hash-" + id,
 			parentSectionTitle,
 			sectionType
+		);
+	}
+
+	private LawSemanticChunkRow chunkInDocument(
+		long chunkId,
+		long documentId,
+		String externalId,
+		String target,
+		String title,
+		String chunkTitle,
+		String text
+	) {
+		return new LawSemanticChunkRow(
+			chunkId,
+			documentId,
+			target,
+			externalId,
+			title,
+			"기관",
+			"공식 가이드 문서",
+			null,
+			null,
+			"page " + chunkId,
+			chunkTitle,
+			text,
+			(int) chunkId,
+			null,
+			null,
+			(int) chunkId,
+			"hash-" + chunkId,
+			null,
+			null
 		);
 	}
 }

@@ -410,7 +410,16 @@ public class AdminOverviewService {
 
 	private Optional<EvalGateCandidate> parseEvalGate(Path path) {
 		try {
+			String fileName = path.getFileName().toString();
+			if (fileName.contains("checkpoint")) {
+				return Optional.empty();
+			}
 			JsonNode root = objectMapper.readTree(Files.readString(path));
+			String runScope = root.path("provenance").path("runScope").asText("");
+			boolean legacyFullArtifact = runScope.isBlank() && fileName.startsWith("rag-eval-gate-full-");
+			if (!("full".equals(runScope) || legacyFullArtifact)) {
+				return Optional.empty();
+			}
 			long total = root.path("total").asLong(-1L);
 			long passed = root.path("passed").asLong(-1L);
 			long failed = root.path("failed").asLong(-1L);
@@ -418,8 +427,34 @@ public class AdminOverviewService {
 			if (total < 0 || passed < 0 || failed < 0) {
 				return Optional.empty();
 			}
+			String gitCommit = root.path("provenance").path("gitCommit").asText("");
+			String datasetHash = root.path("provenance").path("datasetHash").asText("");
+			String indexVersion = root.path("provenance").path("indexVersion").asText("");
+			String generatedAt = root.path("provenance").path("generatedAt").asText("");
+			long curatedTotal = root.path("breakdown").path("curated").path("total").asLong(0L);
+			long curatedPassed = root.path("breakdown").path("curated").path("passed").asLong(0L);
+			long generatedTotal = root.path("breakdown").path("generated").path("total").asLong(0L);
+			long generatedPassed = root.path("breakdown").path("generated").path("passed").asLong(0L);
+			long answerRequired = root.path("breakdown").path("answerVerification").path("required").asLong(0L);
+			long answerPassed = root.path("breakdown").path("answerVerification").path("passed").asLong(0L);
 			long modifiedAt = Files.getLastModifiedTime(path).toMillis();
-			return Optional.of(new EvalGateCandidate(total, modifiedAt, new EvalGateSummary(total, passed, failed, gatePassed, path)));
+			return Optional.of(new EvalGateCandidate(total, modifiedAt, new EvalGateSummary(
+				total,
+				passed,
+				failed,
+				gatePassed,
+				path,
+				gitCommit,
+				datasetHash,
+				indexVersion,
+				generatedAt,
+				curatedTotal,
+				curatedPassed,
+				generatedTotal,
+				generatedPassed,
+				answerRequired,
+				answerPassed
+			)));
 		} catch (IOException exception) {
 			log.warn("Failed to read eval gate log: {}", path, exception);
 			return Optional.empty();
@@ -942,9 +977,25 @@ public class AdminOverviewService {
 	private record EvalGateCandidate(long total, long modifiedAtMillis, EvalGateSummary summary) {
 	}
 
-	private record EvalGateSummary(long total, long passed, long failed, boolean gatePassed, Path path) {
+	private record EvalGateSummary(
+		long total,
+		long passed,
+		long failed,
+		boolean gatePassed,
+		Path path,
+		String gitCommit,
+		String datasetHash,
+		String indexVersion,
+		String generatedAt,
+		long curatedTotal,
+		long curatedPassed,
+		long generatedTotal,
+		long generatedPassed,
+		long answerRequired,
+		long answerPassed
+	) {
 		private static EvalGateSummary missing() {
-			return new EvalGateSummary(0, 0, 0, false, null);
+			return new EvalGateSummary(0, 0, 0, false, null, "", "", "", "", 0, 0, 0, 0, 0, 0);
 		}
 
 		private long passRatePercent() {
@@ -959,12 +1010,23 @@ public class AdminOverviewService {
 				return "평가셋 실행 로그가 없습니다. rag-eval-gate를 실행하세요.";
 			}
 			String fileName = path == null ? "unknown" : path.getFileName().toString();
-			return total + "건 중 " + passed + "건 통과, 실패 " + failed + "건, 파일 " + fileName;
+			String provenance = gitCommit == null || gitCommit.isBlank()
+				? "provenance 없음"
+				: "commit " + gitCommit.substring(0, Math.min(8, gitCommit.length())) + ", index " + indexVersion;
+			String breakdown = curatedTotal <= 0 && generatedTotal <= 0
+				? "세부 점수 없음"
+				: "수동 " + curatedPassed + "/" + curatedTotal
+					+ ", 생성 " + generatedPassed + "/" + generatedTotal
+					+ ", 답변검증 " + answerPassed + "/" + answerRequired;
+			return total + "건 중 " + passed + "건 통과, 실패 " + failed + "건, " + breakdown + ", " + provenance + ", 파일 " + fileName;
 		}
 
 		private String tone() {
 			if (total <= 0 || !gatePassed || failed > 0) {
 				return "bad";
+			}
+			if (gitCommit == null || gitCommit.isBlank() || datasetHash == null || datasetHash.isBlank()) {
+				return "warn";
 			}
 			return total >= EVAL_GATE_TARGET_CASES ? "good" : "warn";
 		}

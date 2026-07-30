@@ -12,12 +12,14 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.slf4j.Logger;
@@ -36,8 +38,10 @@ public class QdrantClient {
 
 	private final LawAiProperties properties;
 	private final RestClient restClient;
+	private final RestClient healthRestClient;
 	private final ExecutorService searchExecutor;
 	private final ObjectMapper objectMapper;
+	private final AtomicLong searchFailureCount = new AtomicLong();
 
 	// 메소드 설명: QdrantClient 처리 흐름을 수행합니다.
 	public QdrantClient(LawAiProperties properties, ObjectMapper objectMapper) {
@@ -50,12 +54,203 @@ public class QdrantClient {
 			.baseUrl(properties.qdrant().baseUrl())
 			.requestFactory(requestFactory)
 			.build();
+		SimpleClientHttpRequestFactory healthRequestFactory = new SimpleClientHttpRequestFactory();
+		healthRequestFactory.setConnectTimeout(Duration.ofSeconds(2));
+		healthRequestFactory.setReadTimeout(Duration.ofSeconds(2));
+		this.healthRestClient = RestClient.builder()
+			.baseUrl(properties.qdrant().baseUrl())
+			.requestFactory(healthRequestFactory)
+			.build();
 		this.searchExecutor = Executors.newFixedThreadPool(6, namedThreadFactory("qdrant-search-"));
 	}
 
 	@PreDestroy
 	public void shutdownExecutor() {
 		searchExecutor.shutdownNow();
+	}
+
+	public long searchFailureCount() {
+		return searchFailureCount.get();
+	}
+
+	public boolean isSearchReady() {
+		String lawCollection = properties.qdrant().collection();
+		String ragCollection = ragCollection();
+		if (lawCollection == null || lawCollection.isBlank() || ragCollection == null || ragCollection.isBlank()) {
+			return false;
+		}
+		List<String> collections = List.of(lawCollection, ragCollection).stream()
+			.distinct()
+			.toList();
+		for (String collection : collections) {
+			try {
+				byte[] response = healthRestClient.get()
+					.uri("/collections/{collection}", collection)
+					.retrieve()
+					.body(byte[].class);
+				if (!isCollectionSearchReady(response)) {
+					log.warn("Qdrant collection is not search-ready. collection={}", collection);
+					return false;
+				}
+			} catch (RuntimeException exception) {
+				log.warn("Qdrant readiness check failed. collection={} failureType={}",
+					collection,
+					exception.getClass().getSimpleName()
+				);
+				return false;
+			}
+		}
+		return true;
+	}
+
+	public Optional<QdrantIndexSnapshot> indexSnapshot(String collection) {
+		if (collection == null || collection.isBlank() || objectMapper == null) {
+			return Optional.empty();
+		}
+		try {
+			byte[] infoResponse = healthRestClient.get()
+				.uri("/collections/{collection}", collection)
+				.retrieve()
+				.body(byte[].class);
+			Optional<CollectionIndexInfo> info = collectionIndexInfo(infoResponse);
+			if (info.isEmpty() || !info.get().isStable(properties.qdrant().vectorSize())) {
+				return Optional.empty();
+			}
+			byte[] countResponse = healthRestClient.post()
+				.uri("/collections/{collection}/points/count", collection)
+				.body(Map.of("exact", true))
+				.retrieve()
+				.body(byte[].class);
+			Long exactCount = exactCount(countResponse);
+			if (exactCount == null || exactCount <= 0) {
+				return Optional.empty();
+			}
+			CollectionIndexInfo stable = info.get();
+			return Optional.of(new QdrantIndexSnapshot(
+				collection,
+				stable.status(),
+				stable.updateQueueLength(),
+				exactCount,
+				stable.vectorSize(),
+				stable.distance(),
+				stable.indexedVectorsCount(),
+				stable.segmentsCount()
+			));
+		} catch (RuntimeException exception) {
+			log.warn("Qdrant index snapshot is unavailable. collection={} failureType={}",
+				collection,
+				exception.getClass().getSimpleName()
+			);
+			return Optional.empty();
+		}
+	}
+
+	private boolean isCollectionSearchReady(byte[] response) {
+		if (response == null || response.length == 0 || objectMapper == null) {
+			return false;
+		}
+		try {
+			Map<?, ?> envelope = objectMapper.readValue(response, Map.class);
+			Map<?, ?> result = envelope.get("result") instanceof Map<?, ?> value ? value : Map.of();
+			if (!"green".equalsIgnoreCase(String.valueOf(result.get("status")))) {
+				return false;
+			}
+			if (!(result.get("points_count") instanceof Number pointsCount) || pointsCount.longValue() <= 0) {
+				return false;
+			}
+			Long updateQueueLength = updateQueueLength(result);
+			if (updateQueueLength == null || updateQueueLength != 0) {
+				return false;
+			}
+			Map<?, ?> config = result.get("config") instanceof Map<?, ?> value ? value : Map.of();
+			Map<?, ?> params = config.get("params") instanceof Map<?, ?> value ? value : Map.of();
+			Map<?, ?> vectors = params.get("vectors") instanceof Map<?, ?> value ? value : Map.of();
+			if (!(vectors.get("size") instanceof Number vectorSize)
+				|| vectorSize.intValue() != properties.qdrant().vectorSize()) {
+				return false;
+			}
+			return "Cosine".equalsIgnoreCase(String.valueOf(vectors.get("distance")));
+		} catch (RuntimeException exception) {
+			return false;
+		}
+	}
+
+	private Optional<CollectionIndexInfo> collectionIndexInfo(byte[] response) {
+		if (response == null || response.length == 0) {
+			return Optional.empty();
+		}
+		try {
+			Map<?, ?> envelope = objectMapper.readValue(response, Map.class);
+			if (!(envelope.get("result") instanceof Map<?, ?> result)) {
+				return Optional.empty();
+			}
+			Long updateQueueLength = updateQueueLength(result);
+			if (updateQueueLength == null) {
+				return Optional.empty();
+			}
+			Map<?, ?> config = result.get("config") instanceof Map<?, ?> value ? value : Map.of();
+			Map<?, ?> params = config.get("params") instanceof Map<?, ?> value ? value : Map.of();
+			Map<?, ?> vectors = params.get("vectors") instanceof Map<?, ?> value ? value : Map.of();
+			if (!(vectors.get("size") instanceof Number vectorSize)) {
+				return Optional.empty();
+			}
+			return Optional.of(new CollectionIndexInfo(
+				String.valueOf(result.get("status")),
+				updateQueueLength,
+				vectorSize.intValue(),
+				String.valueOf(vectors.get("distance")),
+				longValueOrDefault(result.get("indexed_vectors_count"), -1L),
+				(int) longValueOrDefault(result.get("segments_count"), -1L)
+			));
+		} catch (RuntimeException exception) {
+			return Optional.empty();
+		}
+	}
+
+	private Long updateQueueLength(Map<?, ?> result) {
+		Object updateQueue = result.get("update_queue");
+		if (updateQueue == null) {
+			return null;
+		}
+		if (!(updateQueue instanceof Map<?, ?> queue)
+			|| !(queue.get("length") instanceof Number length)
+			|| length.longValue() < 0) {
+			return null;
+		}
+		return length.longValue();
+	}
+
+	private Long exactCount(byte[] response) {
+		if (response == null || response.length == 0) {
+			return null;
+		}
+		try {
+			Map<?, ?> envelope = objectMapper.readValue(response, Map.class);
+			Map<?, ?> result = envelope.get("result") instanceof Map<?, ?> value ? value : Map.of();
+			return result.get("count") instanceof Number count ? count.longValue() : null;
+		} catch (RuntimeException exception) {
+			return null;
+		}
+	}
+
+	private long longValueOrDefault(Object value, long defaultValue) {
+		return value instanceof Number number ? number.longValue() : defaultValue;
+	}
+
+	private record CollectionIndexInfo(
+		String status,
+		long updateQueueLength,
+		int vectorSize,
+		String distance,
+		long indexedVectorsCount,
+		int segmentsCount
+	) {
+		private boolean isStable(int expectedVectorSize) {
+			return "green".equalsIgnoreCase(status)
+				&& updateQueueLength == 0
+				&& vectorSize == expectedVectorSize
+				&& "Cosine".equalsIgnoreCase(distance);
+		}
 	}
 
 	// 메소드 설명: ensureCollection 처리 흐름을 수행합니다.
@@ -361,6 +556,7 @@ public class QdrantClient {
 			collection,
 			lastException == null ? "" : lastException.getMessage()
 		);
+		searchFailureCount.incrementAndGet();
 		return Map.of();
 	}
 
@@ -372,10 +568,11 @@ public class QdrantClient {
 			.retrieve()
 			.body(byte[].class);
 		if (response == null || response.length == 0) {
-			return Map.of();
+			throw new IllegalStateException("Qdrant search response was empty.");
 		}
+		Map<String, Object> parsed;
 		try {
-			return objectMapper.readValue(response, Map.class);
+			parsed = objectMapper.readValue(response, Map.class);
 		} catch (RuntimeException exception) {
 			String snippet = new String(response, StandardCharsets.UTF_8);
 			if (snippet.length() > 300) {
@@ -383,6 +580,17 @@ public class QdrantClient {
 			}
 			throw new IllegalStateException("Qdrant response was not valid JSON. body=" + snippet, exception);
 		}
+		if (parsed == null || !(parsed.get("result") instanceof List<?> result)) {
+			throw new IllegalStateException("Qdrant search response did not contain a result list.");
+		}
+		try {
+			for (Object item : result) {
+				toHit(item);
+			}
+		} catch (RuntimeException exception) {
+			throw new IllegalStateException("Qdrant search response contained a malformed result item.", exception);
+		}
+		return parsed;
 	}
 
 	// 메소드 설명: toHit 처리 흐름을 수행합니다.

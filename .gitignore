@@ -1,5 +1,6 @@
 HELP.md
 target/
+target-stage/
 frontend/node_modules/
 frontend/dist/
 src/main/resources/application-local.properties
@@ -9,12 +10,17 @@ src/main/resources/application-local.properties
 !.env.*.example
 data/
 storage/
+!src/main/java/com/kaces/pandora/rag/storage/
+!src/main/java/com/kaces/pandora/rag/storage/**
+!src/test/java/com/kaces/pandora/rag/storage/
+!src/test/java/com/kaces/pandora/rag/storage/**
 snapshots/
 runtime/
 tmp/
 .qdrant-initialized
 *.log
 logs/
+tools/winsw/*.exe
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
@@ -46,3 +52,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Codex isolated feature worktrees
+.worktrees/

@@ -31,6 +31,17 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 	</properties>
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>software.amazon.awssdk</groupId>
+				<artifactId>bom</artifactId>
+				<version>2.46.8</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -78,6 +89,10 @@
 			<groupId>org.apache.poi</groupId>
 			<artifactId>poi-ooxml</artifactId>
 			<version>5.4.1</version>
+		</dependency>
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>s3</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.projectlombok</groupId>
@@ -163,5 +178,19 @@
 			</plugin>
 		</plugins>
 	</build>
+
+	<!--
+		Build a complete replacement jar away from target/ when the app-dev
+		Windows service is still using target/pandora-0.0.1-SNAPSHOT.jar.
+		The staged artifact is promoted only after the service has stopped.
+	-->
+	<profiles>
+		<profile>
+			<id>app-dev-staged-package</id>
+			<build>
+				<directory>${project.basedir}/target-stage</directory>
+			</build>
+		</profile>
+	</profiles>
 
 </project>

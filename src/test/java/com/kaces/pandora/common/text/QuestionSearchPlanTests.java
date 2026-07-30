@@ -33,6 +33,9 @@ class QuestionSearchPlanTests {
 		assertThat(plan.expandedQueries()).hasSizeGreaterThan(1);
 		assertThat(plan.profile().preferredSectionTypes()).contains("target_scope");
 		assertThat(join(plan.expandedQueries())).containsAnyOf("예비검토", "정보화사업", "대상");
+		assertThat(plan.profile().configuredEntityAnchorGroups()).anySatisfy(group ->
+			assertThat(group).contains("예비검토", "전자정부 성과관리")
+		);
 	}
 
 	@Test
@@ -93,12 +96,101 @@ class QuestionSearchPlanTests {
 
 		assertThat(plan.profile().entities()).extracting(QuestionEntity::id).contains("public_data");
 		assertThat(plan.profile().intentTypes()).contains("penalty");
+		assertThat(plan.profile().synonymGroups().toString())
+			.contains("\uACF5\uACF5\uB370\uC774\uD130")
+			.doesNotContain("\uC815\uBCF4\uD654\uC2DC\uC2A4\uD15C \uBC95\uC81C\uB3C4");
 		assertThat(nonEmbeddingQueries).anySatisfy(query -> {
 			assertThat(query).contains("\uACF5\uACF5\uB370\uC774\uD130");
 			assertThat(query).containsAnyOf("\uBD88\uC774\uC775", "\uC81C\uC7AC", "\uC870\uCE58", "\uC608\uC0B0 \uC870\uC815");
 		});
+		assertThat(join(plan.expandedQueries()))
+			.doesNotContain("\uC815\uBCF4\uD654\uC2DC\uC2A4\uD15C \uBC95\uC81C\uB3C4");
 		assertThat(nonEmbeddingQueries).noneMatch(query -> query.contains(" penalty") || query.contains(" target_scope"));
 		assertThat(plan.expandedQueries()).hasSizeLessThanOrEqualTo(4);
+	}
+
+	@Test
+	void whistleblowerDisadvantageDoesNotActivateInformationSystemComplianceSynonyms() {
+		QuestionSearchPlan plan = QuestionSearchPlan.from(
+			"\uACF5\uC775\uC2E0\uACE0\uC790\uAC00 \uBD88\uC774\uC775\uC744 \uBC1B\uC73C\uBA74 \uBCF4\uD638\uC870\uCE58\uB97C \uBC1B\uC744 \uC218 \uC788\uC5B4?"
+		);
+
+		assertThat(plan.profile().entities()).extracting(QuestionEntity::id).contains("whistleblower");
+		assertThat(plan.profile().synonymGroups().toString())
+			.contains("\uACF5\uC775\uC2E0\uACE0\uC790")
+			.doesNotContain("\uC815\uBCF4\uD654\uC2DC\uC2A4\uD15C \uBC95\uC81C\uB3C4");
+		assertThat(join(plan.expandedQueries()))
+			.doesNotContain("\uC815\uBCF4\uD654\uC2DC\uC2A4\uD15C \uBC95\uC81C\uB3C4");
+	}
+
+	@Test
+	void genericViolationQuestionDoesNotActivateInformationSystemComplianceSynonyms() {
+		QuestionSearchPlan plan = QuestionSearchPlan.from(
+			"\uC704\uBC18\uD558\uBA74 \uC5B4\uB5A4 \uC81C\uC7AC\uAC00 \uC788\uC5B4?"
+		);
+
+		assertThat(plan.profile().synonymGroups().toString())
+			.doesNotContain("\uC815\uBCF4\uD654\uC2DC\uC2A4\uD15C \uBC95\uC81C\uB3C4");
+	}
+
+	@Test
+	void domainAndComplianceTermsActivateInformationSystemComplianceSynonyms() {
+		QuestionSearchPlan plan = QuestionSearchPlan.from(
+			"\uC815\uBCF4\uD654\uC0AC\uC5C5\uC774 \uBC95\uC81C\uB3C4\uB97C \uC704\uBC18\uD558\uBA74 \uC5B4\uB5A4 \uC81C\uC7AC\uAC00 \uC788\uC5B4?"
+		);
+
+		assertThat(plan.profile().synonymGroups().toString())
+			.contains("\uC815\uBCF4\uD654\uC2DC\uC2A4\uD15C \uBC95\uC81C\uB3C4", "\uC704\uBC18", "\uC81C\uC7AC");
+	}
+
+	@Test
+	void informationSystemReviewResultBudgetQuestionRetainsComplianceSynonyms() {
+		QuestionSearchPlan plan = QuestionSearchPlan.from(
+			"\uC815\uBCF4\uD654\uC0AC\uC5C5 \uAC80\uD1A0\uACB0\uACFC \uBBF8\uBC18\uC601 \uC2DC \uC608\uC0B0 \uC870\uC815\uC774 \uC788\uC5B4?"
+		);
+
+		assertThat(plan.profile().synonymGroups().toString())
+			.contains("\uC815\uBCF4\uD654\uC2DC\uC2A4\uD15C \uBC95\uC81C\uB3C4", "\uC608\uC0B0 \uC870\uC815", "\uAC80\uD1A0\uACB0\uACFC \uBC18\uC601");
+	}
+
+	@Test
+	void privacyInformationSystemQuestionDoesNotActivateItComplianceSynonyms() {
+		QuestionSearchPlan plan = QuestionSearchPlan.from(
+			"\uAC1C\uC778\uC815\uBCF4\uC2DC\uC2A4\uD15C\uC774 \uAC1C\uC778\uC815\uBCF4\uBCF4\uD638\uBC95\uC744 \uC704\uBC18\uD558\uBA74 \uC5B4\uB5A4 \uC81C\uC7AC\uAC00 \uC788\uC5B4?"
+		);
+
+		assertThat(plan.profile().synonymGroups().toString())
+			.doesNotContain("\uC815\uBCF4\uD654\uC2DC\uC2A4\uD15C \uBC95\uC81C\uB3C4");
+	}
+
+	@Test
+	void explicitInformationSystemCompliancePhraseActivatesItComplianceSynonyms() {
+		QuestionSearchPlan plan = QuestionSearchPlan.from(
+			"\uC815\uBCF4\uC2DC\uC2A4\uD15C \uBC95\uC81C\uB3C4 \uC704\uBC18 \uC2DC \uC81C\uC7AC\uB294?"
+		);
+
+		assertThat(plan.profile().synonymGroups().toString())
+			.contains("\uC815\uBCF4\uD654\uC2DC\uC2A4\uD15C \uBC95\uC81C\uB3C4", "\uC704\uBC18", "\uC81C\uC7AC");
+	}
+
+	@Test
+	void informationSystemWithParticleActivatesItComplianceSynonyms() {
+		QuestionSearchPlan plan = QuestionSearchPlan.from(
+			"\uC815\uBCF4\uC2DC\uC2A4\uD15C\uC774 \uBC95\uC81C\uB3C4\uB97C \uC704\uBC18\uD558\uBA74 \uC5B4\uB5A4 \uC81C\uC7AC\uAC00 \uC788\uC5B4?"
+		);
+
+		assertThat(plan.profile().synonymGroups().toString())
+			.contains("\uC815\uBCF4\uD654\uC2DC\uC2A4\uD15C \uBC95\uC81C\uB3C4", "\uC704\uBC18", "\uC81C\uC7AC");
+	}
+
+	@Test
+	void alreadyReflectedInformationSystemQuestionDoesNotMatchNonReflectionCue() {
+		QuestionSearchPlan plan = QuestionSearchPlan.from(
+			"\uC815\uBCF4\uD654\uC0AC\uC5C5 \uACC4\uD68D\uC5D0 \uC774\uBBF8 \uBC18\uC601\uB41C \uB0B4\uC6A9\uC774\uC57C?"
+		);
+
+		assertThat(plan.profile().synonymGroups().toString())
+			.doesNotContain("\uC815\uBCF4\uD654\uC2DC\uC2A4\uD15C \uBC95\uC81C\uB3C4");
 	}
 
 	@Test

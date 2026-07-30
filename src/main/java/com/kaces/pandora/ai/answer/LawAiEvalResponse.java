@@ -43,6 +43,8 @@ public record LawAiEvalResponse(
 		List<String> missingAnswerTerms,
 		List<String> forbiddenAnswerMatchedTerms,
 		List<String> unsupportedAnswerClaims,
+		List<String> contradictedAnswerClaims,
+		List<ClaimVerifier.ClaimEvidenceLink> claimEvidenceLinks,
 		String verifiedAnswer
 	) {
 	}

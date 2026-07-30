@@ -58,6 +58,11 @@ public interface RagCollectionMapper {
 		@Param("errorMessage") String errorMessage
 	);
 
+	RagCollectedAttachmentRow findAttachment(
+		@Param("articleId") long articleId,
+		@Param("url") String url
+	);
+
 	void upsertAttachment(
 		@Param("articleId") long articleId,
 		@Param("url") String url,

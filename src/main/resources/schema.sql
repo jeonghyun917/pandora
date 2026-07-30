@@ -212,6 +212,7 @@ CREATE TABLE IF NOT EXISTS rag_documents (
     trust_level INT NOT NULL DEFAULT 1 COMMENT '1 official/work basis, 5 reference',
     file_name VARCHAR(500) NOT NULL COMMENT 'original file name',
     file_path VARCHAR(1000) NOT NULL COMMENT 'local file path',
+    object_key VARCHAR(1000) NULL COMMENT 'private object storage key for original file',
     file_hash CHAR(64) NOT NULL COMMENT 'SHA-256 file hash',
     mime_type VARCHAR(100) NULL COMMENT 'detected mime type',
     source_url VARCHAR(4000) NULL COMMENT 'source url or local reference',
@@ -245,6 +246,8 @@ CREATE TABLE IF NOT EXISTS rag_document_chunks (
     source_url VARCHAR(4000) NULL COMMENT 'source url',
     sort_order INT NOT NULL DEFAULT 0 COMMENT 'display order',
     content_hash CHAR(64) NOT NULL COMMENT 'chunk content hash',
+	quality_status VARCHAR(20) NOT NULL DEFAULT 'PASS' COMMENT 'PASS, REVIEW, CONTEXT_ONLY, REJECT',
+	quality_reason VARCHAR(100) NULL COMMENT 'chunk quality decision reason',
     index_status VARCHAR(30) NOT NULL DEFAULT 'PENDING' COMMENT 'index status',
     use_yn CHAR(1) NOT NULL DEFAULT 'Y' COMMENT 'use flag',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created time',
@@ -254,6 +257,7 @@ CREATE TABLE IF NOT EXISTS rag_document_chunks (
     KEY idx_rag_document_chunks_version (document_id, chunk_version, use_yn, sort_order),
     KEY idx_rag_document_chunks_section (section_type, chunk_version),
     KEY idx_rag_document_chunks_status (index_status),
+	KEY idx_rag_document_chunks_quality (quality_status, chunk_version, use_yn),
     CONSTRAINT fk_rag_document_chunks_document
         FOREIGN KEY (document_id) REFERENCES rag_documents (document_id)
         ON DELETE CASCADE,
@@ -272,11 +276,69 @@ ALTER TABLE rag_document_chunks
 ALTER TABLE rag_document_chunks
     ADD COLUMN IF NOT EXISTS embedding_text LONGTEXT NULL COMMENT 'versioned text used for embedding';
 
+ALTER TABLE rag_document_chunks
+	ADD COLUMN IF NOT EXISTS quality_status VARCHAR(20) NOT NULL DEFAULT 'PASS' COMMENT 'PASS, REVIEW, CONTEXT_ONLY, REJECT';
+
+ALTER TABLE rag_document_chunks
+	ADD COLUMN IF NOT EXISTS quality_reason VARCHAR(100) NULL COMMENT 'chunk quality decision reason';
+
 CREATE INDEX IF NOT EXISTS idx_rag_document_chunks_version
     ON rag_document_chunks (document_id, chunk_version, use_yn, sort_order);
 
 CREATE INDEX IF NOT EXISTS idx_rag_document_chunks_section
     ON rag_document_chunks (section_type, chunk_version);
+
+CREATE INDEX IF NOT EXISTS idx_rag_document_chunks_quality
+	ON rag_document_chunks (quality_status, chunk_version, use_yn);
+
+CREATE TABLE IF NOT EXISTS rag_chunk_search_terms (
+    term VARCHAR(80) NOT NULL COMMENT 'normalized exact search term',
+    chunk_id BIGINT NOT NULL COMMENT 'RAG chunk id',
+    document_id BIGINT NOT NULL COMMENT 'RAG document id',
+    field_kind VARCHAR(30) NOT NULL COMMENT 'document_title, parent_title, chunk_title, body',
+    weight SMALLINT NOT NULL DEFAULT 1 COMMENT 'field relevance weight',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created time',
+    PRIMARY KEY (term, chunk_id),
+    KEY idx_rag_chunk_search_terms_chunk (chunk_id),
+    KEY idx_rag_chunk_search_terms_document (document_id, chunk_id),
+    CONSTRAINT fk_rag_chunk_search_terms_chunk
+        FOREIGN KEY (chunk_id) REFERENCES rag_document_chunks (chunk_id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_rag_chunk_search_terms_document
+        FOREIGN KEY (document_id) REFERENCES rag_documents (document_id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS rag_chunk_search_index_state (
+    chunk_id BIGINT NOT NULL COMMENT 'RAG chunk id',
+    document_id BIGINT NOT NULL COMMENT 'RAG document id',
+    index_version INT NOT NULL DEFAULT 2 COMMENT 'lexical index format version',
+    content_hash CHAR(64) NULL COMMENT 'indexed chunk content hash',
+    term_count INT NOT NULL DEFAULT 0 COMMENT 'number of indexed terms',
+    completed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'index completion time',
+    PRIMARY KEY (chunk_id),
+    KEY idx_rag_chunk_search_index_state_document (document_id, chunk_id),
+    CONSTRAINT fk_rag_chunk_search_index_state_chunk
+        FOREIGN KEY (chunk_id) REFERENCES rag_document_chunks (chunk_id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_rag_chunk_search_index_state_document
+        FOREIGN KEY (document_id) REFERENCES rag_documents (document_id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS rag_search_index_control (
+    index_name VARCHAR(60) NOT NULL,
+    index_version INT NOT NULL DEFAULT 2,
+    status VARCHAR(20) NOT NULL DEFAULT 'BUILDING' COMMENT 'BUILDING, READY',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (index_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO rag_search_index_control (index_name, index_version, status)
+VALUES ('rag_chunk_terms', 2, 'BUILDING')
+ON DUPLICATE KEY UPDATE
+    status = IF(index_version = VALUES(index_version), status, 'BUILDING'),
+    index_version = VALUES(index_version);
 
 CREATE TABLE IF NOT EXISTS rag_chunk_embeddings (
     chunk_id BIGINT NOT NULL COMMENT 'RAG chunk id',
@@ -430,8 +492,8 @@ CREATE TABLE IF NOT EXISTS law_ai_search_failure_logs (
     entity_ids VARCHAR(1000) NULL COMMENT 'detected entity ids',
     lexical_keywords TEXT NULL COMMENT 'lexical keywords used for search',
     expanded_queries TEXT NULL COMMENT 'multi-query search texts',
-    failure_type VARCHAR(50) NOT NULL DEFAULT 'UNKNOWN' COMMENT 'classified failure type',
-    failure_stage VARCHAR(50) NOT NULL DEFAULT 'UNKNOWN' COMMENT 'pipeline stage where failure happened',
+    failure_type VARCHAR(50) NOT NULL DEFAULT 'PIPELINE_RESULT_INCONSISTENT' COMMENT 'classified failure type',
+    failure_stage VARCHAR(50) NOT NULL DEFAULT 'PIPELINE' COMMENT 'pipeline stage where failure happened',
     retryable TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'whether search logic/data can improve this failure',
     eval_candidate TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'whether this failure should become an evaluation candidate',
     qdrant_hit_count INT NOT NULL DEFAULT 0 COMMENT 'raw qdrant hit count',
@@ -443,6 +505,11 @@ CREATE TABLE IF NOT EXISTS law_ai_search_failure_logs (
     judge_candidate_count INT NOT NULL DEFAULT 0 COMMENT 'candidate count sent to evidence judge',
     judged_count INT NOT NULL DEFAULT 0 COMMENT 'evidence judge accepted count',
     final_ground_count INT NOT NULL DEFAULT 0 COMMENT 'final returned ground count',
+    topic_aligned_count INT NOT NULL DEFAULT 0 COMMENT 'topic-aligned evidence count',
+    relevant_count INT NOT NULL DEFAULT 0 COMMENT 'relevant evidence count',
+    direct_evidence_count INT NOT NULL DEFAULT 0 COMMENT 'direct evidence count',
+    evidence_selection_policy VARCHAR(50) NOT NULL DEFAULT 'empty' COMMENT 'evidence selection policy',
+    document_scope_mismatch TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'selected targets excluded preferred targets',
     result_msg VARCHAR(50) NOT NULL COMMENT 'retrieval result code',
     public_message TEXT NULL COMMENT 'public no-ground message',
     diagnostic_message TEXT NULL COMMENT 'internal diagnostic message',

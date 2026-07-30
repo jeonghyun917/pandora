@@ -23,8 +23,50 @@ public record LawAiEvalRequest(
 		List<String> expectedResultMsgs,
 		Boolean answerVerificationRequired,
 		List<String> expectedAnswerTerms,
-		List<String> forbiddenAnswerTerms
+		List<String> forbiddenAnswerTerms,
+		List<List<String>> requiredPropositionGroups,
+		List<List<String>> requiredConditionGroups
 	) {
+		public EvalCase(
+			String id,
+			String question,
+			List<String> targets,
+			List<String> expectedTerms,
+			Integer requiredMatches,
+			List<String> expectedTitleTerms,
+			List<String> expectedSectionTypes,
+			List<String> forbiddenTerms,
+			List<String> expectedDocumentTerms,
+			List<String> expectedPageNumbers,
+			List<String> expectedParentTerms,
+			String answerDirection,
+			List<String> expectedResultMsgs,
+			Boolean answerVerificationRequired,
+			List<String> expectedAnswerTerms,
+			List<String> forbiddenAnswerTerms
+		) {
+			this(
+				id,
+				question,
+				targets,
+				expectedTerms,
+				requiredMatches,
+				expectedTitleTerms,
+				expectedSectionTypes,
+				forbiddenTerms,
+				expectedDocumentTerms,
+				expectedPageNumbers,
+				expectedParentTerms,
+				answerDirection,
+				expectedResultMsgs,
+				answerVerificationRequired,
+				expectedAnswerTerms,
+				forbiddenAnswerTerms,
+				List.of(),
+				List.of()
+			);
+		}
+
 		public EvalCase(
 			String id,
 			String question,
@@ -54,6 +96,8 @@ public record LawAiEvalRequest(
 				answerDirection,
 				List.of(),
 				null,
+				List.of(),
+				List.of(),
 				List.of(),
 				List.of()
 			);
@@ -89,6 +133,8 @@ public record LawAiEvalRequest(
 				answerDirection,
 				expectedResultMsgs,
 				null,
+				List.of(),
+				List.of(),
 				List.of(),
 				List.of()
 			);

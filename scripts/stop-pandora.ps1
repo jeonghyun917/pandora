@@ -2,13 +2,18 @@ param(
     [ValidateSet('app-dev', 'batch-runner')]
     [string]$Role = 'app-dev',
     [int]$Port = 0,
-    [string]$ProjectDir = 'C:\dev\workspace-egov\pandora'
+    [string]$ProjectDir = 'C:\dev\workspace-egov\pandora',
+    [switch]$ConfirmBatchRunner
 )
 
 $ErrorActionPreference = 'Stop'
 
 if ($Port -le 0) {
     $Port = if ($Role -eq 'batch-runner') { 18080 } else { 8080 }
+}
+
+if ($Role -eq 'batch-runner' -and -not $ConfirmBatchRunner) {
+    throw "Stopping batch-runner requires -ConfirmBatchRunner. Do not stop 18080 unless the batch owner approved it."
 }
 
 $pidFile = Join-Path $ProjectDir "runtime\$Role\pandora-$Port.pid"

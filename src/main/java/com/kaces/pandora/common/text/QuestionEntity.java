@@ -7,6 +7,7 @@ public record QuestionEntity(
 	String label,
 	String type,
 	List<String> aliases,
+	List<String> answerAnchors,
 	List<String> preferredTargets,
 	List<String> focusedKeywords,
 	List<String> sectionTypes,

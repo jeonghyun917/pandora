@@ -1,5 +1,6 @@
 package com.kaces.pandora.app;
 
+import org.apache.ibatis.annotations.Mapper;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -8,7 +9,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication(scanBasePackages = "com.kaces.pandora")
 @ConfigurationPropertiesScan(basePackages = "com.kaces.pandora")
-@MapperScan(basePackages = "com.kaces.pandora")
+@MapperScan(basePackages = "com.kaces.pandora", annotationClass = Mapper.class)
 @EnableScheduling
 public class PandoraApplication {
 

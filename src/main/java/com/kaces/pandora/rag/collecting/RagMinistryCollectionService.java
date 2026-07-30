@@ -53,6 +53,7 @@ public class RagMinistryCollectionService {
 	private final RagImportService importService;
 	private final LawSemanticBatchJobService batchJobService;
 	private final ObjectMapper objectMapper;
+	private final CollectedFileStore collectedFileStore;
 	private final HttpClient httpClient;
 
 	public RagMinistryCollectionService(
@@ -60,13 +61,15 @@ public class RagMinistryCollectionService {
 		RagDocumentMapper documentMapper,
 		RagImportService importService,
 		LawSemanticBatchJobService batchJobService,
-		ObjectMapper objectMapper
+		ObjectMapper objectMapper,
+		CollectedFileStore collectedFileStore
 	) {
 		this.collectionMapper = collectionMapper;
 		this.documentMapper = documentMapper;
 		this.importService = importService;
 		this.batchJobService = batchJobService;
 		this.objectMapper = objectMapper;
+		this.collectedFileStore = collectedFileStore;
 		this.httpClient = HttpClient.newBuilder()
 			.connectTimeout(Duration.ofSeconds(15))
 			.followRedirects(HttpClient.Redirect.NORMAL)
@@ -92,7 +95,13 @@ public class RagMinistryCollectionService {
 		);
 	}
 
-	public RagCollectionResponse collect(String agencyCode, boolean fillQueue, int maxArticles, int maxAttachmentsPerArticle) {
+	public RagCollectionResponse collect(
+		String agencyCode,
+		boolean fillQueue,
+		int maxArticles,
+		int maxAttachmentsPerArticle,
+		boolean refreshExisting
+	) {
 		seedDefaultSources();
 		String requestedAgency = normalizeAgency(agencyCode);
 		RagCollectionRunKey run = new RagCollectionRunKey();
@@ -137,7 +146,13 @@ public class RagMinistryCollectionService {
 						continue;
 					}
 					try {
-						ArticleProcessResult result = processArticle(source, articleId, item, maxAttachmentsPerArticle);
+						ArticleProcessResult result = processArticle(
+							source,
+							articleId,
+							item,
+							maxAttachmentsPerArticle,
+							refreshExisting
+						);
 						attachmentsDiscovered += result.attachmentsDiscovered();
 						downloadedCount += result.downloaded();
 						importedCount += result.imported();
@@ -212,7 +227,8 @@ public class RagMinistryCollectionService {
 		RagCollectionSourceRow source,
 		long articleId,
 		RssItem item,
-		int maxAttachmentsPerArticle
+		int maxAttachmentsPerArticle,
+		boolean refreshExisting
 	) throws Exception {
 		String html = httpGetText(item.link());
 		String detailHash = sha256Text(html);
@@ -245,12 +261,21 @@ public class RagMinistryCollectionService {
 					);
 					continue;
 				}
-				Path destination = uniqueDestination(articleDir, candidate.fileName());
+				RagCollectedAttachmentRow existingAttachment =
+					collectionMapper.findAttachment(articleId, candidate.url());
+				if (collectedFileStore.shouldReuse(existingAttachment, articleDir, refreshExisting)) {
+					skipped++;
+					continue;
+				}
 				byte[] bytes = httpGetBytes(candidate.url());
-				Files.write(destination, bytes);
-				String fileHash = sha256Bytes(bytes);
+				CollectedFileStore.StoredFile storedFile =
+					collectedFileStore.store(articleDir, candidate.fileName(), bytes);
+				Path destination = storedFile.path();
+				String fileHash = storedFile.sha256();
 				downloaded++;
-				writeMeta(destination, source, item, detailHash);
+				if (storedFile.created() || !Files.exists(metaPath(destination))) {
+					writeMeta(destination, source, item, detailHash);
+				}
 				RagImportResponse response = importService.importFolder("official_doc", articleDir.toString(), false, false);
 				RagDocumentRow document = documentMapper.findDocumentByHash(fileHash);
 				Long documentId = document == null ? null : document.documentId();
@@ -457,9 +482,7 @@ public class RagMinistryCollectionService {
 	}
 
 	private void writeMeta(Path file, RagCollectionSourceRow source, RssItem item, String detailHash) throws IOException {
-		String fileName = file.getFileName().toString();
-		String baseName = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
-		Path meta = file.resolveSibling(baseName + ".meta.json");
+		Path meta = metaPath(file);
 		RagDocumentMeta documentMeta = new RagDocumentMeta(
 			"official_doc",
 			null,
@@ -474,32 +497,17 @@ public class RagMinistryCollectionService {
 		objectMapper.writeValue(meta.toFile(), documentMeta);
 	}
 
+	private Path metaPath(Path file) {
+		String fileName = file.getFileName().toString();
+		String baseName = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
+		return file.resolveSibling(baseName + ".meta.json");
+	}
+
 	private Path articleDirectory(String agencyCode, long articleId) {
 		String year = String.valueOf(LocalDateTime.now(KST).getYear());
 		return Path.of("data", "rag-upload", "ministry_docs", agencyCode.toLowerCase(Locale.ROOT), year, String.valueOf(articleId))
 			.toAbsolutePath()
 			.normalize();
-	}
-
-	private Path uniqueDestination(Path directory, String fileName) {
-		Path destination = directory.resolve(safeFileName(fileName));
-		if (!Files.exists(destination)) {
-			return destination;
-		}
-		String base = fileName;
-		String extension = "";
-		int dot = fileName.lastIndexOf('.');
-		if (dot > 0) {
-			base = fileName.substring(0, dot);
-			extension = fileName.substring(dot);
-		}
-		for (int index = 2; index < 1000; index++) {
-			Path candidate = directory.resolve(safeFileName(base + "-" + index + extension));
-			if (!Files.exists(candidate)) {
-				return candidate;
-			}
-		}
-		return directory.resolve(safeFileName(base + "-" + System.currentTimeMillis() + extension));
 	}
 
 	private String httpGetText(String url) throws Exception {

@@ -10,14 +10,104 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 final class LawAiEvaluationCaseCatalog {
 
 	private static final List<String> RESOURCE_PATHS = List.of(
 		"/rag-evaluation-cases.tsv",
 		"/rag-evaluation-cases.generated.tsv"
+	);
+	private static final String ANSWER_ORACLE_RESOURCE_PATH = "/rag-answer-evaluation-oracles.tsv";
+	private static final Set<String> REQUIRED_ANSWER_ORACLE_IDS = Set.of(
+		"project-review-target",
+		"project-review-simple-software",
+		"project-review-hardware-exclusion",
+		"project-review-sns-operation",
+		"project-review-pre-consultation-relation",
+		"pre-consultation-target",
+		"pre-consultation-when",
+		"pre-consultation-exception",
+		"security-review-target",
+		"security-review-exception",
+		"security-review-procedure",
+		"it-compliance-penalty",
+		"egov-preliminary-review-target",
+		"rfp-required-items",
+		"rfp-tech-score-table",
+		"public-data-db-standard",
+		"procurement-catalog-contract",
+		"commercial-sw-direct-purchase",
+		"performance-measure-when",
+		"irm-faithfulness",
+		"whistleblower-protection-scope",
+		"traffic-crosswalk-stop",
+		"video-cctv-guide",
+		"personal-info-purpose",
+		"official-doc-title",
+		"noise-unification-white-paper-header",
+		"privacy-integrated-guide-purpose",
+		"privacy-consent-notice-items",
+		"public-data-custom-support",
+		"public-data-preprocessing",
+		"mois-autonomy-preconsultation-target",
+		"mois-autonomy-preconsultation-procedure",
+		"mcst-tourism-dure-support",
+		"pipc-cctv-public-place-exception",
+		"pipc-cctv-retention-period",
+		"pipc-pseudonym-additional-info",
+		"public-data-portal-standard-scope",
+		"mcst-tourism-dure-period",
+		"msit-tving-investigation",
+		"project-review-all-sw-projects",
+		"project-review-exclusion-hardware",
+		"pre-consultation-public-agency",
+		"pre-consultation-plan-stage",
+		"security-review-sensitive-info",
+		"security-review-notice-result",
+		"rfp-requirement-evaluation",
+		"commercial-sw-direct-buy-exception",
+		"procurement-digital-service-mall",
+		"privacy-consent-refusal",
+		"cctv-public-place-rule",
+		"cctv-retention-not-fixed-30",
+		"ai-law-enforcement-date",
+		"traffic-right-turn-pedestrian",
+		"whistleblower-disadvantage",
+		"irm-faithfulness-meaning",
+		"mois-autonomy-document-confusion",
+		"project-review-maintenance-check",
+		"project-review-scope-change",
+		"pre-consultation-central-agency",
+		"pre-consultation-excluded-project",
+		"security-review-major-infra",
+		"security-review-skip-condition",
+		"rfp-requirement-method",
+		"commercial-sw-direct-buy-target",
+		"procurement-catalog-vs-contract",
+		"public-data-portal-manual-application",
+		"privacy-consent-items-law",
+		"privacy-processing-principle",
+		"pseudonym-extra-info-separate",
+		"traffic-right-turn-stop-rule",
+		"whistleblower-protection-action",
+		"irm-measure-period",
+		"mois-autonomy-request-docs",
+		"privacy-retention-notice",
+		"privacy-minimum-collection",
+		"privacy-destruction-principle",
+		"cctv-install-purpose-limit",
+		"cctv-retention-period",
+		"public-data-open-format",
+		"public-data-meta-management",
+		"mois-national-safety-plan",
+		"law-effective-date-check",
+		"admrul-notice-exception",
+		"no-unrelated-privacy-for-sw",
+		"public-data-obligation-system"
 	);
 	private static final Path EXTERNAL_FAILURE_CASE_PATH = Path.of(
 		System.getProperty("pandora.rag.eval.failure-cases", "data/rag-evaluation/failure-cases.tsv")
@@ -41,10 +131,175 @@ final class LawAiEvaluationCaseCatalog {
 				}
 			}
 			loadExternalCases(cases);
-			return cases.isEmpty() ? fallbackCases() : List.copyOf(cases.values());
+			try (InputStream oracleStream = LawAiEvaluationCaseCatalog.class.getResourceAsStream(ANSWER_ORACLE_RESOURCE_PATH)) {
+				if (oracleStream == null) {
+					throw new IllegalStateException("Missing bundled answer oracle resource: " + ANSWER_ORACLE_RESOURCE_PATH);
+				}
+				return mergeAnswerOracles(List.copyOf(cases.values()), oracleStream, REQUIRED_ANSWER_ORACLE_IDS);
+			}
 		} catch (IOException exception) {
-			return fallbackCases();
+			throw new IllegalStateException("Failed to load evaluation cases and answer oracles.", exception);
 		}
+	}
+
+	static List<LawAiEvalRequest.EvalCase> mergeAnswerOracles(
+		List<LawAiEvalRequest.EvalCase> baseCases,
+		InputStream inputStream,
+		Set<String> requiredOracleIds
+	) throws IOException {
+		Map<String, LawAiEvalRequest.EvalCase> casesById = new LinkedHashMap<>();
+		for (LawAiEvalRequest.EvalCase evalCase : baseCases == null ? List.<LawAiEvalRequest.EvalCase>of() : baseCases) {
+			casesById.put(evalCase.id(), evalCase);
+		}
+		Map<String, AnswerOracle> oracles = parseAnswerOracles(inputStream);
+		for (String oracleId : oracles.keySet()) {
+			if (!casesById.containsKey(oracleId)) {
+				throw new IllegalArgumentException("orphan oracle ID: " + oracleId);
+			}
+		}
+		Set<String> requiredIds = requiredOracleIds == null ? Set.of() : Set.copyOf(requiredOracleIds);
+		Set<String> missingIds = new LinkedHashSet<>(requiredIds);
+		missingIds.removeAll(oracles.keySet());
+		if (!missingIds.isEmpty()) {
+			throw new IllegalArgumentException("missing oracle IDs: " + String.join(", ", missingIds));
+		}
+		Set<String> unexpectedIds = new LinkedHashSet<>(oracles.keySet());
+		unexpectedIds.removeAll(requiredIds);
+		if (!unexpectedIds.isEmpty()) {
+			throw new IllegalArgumentException("unexpected oracle IDs: " + String.join(", ", unexpectedIds));
+		}
+		if (oracles.size() != requiredIds.size()) {
+			throw new IllegalArgumentException(
+				"bundled answer oracle count must be " + requiredIds.size() + ", got " + oracles.size()
+			);
+		}
+		for (AnswerOracle oracle : oracles.values()) {
+			LawAiEvalRequest.EvalCase baseCase = casesById.get(oracle.id());
+			casesById.put(oracle.id(), withOracle(baseCase, oracle));
+		}
+		return List.copyOf(casesById.values());
+	}
+
+	private static Map<String, AnswerOracle> parseAnswerOracles(InputStream inputStream) throws IOException {
+		if (inputStream == null) {
+			throw new IllegalArgumentException("Answer oracle input is required.");
+		}
+		Map<String, AnswerOracle> oracles = new LinkedHashMap<>();
+		try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+			String line;
+			int lineNumber = 0;
+			while ((line = reader.readLine()) != null) {
+				lineNumber++;
+				if (lineNumber == 1 && line.startsWith("\uFEFF")) {
+					line = line.substring(1);
+				}
+				if (line.contains("\"")) {
+					throw new IllegalArgumentException(
+						"answer oracle line " + lineNumber + ": quoted fields are not supported"
+					);
+				}
+				if (line.isBlank() || line.trim().startsWith("#")) {
+					continue;
+				}
+				String[] columns = line.split("\t", -1);
+				if ("id".equalsIgnoreCase(columns[0].trim())) {
+					continue;
+				}
+				if (columns.length != 4) {
+					throw new IllegalArgumentException(
+						"answer oracle line " + lineNumber + " must have exactly 4 columns"
+					);
+				}
+				String id = columns[0].trim();
+				if (id.isBlank()) {
+					throw new IllegalArgumentException("answer oracle line " + lineNumber + " has an empty ID");
+				}
+				if (oracles.containsKey(id)) {
+					throw new IllegalArgumentException("duplicate oracle ID: " + id);
+				}
+				List<List<String>> propositions = parseGroups(columns[1], id, "proposition", false);
+				List<List<String>> conditions = parseGroups(columns[2], id, "condition", true);
+				List<String> forbidden = parseForbiddenExpressions(columns[3], id);
+				oracles.put(id, new AnswerOracle(id, propositions, conditions, forbidden));
+			}
+		}
+		return Map.copyOf(oracles);
+	}
+
+	private static List<List<String>> parseGroups(String value, String id, String kind, boolean allowNone) {
+		String trimmed = value == null ? "" : value.trim();
+		if (allowNone && "-".equals(trimmed)) {
+			return List.of();
+		}
+		if (trimmed.isBlank() || "-".equals(trimmed)) {
+			throw new IllegalArgumentException("malformed " + kind + " groups for oracle ID " + id);
+		}
+		List<List<String>> groups = new ArrayList<>();
+		for (String rawGroup : trimmed.split(";", -1)) {
+			if (rawGroup.isBlank() || rawGroup.contains("-") && "-".equals(rawGroup.trim())) {
+				throw new IllegalArgumentException("malformed " + kind + " groups for oracle ID " + id);
+			}
+			List<String> aliases = new ArrayList<>();
+			for (String rawAlias : rawGroup.split("\\|", -1)) {
+				String alias = rawAlias.trim();
+				if (alias.isBlank()) {
+					throw new IllegalArgumentException("malformed " + kind + " group for oracle ID " + id);
+				}
+				aliases.add(alias);
+			}
+			groups.add(List.copyOf(aliases));
+		}
+		return List.copyOf(groups);
+	}
+
+	private static List<String> parseForbiddenExpressions(String value, String id) {
+		String trimmed = value == null ? "" : value.trim();
+		if (trimmed.isBlank() || "-".equals(trimmed)) {
+			throw new IllegalArgumentException("missing forbidden answer expression for oracle ID " + id);
+		}
+		List<String> expressions = new ArrayList<>();
+		for (String rawExpression : trimmed.split("\\|", -1)) {
+			String expression = rawExpression.trim();
+			if (expression.isBlank()) {
+				throw new IllegalArgumentException("malformed forbidden answer expression for oracle ID " + id);
+			}
+			expressions.add(expression);
+		}
+		return List.copyOf(expressions);
+	}
+
+	private static LawAiEvalRequest.EvalCase withOracle(
+		LawAiEvalRequest.EvalCase baseCase,
+		AnswerOracle oracle
+	) {
+		return new LawAiEvalRequest.EvalCase(
+			baseCase.id(),
+			baseCase.question(),
+			baseCase.targets(),
+			baseCase.expectedTerms(),
+			baseCase.requiredMatches(),
+			baseCase.expectedTitleTerms(),
+			baseCase.expectedSectionTypes(),
+			baseCase.forbiddenTerms(),
+			baseCase.expectedDocumentTerms(),
+			baseCase.expectedPageNumbers(),
+			baseCase.expectedParentTerms(),
+			baseCase.answerDirection(),
+			baseCase.expectedResultMsgs(),
+			true,
+			baseCase.expectedAnswerTerms(),
+			oracle.forbiddenAnswerExpressions(),
+			oracle.requiredPropositionGroups(),
+			oracle.requiredConditionGroups()
+		);
+	}
+
+	private record AnswerOracle(
+		String id,
+		List<List<String>> requiredPropositionGroups,
+		List<List<String>> requiredConditionGroups,
+		List<String> forbiddenAnswerExpressions
+	) {
 	}
 
 	static Path externalFailureCasePath() {

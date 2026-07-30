@@ -4,9 +4,9 @@ import com.kaces.pandora.rag.importing.ExtractedDocument;
 import com.kaces.pandora.rag.importing.ExtractedPage;
 import com.kaces.pandora.rag.importing.RagTextExtractor;
 import com.kaces.pandora.rag.document.RagDocumentRow;
+import com.kaces.pandora.rag.storage.RagOriginalDocumentStore;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -31,18 +31,28 @@ public class RagDocumentPreviewService {
 	private static final float MARGIN = 42f;
 
 	private final RagTextExtractor textExtractor;
+	private final RagOriginalDocumentStore originalDocumentStore;
 
 	// 메소드 설명: RagDocumentPreviewService 처리 흐름을 수행합니다.
-	public RagDocumentPreviewService(RagTextExtractor textExtractor) {
+	public RagDocumentPreviewService(
+		RagTextExtractor textExtractor,
+		RagOriginalDocumentStore originalDocumentStore
+	) {
 		this.textExtractor = textExtractor;
+		this.originalDocumentStore = originalDocumentStore;
 	}
 
 	// 메소드 설명: previewPdf 처리 흐름을 수행합니다.
 	public Resource previewPdf(RagDocumentRow document) {
-		if (document == null || document.filePath() == null || document.filePath().isBlank()) {
+		if (document == null || !originalDocumentStore.exists(document)) {
 			throw new ResponseStatusException(HttpStatus.NOT_FOUND);
 		}
-		Path source = Path.of(document.filePath()).toAbsolutePath().normalize();
+		Path source;
+		try {
+			source = originalDocumentStore.materialize(document);
+		} catch (IOException exception) {
+			throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Original document could not be read.", exception);
+		}
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		if (!Files.isRegularFile(source) || !Files.isReadable(source)) {
 			throw new ResponseStatusException(HttpStatus.NOT_FOUND);
@@ -70,12 +80,11 @@ public class RagDocumentPreviewService {
 
 	// 메소드 설명: canPreview 처리 흐름을 수행합니다.
 	public boolean canPreview(RagDocumentRow document) {
-		Path source = sourcePath(document);
-		if (source == null || !Files.isRegularFile(source) || !Files.isReadable(source)) {
+		if (document == null || !originalDocumentStore.exists(document)) {
 			return false;
 		}
 		String lower = document.fileName() == null
-			? source.getFileName().toString().toLowerCase()
+			? ""
 			: document.fileName().toLowerCase();
 		String mimeType = document.mimeType() == null ? "" : document.mimeType().toLowerCase();
 		return mimeType.contains("pdf")
@@ -90,23 +99,17 @@ public class RagDocumentPreviewService {
 			|| lower.endsWith(".xls");
 	}
 
-	private Path sourcePath(RagDocumentRow document) {
-		if (document == null || document.filePath() == null || document.filePath().isBlank()) {
-			return null;
-		}
-		try {
-			return Path.of(document.filePath()).toAbsolutePath().normalize();
-		} catch (InvalidPathException exception) {
-			return null;
-		}
-	}
-
 	// 메소드 설명: hasReadyPreview 처리 흐름을 수행합니다.
 	public boolean hasReadyPreview(RagDocumentRow document) {
-		if (document == null || document.filePath() == null || document.filePath().isBlank()) {
+		if (document == null || !originalDocumentStore.exists(document)) {
 			return false;
 		}
-		Path source = Path.of(document.filePath()).toAbsolutePath().normalize();
+		Path source;
+		try {
+			source = originalDocumentStore.materialize(document);
+		} catch (IOException exception) {
+			return false;
+		}
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		if (!Files.isRegularFile(source) || !Files.isReadable(source)) {
 			return false;

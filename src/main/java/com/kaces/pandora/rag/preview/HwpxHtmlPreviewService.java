@@ -2,11 +2,11 @@ package com.kaces.pandora.rag.preview;
 
 import com.kaces.pandora.rag.common.HwpxTextCleaner;
 import com.kaces.pandora.rag.document.RagDocumentRow;
+import com.kaces.pandora.rag.storage.RagOriginalDocumentStore;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -27,16 +27,20 @@ import org.w3c.dom.Node;
 @Service
 public class HwpxHtmlPreviewService {
 	private static final String PREVIEW_VERSION = "hwpx-html-v5";
+	private final RagOriginalDocumentStore originalDocumentStore;
+
+	public HwpxHtmlPreviewService(RagOriginalDocumentStore originalDocumentStore) {
+		this.originalDocumentStore = originalDocumentStore;
+	}
 
 	// 메소드 설명: canPreview 처리 흐름을 수행합니다.
 	public boolean canPreview(RagDocumentRow document) {
-		Path source = sourcePath(document);
-		return source != null && Files.isRegularFile(source) && Files.isReadable(source);
+		return document != null && isHwpxName(document.fileName()) && originalDocumentStore.exists(document);
 	}
 
 	// 메소드 설명: previewHtml 처리 흐름을 수행합니다.
 	public String previewHtml(RagDocumentRow document) {
-		Path source = sourcePath(document);
+		Path source = materializedHwpxSource(document);
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		if (source == null || !Files.isRegularFile(source) || !Files.isReadable(source)) {
 			throw new ResponseStatusException(HttpStatus.NOT_FOUND);
@@ -60,7 +64,7 @@ public class HwpxHtmlPreviewService {
 
 	// 메소드 설명: previewAsset 처리 흐름을 수행합니다.
 	public Path previewAsset(RagDocumentRow document, String fileName) {
-		Path source = sourcePath(document);
+		Path source = materializedHwpxSource(document);
 		if (source == null || fileName == null || fileName.isBlank() || fileName.contains("/") || fileName.contains("\\")) {
 			throw new ResponseStatusException(HttpStatus.NOT_FOUND);
 		}
@@ -398,16 +402,20 @@ public class HwpxHtmlPreviewService {
 	}
 
 	// 메소드 설명: sourcePath 처리 흐름을 수행합니다.
-	private Path sourcePath(RagDocumentRow document) {
-		if (document == null || document.filePath() == null || document.filePath().isBlank()) {
+	private Path materializedHwpxSource(RagDocumentRow document) {
+		if (document == null || !isHwpxName(document.fileName()) || !originalDocumentStore.exists(document)) {
 			return null;
 		}
 		try {
-			Path source = Path.of(document.filePath()).toAbsolutePath().normalize();
+			Path source = originalDocumentStore.materialize(document);
 			return isHwpx(source) ? source : null;
-		} catch (InvalidPathException exception) {
-			return null;
+		} catch (IOException exception) {
+			throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Original document could not be read.", exception);
 		}
+	}
+
+	private boolean isHwpxName(String fileName) {
+		return fileName != null && fileName.toLowerCase().endsWith(".hwpx");
 	}
 
 	// 메소드 설명: previewPath 처리 흐름을 수행합니다.

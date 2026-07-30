@@ -4,6 +4,7 @@ package com.kaces.pandora.lawdata.persistence;
 import com.kaces.pandora.lawdata.chunk.LawChunkSearchRow;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import com.kaces.pandora.lawdata.sync.StoredChunk;
+import com.kaces.pandora.semantic.provenance.IndexContentSnapshot;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -86,6 +87,11 @@ public interface LawChunkMapper {
 		@Param("textKeywords") List<String> textKeywords,
 		@Param("includeFuture") boolean includeFuture,
 		@Param("limit") int limit
+	);
+
+	IndexContentSnapshot findCurrentIndexedSnapshot(
+		@Param("model") String model,
+		@Param("vectorStore") String vectorStore
 	);
 
 	void upsertEmbeddingStatus(

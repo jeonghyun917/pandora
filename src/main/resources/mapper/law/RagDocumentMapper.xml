@@ -39,6 +39,7 @@
       trust_level AS trustLevel,
       file_name AS fileName,
       file_path AS filePath,
+      object_key AS objectKey,
       file_hash AS fileHash,
       mime_type AS mimeType,
       source_url AS sourceUrl,
@@ -60,6 +61,7 @@
       trust_level AS trustLevel,
       file_name AS fileName,
       file_path AS filePath,
+      object_key AS objectKey,
       file_hash AS fileHash,
       mime_type AS mimeType,
       source_url AS sourceUrl,
@@ -82,6 +84,7 @@
       trust_level AS trustLevel,
       file_name AS fileName,
       file_path AS filePath,
+      object_key AS objectKey,
       file_hash AS fileHash,
       mime_type AS mimeType,
       source_url AS sourceUrl,
@@ -93,6 +96,39 @@
       AND (#{documentType} = '' OR document_type = #{documentType})
     ORDER BY document_type, document_id
   </select>
+
+  <select id="findActiveDocumentsForObjectStorage" resultType="com.kaces.pandora.rag.document.RagDocumentRow">
+    SELECT
+      document_id AS documentId,
+      document_type AS documentType,
+      title,
+      source_org AS sourceOrg,
+      document_category AS documentCategory,
+      document_topic AS documentTopic,
+      published_date AS publishedDate,
+      version,
+      trust_level AS trustLevel,
+      file_name AS fileName,
+      file_path AS filePath,
+      object_key AS objectKey,
+      file_hash AS fileHash,
+      mime_type AS mimeType,
+      source_url AS sourceUrl,
+      import_status AS importStatus
+    FROM rag_documents
+    WHERE use_yn = 'Y'
+      AND file_path IS NOT NULL
+      AND file_path != ''
+    ORDER BY document_id
+  </select>
+
+  <update id="assignObjectKeyIfHashMatches">
+    UPDATE rag_documents
+    SET object_key = #{objectKey}
+    WHERE document_id = #{documentId}
+      AND file_hash = #{fileHash}
+      AND use_yn = 'Y'
+  </update>
 
   <sql id="documentSearchWhere">
     document_type = #{documentType}
@@ -154,6 +190,7 @@
     WHERE doc.document_type = #{documentType}
       AND doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND COALESCE(c.quality_status, 'PASS') != 'REJECT'
       AND <include refid="latestActiveChunkVersionFilter"/>
       AND (
         c.chunk_text LIKE CONCAT('%', #{query}, '%')
@@ -194,6 +231,7 @@
     WHERE doc.document_type = #{documentType}
       AND doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND COALESCE(c.quality_status, 'PASS') != 'REJECT'
       AND <include refid="latestActiveChunkVersionFilter"/>
       AND (
         c.chunk_text LIKE CONCAT('%', #{query}, '%')
@@ -343,14 +381,150 @@
     INSERT INTO rag_document_chunks (
       document_id, chunk_version, chunk_no, parent_section_title, chunk_title,
       section_type, chunk_text, embedding_text, page_no,
-      source_path, source_url, sort_order, content_hash, index_status
+      source_path, source_url, sort_order, content_hash, quality_status, quality_reason, index_status
     )
     VALUES (
       #{chunk.documentId}, #{chunk.chunkVersion}, #{chunk.chunkNo}, #{chunk.parentSectionTitle}, #{chunk.chunkTitle},
       #{chunk.sectionType}, #{chunk.chunkText}, #{chunk.embeddingText}, #{chunk.pageNo},
-      #{chunk.sourcePath}, #{chunk.sourceUrl}, #{chunk.sortOrder}, #{chunk.contentHash}, 'PENDING'
+      #{chunk.sourcePath}, #{chunk.sourceUrl}, #{chunk.sortOrder}, #{chunk.contentHash},
+      #{chunk.qualityStatus}, #{chunk.qualityReason}, 'PENDING'
     )
   </insert>
+
+  <delete id="deleteChunkSearchTermsByDocumentId">
+    DELETE FROM rag_chunk_search_terms
+    WHERE document_id = #{documentId}
+  </delete>
+
+  <delete id="deleteChunkSearchIndexStateByDocumentId">
+    DELETE FROM rag_chunk_search_index_state
+    WHERE document_id = #{documentId}
+  </delete>
+
+  <delete id="deleteChunkSearchTermsByChunkIds">
+    DELETE FROM rag_chunk_search_terms
+    WHERE chunk_id IN
+    <foreach collection="chunkIds" item="chunkId" open="(" separator="," close=")">
+      #{chunkId}
+    </foreach>
+  </delete>
+
+  <delete id="deleteChunkSearchIndexStateByChunkIds">
+    DELETE FROM rag_chunk_search_index_state
+    WHERE chunk_id IN
+    <foreach collection="chunkIds" item="chunkId" open="(" separator="," close=")">
+      #{chunkId}
+    </foreach>
+  </delete>
+
+  <insert id="insertChunkSearchTerms">
+    INSERT INTO rag_chunk_search_terms (
+      term, chunk_id, document_id, field_kind, weight
+    )
+    VALUES
+    <foreach collection="terms" item="term" separator=",">
+      (#{term.term}, #{term.chunkId}, #{term.documentId}, #{term.fieldKind}, #{term.weight})
+    </foreach>
+    ON DUPLICATE KEY UPDATE
+      field_kind = IF(VALUES(weight) &gt; weight, VALUES(field_kind), field_kind),
+      weight = GREATEST(weight, VALUES(weight))
+  </insert>
+
+  <insert id="upsertChunkSearchIndexStates">
+    INSERT INTO rag_chunk_search_index_state (
+      chunk_id, document_id, index_version, content_hash, term_count, completed_at
+    )
+    VALUES
+    <foreach collection="states" item="state" separator=",">
+      (#{state.chunkId}, #{state.documentId}, 2, #{state.contentHash}, #{state.termCount}, CURRENT_TIMESTAMP)
+    </foreach>
+    ON DUPLICATE KEY UPDATE
+      document_id = VALUES(document_id),
+      index_version = VALUES(index_version),
+      content_hash = VALUES(content_hash),
+      term_count = VALUES(term_count),
+      completed_at = VALUES(completed_at)
+  </insert>
+
+  <select id="countMissingChunkSearchTerms" resultType="int">
+    SELECT COUNT(*)
+    FROM rag_document_chunks c
+    JOIN rag_documents doc ON doc.document_id = c.document_id
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND <include refid="searchableChunkQualityFilter"/>
+      AND <include refid="latestActiveChunkVersionFilter"/>
+      AND NOT EXISTS (
+        SELECT 1
+        FROM rag_chunk_search_index_state state
+        WHERE state.chunk_id = c.chunk_id
+          AND state.index_version = 2
+          AND COALESCE(state.content_hash, '') = COALESCE(c.content_hash, '')
+      )
+  </select>
+
+  <select id="findChunkSearchIndexStatus" resultType="string">
+    SELECT status
+    FROM rag_search_index_control
+    WHERE index_name = 'rag_chunk_terms'
+      AND index_version = 2
+    LIMIT 1
+  </select>
+
+  <insert id="markChunkSearchIndexBuilding">
+    INSERT INTO rag_search_index_control (index_name, index_version, status)
+    VALUES ('rag_chunk_terms', 2, 'BUILDING')
+    ON DUPLICATE KEY UPDATE
+      index_version = VALUES(index_version),
+      status = VALUES(status)
+  </insert>
+
+  <insert id="markChunkSearchIndexReady">
+    INSERT INTO rag_search_index_control (index_name, index_version, status)
+    VALUES ('rag_chunk_terms', 2, 'READY')
+    ON DUPLICATE KEY UPDATE
+      index_version = VALUES(index_version),
+      status = VALUES(status)
+  </insert>
+
+  <select id="findChunkSearchTermBackfillCandidates" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.document_type AS target,
+      CAST(doc.document_id AS CHAR) AS externalId,
+      doc.title AS title,
+      doc.source_org AS agencyName,
+      doc.document_type AS categoryName,
+      doc.published_date AS sourceDate,
+      NULL AS effectiveStatus,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      c.page_no AS pageNo,
+      c.source_path AS sourcePath,
+      COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash,
+      c.parent_section_title AS parentSectionTitle,
+      c.section_type AS sectionType,
+      c.quality_status AS qualityStatus
+    FROM rag_document_chunks c
+    JOIN rag_documents doc ON doc.document_id = c.document_id
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND <include refid="searchableChunkQualityFilter"/>
+      AND <include refid="latestActiveChunkVersionFilter"/>
+      AND NOT EXISTS (
+        SELECT 1
+        FROM rag_chunk_search_index_state state
+        WHERE state.chunk_id = c.chunk_id
+          AND state.index_version = 2
+          AND COALESCE(state.content_hash, '') = COALESCE(c.content_hash, '')
+      )
+    ORDER BY c.chunk_id
+    LIMIT #{limit}
+  </select>
 
   <sql id="latestActiveChunkVersionFilter">
     c.chunk_version = (
@@ -359,6 +533,14 @@
       WHERE c2.document_id = c.document_id
         AND c2.use_yn = 'Y'
     )
+  </sql>
+
+  <sql id="searchableChunkQualityFilter">
+    COALESCE(c.quality_status, 'PASS') IN ('PASS', 'REVIEW')
+  </sql>
+
+  <sql id="contextChunkQualityFilter">
+    COALESCE(c.quality_status, 'PASS') != 'REJECT'
   </sql>
 
   <select id="findSemanticChunksByIds" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
@@ -386,7 +568,8 @@
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       c.parent_section_title AS parentSectionTitle,
-      c.section_type AS sectionType
+      c.section_type AS sectionType,
+      c.quality_status AS qualityStatus
     FROM rag_document_chunks c
     JOIN rag_documents doc ON doc.document_id = c.document_id
     WHERE c.chunk_id IN
@@ -395,6 +578,7 @@
     </foreach>
       AND doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND <include refid="searchableChunkQualityFilter"/>
       AND <include refid="latestActiveChunkVersionFilter"/>
   </select>
 
@@ -423,13 +607,53 @@
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       c.parent_section_title AS parentSectionTitle,
-      c.section_type AS sectionType
+      c.section_type AS sectionType,
+      c.quality_status AS qualityStatus
     FROM rag_document_chunks c
     JOIN rag_documents doc ON doc.document_id = c.document_id
     WHERE c.document_id = #{documentId}
       AND doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND <include refid="contextChunkQualityFilter"/>
       AND <include refid="latestActiveChunkVersionFilter"/>
+    ORDER BY c.sort_order
+  </select>
+
+  <select id="findSemanticContextChunks" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="2">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.document_type AS target,
+      CAST(doc.document_id AS CHAR) AS externalId,
+      doc.title AS title,
+      doc.source_org AS agencyName,
+      CASE
+        WHEN doc.document_type = 'official_doc' THEN '공식 가이드 문서'
+        WHEN doc.document_type = 'internal_doc' THEN '내부 지침/매뉴얼'
+        WHEN doc.document_type = 'reference_doc' THEN '참고자료'
+        ELSE doc.document_type
+      END AS categoryName,
+      doc.published_date AS sourceDate,
+      NULL AS effectiveStatus,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      c.page_no AS pageNo,
+      c.source_path AS sourcePath,
+      COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash,
+      c.parent_section_title AS parentSectionTitle,
+      c.section_type AS sectionType,
+      c.quality_status AS qualityStatus
+    FROM rag_document_chunks c
+    JOIN rag_documents doc ON doc.document_id = c.document_id
+    WHERE c.document_id = #{documentId}
+      AND doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND <include refid="contextChunkQualityFilter"/>
+      AND <include refid="latestActiveChunkVersionFilter"/>
+      AND c.sort_order BETWEEN GREATEST(0, #{sortOrder} - #{window}) AND (#{sortOrder} + #{window})
     ORDER BY c.sort_order
   </select>
 
@@ -458,13 +682,15 @@
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       c.parent_section_title AS parentSectionTitle,
-      c.section_type AS sectionType
+      c.section_type AS sectionType,
+      c.quality_status AS qualityStatus
     FROM rag_document_chunks c
     JOIN rag_documents doc ON doc.document_id = c.document_id
     WHERE c.document_id = #{documentId}
       AND c.chunk_version = #{chunkVersion}
       AND doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND <include refid="searchableChunkQualityFilter"/>
     ORDER BY c.sort_order
   </select>
 
@@ -493,7 +719,8 @@
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       c.parent_section_title AS parentSectionTitle,
-      c.section_type AS sectionType
+      c.section_type AS sectionType,
+      c.quality_status AS qualityStatus
     FROM rag_document_chunks c
     JOIN rag_documents doc ON doc.document_id = c.document_id
     LEFT JOIN rag_chunk_embeddings e
@@ -502,6 +729,7 @@
       AND e.vector_store = #{vectorStore}
     WHERE doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND <include refid="searchableChunkQualityFilter"/>
       AND <include refid="latestActiveChunkVersionFilter"/>
       AND (#{target} = '' OR doc.document_type = #{target})
       AND (
@@ -545,7 +773,86 @@
     LIMIT #{limit}
   </select>
 
+  <select id="findSemanticChunksByLegacyText" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="3">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.document_type AS target,
+      CAST(doc.document_id AS CHAR) AS externalId,
+      doc.title AS title,
+      doc.source_org AS agencyName,
+      doc.document_type AS categoryName,
+      doc.published_date AS sourceDate,
+      NULL AS effectiveStatus,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      c.page_no AS pageNo,
+      c.source_path AS sourcePath,
+      COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash,
+      c.parent_section_title AS parentSectionTitle,
+      c.section_type AS sectionType,
+      c.quality_status AS qualityStatus
+    FROM rag_document_chunks c
+    JOIN rag_documents doc ON doc.document_id = c.document_id
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND <include refid="searchableChunkQualityFilter"/>
+      AND <include refid="latestActiveChunkVersionFilter"/>
+      <if test="documentTypes != null and documentTypes.size() > 0">
+        AND doc.document_type IN
+        <foreach collection="documentTypes" item="documentType" open="(" separator="," close=")">
+          #{documentType}
+        </foreach>
+      </if>
+      <if test="keywords != null and keywords.size() > 0">
+        AND (
+        <foreach collection="keywords" item="keyword" separator=" OR ">
+          c.chunk_text LIKE CONCAT('%', #{keyword}, '%')
+          OR c.chunk_title LIKE CONCAT('%', #{keyword}, '%')
+          OR c.parent_section_title LIKE CONCAT('%', #{keyword}, '%')
+          OR c.embedding_text LIKE CONCAT('%', #{keyword}, '%')
+          OR doc.title LIKE CONCAT('%', #{keyword}, '%')
+        </foreach>
+        )
+      </if>
+    ORDER BY doc.document_type, doc.title, c.sort_order
+    LIMIT #{limit}
+  </select>
+
   <select id="findSemanticChunksByText" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="3">
+    WITH query_terms(query_term) AS (
+      <foreach collection="keywords" item="keyword" separator=" UNION ALL ">
+        SELECT #{keyword}
+      </foreach>
+    ),
+    matched_terms AS (
+      SELECT
+        search_term.chunk_id,
+        COUNT(DISTINCT query_term.query_term) AS matched_term_count,
+        SUM(search_term.weight + CASE WHEN search_term.term = query_term.query_term THEN 2 ELSE 0 END) AS term_score
+      FROM query_terms query_term
+      JOIN rag_chunk_search_terms search_term
+        ON search_term.term = query_term.query_term
+        OR search_term.term LIKE CONCAT(query_term.query_term, '%')
+      JOIN rag_document_chunks c ON c.chunk_id = search_term.chunk_id
+      JOIN rag_documents doc ON doc.document_id = c.document_id
+      WHERE doc.use_yn = 'Y'
+        AND c.use_yn = 'Y'
+        AND <include refid="searchableChunkQualityFilter"/>
+        AND <include refid="latestActiveChunkVersionFilter"/>
+        <if test="documentTypes != null and documentTypes.size() > 0">
+          AND doc.document_type IN
+          <foreach collection="documentTypes" item="documentType" open="(" separator="," close=")">
+            #{documentType}
+          </foreach>
+        </if>
+      GROUP BY search_term.chunk_id
+      ORDER BY matched_term_count DESC, term_score DESC, search_term.chunk_id
+      LIMIT #{limit}
+    )
     SELECT
       c.chunk_id AS chunkId,
       c.document_id AS documentId,
@@ -570,11 +877,14 @@
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       c.parent_section_title AS parentSectionTitle,
-      c.section_type AS sectionType
-    FROM rag_document_chunks c
+      c.section_type AS sectionType,
+      c.quality_status AS qualityStatus
+    FROM matched_terms matched
+    JOIN rag_document_chunks c ON c.chunk_id = matched.chunk_id
     JOIN rag_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND <include refid="searchableChunkQualityFilter"/>
       AND <include refid="latestActiveChunkVersionFilter"/>
       <if test="documentTypes != null and documentTypes.size() > 0">
         AND doc.document_type IN
@@ -582,20 +892,9 @@
           #{documentType}
         </foreach>
       </if>
-      <if test="keywords != null and keywords.size() > 0">
-        AND (
-        <foreach collection="keywords" item="keyword" separator=" OR ">
-          c.chunk_text LIKE CONCAT('%', #{keyword}, '%')
-          OR c.chunk_title LIKE CONCAT('%', #{keyword}, '%')
-          OR c.parent_section_title LIKE CONCAT('%', #{keyword}, '%')
-          OR c.embedding_text LIKE CONCAT('%', #{keyword}, '%')
-          OR doc.title LIKE CONCAT('%', #{keyword}, '%')
-        </foreach>
-        )
-      </if>
     ORDER BY
-      doc.document_type,
-      doc.title,
+      matched.matched_term_count DESC,
+      matched.term_score DESC,
       c.sort_order
     LIMIT #{limit}
   </select>
@@ -625,11 +924,13 @@
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       c.parent_section_title AS parentSectionTitle,
-      c.section_type AS sectionType
+      c.section_type AS sectionType,
+      c.quality_status AS qualityStatus
     FROM rag_document_chunks c
     JOIN rag_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND <include refid="searchableChunkQualityFilter"/>
       AND <include refid="latestActiveChunkVersionFilter"/>
       <if test="documentTypes != null and documentTypes.size() > 0">
         AND doc.document_type IN
@@ -739,13 +1040,15 @@
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       c.parent_section_title AS parentSectionTitle,
-      c.section_type AS sectionType
+      c.section_type AS sectionType,
+      c.quality_status AS qualityStatus
     FROM matched_docs doc
     JOIN latest_versions latest ON latest.document_id = doc.document_id
     JOIN rag_document_chunks c
       ON c.document_id = doc.document_id
       AND c.chunk_version = latest.chunk_version
     WHERE c.use_yn = 'Y'
+      AND <include refid="searchableChunkQualityFilter"/>
       <if test="textKeywords != null and textKeywords.size() > 0">
         AND (
         <foreach collection="textKeywords" item="keyword" separator=" OR ">
@@ -832,13 +1135,15 @@
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       c.parent_section_title AS parentSectionTitle,
-      c.section_type AS sectionType
+      c.section_type AS sectionType,
+      c.quality_status AS qualityStatus
     FROM matched_docs doc
     JOIN latest_versions latest ON latest.document_id = doc.document_id
     JOIN rag_document_chunks c
       ON c.document_id = doc.document_id
       AND c.chunk_version = latest.chunk_version
     WHERE c.use_yn = 'Y'
+      AND <include refid="searchableChunkQualityFilter"/>
     ORDER BY doc.title_score DESC, doc.document_type, doc.title, c.sort_order
     LIMIT #{limit}
   </select>
@@ -904,13 +1209,15 @@
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       c.parent_section_title AS parentSectionTitle,
-      c.section_type AS sectionType
+      c.section_type AS sectionType,
+      c.quality_status AS qualityStatus
     FROM matched_docs doc
     JOIN latest_versions latest ON latest.document_id = doc.document_id
     JOIN rag_document_chunks c
       ON c.document_id = doc.document_id
       AND c.chunk_version = latest.chunk_version
     WHERE c.use_yn = 'Y'
+      AND <include refid="searchableChunkQualityFilter"/>
     ORDER BY
       (
       <foreach collection="textKeywords" item="keyword" separator=" + ">
@@ -951,39 +1258,98 @@
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       c.parent_section_title AS parentSectionTitle,
-      c.section_type AS sectionType
-    FROM (
-      SELECT doc2.document_id
-      FROM rag_documents doc2
-      WHERE doc2.use_yn = 'Y'
-        <if test="documentTypes != null and documentTypes.size() > 0">
-          AND doc2.document_type IN
-          <foreach collection="documentTypes" item="documentType" open="(" separator="," close=")">
-            #{documentType}
-          </foreach>
-        </if>
-        <if test="keywords != null and keywords.size() > 0">
-          AND (
-          <foreach collection="keywords" item="keyword" separator=" OR ">
-            doc2.title LIKE CONCAT('%', #{keyword}, '%')
-            OR doc2.source_org LIKE CONCAT('%', #{keyword}, '%')
-            OR doc2.document_category LIKE CONCAT('%', #{keyword}, '%')
-            OR doc2.document_topic LIKE CONCAT('%', #{keyword}, '%')
-          </foreach>
-          )
-        </if>
-      ORDER BY doc2.document_type, doc2.title
-      LIMIT 16
-    ) matched_doc
-    JOIN rag_documents doc ON doc.document_id = matched_doc.document_id
-    JOIN rag_document_chunks c ON c.document_id = doc.document_id
-    WHERE c.use_yn = 'Y'
+      c.section_type AS sectionType,
+      c.quality_status AS qualityStatus
+    FROM rag_document_chunks c
+    JOIN rag_documents doc ON doc.document_id = c.document_id
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND <include refid="searchableChunkQualityFilter"/>
       AND <include refid="latestActiveChunkVersionFilter"/>
+      <if test="documentTypes != null and documentTypes.size() > 0">
+        AND doc.document_type IN
+        <foreach collection="documentTypes" item="documentType" open="(" separator="," close=")">
+          #{documentType}
+        </foreach>
+      </if>
+      <if test="keywords != null and keywords.size() > 0">
+        AND (
+        <foreach collection="keywords" item="keyword" separator=" OR ">
+          c.chunk_title LIKE CONCAT('%', #{keyword}, '%')
+          OR c.parent_section_title LIKE CONCAT('%', #{keyword}, '%')
+        </foreach>
+        )
+      </if>
     ORDER BY
+      <if test="keywords != null and keywords.size() > 0">
+        (
+        <foreach collection="keywords" item="keyword" separator=" + ">
+          CASE WHEN (
+            c.chunk_title LIKE CONCAT('%', #{keyword}, '%')
+            OR c.parent_section_title LIKE CONCAT('%', #{keyword}, '%')
+          ) THEN 1 ELSE 0 END
+        </foreach>
+        ) DESC,
+        GREATEST(
+          0,
+        <foreach collection="keywords" item="keyword" separator=",">
+          CASE
+            WHEN c.chunk_title = #{keyword} THEN 9
+            WHEN c.chunk_title LIKE CONCAT(#{keyword}, '%') THEN 8
+            WHEN c.chunk_title LIKE CONCAT('%', #{keyword}, '%') THEN 7
+            WHEN c.parent_section_title = #{keyword} THEN 6
+            WHEN c.parent_section_title LIKE CONCAT(#{keyword}, '%') THEN 5
+            WHEN c.parent_section_title LIKE CONCAT('%', #{keyword}, '%') THEN 4
+            WHEN doc.title = #{keyword} THEN 3
+            WHEN doc.title LIKE CONCAT(#{keyword}, '%') THEN 2
+            WHEN doc.title LIKE CONCAT('%', #{keyword}, '%') THEN 1
+            ELSE 0
+          END
+        </foreach>
+        ) DESC,
+      </if>
       doc.document_type,
       doc.title,
       c.sort_order
     LIMIT #{limit}
+  </select>
+
+  <select id="findCurrentIndexedSnapshot"
+          resultType="com.kaces.pandora.semantic.provenance.IndexContentSnapshot"
+          timeout="5">
+    SELECT
+      COUNT(*) AS currentIndexedCount,
+      CONCAT(
+        LPAD(HEX(BIT_XOR(CAST(CONV(SUBSTRING(SHA2(CONCAT(CAST(c.chunk_id AS CHAR), ':', c.content_hash), 256), 1, 16), 16, 10) AS UNSIGNED))), 16, '0'),
+        LPAD(HEX(BIT_XOR(CAST(CONV(SUBSTRING(SHA2(CONCAT(CAST(c.chunk_id AS CHAR), ':', c.content_hash), 256), 17, 16), 16, 10) AS UNSIGNED))), 16, '0'),
+        LPAD(HEX(BIT_XOR(CAST(CONV(SUBSTRING(SHA2(CONCAT(CAST(c.chunk_id AS CHAR), ':', c.content_hash), 256), 33, 16), 16, 10) AS UNSIGNED))), 16, '0'),
+        LPAD(HEX(BIT_XOR(CAST(CONV(SUBSTRING(SHA2(CONCAT(CAST(c.chunk_id AS CHAR), ':', c.content_hash), 256), 49, 16), 16, 10) AS UNSIGNED))), 16, '0')
+      ) AS contentFingerprint,
+      COALESCE(
+        DATE_FORMAT(
+          MAX(GREATEST(doc.updated_at, c.updated_at, e.updated_at)),
+          '%Y-%m-%dT%H:%i:%s.%f'
+        ),
+        ''
+      ) AS updatedWatermark
+    FROM rag_chunk_embeddings e
+    JOIN rag_document_chunks c ON c.chunk_id = e.chunk_id
+    JOIN rag_documents doc ON doc.document_id = c.document_id
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND COALESCE(c.quality_status, 'PASS') IN ('PASS', 'REVIEW')
+      AND c.chunk_version = (
+        SELECT MAX(c2.chunk_version)
+        FROM rag_document_chunks c2
+        WHERE c2.document_id = c.document_id
+          AND c2.use_yn = 'Y'
+          AND COALESCE(c2.quality_status, 'PASS') IN ('PASS', 'REVIEW')
+      )
+      AND e.embedding_model = #{model}
+      AND e.vector_store = #{vectorStore}
+      AND e.status = 'INDEXED'
+      AND e.content_hash = c.content_hash
+      AND c.content_hash REGEXP '^[0-9A-Fa-f]{64}$'
   </select>
 
   <insert id="upsertEmbeddingStatus">
@@ -1019,6 +1385,7 @@
           AND e.vector_store = #{vectorStore}
         WHERE c.document_id = doc.document_id
           AND c.use_yn = 'Y'
+          AND <include refid="searchableChunkQualityFilter"/>
           AND <include refid="latestActiveChunkVersionFilter"/>
           AND (
             e.chunk_id IS NULL

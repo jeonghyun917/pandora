@@ -8,6 +8,9 @@
     radial-gradient(circle at 82% 24%, rgba(231, 194, 122, 0.2), transparent 23rem),
     radial-gradient(circle at 74% 82%, rgba(35, 95, 78, 0.24), transparent 26rem),
     linear-gradient(145deg, #05100e 0%, #0a1715 46%, #171d15 100%);
+  --pandora-main-width: 1008px;
+  --pandora-wide-width: 1152px;
+  --pandora-admin-width: 1062px;
   color: #f7f2ea;
   background: #070707;
   font-synthesis: none;
@@ -374,10 +377,10 @@ button {
   height: 100svh;
   min-height: 100svh;
   overflow: hidden;
-  padding: 22px;
+  padding: 18px;
   color: #dfeee8;
   background: var(--pandora-page-background);
-  font-size: 0.93rem;
+  font-size: 0.86rem;
 }
 
 .law-search-shell > :not(.landing-constellation):not(.landing-ripple-layer) {
@@ -387,15 +390,15 @@ button {
 
 .law-search-header {
   display: grid;
-  grid-template-columns: 40px 1fr auto;
+  grid-template-columns: 36px 1fr auto;
   align-items: center;
-  gap: 14px;
-  max-width: 1280px;
+  gap: 12px;
+  max-width: var(--pandora-wide-width);
   width: 100%;
-  margin: 0 auto 18px;
-  padding: 10px;
+  margin: 0 auto 15px;
+  padding: 8px;
   border: 1px solid rgba(101, 220, 174, 0.16);
-  border-radius: 12px;
+  border-radius: 10px;
   background:
     linear-gradient(120deg, rgba(101, 220, 174, 0.12), rgba(8, 20, 17, 0.58) 38%, rgba(231, 194, 122, 0.08)),
     rgba(6, 18, 15, 0.58);
@@ -420,7 +423,7 @@ button {
 }
 
 .law-search-header h1 {
-  font-size: 1.12rem;
+  font-size: 1.02rem;
 }
 
 .law-search-header > div:first-of-type {
@@ -534,8 +537,8 @@ button {
 
 .icon-button {
   display: inline-grid;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   place-items: center;
   border: 1px solid rgba(101, 220, 174, 0.14);
   border-radius: 8px;
@@ -556,15 +559,15 @@ button {
 .header-status {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 31px;
-  padding: 0 9px;
+  gap: 7px;
+  min-height: 28px;
+  padding: 0 8px;
   border: 1px solid rgba(231, 194, 122, 0.18);
   border-radius: 999px;
   color: #f0d28d;
   background: rgba(231, 194, 122, 0.08);
   box-shadow: none;
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 800;
   letter-spacing: 0;
   backdrop-filter: blur(14px);
@@ -577,21 +580,21 @@ button {
 .header-actions {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   justify-self: end;
 }
 
 .debug-nav-button {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  min-height: 31px;
-  padding: 0 9px;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 8px;
   border: 1px solid rgba(101, 220, 174, 0.2);
   border-radius: 999px;
   color: #dff5ed;
   background: rgba(101, 220, 174, 0.08);
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   font-weight: 800;
   cursor: pointer;
 }
@@ -608,11 +611,11 @@ button {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  max-width: 1280px;
+  gap: 10px;
+  max-width: var(--pandora-wide-width);
   width: 100%;
   margin: 0 auto;
-  padding: 5px 0 19px;
+  padding: 4px 0 15px;
 }
 
 .law-search-hero h2 {
@@ -622,12 +625,12 @@ button {
 
 .search-bar {
   display: grid;
-  grid-template-columns: 28px auto minmax(0, 1fr) 108px;
+  grid-template-columns: 24px auto minmax(0, 1fr) 96px;
   align-items: center;
-  gap: 14px;
-  width: min(1120px, 100%);
-  min-height: 92px;
-  padding: 13px 13px 13px 22px;
+  gap: 12px;
+  width: min(var(--pandora-main-width), 100%);
+  min-height: 82px;
+  padding: 11px 11px 11px 18px;
   border: 1px solid rgba(101, 220, 174, 0.42);
   border-radius: 10px;
   background:
@@ -661,7 +664,7 @@ button {
 }
 
 .search-mode-switch {
-  --mode-option-width: 42px;
+  --mode-option-width: 38px;
   --mode-option-gap: 3px;
   position: relative;
   isolation: isolate;
@@ -688,7 +691,7 @@ button {
   top: 3px;
   left: 3px;
   width: var(--mode-option-width);
-  height: 30px;
+  height: 27px;
   border-radius: 999px;
   background:
     radial-gradient(circle at 26% 24%, rgba(255, 255, 255, 0.82), transparent 9px),
@@ -713,8 +716,8 @@ button {
   z-index: 3;
   top: 4px;
   left: 3px;
-  width: 30px;
-  height: 28px;
+  width: 27px;
+  height: 25px;
   border-radius: 999px;
   pointer-events: none;
   opacity: 0;
@@ -770,10 +773,10 @@ button {
   align-items: center;
   justify-content: center;
   min-width: var(--mode-option-width);
-  height: 30px;
+  height: 27px;
   border-radius: 999px;
   color: rgba(223, 245, 237, 0.72);
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   font-weight: 900;
   letter-spacing: 0;
   cursor: pointer;
@@ -810,12 +813,12 @@ button {
 .search-bar input {
   width: 100%;
   min-width: 0;
-  min-height: 50px;
+  min-height: 45px;
   border: 0;
   color: #d9eae4;
   background: transparent;
   font: inherit;
-  font-size: 1.06rem;
+  font-size: 0.96rem;
   line-height: 1.45;
 }
 
@@ -828,12 +831,12 @@ button {
 }
 
 .search-bar button {
-  height: 66px;
+  height: 59px;
   border: 0;
   border-radius: 8px;
   color: rgba(4, 20, 15, 0.9);
   background: linear-gradient(180deg, #7de6ba, #55cea0);
-  font-size: 0.92rem;
+  font-size: 0.84rem;
   font-weight: 800;
   cursor: pointer;
   box-shadow:
@@ -859,21 +862,21 @@ button {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 7px;
-  width: min(1120px, 100%);
+  gap: 6px;
+  width: min(var(--pandora-main-width), 100%);
 }
 
 .category-checkbox {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  min-height: 32px;
-  padding: 0 10px;
+  gap: 6px;
+  min-height: 29px;
+  padding: 0 9px;
   border: 1px solid rgba(101, 220, 174, 0.18);
   border-radius: 8px;
   color: #d8ebe4;
   background: rgba(13, 25, 23, 0.58);
-  font-size: 0.76rem;
+  font-size: 0.69rem;
   cursor: pointer;
 }
 
@@ -891,8 +894,8 @@ button {
 .law-browser {
   display: grid;
   grid-template-columns: 340px minmax(0, 1fr);
-  gap: 15px;
-  max-width: 1280px;
+  gap: 13px;
+  max-width: var(--pandora-wide-width);
   min-height: 0;
   width: 100%;
   margin: 0 auto;
@@ -909,8 +912,8 @@ button {
 .debug-workbench {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
-  gap: 12px;
-  max-width: 1280px;
+  gap: 11px;
+  max-width: var(--pandora-wide-width);
   width: 100%;
   min-height: 0;
   margin: 0 auto;
@@ -927,15 +930,15 @@ button {
 
 .debug-query-panel {
   display: grid;
-  gap: 10px;
-  padding: 12px;
+  gap: 9px;
+  padding: 11px;
 }
 
 .debug-query-input {
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) 106px;
+  grid-template-columns: 24px minmax(0, 1fr) 96px;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
 }
 
 .debug-query-input svg {
@@ -944,7 +947,7 @@ button {
 
 .debug-query-input input {
   min-width: 0;
-  height: 44px;
+  height: 40px;
   border: 1px solid rgba(101, 220, 174, 0.22);
   border-radius: 7px;
   padding: 0 12px;
@@ -957,8 +960,8 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  height: 44px;
+  gap: 6px;
+  height: 40px;
   border: 0;
   border-radius: 7px;
   color: rgba(6, 16, 14, 0.82);
@@ -979,14 +982,14 @@ button {
 
 .debug-grid {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 252px minmax(0, 1fr);
+  gap: 11px;
   min-height: 0;
 }
 
 .debug-panel {
   min-height: 0;
-  padding: 14px;
+  padding: 13px;
   overflow: auto;
 }
 
@@ -1027,9 +1030,9 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  min-height: 44px;
-  padding: 7px 10px;
+  gap: 7px;
+  min-height: 40px;
+  padding: 6px 9px;
   border: 1px solid rgba(101, 220, 174, 0.14);
   border-radius: 7px;
   color: #dff5ed;
@@ -1310,14 +1313,14 @@ button {
 .law-content {
   min-height: 0;
   overflow: auto;
-  padding: 23px;
+  padding: 20px;
 }
 
 .law-content-heading {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 13px;
+  gap: 9px;
+  margin-bottom: 11px;
 }
 
 .law-content-heading > div {
@@ -1329,7 +1332,7 @@ button {
 }
 
 .law-content h3 {
-  font-size: 1.55rem;
+  font-size: 1.4rem;
 }
 
 .law-content-description {
@@ -1343,10 +1346,10 @@ button {
 .refresh-button {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 38px;
+  gap: 7px;
+  min-height: 34px;
   margin-left: auto;
-  padding: 0 12px;
+  padding: 0 11px;
   border: 1px solid rgba(101, 220, 174, 0.28);
   border-radius: 7px;
   color: #dff5ed;
@@ -1367,9 +1370,9 @@ button {
 
 .search-start-panel {
   display: grid;
-  gap: 16px;
+  gap: 14px;
   margin-top: 4px;
-  padding: 18px;
+  padding: 16px;
   border: 1px solid rgba(101, 220, 174, 0.16);
   border-radius: 8px;
   background:
@@ -1380,12 +1383,12 @@ button {
 .search-readiness-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 11px;
 }
 
 .search-readiness-card {
-  min-height: 138px;
-  padding: 16px;
+  min-height: 124px;
+  padding: 14px;
   border: 1px solid rgba(101, 220, 174, 0.18);
   border-radius: 8px;
   background: rgba(11, 30, 25, 0.68);
@@ -1393,9 +1396,9 @@ button {
 }
 
 .search-readiness-label {
-  margin: 0 0 12px;
+  margin: 0 0 10px;
   color: #7df0bf;
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   font-weight: 900;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -1403,7 +1406,7 @@ button {
 
 .search-readiness-metrics {
   display: grid;
-  gap: 10px;
+  gap: 9px;
 }
 
 .search-readiness-metrics span {
@@ -1423,24 +1426,24 @@ button {
 
 .search-readiness-metrics strong {
   color: #f0fff9;
-  font-size: 1.18rem;
+  font-size: 1.06rem;
   line-height: 1;
 }
 
 .search-readiness-metrics small {
   color: #b8dacc;
-  font-size: 0.78rem;
+  font-size: 0.71rem;
   font-weight: 800;
   white-space: nowrap;
 }
 
 .search-readiness-list {
   display: grid;
-  gap: 8px;
+  gap: 7px;
   margin: 0;
   padding: 0;
   color: #d9eee6;
-  font-size: 0.84rem;
+  font-size: 0.76rem;
   line-height: 1.35;
   list-style: none;
 }
@@ -1471,15 +1474,15 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  min-height: 38px;
-  margin-bottom: 12px;
-  padding: 0 10px;
+  gap: 9px;
+  min-height: 34px;
+  margin-bottom: 11px;
+  padding: 0 9px;
   border: 1px solid rgba(101, 220, 174, 0.16);
   border-radius: 8px;
   color: #dff5ed;
   background: rgba(7, 16, 14, 0.48);
-  font-size: 0.78rem;
+  font-size: 0.71rem;
 }
 
 .result-summary small {
@@ -1506,9 +1509,9 @@ button {
 
 .ai-answer-panel {
   display: grid;
-  gap: 12px;
-  margin-bottom: 12px;
-  padding: 17px;
+  gap: 11px;
+  margin-bottom: 11px;
+  padding: 15px;
   border: 1px solid rgba(101, 220, 174, 0.22);
   border-radius: 8px;
   color: #eaf7f2;
@@ -1542,7 +1545,7 @@ button {
 .ai-answer-body p {
   margin: 0;
   color: #d7e7e1;
-  font-size: 0.89rem;
+  font-size: 0.82rem;
   line-height: 1.68;
   overflow-wrap: anywhere;
   word-break: keep-all;
@@ -1551,7 +1554,7 @@ button {
 .error-message,
 .empty-message {
   margin: 0;
-  padding: 15px;
+  padding: 13px;
   border-radius: 8px;
   color: #ffd8c7;
   background: rgba(148, 53, 41, 0.18);
@@ -1565,15 +1568,15 @@ button {
 
 .law-result-list {
   display: grid;
-  gap: 10px;
+  gap: 9px;
 }
 
 .law-result-card {
   display: grid;
-  grid-template-columns: 82px minmax(0, 1fr);
-  gap: 10px;
-  min-height: 68px;
-  padding: 12px 14px;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 9px;
+  min-height: 61px;
+  padding: 10px 13px;
   border: 1px solid rgba(42, 64, 57, 0.12);
   border-radius: 8px;
   color: #edf8f3;
@@ -1599,7 +1602,7 @@ button {
   color: #edf8f3;
   background: transparent;
   font-weight: 800;
-  font-size: 0.86rem;
+  font-size: 0.79rem;
   line-height: 1.45;
   text-align: left;
   cursor: pointer;
@@ -1710,13 +1713,13 @@ button {
   display: block;
   width: 100%;
   margin: 0;
-  padding: 8px 9px;
+  padding: 7px 8px;
   border: 0;
   border-left: 3px solid rgba(101, 220, 174, 0.58);
   border-radius: 6px;
   color: #cfe2dc;
   background: rgba(101, 220, 174, 0.08);
-  font-size: 0.76rem;
+  font-size: 0.7rem;
   line-height: 1.48;
   font-family: inherit;
   text-align: left;
@@ -1804,16 +1807,16 @@ button {
 
 .detail-screen-shell {
   grid-template-rows: auto minmax(0, 1fr);
-  padding: 12px 22px 16px;
+  padding: 10px 18px 14px;
 }
 
 .detail-screen-shell .law-search-header {
   position: relative;
-  grid-template-columns: 40px minmax(0, 1fr) minmax(160px, auto);
+  grid-template-columns: 36px minmax(0, 1fr) minmax(144px, auto);
   align-items: start;
-  max-width: none;
+  max-width: var(--pandora-wide-width);
   width: 100%;
-  margin-bottom: 10px;
+  margin-bottom: 9px;
 }
 
 .detail-screen-shell .law-search-header > div:first-of-type {
@@ -1823,13 +1826,13 @@ button {
 }
 
 .detail-page {
-  max-width: none;
+  max-width: var(--pandora-wide-width);
   min-height: 0;
   height: 100%;
   width: 100%;
   margin: 0 auto;
   overflow: auto;
-  padding: 15px;
+  padding: 13px;
   border: 1px solid rgba(42, 64, 57, 0.12);
   border-radius: 8px;
   color: #dfeee8;
@@ -1851,22 +1854,22 @@ button {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 12px;
+  gap: 12px;
+  margin-bottom: 11px;
 }
 
 .detail-panel h4 {
   margin: 0;
   color: #edf8f3;
-  font-size: 1.15rem;
+  font-size: 1.04rem;
   line-height: 1.35;
 }
 
 .detail-loading,
 .detail-meta {
-  margin: 0 0 14px;
+  margin: 0 0 12px;
   color: #9fb8b0;
-  font-size: 0.84rem;
+  font-size: 0.76rem;
   line-height: 1.55;
 }
 
@@ -1874,13 +1877,13 @@ button {
   display: block;
   max-height: none;
   overflow: auto;
-  padding: 2px 16px 24px 2px;
+  padding: 2px 14px 22px 2px;
 }
 
 .detail-section {
   display: block;
   clear: both;
-  padding: 18px 0 20px;
+  padding: 16px 0 18px;
   border: 0;
   border-bottom: 1px solid rgba(101, 220, 174, 0.12);
   border-radius: 0;
@@ -1894,7 +1897,7 @@ button {
 
 .target-detail-section {
   margin: 0 -10px;
-  padding: 18px 10px 20px;
+  padding: 16px 10px 18px;
   border-left: 5px solid #65dcae;
   border-bottom-color: rgba(101, 220, 174, 0.34);
   border-radius: 8px;
@@ -1920,8 +1923,8 @@ button {
 
 .pdf-detail-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(270px, 25vw);
-  gap: 13px;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 25vw);
+  gap: 12px;
   min-height: 0;
   height: 100%;
 }
@@ -1938,7 +1941,7 @@ button {
 .pdf-viewer {
   width: 100%;
   height: 100%;
-  min-height: 620px;
+  min-height: 560px;
   border: 0;
   background: #18211d;
 }
@@ -1950,10 +1953,10 @@ button {
 .pdf-ground-panel {
   display: flex;
   flex-direction: column;
-  gap: 11px;
+  gap: 10px;
   min-width: 0;
   min-height: 0;
-  padding: 16px;
+  padding: 14px;
   border: 1px solid rgba(101, 220, 174, 0.28);
   border-radius: 8px;
   background: rgba(6, 18, 15, 0.86);
@@ -1963,7 +1966,7 @@ button {
 .pdf-ground-panel h2 {
   margin: 0;
   color: #edf8f3;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   line-height: 1.45;
 }
 
@@ -1973,7 +1976,7 @@ button {
   margin: 0;
   overflow: auto;
   color: #d7e7e1;
-  font-size: 0.8rem;
+  font-size: 0.74rem;
   line-height: 1.62;
   white-space: normal;
   word-break: keep-all;
@@ -2019,14 +2022,14 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 34px;
+  min-height: 31px;
   margin-top: auto;
   padding: 0 11px;
   border: 1px solid rgba(101, 220, 174, 0.34);
   border-radius: 7px;
   color: #dff5ed;
   background: rgba(101, 220, 174, 0.1);
-  font-size: 0.76rem;
+  font-size: 0.7rem;
   font-weight: 800;
   text-decoration: none;
 }
@@ -2054,23 +2057,23 @@ button {
 
 .detail-section strong {
   display: block;
-  margin-bottom: 10px;
+  margin-bottom: 9px;
   color: #e7c27a;
-  font-size: 0.95rem;
+  font-size: 0.87rem;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
 .chapter-section strong {
   margin-bottom: 0;
-  font-size: 1.08rem;
+  font-size: 0.98rem;
   color: #f0d28f;
 }
 
 .detail-section p {
   margin: 0;
   color: #d7e7e1;
-  font-size: 0.94rem;
+  font-size: 0.86rem;
   line-height: 1.82;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -2078,7 +2081,7 @@ button {
 }
 
 .html-detail-section p {
-  font-size: 0.94rem;
+  font-size: 0.86rem;
   line-height: 1.82;
 }
 
@@ -2564,7 +2567,7 @@ button {
   min-height: 100vh;
   position: relative;
   overflow-y: auto;
-  padding: 28px;
+  padding: 24px;
   color: #eafff7;
   background: var(--pandora-page-background);
 }
@@ -2579,18 +2582,18 @@ button {
 .admin-header {
   display: flex;
   align-items: center;
-  gap: 16px;
-  max-width: 1180px;
-  margin: 0 auto 24px;
+  gap: 14px;
+  max-width: var(--pandora-admin-width);
+  margin: 0 auto 21px;
 }
 
 .admin-header-actions {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   color: rgba(223, 238, 232, 0.68);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .admin-header-actions button {
@@ -2600,14 +2603,14 @@ button {
   color: #d8fff0;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 9px 12px;
+  gap: 6px;
+  padding: 8px 11px;
   cursor: pointer;
 }
 
 .admin-header h1 {
   margin: 2px 0 0;
-  font-size: 28px;
+  font-size: 25px;
   letter-spacing: 0;
 }
 
@@ -2615,16 +2618,16 @@ button {
   margin: 0;
   color: #7beec3;
   text-transform: uppercase;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
 }
 
 .admin-menu-tabs {
-  max-width: 1180px;
-  margin: -8px auto 18px;
+  max-width: var(--pandora-admin-width);
+  margin: -7px auto 16px;
   display: flex;
-  gap: 8px;
-  padding: 6px;
+  gap: 7px;
+  padding: 5px;
   border: 1px solid rgba(123, 238, 195, 0.18);
   border-radius: 10px;
   background: rgba(4, 18, 13, 0.78);
@@ -2632,7 +2635,7 @@ button {
 }
 
 .admin-menu-tabs button {
-  min-height: 40px;
+  min-height: 36px;
   border: 1px solid rgba(123, 238, 195, 0.14);
   border-radius: 8px;
   background: rgba(5, 24, 18, 0.68);
@@ -2640,9 +2643,9 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 0 16px;
-  font-size: 13px;
+  gap: 7px;
+  padding: 0 14px;
+  font-size: 12px;
   font-weight: 800;
   cursor: pointer;
   transition:
@@ -2666,35 +2669,35 @@ button {
 }
 
 .admin-layout {
-  max-width: 1180px;
+  max-width: var(--pandora-admin-width);
   margin: 0 auto;
   display: grid;
   grid-template-columns: minmax(280px, 360px) 1fr;
-  gap: 18px;
+  gap: 16px;
 }
 
 .admin-dashboard {
   position: relative;
   z-index: 1;
-  max-width: 1180px;
+  max-width: var(--pandora-admin-width);
   margin: 0 auto;
   display: grid;
-  gap: 18px;
-  padding-bottom: 34px;
+  gap: 16px;
+  padding-bottom: 30px;
 }
 
 .admin-metric-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 12px;
+  gap: 11px;
 }
 
 .admin-metric-card {
-  min-height: 122px;
+  min-height: 110px;
   border: 1px solid rgba(123, 238, 195, 0.2);
   border-radius: 8px;
   background: rgba(5, 21, 16, 0.82);
-  padding: 15px;
+  padding: 14px;
   display: grid;
   align-content: space-between;
   box-shadow: 0 16px 44px rgba(0, 0, 0, 0.22);
@@ -2703,13 +2706,13 @@ button {
 .admin-metric-card span,
 .admin-metric-card small {
   color: rgba(223, 238, 232, 0.66);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
 .admin-metric-card strong {
   color: #ecfff8;
-  font-size: 28px;
+  font-size: 25px;
   line-height: 1;
 }
 
@@ -2729,40 +2732,40 @@ button {
   border: 1px solid rgba(123, 238, 195, 0.22);
   border-radius: 8px;
   background: rgba(4, 20, 14, 0.88);
-  padding: 18px;
+  padding: 16px;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.24);
 }
 
 .admin-panel-title {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
+  gap: 9px;
+  margin-bottom: 14px;
 }
 
 .admin-panel-title h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: 15px;
   letter-spacing: 0;
 }
 
 .admin-quality-panel {
-  margin-top: 18px;
-  padding-top: 18px;
+  margin-top: 16px;
+  padding-top: 16px;
   border-top: 1px solid rgba(123, 238, 195, 0.14);
 }
 
 .admin-grid-two {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
-  gap: 18px;
+  gap: 16px;
 }
 
 .admin-summary-board {
   display: grid;
-  gap: 14px;
-  margin-bottom: 16px;
-  padding: 17px;
+  gap: 13px;
+  margin-bottom: 14px;
+  padding: 15px;
   border: 1px solid rgba(123, 238, 195, 0.18);
   border-radius: 8px;
   background:
@@ -2774,33 +2777,33 @@ button {
 .admin-summary-heading {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: 11px;
 }
 
 .admin-summary-heading h3 {
   margin: 0;
   color: #f2fff9;
-  font-size: 19px;
+  font-size: 17px;
 }
 
 .admin-summary-heading p {
   margin: 5px 0 0;
   color: rgba(223, 238, 232, 0.66);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .admin-summary-stats {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
+  gap: 7px;
 }
 
 .admin-summary-stats span {
-  min-height: 76px;
+  min-height: 68px;
   display: grid;
   align-content: center;
-  gap: 7px;
-  padding: 11px;
+  gap: 6px;
+  padding: 10px;
   border: 1px solid rgba(123, 238, 195, 0.13);
   border-radius: 8px;
   background: rgba(3, 18, 13, 0.58);
@@ -2808,13 +2811,13 @@ button {
 
 .admin-summary-stats small {
   color: rgba(223, 238, 232, 0.58);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
 }
 
 .admin-summary-stats strong {
   color: #eafff7;
-  font-size: 21px;
+  font-size: 19px;
   line-height: 1;
 }
 
@@ -2824,15 +2827,15 @@ button {
 
 .admin-summary-groups {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(166px, 1fr));
+  gap: 7px;
 }
 
 .admin-summary-group-card {
   min-width: 0;
   display: grid;
-  gap: 9px;
-  padding: 11px;
+  gap: 8px;
+  padding: 10px;
   border: 1px solid rgba(123, 238, 195, 0.14);
   border-radius: 8px;
   background:
@@ -2850,7 +2853,7 @@ button {
 .admin-summary-group-head strong {
   min-width: 0;
   color: #f2fff9;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -2864,7 +2867,7 @@ button {
 .admin-summary-group-numbers {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 9px;
 }
 
 .admin-summary-group-numbers span {
@@ -2875,58 +2878,58 @@ button {
 
 .admin-summary-group-numbers small {
   color: rgba(223, 238, 232, 0.55);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
 }
 
 .admin-summary-group-numbers b {
   color: #eafff7;
-  font-size: 19px;
+  font-size: 17px;
   line-height: 1;
 }
 
 .admin-pipeline-list {
   display: grid;
-  gap: 12px;
+  gap: 11px;
 }
 
 .admin-pipeline-card {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(350px, 1.2fr);
-  gap: 14px;
-  padding: 16px;
+  grid-template-columns: minmax(198px, 1fr) minmax(315px, 1.2fr);
+  gap: 13px;
+  padding: 14px;
   border: 1px solid rgba(123, 238, 195, 0.13);
   border-radius: 8px;
   background: rgba(2, 15, 11, 0.52);
 }
 
 .admin-pipeline-main h3 {
-  margin: 10px 0 7px;
+  margin: 9px 0 6px;
   color: #f2fff9;
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .admin-pipeline-main p,
 .admin-pipeline-meta {
   margin: 0;
   color: rgba(223, 238, 232, 0.72);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.55;
 }
 
 .admin-pipeline-breakdowns {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
-  margin-top: 12px;
+  gap: 6px;
+  margin-top: 11px;
 }
 
 .admin-pipeline-breakdown-chip {
   display: inline-flex;
   flex-direction: column;
   gap: 3px;
-  max-width: 260px;
-  padding: 8px 10px;
+  max-width: 234px;
+  padding: 7px 9px;
   border: 1px solid rgba(123, 238, 195, 0.18);
   border-radius: 8px;
   background: rgba(10, 38, 29, 0.58);
@@ -2947,16 +2950,16 @@ button {
 .admin-pipeline-stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 7px;
 }
 
 .admin-pipeline-stats span {
   border: 1px solid rgba(123, 238, 195, 0.12);
   border-radius: 8px;
   background: rgba(8, 28, 21, 0.54);
-  padding: 10px;
+  padding: 9px;
   display: grid;
-  gap: 6px;
+  gap: 5px;
 }
 
 .admin-pipeline-stats small {
@@ -2966,7 +2969,7 @@ button {
 
 .admin-pipeline-stats strong {
   color: #eafff7;
-  font-size: 17px;
+  font-size: 15px;
 }
 
 .admin-progress-stack {
@@ -3032,19 +3035,19 @@ button {
 .admin-source-list,
 .admin-mini-table {
   display: grid;
-  gap: 10px;
+  gap: 9px;
 }
 
 .admin-source-row,
 .admin-mini-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
+  gap: 11px;
   align-items: center;
   border: 1px solid rgba(123, 238, 195, 0.12);
   border-radius: 8px;
   background: rgba(2, 15, 11, 0.48);
-  padding: 12px;
+  padding: 11px;
 }
 
 .admin-source-row > div,
@@ -3057,7 +3060,7 @@ button {
   display: block;
   margin-top: 8px;
   color: #f0fff8;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .admin-source-row small,
@@ -3073,7 +3076,7 @@ button {
   justify-items: end;
   gap: 5px;
   color: rgba(223, 238, 232, 0.72);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .admin-mini-row {
@@ -3092,16 +3095,16 @@ button {
 
 .admin-field {
   display: grid;
-  gap: 7px;
-  margin-bottom: 14px;
+  gap: 6px;
+  margin-bottom: 13px;
   color: #b8dacc;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
 }
 
 .admin-field select,
 .admin-field input {
-  height: 42px;
+  height: 38px;
   border-radius: 6px;
   border: 1px solid rgba(123, 238, 195, 0.24);
   background: rgba(0, 0, 0, 0.28);
@@ -3112,21 +3115,21 @@ button {
 .admin-toggle {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin: 12px 0 16px;
+  gap: 9px;
+  margin: 11px 0 14px;
   color: #d8fff0;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .admin-actions {
   display: flex;
-  gap: 10px;
+  gap: 9px;
   flex-wrap: wrap;
 }
 
 .admin-actions button,
 .icon-button {
-  min-height: 40px;
+  min-height: 36px;
   border-radius: 6px;
   border: 1px solid rgba(123, 238, 195, 0.32);
   background: rgba(20, 93, 68, 0.72);
@@ -3134,14 +3137,14 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 0 13px;
+  gap: 7px;
+  padding: 0 12px;
   cursor: pointer;
   font-weight: 800;
 }
 
 .icon-button {
-  width: 42px;
+  width: 38px;
   padding: 0;
 }
 
@@ -3158,12 +3161,12 @@ button {
 .admin-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .admin-table th,
 .admin-table td {
-  padding: 11px 10px;
+  padding: 10px 9px;
   border-bottom: 1px solid rgba(123, 238, 195, 0.14);
   text-align: left;
   vertical-align: top;
@@ -3181,7 +3184,7 @@ button {
   display: grid;
   place-items: center;
   overflow: hidden;
-  padding: clamp(28px, 6vw, 72px);
+  padding: clamp(25px, 5.4vw, 65px);
   background: var(--pandora-page-background);
 }
 
@@ -3189,19 +3192,19 @@ button {
   position: relative;
   z-index: 3;
   color: rgba(247, 242, 234, 0.78);
-  font-size: 14px;
+  font-size: 13px;
   letter-spacing: 0;
 }
 
 .auth-hero {
-  --auth-orbit-size: clamp(700px, 70vw, 820px);
+  --auth-orbit-size: clamp(630px, 63vw, 738px);
   position: relative;
   z-index: 3;
   display: grid;
   justify-items: center;
-  gap: clamp(16px, 2.1vw, 24px);
-  width: min(100%, 920px);
-  padding: clamp(18px, 4vh, 38px) 0;
+  gap: clamp(14px, 1.9vw, 22px);
+  width: min(100%, 828px);
+  padding: clamp(16px, 3.6vh, 34px) 0;
   text-align: center;
 }
 
@@ -3231,7 +3234,7 @@ button {
 .auth-kicker {
   margin: 0;
   color: #65dcae;
-  font-size: clamp(0.68rem, 1.3vw, 0.78rem);
+  font-size: clamp(0.62rem, 1.17vw, 0.7rem);
   font-weight: 800;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -3242,7 +3245,7 @@ button {
   margin: 0;
   color: #edf8f3;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(4.2rem, 12vw, 10.6rem);
+  font-size: clamp(3.8rem, 10.8vw, 9.55rem);
   font-weight: 400;
   letter-spacing: 0;
   line-height: 0.86;
@@ -3255,8 +3258,8 @@ button {
 }
 
 .login-panel {
-  width: min(100%, 390px);
-  padding: 26px;
+  width: min(100%, 351px);
+  padding: 23px;
   border: 1px solid rgba(123, 238, 195, 0.22);
   border-radius: 8px;
   background: rgba(6, 20, 18, 0.82);
@@ -3267,13 +3270,13 @@ button {
 .login-panel-heading {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
-  min-height: 42px;
+  gap: 11px;
+  min-height: 38px;
 }
 
 .login-mark {
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   display: grid;
   place-items: center;
   border: 1px solid rgba(123, 238, 195, 0.34);
@@ -3285,7 +3288,7 @@ button {
 .login-kicker {
   margin: 0;
   color: rgba(247, 242, 234, 0.62);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -3293,21 +3296,21 @@ button {
 
 .login-form {
   display: grid;
-  gap: 13px;
+  gap: 12px;
 }
 
 .login-form label {
   display: grid;
-  gap: 7px;
+  gap: 6px;
   color: rgba(247, 242, 234, 0.72);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
 }
 
 .login-form input {
   width: 100%;
-  min-height: 44px;
-  padding: 0 13px;
+  min-height: 40px;
+  padding: 0 12px;
   border: 1px solid rgba(123, 238, 195, 0.22);
   border-radius: 7px;
   color: #f7f2ea;
@@ -3323,16 +3326,16 @@ button {
 .login-error {
   margin: 0;
   color: #ffb3a8;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
 .login-button {
-  min-height: 46px;
+  min-height: 41px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 7px;
   border: 0;
   border-radius: 7px;
   color: #06211c;
@@ -3382,7 +3385,7 @@ button {
 .law-search-header-main {
   position: relative;
   grid-template-columns: 1fr;
-  max-width: 1120px;
+  max-width: var(--pandora-main-width);
   border-radius: 10px;
 }
 
@@ -3394,7 +3397,7 @@ button {
 .law-search-header-main .header-actions {
   position: absolute;
   top: 50%;
-  right: 10px;
+  right: 8px;
   transform: translateY(-50%);
 }
 
@@ -3413,8 +3416,8 @@ button {
 }
 
 .header-session-actions button {
-  width: 31px;
-  height: 31px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
   border: 1px solid rgba(123, 238, 195, 0.2);

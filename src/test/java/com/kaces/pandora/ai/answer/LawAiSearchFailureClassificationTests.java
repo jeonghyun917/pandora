@@ -118,4 +118,92 @@ class LawAiSearchFailureClassificationTests {
 		assertThat(classification.retryable()).isTrue();
 		assertThat(classification.evalCandidate()).isTrue();
 	}
+
+	@Test
+	void classifiesSelectedDocumentScopeMismatchBeforeRetrievalFailure() {
+		LawAiSearchFailureClassification classification = LawAiSearchFailureClassification.classify(
+			"NO_GROUNDS",
+			"후보 문서가 0건입니다.",
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			"empty",
+			true
+		);
+
+		assertThat(classification.failureType()).isEqualTo("DOCUMENT_SCOPE_MISMATCH");
+		assertThat(classification.failureStage()).isEqualTo("TARGET_SCOPE");
+		assertThat(classification.retryable()).isFalse();
+		assertThat(classification.evalCandidate()).isFalse();
+	}
+
+	@Test
+	void classifiesGroundBuildDropAsChunkQualityFailure() {
+		LawAiSearchFailureClassification classification = LawAiSearchFailureClassification.classify(
+			"NO_GROUNDS",
+			"Judge 통과 후보가 본문 품질 필터에서 제외됐습니다.",
+			20,
+			15,
+			10,
+			25,
+			20,
+			15,
+			10,
+			3,
+			0,
+			3,
+			3,
+			1,
+			"direct"
+		);
+
+		assertThat(classification.failureType()).isEqualTo("CHUNK_QUALITY_REJECTED");
+		assertThat(classification.failureStage()).isEqualTo("GROUND_BUILD");
+	}
+
+	@Test
+	void neverPersistsUnknownForInconsistentPipelineResult() {
+		LawAiSearchFailureClassification classification = LawAiSearchFailureClassification.classify(
+			"UNEXPECTED_RESULT",
+			"",
+			20,
+			15,
+			10,
+			25,
+			20,
+			15,
+			10,
+			3,
+			2,
+			3,
+			3,
+			1,
+			"direct"
+		);
+
+		assertThat(classification.failureType()).isEqualTo("PIPELINE_RESULT_INCONSISTENT");
+		assertThat(classification.failureStage()).isEqualTo("PIPELINE");
+		assertThat(classification.retryable()).isFalse();
+		assertThat(classification.evalCandidate()).isFalse();
+	}
+
+	@Test
+	void normalizesExternallySuppliedUnknownClassification() {
+		LawAiSearchFailureClassification classification =
+			new LawAiSearchFailureClassification("UNKNOWN", "UNKNOWN", true, true);
+
+		assertThat(classification.failureType()).isEqualTo("PIPELINE_RESULT_INCONSISTENT");
+		assertThat(classification.failureStage()).isEqualTo("PIPELINE");
+		assertThat(classification.retryable()).isFalse();
+		assertThat(classification.evalCandidate()).isFalse();
+	}
 }

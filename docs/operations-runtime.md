@@ -26,6 +26,19 @@ runtime/batch/pandora-batch-runner.jar
 
 Do not copy a jar smaller than 10 MB into `runtime/batch`. A small jar usually means Maven `spring-boot:repackage` did not complete and the file is not a runnable Spring Boot fat jar.
 
+When `PandoraApp8080` is running, do not run a normal `mvn package` against
+`target/pandora-0.0.1-SNAPSHOT.jar`. Spring Boot repackaging replaces that
+archive in place, which can fail on Windows because the active service holds it.
+Build the replacement jar in the ignored staging directory first:
+
+```powershell
+.\mvnw.cmd -Papp-dev-staged-package -DskipTests package
+```
+
+This produces `target-stage/pandora-0.0.1-SNAPSHOT.jar`. Stop only the 8080
+service, verify the staged jar, replace the app-dev jar, then start 8080 again.
+The 18080 batch runner must not be stopped or promoted as part of this flow.
+
 Batch-runner process metadata is kept separately from the promoted jar:
 
 ```text
@@ -41,11 +54,27 @@ Check current state:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\status-pandora.ps1
 ```
 
-Start/stop the development app:
+Start the development app in a visible console:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora.ps1 -Role app-dev -Port 8080
+.\scripts\start-pandora-console.cmd -Role app-dev -Port 8080
+```
+
+This is the preferred local development path on PCs where hidden PowerShell,
+Task Scheduler, or VBS launchers are blocked by endpoint security. Keep the
+console window open while using the app. Closing the console stops the app.
+
+Stop the development app from another console when needed:
+
+```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\stop-pandora.ps1 -Role app-dev -Port 8080
+```
+
+Legacy hidden start remains available, but it is not the recommended path on
+the current workstation:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora.ps1 -Role app-dev -Port 8080 -UseJar
 ```
 
 Promote a verified fat jar to batch runner:
@@ -55,16 +84,127 @@ Promote a verified fat jar to batch runner:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\promote-batch-runner.ps1
 ```
 
-Start/stop the batch runner:
+Start/stop the batch runner only after explicit operator approval:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora.ps1 -Role batch-runner -Port 18080
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora.ps1 -Role batch-runner -Port 18080 -ConfirmBatchRunner
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\stop-pandora.ps1 -Role batch-runner -Port 18080
 ```
 
 `law-ai.batch.scheduler-enabled` is disabled by default. `start-pandora.ps1`
 enables it only for `batch-runner`, so the 8080 development runtime cannot
 accidentally poll or ingest OpenAI Batch jobs.
+
+## Windows Service Option
+
+Use Windows services only through a service wrapper. Do not register `java.exe`
+directly with `sc.exe`; the Java process does not implement the Windows service
+control protocol by itself.
+
+Pandora service scripts use WinSW when a wrapper executable is available at
+`tools\winsw\WinSW.exe`, through `PANDORA_WINSW_EXE`, or through `-WinSWExe`.
+The scripts fail closed when the wrapper is missing.
+
+Render service configuration without installing:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora-service.ps1 -Action RenderConfig -Role app-dev -Port 8080
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora-service.ps1 -Action RenderConfig -Role batch-runner -Port 18080
+```
+
+Install and start the 8080 app service after placing WinSW:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora-service.ps1 -Action Install -Role app-dev -Port 8080
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora-service.ps1 -Action Start -Role app-dev -Port 8080
+```
+
+The default service start mode is `Manual`, so the app does not start on every
+Windows boot unless `-StartMode Automatic` is explicitly used during install.
+
+## Service-only Secrets
+
+Windows services do not inherit the interactive user's `OPENAI_API_KEY`. For a
+local service runtime, create the ignored service-only properties file from the
+current user environment:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\set-pandora-service-secrets.ps1 -Role app-dev -Port 8080 -FromCurrentUserEnvironment
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora-service.ps1 -Action RenderConfig -Role app-dev -Port 8080
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora-service.ps1 -Action Restart -Role app-dev -Port 8080
+```
+
+The generated `runtime\app-dev\pandora-service.properties` file is ignored by
+Git. It contains the service-only OpenAI key and is ACL-restricted to the local
+user, `SYSTEM`, and local administrators. Do not commit it or place the key in
+`application.properties`.
+
+Mutating the 18080 batch service requires explicit confirmation:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-pandora-service.ps1 -Action Start -Role batch-runner -Port 18080 -ConfirmBatchRunner
+```
+
+## App-dev 8080 Without Repeated UAC
+
+Do not grant the Codex or interactive development identity start rights on the
+current `PandoraApp8080` service. That service runs as `LocalSystem`, while its
+WinSW configuration and application JAR are in the developer-writable
+workspace. Write access to the executable chain plus service start access would
+allow modified code to run as `LocalSystem`.
+
+For app-dev, use a one-time transition from the LocalSystem service to a
+non-elevated, user-owned process. First inspect the plan without changing state:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\set-pandora-app8080-user-runtime.ps1 -Action Prepare -DryRun
+```
+
+Then run the transition. The script requests one UAC approval, verifies the
+fixed `PandoraApp8080` name/path/account, stops only that service, and changes
+only its start mode to `Disabled`:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\set-pandora-app8080-user-runtime.ps1 -Action Prepare
+```
+
+The pre-transition state is saved below the ignored app-dev runtime directory:
+
+```text
+runtime/app-dev/PandoraApp8080-user-runtime-transition.json
+```
+
+After the transition, deploy and restart 8080 without elevation:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy-pandora-app8080.ps1 `
+  -StagedJar .\target-stage\pandora-0.0.1-SNAPSHOT.jar `
+  -ExpectedSha256 <64-character SHA-256>
+```
+
+The deploy script has no role, port, or service-name override. It controls only
+app-dev 8080, validates the staged/deployed/runtime-reported JAR hashes, and
+verifies that observed 18080 and 6333 state did not change.
+
+The command remains running as the supervisor for the user-owned Java process.
+Keep its Codex terminal session open while 8080 is needed. This is required
+because the Codex sandbox terminates detached child processes when their command
+session ends. Stop the supervised runtime from another terminal with the normal
+app-dev command:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\stop-pandora.ps1 -Role app-dev -Port 8080
+```
+
+Rollback to the recorded Windows service state also requires UAC and is
+explicit:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\set-pandora-app8080-user-runtime.ps1 -Action Restore
+```
+
+This workflow intentionally means app-dev 8080 starts on demand rather than at
+Windows boot. It does not change the batch-runner 18080 or Qdrant 6333 lifecycle.
 
 ## Admin And Debug API Protection
 
@@ -84,6 +224,24 @@ pandora.admin-access.token=${PANDORA_ADMIN_TOKEN:}
 ```
 
 Remote admin access requires `X-Pandora-Admin-Token` when `PANDORA_ADMIN_TOKEN` is configured.
+
+## RAG Lexical Index Migration
+
+The application creates the exact-term lexical index schema at startup. Existing
+RAG chunks continue to use the bounded legacy lexical query while the index is
+`BUILDING`; indexed lookup becomes active only after every searchable current
+chunk has a completion marker matching its content hash.
+
+After deploying a build that introduces or changes the lexical index, backfill it
+against the app-dev instance:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\backfill-rag-search-index.ps1
+```
+
+The command is idempotent. Do not promote the build to the batch runner merely to
+perform this migration. For a non-local deployment, set `PANDORA_ADMIN_TOKEN` or
+pass `-AdminToken`; the script sends it as `X-Pandora-Admin-Token`.
 
 ## Backup Rule
 

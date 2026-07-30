@@ -1,12 +1,19 @@
 param(
     [string]$ProjectDir = 'C:\dev\workspace-egov\pandora',
+    [string]$SourceJar = '',
     [switch]$Force,
     [switch]$AllowRunningCopy
 )
 
 $ErrorActionPreference = 'Stop'
 
-$sourceJar = Join-Path $ProjectDir 'target\pandora-0.0.1-SNAPSHOT.jar'
+$sourceJar = if ([string]::IsNullOrWhiteSpace($SourceJar)) {
+    Join-Path $ProjectDir 'target\pandora-0.0.1-SNAPSHOT.jar'
+} elseif ([System.IO.Path]::IsPathRooted($SourceJar)) {
+    $SourceJar
+} else {
+    Join-Path $ProjectDir $SourceJar
+}
 $runtimeDir = Join-Path $ProjectDir 'runtime\batch'
 $targetJar = Join-Path $runtimeDir 'pandora-batch-runner.jar'
 $metaPath = Join-Path $runtimeDir 'pandora-batch-runner.meta.json'
@@ -27,7 +34,7 @@ if ($port18080 -and -not $AllowRunningCopy) {
 }
 
 New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
-Copy-Item -LiteralPath $sourceJar -Destination $targetJar -Force
+Copy-Item -LiteralPath $source.FullName -Destination $targetJar -Force
 
 $commit = $null
 $branch = $null
@@ -52,6 +59,6 @@ $meta = [ordered]@{
 $meta | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $metaPath -Encoding UTF8
 
 Write-Host "[pandora] Promoted batch runner jar:"
-Write-Host "  source: $sourceJar"
+Write-Host "  source: $($source.FullName)"
 Write-Host "  target: $targetJar"
 Write-Host "  meta:   $metaPath"

@@ -278,6 +278,7 @@ export async function runMinistryCollection(options = {}) {
     fillQueue: String(options.fillQueue ?? true),
     maxArticles: String(options.maxArticles ?? 20),
     maxAttachmentsPerArticle: String(options.maxAttachmentsPerArticle ?? 3),
+    refreshExisting: String(options.refreshExisting ?? false),
   });
   const response = await fetch(`/api/rag-collection/ministry/run?${params.toString()}`, {
     method: 'POST',

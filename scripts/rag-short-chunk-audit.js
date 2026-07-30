@@ -8,6 +8,9 @@ const vectorStore = process.env.PANDORA_RAG_VECTOR_STORE || "rag_chunks_v4";
 const maxLength = Number(process.env.RAG_SHORT_AUDIT_MAX_LENGTH || 120);
 const outMd = path.resolve(workspace, "logs", "rag-short-chunk-audit-latest.md");
 const outJson = path.resolve(workspace, "logs", "rag-short-chunk-audit-latest.json");
+const decisionsPath = path.resolve(workspace, "logs", "rag-short-chunk-decisions-latest.json");
+const apply = process.argv.includes("--apply");
+const qdrantBaseUrl = (process.env.PANDORA_QDRANT_URL || "http://127.0.0.1:6333").replace(/\/$/, "");
 
 function db(sql) {
   const output = execFileSync(mysql, [
@@ -30,6 +33,27 @@ function db(sql) {
     windowsHide: true,
   });
   return output.trim().split(/\r?\n/).filter(Boolean).map((line) => line.split("\t"));
+}
+
+function execSql(sql) {
+  execFileSync(mysql, [
+    "--ssl=0",
+    "-h", "localhost",
+    "-P", "3306",
+    "-upandora",
+    "-ppandora",
+    "--batch",
+    "--raw",
+    "--default-character-set=utf8mb4",
+    "pandora",
+    "-e",
+    sql,
+  ], {
+    cwd: workspace,
+    encoding: "utf8",
+    maxBuffer: 128 * 1024 * 1024,
+    windowsHide: true,
+  });
 }
 
 function q(value) {
@@ -68,6 +92,10 @@ function containsAny(text, terms) {
 const navigationTerms = [
   "상단", "메뉴", "버튼", "첨부", "첨부파일", "다운로드", "클릭", "확인하십시오", "이용하십시오",
   "download", "attachment", "click", "menu", "button",
+];
+const navigationActionTerms = [
+  "클릭", "선택", "누르", "이동", "다운로드", "열기", "확인",
+  "click", "select", "press", "move", "download", "open", "confirm",
 ];
 const substantiveTerms = [
   "기준", "절차", "신청", "제출", "대상", "요건", "의무", "예외", "공개", "처리", "관리", "보안",
@@ -116,8 +144,10 @@ function classify(row) {
   if (isTocLikeShortFragment(row.sample)) {
     return { category: "toc_or_heading_fragment", action: "merge_or_downrank" };
   }
-  if (containsAny(text, navigationTerms)) {
-    return { category: "navigation_or_attachment_notice", action: "suppress_or_downrank" };
+  if (isNavigationInstruction(text)) {
+    return hasNavigationSubject(text)
+      ? { category: "navigation_with_subject", action: "manual_review" }
+      : { category: "navigation_or_attachment_notice", action: "downrank_context_only" };
   }
   if (row.sectionType === "toc" || looksLikeHeadingOnly(text, titleText)) {
     return { category: "toc_or_heading_fragment", action: "merge_or_downrank" };
@@ -132,6 +162,29 @@ function classify(row) {
     return { category: "meaningful_short_evidence", action: "keep" };
   }
   return { category: "ambiguous_short", action: "manual_review" };
+}
+
+function qualityStatus(action) {
+  if (action === "keep") return "PASS";
+  if (action === "manual_review") return "REVIEW";
+  if (action === "suppress_or_rechunk") return "REJECT";
+  return "CONTEXT_ONLY";
+}
+
+function isNavigationInstruction(text) {
+  const hasNavigationTerm = containsAny(text, navigationTerms) || text.includes(">") || text.includes("→");
+  return hasNavigationTerm && containsAny(text, navigationActionTerms);
+}
+
+function hasNavigationSubject(text) {
+  let remainder = String(text ?? "").toLowerCase();
+  for (const term of [...navigationTerms, ...navigationActionTerms]) {
+    remainder = remainder.split(term.toLowerCase()).join(" ");
+  }
+  remainder = remainder
+    .replace(/(?:화면|페이지|해당|메뉴경로)/gu, " ")
+    .replace(/[^\p{Letter}\p{Number}]/gu, "");
+  return remainder.length >= 4;
 }
 
 function isDecorativeFooterOrTitle(text, documentTitle, titleText) {
@@ -315,7 +368,7 @@ function mdTable(tableRows, columns) {
   return [header, sep, ...body].join("\n");
 }
 
-function main() {
+async function main() {
   const records = rows().map((row) => {
     const record = {
       documentType: row[0],
@@ -330,7 +383,9 @@ function main() {
       rawSample: unhex(row[9]),
     };
     record.sample = clean(record.rawSample);
-    return { ...record, ...classify(record) };
+    const classified = { ...record, ...classify(record) };
+    classified.qualityStatus = qualityStatus(classified.action);
+    return classified;
   });
 
   const summaryMap = new Map();
@@ -366,9 +421,63 @@ function main() {
     total: records.length,
     summary,
     samples: Object.fromEntries(sampleByCategory),
+    applyRequested: apply,
+    dbApplyCompleted: false,
+    vectorCleanupCompleted: false,
+    applyCompleted: false,
   };
   fs.mkdirSync(path.dirname(outMd), { recursive: true });
+
+  let applyError = null;
+  if (apply) {
+    try {
+      const rollbackState = captureRollbackState(records);
+      const qdrantSnapshot = await createQdrantSnapshot();
+      const rollbackPath = path.resolve(
+        workspace,
+        "logs",
+        `rag-short-chunk-rollback-${output.generatedAt.replace(/[:.]/g, "-")}.json`,
+      );
+      fs.writeFileSync(rollbackPath, JSON.stringify({
+        generatedAt: output.generatedAt,
+        vectorStore,
+        qdrantSnapshot,
+        chunks: rollbackState.chunks,
+        embeddings: rollbackState.embeddings,
+      }, null, 2), "utf8");
+      output.rollbackManifest = rollbackPath;
+      output.qdrantSnapshot = qdrantSnapshot;
+      applyQualityDecisions(records);
+      output.dbApplyCompleted = true;
+      await removeNonSearchableVectors();
+      output.vectorCleanupCompleted = true;
+      output.applyCompleted = true;
+    } catch (error) {
+      applyError = error;
+      output.applyError = String(error?.message || error);
+    }
+  }
+
   fs.writeFileSync(outJson, JSON.stringify(output, null, 2), "utf8");
+  fs.writeFileSync(decisionsPath, JSON.stringify({
+    generatedAt: output.generatedAt,
+    vectorStore,
+    maxLength,
+    applyRequested: apply,
+    dbApplyCompleted: output.dbApplyCompleted,
+    vectorCleanupCompleted: output.vectorCleanupCompleted,
+    applyCompleted: output.applyCompleted,
+    applyError: output.applyError || null,
+    rollbackManifest: output.rollbackManifest || null,
+    qdrantSnapshot: output.qdrantSnapshot || null,
+    decisions: records.map((record) => ({
+      chunkId: record.chunkId,
+      documentId: record.documentId,
+      category: record.category,
+      action: record.action,
+      qualityStatus: record.qualityStatus,
+    })),
+  }, null, 2), "utf8");
 
   const lines = [];
   lines.push("# RAG Short Chunk Audit");
@@ -377,6 +486,10 @@ function main() {
   lines.push(`- Vector store: ${vectorStore}`);
   lines.push(`- Max length: <${maxLength}`);
   lines.push(`- Total short chunks: ${records.length.toLocaleString("ko-KR")}`);
+  lines.push(`- Apply requested: ${apply}`);
+  lines.push(`- DB apply completed: ${output.dbApplyCompleted}`);
+  lines.push(`- Vector cleanup completed: ${output.vectorCleanupCompleted}`);
+  lines.push(`- Apply completed: ${output.applyCompleted}`);
   lines.push("");
   lines.push("## Summary");
   lines.push("");
@@ -416,6 +529,147 @@ function main() {
   fs.writeFileSync(outMd, lines.join("\n"), "utf8");
   console.log(outMd);
   console.log(outJson);
+  console.log(decisionsPath);
+  if (applyError) {
+    throw applyError;
+  }
 }
 
-main();
+function applyQualityDecisions(records) {
+  const decisionGroups = new Map();
+  for (const row of records) {
+    const key = `${row.qualityStatus}\u0000${row.category}`;
+    if (!decisionGroups.has(key)) {
+      decisionGroups.set(key, []);
+    }
+    decisionGroups.get(key).push(row.chunkId);
+  }
+  for (const [key, chunkIds] of decisionGroups.entries()) {
+    const [qualityStatus, category] = key.split("\u0000");
+    for (let start = 0; start < chunkIds.length; start += 300) {
+      const ids = chunkIds.slice(start, start + 300).join(",");
+      execSql(`
+        UPDATE rag_document_chunks
+        SET quality_status = '${q(qualityStatus)}',
+            quality_reason = '${q(category)}'
+        WHERE chunk_id IN (${ids});
+      `);
+    }
+  }
+
+  const nonSearchable = records.filter((row) => ["CONTEXT_ONLY", "REJECT"].includes(row.qualityStatus));
+  for (let start = 0; start < nonSearchable.length; start += 300) {
+    const ids = nonSearchable.slice(start, start + 300).map((row) => row.chunkId).join(",");
+    execSql(`
+      UPDATE rag_chunk_embeddings
+      SET status = 'SUPERSEDED',
+          last_error_message = 'Excluded by v4 chunk quality gate',
+          updated_at = NOW()
+      WHERE chunk_id IN (${ids})
+        AND vector_store = '${q(vectorStore)}';
+    `);
+  }
+}
+
+function captureRollbackState(records) {
+  const chunks = [];
+  const embeddings = [];
+  for (let start = 0; start < records.length; start += 400) {
+    const ids = records.slice(start, start + 400).map((row) => row.chunkId).join(",");
+    for (const row of db(`
+      SELECT chunk_id,
+             COALESCE(quality_status, 'PASS'),
+             HEX(COALESCE(quality_reason, ''))
+      FROM rag_document_chunks
+      WHERE chunk_id IN (${ids});
+    `)) {
+      chunks.push({
+        chunkId: number(row[0]),
+        qualityStatus: row[1],
+        qualityReason: unhex(row[2]),
+      });
+    }
+    for (const row of db(`
+      SELECT chunk_id,
+             status,
+             HEX(COALESCE(last_error_message, ''))
+      FROM rag_chunk_embeddings
+      WHERE chunk_id IN (${ids})
+        AND vector_store = '${q(vectorStore)}';
+    `)) {
+      embeddings.push({
+        chunkId: number(row[0]),
+        status: row[1],
+        lastErrorMessage: unhex(row[2]),
+      });
+    }
+  }
+  return { chunks, embeddings };
+}
+
+async function createQdrantSnapshot() {
+  const response = await fetch(`${qdrantBaseUrl}/collections/${encodeURIComponent(vectorStore)}/snapshots?wait=true`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(120000),
+  });
+  if (!response.ok) {
+    throw new Error(`Qdrant pre-cleanup snapshot failed: HTTP ${response.status} ${await response.text()}`);
+  }
+  const payload = await response.json();
+  const snapshotName = payload?.result?.name;
+  if (!snapshotName) {
+    throw new Error("Qdrant pre-cleanup snapshot response did not include a snapshot name.");
+  }
+  return snapshotName;
+}
+
+async function removeNonSearchableVectors() {
+  const pointIds = db(`
+    SELECT DISTINCT e.vector_point_id
+    FROM rag_document_chunks c
+    JOIN rag_documents d
+      ON d.document_id = c.document_id
+     AND d.use_yn = 'Y'
+    JOIN rag_chunk_embeddings e
+      ON e.chunk_id = c.chunk_id
+     AND e.vector_store = '${q(vectorStore)}'
+    WHERE c.use_yn = 'Y'
+      AND c.quality_status IN ('CONTEXT_ONLY', 'REJECT')
+      AND e.vector_point_id IS NOT NULL;
+  `)
+    .map((row) => number(row[0]))
+    .filter((pointId) => Number.isSafeInteger(pointId) && pointId > 0);
+  for (let start = 0; start < pointIds.length; start += 64) {
+    await deleteQdrantPointBatch(pointIds.slice(start, start + 64));
+  }
+}
+
+async function deleteQdrantPointBatch(pointIds) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    try {
+      const response = await fetch(`${qdrantBaseUrl}/collections/${encodeURIComponent(vectorStore)}/points/delete?wait=true`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ points: pointIds }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (response.ok) {
+        return;
+      }
+      lastError = new Error(`HTTP ${response.status} ${await response.text()}`);
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < 4) {
+      await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+    }
+  }
+  throw new Error(`Qdrant quality cleanup failed after retries: ${lastError?.message || lastError}`);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

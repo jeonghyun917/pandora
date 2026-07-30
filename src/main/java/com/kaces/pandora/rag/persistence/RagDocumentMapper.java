@@ -7,6 +7,9 @@ import com.kaces.pandora.lawdata.persistence.LawDocumentRow;
 import com.kaces.pandora.rag.document.RagDocumentChunkRow;
 import com.kaces.pandora.rag.document.RagDocumentRow;
 import com.kaces.pandora.rag.importing.RagImportJobKey;
+import com.kaces.pandora.rag.search.RagChunkSearchTermRow;
+import com.kaces.pandora.rag.search.RagChunkSearchIndexStateRow;
+import com.kaces.pandora.semantic.provenance.IndexContentSnapshot;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -55,6 +58,14 @@ public interface RagDocumentMapper {
 	RagDocumentRow findDocumentById(@Param("documentId") long documentId);
 
 	List<RagDocumentRow> findDocumentsForReimport(@Param("documentType") String documentType);
+
+	List<RagDocumentRow> findActiveDocumentsForObjectStorage();
+
+	int assignObjectKeyIfHashMatches(
+		@Param("documentId") long documentId,
+		@Param("fileHash") String fileHash,
+		@Param("objectKey") String objectKey
+	);
 
 	int countDocuments(
 		@Param("documentType") String documentType,
@@ -119,7 +130,37 @@ public interface RagDocumentMapper {
 
 	void insertChunk(@Param("chunk") RagDocumentChunkRow chunk);
 
+	void deleteChunkSearchTermsByDocumentId(@Param("documentId") long documentId);
+
+	void deleteChunkSearchIndexStateByDocumentId(@Param("documentId") long documentId);
+
+	void deleteChunkSearchTermsByChunkIds(@Param("chunkIds") List<Long> chunkIds);
+
+	void deleteChunkSearchIndexStateByChunkIds(@Param("chunkIds") List<Long> chunkIds);
+
+	void insertChunkSearchTerms(@Param("terms") List<RagChunkSearchTermRow> terms);
+
+	void upsertChunkSearchIndexStates(@Param("states") List<RagChunkSearchIndexStateRow> states);
+
+	int countMissingChunkSearchTerms();
+
+	String findChunkSearchIndexStatus();
+
+	void markChunkSearchIndexBuilding();
+
+	void markChunkSearchIndexReady();
+
+	List<LawSemanticChunkRow> findChunkSearchTermBackfillCandidates(
+		@Param("limit") int limit
+	);
+
 	List<LawSemanticChunkRow> findSemanticChunksByDocumentId(@Param("documentId") long documentId);
+
+	List<LawSemanticChunkRow> findSemanticContextChunks(
+		@Param("documentId") long documentId,
+		@Param("sortOrder") int sortOrder,
+		@Param("window") int window
+	);
 
 	List<LawSemanticChunkRow> findSemanticIndexChunksByDocumentId(
 		@Param("documentId") long documentId,
@@ -137,6 +178,12 @@ public interface RagDocumentMapper {
 	List<LawSemanticChunkRow> findSemanticChunksByIds(@Param("chunkIds") List<Long> chunkIds);
 
 	List<LawSemanticChunkRow> findSemanticChunksByText(
+		@Param("documentTypes") List<String> documentTypes,
+		@Param("keywords") List<String> keywords,
+		@Param("limit") int limit
+	);
+
+	List<LawSemanticChunkRow> findSemanticChunksByLegacyText(
 		@Param("documentTypes") List<String> documentTypes,
 		@Param("keywords") List<String> keywords,
 		@Param("limit") int limit
@@ -173,6 +220,11 @@ public interface RagDocumentMapper {
 		@Param("documentTypes") List<String> documentTypes,
 		@Param("keywords") List<String> keywords,
 		@Param("limit") int limit
+	);
+
+	IndexContentSnapshot findCurrentIndexedSnapshot(
+		@Param("model") String model,
+		@Param("vectorStore") String vectorStore
 	);
 
 	void upsertEmbeddingStatus(
