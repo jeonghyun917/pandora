@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { buildBlockingGates } = require('./lib/rag-eval-gates');
 
 let caseParser = {};
 let retrievalMetrics = {};
@@ -22,6 +23,44 @@ try {
 } catch {
   // The runner is added only after its command-line contract has failed RED.
 }
+
+test('blocking gates classify curated, answer-oracle, and no-grounds failures independently', () => {
+  const rows = [
+    { id: 'curated-pass-one', passed: true },
+    { id: 'curated-pass-two', passed: true },
+    { id: 'curated-fail', passed: false },
+    { id: 'gen-oracle-pass', passed: true, answerVerificationRequired: true },
+    { id: 'gen-oracle-fail', passed: false, answerVerificationRequired: true },
+    { id: 'gen-no-ground-fail', passed: false, expectedResultMsgs: ['NO_GROUNDS'] },
+  ];
+
+  assert.deepEqual(buildBlockingGates(rows), {
+    curated: {
+      total: 3,
+      passed: 2,
+      failed: 1,
+      passRate: 2 / 3,
+      gatePassed: false,
+      blockingFailureIds: ['curated-fail'],
+    },
+    answerOracle: {
+      total: 2,
+      passed: 1,
+      failed: 1,
+      passRate: 1 / 2,
+      gatePassed: false,
+      blockingFailureIds: ['gen-oracle-fail'],
+    },
+    noGrounds: {
+      total: 1,
+      passed: 0,
+      failed: 1,
+      passRate: 0,
+      gatePassed: false,
+      blockingFailureIds: ['gen-no-ground-fail'],
+    },
+  });
+});
 
 test('TSV parser preserves UTF-8 and quoted tabs, newlines, and escaped quotes', () => {
   assert.equal(typeof caseParser.parseEvalCasesTsv, 'function');

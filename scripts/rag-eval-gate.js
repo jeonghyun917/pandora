@@ -19,6 +19,7 @@ const {
   resolveReportPaths,
   selectionHash,
 } = require('./lib/rag-eval-provenance');
+const { buildBlockingGates } = require('./lib/rag-eval-gates');
 
 const baseUrl = process.env.RAG_EVAL_BASE_URL || 'http://127.0.0.1:8080';
 const endpoint = `${baseUrl.replace(/\/$/, '')}/api/law-data/ai/debug/evaluate/gate`;
@@ -35,6 +36,7 @@ const requestTimeoutMs = Number(process.env.RAG_EVAL_REQUEST_TIMEOUT_MS || 18000
 const interBatchSleepMs = Number(process.env.RAG_EVAL_INTER_BATCH_SLEEP_MS || 300);
 const caseLimit = Number(process.env.RAG_EVAL_CASE_LIMIT || 0);
 const caseIds = splitCaseIds(process.env.RAG_EVAL_CASE_IDS || '');
+const gateProfile = resolveGateProfile(process.env.RAG_EVAL_GATE_PROFILE);
 let checkpointPath = process.env.RAG_EVAL_CHECKPOINT || 'logs/rag-eval-gate-targeted-checkpoint.json';
 const resumeFromCheckpoint = ['1', 'true', 'yes', 'y'].includes(
   String(process.env.RAG_EVAL_RESUME || '').trim().toLowerCase(),
@@ -56,6 +58,7 @@ async function main() {
     datasetHashValue,
     selectionHashValue,
     selectedCount: cases.length,
+    gateProfile,
     runtimeInfo,
   });
   if (resumeFromCheckpoint && !checkpointIdentity.indexRevision) {
@@ -87,6 +90,7 @@ async function main() {
       selectionHashValue,
       selectedCount: cases.length,
       totalCaseCount: allCases.length,
+      gateProfile,
       runtimeInfo,
     }),
     breakdown: evaluationBreakdown(body.results ?? []),
@@ -166,8 +170,11 @@ function runId(isoTimestamp) {
 }
 
 async function runEvaluationForCases(cases, expectedCheckpointIdentity = null) {
-  if (!cases.length || caseBatchSize <= 0 || cases.length <= caseBatchSize) {
-    return runEvaluation(cases.length ? { cases } : {}, "all");
+  if (!cases.length) {
+    return recomputeGate({ results: [] });
+  }
+  if (caseBatchSize <= 0 || cases.length <= caseBatchSize) {
+    return runEvaluation({ cases }, "all");
   }
   const batches = chunk(cases, caseBatchSize);
   const selectedIds = new Set(cases.map((item) => item.id));
@@ -179,7 +186,9 @@ async function runEvaluationForCases(cases, expectedCheckpointIdentity = null) {
   if (checkpointCompatible) {
     assertResultIds(Array.from(selectedIds), checkpoint?.results, 'checkpoint', { allowMissing: true });
   }
-  const results = checkpointCompatible ? checkpoint.results.slice() : [];
+  const results = checkpointCompatible
+    ? restoreCaseClassification(checkpoint.results, cases)
+    : [];
   const completedIds = new Set(results.map((result) => result.id));
   const attempts = [];
   for (let index = 0; index < batches.length; index += 1) {
@@ -229,9 +238,8 @@ async function runEvaluationForCases(cases, expectedCheckpointIdentity = null) {
 }
 
 async function runEvaluation(payload, label = "all") {
-  const requestedIds = Array.isArray(payload?.cases)
-    ? payload.cases.map((item) => item.id)
-    : loadCases().map((item) => item.id);
+  const requestedCases = Array.isArray(payload?.cases) ? payload.cases : loadCases();
+  const requestedIds = requestedCases.map((item) => item.id);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
   try {
@@ -246,7 +254,7 @@ async function runEvaluation(payload, label = "all") {
     if (!response.ok) {
       if (response.status === 409 && isCompletedFailingEvaluationResponse(body)) {
         assertResultIds(requestedIds, body.results, label);
-        return body;
+        return { ...body, results: restoreCaseClassification(body.results, requestedCases) };
       }
       const details = body
         ? JSON.stringify({
@@ -262,7 +270,7 @@ async function runEvaluation(payload, label = "all") {
       throw new Error(`evaluation ${label} HTTP ${response.status} ${response.statusText}: ${text.slice(0, 300)}`);
     }
     assertResultIds(requestedIds, body.results, label);
-    return body;
+    return { ...body, results: restoreCaseClassification(body.results, requestedCases) };
   } catch (error) {
     if (error?.name === "AbortError") {
       throw new Error(`evaluation ${label} timed out after ${requestTimeoutMs}ms`);
@@ -271,6 +279,18 @@ async function runEvaluation(payload, label = "all") {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function restoreCaseClassification(results, cases) {
+  const casesById = new Map((cases ?? []).map((item) => [item.id, item]));
+  return (results ?? []).map((result) => {
+    const evalCase = casesById.get(result.id);
+    return {
+      ...result,
+      expectedResultMsgs: [...(evalCase?.expectedResultMsgs ?? [])],
+      answerVerificationRequired: evalCase?.answerVerificationRequired,
+    };
+  });
 }
 
 function assertResultIds(requestedIds, results, label, { allowMissing = false } = {}) {
@@ -374,15 +394,20 @@ function recomputeGate(body) {
   const total = results.length;
   const passed = results.filter((result) => result.passed).length;
   const failed = total - passed;
+  const blockingGates = buildBlockingGates(results);
+  const namedGatesPassed = Object.values(blockingGates)
+    .filter((gate) => gate.total > 0)
+    .every((gate) => gate.gatePassed);
   return {
     ...body,
     total,
     passed,
     failed,
     passRate: total === 0 ? 0 : passed / total,
-    gatePassed: total > 0 && failed === 0,
+    gatePassed: total > 0 && failed === 0 && namedGatesPassed,
     minimumPassed: total,
     blockingFailureIds: results.filter((result) => !result.passed).map((result) => result.id),
+    blockingGates,
   };
 }
 
@@ -416,8 +441,7 @@ function isCompletedFailingEvaluationResponse(body) {
   if (!isEvaluationResponse(body) || body.gatePassed !== false) {
     return false;
   }
-  const recomputed = recomputeGate(body);
-  return recomputed.failed > 0 && recomputed.gatePassed === false;
+  return body.results.some((result) => result.passed !== true);
 }
 
 function loadCases() {
@@ -425,7 +449,30 @@ function loadCases() {
 }
 
 function selectCases(cases) {
-  return selectEvalCases(cases, { caseIds, caseLimit });
+  return selectEvalCases(filterCasesByGateProfile(cases, gateProfile), { caseIds, caseLimit });
+}
+
+function resolveGateProfile(value) {
+  const profile = String(value ?? 'release').trim().toLowerCase() || 'release';
+  if (!['release', 'curated', 'answer-oracle', 'no-grounds'].includes(profile)) {
+    throw new Error(`unsupported RAG_EVAL_GATE_PROFILE: ${profile}`);
+  }
+  return profile;
+}
+
+function filterCasesByGateProfile(cases, profile) {
+  if (profile === 'release') {
+    return cases;
+  }
+  if (profile === 'curated') {
+    return cases.filter((item) => !String(item.id ?? '').startsWith('gen-'));
+  }
+  if (profile === 'answer-oracle') {
+    return cases.filter((item) => item.answerVerificationRequired === true);
+  }
+  return cases.filter((item) =>
+    (item.expectedResultMsgs ?? []).includes('NO_GROUNDS')
+      || String(item.id ?? '').startsWith('no-'));
 }
 
 function chunk(values, size) {

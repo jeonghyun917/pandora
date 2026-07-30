@@ -61,11 +61,13 @@ function buildCheckpointIdentity({
   datasetHashValue,
   selectionHashValue,
   selectedCount,
+  gateProfile = 'release',
   runtimeInfo,
 }) {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     runScope: scope,
+    gateProfile,
     baseUrl: String(baseUrl ?? '').replace(/\/$/, ''),
     datasetHash: datasetHashValue || null,
     selectionHash: selectionHashValue || null,
@@ -120,6 +122,7 @@ function isCheckpointCompatible(checkpoint, expectedIdentity) {
   const requiredKeys = [
     'schemaVersion',
     'runScope',
+    'gateProfile',
     'baseUrl',
     'datasetHash',
     'selectionHash',
@@ -220,14 +223,16 @@ function buildProvenance({
   selectionHashValue,
   selectedCount,
   totalCaseCount,
+  gateProfile = 'release',
   runtimeInfo,
   generatedAt = new Date().toISOString(),
 }) {
   const parsedUrl = new URL(baseUrl);
   const defaultPort = parsedUrl.protocol === 'https:' ? '443' : '80';
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     runScope: scope,
+    gateProfile,
     generatedAt,
     baseUrl,
     executionPort: Number(parsedUrl.port || defaultPort),

@@ -130,6 +130,7 @@ async function runGateAgainstResults(requestedIds, results, options = {}) {
         RAG_EVAL_CHECKPOINT: checkpointPath,
         RAG_EVAL_ERROR_RETRIES: String(options.errorRetries ?? 0),
         RAG_EVAL_OUTPUT: outputPath,
+        RAG_EVAL_GATE_PROFILE: options.gateProfile ?? 'release',
         RAG_EVAL_REPORT: path.join(tempDir, 'report.md'),
         RAG_EVAL_RESUME: options.resume ? 'true' : 'false',
       },
@@ -291,6 +292,7 @@ test('checkpoint reuse requires the same inputs and server artifact', () => {
     datasetHashValue: 'dataset-a',
     selectionHashValue: 'selection-a',
     selectedCount: 12,
+    gateProfile: 'release',
     runtimeInfo: {
       source: 'server',
       runtimeArtifactSha256: 'jar-a',
@@ -307,7 +309,12 @@ test('checkpoint reuse requires the same inputs and server artifact', () => {
     },
   });
 
+  assert.equal(identity.gateProfile, 'release');
   assert.equal(isCheckpointCompatible({ checkpointIdentity: identity }, identity), true);
+  assert.equal(isCheckpointCompatible({ checkpointIdentity: identity }, {
+    ...identity,
+    gateProfile: 'curated',
+  }), false);
   assert.equal(isCheckpointCompatible({
     checkpointIdentity: { ...identity, selectionHash: 'selection-b' },
   }, identity), false);
@@ -429,6 +436,48 @@ test('gate accepts a response with exactly one result per requested case ID', as
 
   assert.equal(result.code, 0, result.stderr);
   assert.match(result.stdout, /PASS 2\/2/);
+});
+
+test('gate restores selected case expectations before reporting blocking gates', async () => {
+  const result = await runGateAgainstResults(
+    ['project-review-target', 'no-oecd-footer-as-policy-ground'],
+    [
+      { id: 'project-review-target', passed: true, resultMsg: 'OK' },
+      { id: 'no-oecd-footer-as-policy-ground', passed: true, resultMsg: 'NO_GROUNDS' },
+    ],
+  );
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.outputBody.results[0].answerVerificationRequired, true);
+  assert.deepEqual(result.outputBody.results[1].expectedResultMsgs, ['NO_GROUNDS']);
+  assert.deepEqual(result.outputBody.blockingGates.noGrounds, {
+    total: 1,
+    passed: 1,
+    failed: 0,
+    passRate: 1,
+    gatePassed: true,
+    blockingFailureIds: [],
+  });
+});
+
+test('no-grounds gate profile is recorded in the provenance', async () => {
+  const expectedCases = loadEvalCases(baseEvaluationCasePaths, { answerOraclePath }).filter((item) =>
+    item.expectedResultMsgs.includes('NO_GROUNDS') || item.id.startsWith('no-'));
+  const result = await runGateAgainstResults(
+    [],
+    (payload) => payload.cases.map((item) => ({
+      id: item.id,
+      passed: true,
+      resultMsg: 'NO_GROUNDS',
+    })),
+    { gateProfile: 'no-grounds', caseBatchSize: 0 },
+  );
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.outputBody.provenance.gateProfile, 'no-grounds');
+  assert.equal(result.outputBody.total, expectedCases.length);
+  assert.equal(result.outputBody.results.every((item) =>
+    item.expectedResultMsgs.includes('NO_GROUNDS') || item.id.startsWith('no-')), true);
 });
 
 test('gate fails closed when a successful response omits a requested case ID', async () => {
