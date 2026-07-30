@@ -10,6 +10,10 @@ src/main/resources/application-local.properties
 !.env.*.example
 data/
 storage/
+!src/main/java/com/kaces/pandora/rag/storage/
+!src/main/java/com/kaces/pandora/rag/storage/**
+!src/test/java/com/kaces/pandora/rag/storage/
+!src/test/java/com/kaces/pandora/rag/storage/**
 snapshots/
 runtime/
 tmp/
