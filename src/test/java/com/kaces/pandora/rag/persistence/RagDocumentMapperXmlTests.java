@@ -21,6 +21,10 @@ class RagDocumentMapperXmlTests {
 		"com.kaces.pandora.rag.persistence.RagDocumentMapper.findSemanticChunksByLegacyText";
 	private static final String MISSING_INDEX_STATEMENT =
 		"com.kaces.pandora.rag.persistence.RagDocumentMapper.countMissingChunkSearchTerms";
+	private static final String OBJECT_STORAGE_DOCUMENTS_STATEMENT =
+		"com.kaces.pandora.rag.persistence.RagDocumentMapper.findActiveDocumentsForObjectStorage";
+	private static final String UPDATE_OBJECT_KEY_STATEMENT =
+		"com.kaces.pandora.rag.persistence.RagDocumentMapper.updateObjectKey";
 
 	@Test
 	void headingSearchFiltersAndRanksHeadingFieldsWithoutSearchingBodyText() throws Exception {
@@ -111,6 +115,37 @@ class RagDocumentMapperXmlTests {
 			.contains("rag_chunk_search_index_state")
 			.contains("state.content_hash")
 			.doesNotContain("rag_chunk_search_terms term");
+	}
+
+	@Test
+	void objectStorageStatementsOnlySelectActiveFileBackedDocumentsAndUpdateById() throws Exception {
+		Configuration configuration = parseMapper();
+
+		assertThat(configuration.hasStatement(OBJECT_STORAGE_DOCUMENTS_STATEMENT)).isTrue();
+		assertThat(configuration.hasStatement(UPDATE_OBJECT_KEY_STATEMENT)).isTrue();
+
+		String selectSql = configuration.getMappedStatement(OBJECT_STORAGE_DOCUMENTS_STATEMENT)
+			.getBoundSql(Map.of())
+			.getSql()
+			.replaceAll("\\s+", " ")
+			.trim();
+		String updateSql = configuration.getMappedStatement(UPDATE_OBJECT_KEY_STATEMENT)
+			.getBoundSql(Map.of("documentId", 7L, "objectKey", "rag-originals/sha256/ab/example.pdf"))
+			.getSql()
+			.replaceAll("\\s+", " ")
+			.trim();
+
+		assertThat(selectSql)
+			.contains("object_key AS objectKey")
+			.contains("use_yn = 'Y'")
+			.contains("file_path IS NOT NULL")
+			.contains("file_path != ''")
+			.contains("ORDER BY document_id");
+		assertThat(updateSql)
+			.contains("UPDATE rag_documents")
+			.contains("SET object_key = ?")
+			.contains("WHERE document_id = ?")
+			.contains("AND use_yn = 'Y'");
 	}
 
 	private String headingSearchSql() throws Exception {

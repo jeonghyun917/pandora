@@ -12,6 +12,7 @@ public record RagDocumentRow(
 	int trustLevel,
 	String fileName,
 	String filePath,
+	String objectKey,
 	String fileHash,
 	String mimeType,
 	String sourceUrl,

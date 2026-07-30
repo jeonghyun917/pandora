@@ -212,6 +212,7 @@ CREATE TABLE IF NOT EXISTS rag_documents (
     trust_level INT NOT NULL DEFAULT 1 COMMENT '1 official/work basis, 5 reference',
     file_name VARCHAR(500) NOT NULL COMMENT 'original file name',
     file_path VARCHAR(1000) NOT NULL COMMENT 'local file path',
+    object_key VARCHAR(1000) NULL COMMENT 'private object storage key for original file',
     file_hash CHAR(64) NOT NULL COMMENT 'SHA-256 file hash',
     mime_type VARCHAR(100) NULL COMMENT 'detected mime type',
     source_url VARCHAR(4000) NULL COMMENT 'source url or local reference',

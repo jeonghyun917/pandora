@@ -59,6 +59,13 @@ public interface RagDocumentMapper {
 
 	List<RagDocumentRow> findDocumentsForReimport(@Param("documentType") String documentType);
 
+	List<RagDocumentRow> findActiveDocumentsForObjectStorage();
+
+	int updateObjectKey(
+		@Param("documentId") long documentId,
+		@Param("objectKey") String objectKey
+	);
+
 	int countDocuments(
 		@Param("documentType") String documentType,
 		@Param("query") String query,

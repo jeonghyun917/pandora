@@ -39,6 +39,7 @@
       trust_level AS trustLevel,
       file_name AS fileName,
       file_path AS filePath,
+      object_key AS objectKey,
       file_hash AS fileHash,
       mime_type AS mimeType,
       source_url AS sourceUrl,
@@ -60,6 +61,7 @@
       trust_level AS trustLevel,
       file_name AS fileName,
       file_path AS filePath,
+      object_key AS objectKey,
       file_hash AS fileHash,
       mime_type AS mimeType,
       source_url AS sourceUrl,
@@ -82,6 +84,7 @@
       trust_level AS trustLevel,
       file_name AS fileName,
       file_path AS filePath,
+      object_key AS objectKey,
       file_hash AS fileHash,
       mime_type AS mimeType,
       source_url AS sourceUrl,
@@ -93,6 +96,38 @@
       AND (#{documentType} = '' OR document_type = #{documentType})
     ORDER BY document_type, document_id
   </select>
+
+  <select id="findActiveDocumentsForObjectStorage" resultType="com.kaces.pandora.rag.document.RagDocumentRow">
+    SELECT
+      document_id AS documentId,
+      document_type AS documentType,
+      title,
+      source_org AS sourceOrg,
+      document_category AS documentCategory,
+      document_topic AS documentTopic,
+      published_date AS publishedDate,
+      version,
+      trust_level AS trustLevel,
+      file_name AS fileName,
+      file_path AS filePath,
+      object_key AS objectKey,
+      file_hash AS fileHash,
+      mime_type AS mimeType,
+      source_url AS sourceUrl,
+      import_status AS importStatus
+    FROM rag_documents
+    WHERE use_yn = 'Y'
+      AND file_path IS NOT NULL
+      AND file_path != ''
+    ORDER BY document_id
+  </select>
+
+  <update id="updateObjectKey">
+    UPDATE rag_documents
+    SET object_key = #{objectKey}
+    WHERE document_id = #{documentId}
+      AND use_yn = 'Y'
+  </update>
 
   <sql id="documentSearchWhere">
     document_type = #{documentType}
