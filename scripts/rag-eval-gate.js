@@ -392,7 +392,7 @@ function mergeResults(body, retryResults) {
 function recomputeGate(body) {
   const results = body?.results ?? [];
   const total = results.length;
-  const passed = results.filter((result) => result.passed).length;
+  const passed = results.filter((result) => result.passed === true).length;
   const failed = total - passed;
   const blockingGates = buildBlockingGates(results);
   const namedGatesPassed = Object.values(blockingGates)
@@ -406,7 +406,7 @@ function recomputeGate(body) {
     passRate: total === 0 ? 0 : passed / total,
     gatePassed: total > 0 && failed === 0 && namedGatesPassed,
     minimumPassed: total,
-    blockingFailureIds: results.filter((result) => !result.passed).map((result) => result.id),
+    blockingFailureIds: results.filter((result) => result.passed !== true).map((result) => result.id),
     blockingGates,
   };
 }

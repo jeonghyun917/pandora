@@ -438,6 +438,18 @@ test('gate accepts a response with exactly one result per requested case ID', as
   assert.match(result.stdout, /PASS 2\/2/);
 });
 
+test('gate fails closed when a generated result uses a truthy non-boolean passed value', async () => {
+  const result = await runGateAgainstResults(
+    ['gen-official-89414'],
+    [{ id: 'gen-official-89414', passed: 'true', resultMsg: 'OK' }],
+  );
+
+  assert.notEqual(result.code, 0, result.stdout);
+  assert.equal(result.outputBody.passed, 0);
+  assert.equal(result.outputBody.failed, 1);
+  assert.deepEqual(result.outputBody.blockingFailureIds, ['gen-official-89414']);
+});
+
 test('gate restores selected case expectations before reporting blocking gates', async () => {
   const result = await runGateAgainstResults(
     ['project-review-target', 'no-oecd-footer-as-policy-ground'],
