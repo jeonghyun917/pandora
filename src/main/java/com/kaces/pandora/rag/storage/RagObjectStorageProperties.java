@@ -15,6 +15,7 @@ public class RagObjectStorageProperties {
 	private String secretAccessKey = "";
 	private boolean pathStyle;
 	private Path cacheRoot = Path.of(System.getProperty("java.io.tmpdir"), "pandora-object-cache");
+	private final Migration migration = new Migration();
 
 	public boolean isEnabled() {
 		return enabled;
@@ -80,6 +81,40 @@ public class RagObjectStorageProperties {
 		this.cacheRoot = cacheRoot;
 	}
 
+	public Migration getMigration() {
+		return migration;
+	}
+
+	public static class Migration {
+		private boolean enabled;
+		private String mode = "";
+		private Path manifestPath;
+
+		public boolean isEnabled() {
+			return enabled;
+		}
+
+		public void setEnabled(boolean enabled) {
+			this.enabled = enabled;
+		}
+
+		public String getMode() {
+			return mode;
+		}
+
+		public void setMode(String mode) {
+			this.mode = valueOrEmpty(mode);
+		}
+
+		public Path getManifestPath() {
+			return manifestPath;
+		}
+
+		public void setManifestPath(Path manifestPath) {
+			this.manifestPath = manifestPath;
+		}
+	}
+
 	public URI validatedEndpoint() {
 		requireValue("endpoint", endpoint);
 		try {
@@ -113,7 +148,7 @@ public class RagObjectStorageProperties {
 		}
 	}
 
-	private String valueOrEmpty(String value) {
+	private static String valueOrEmpty(String value) {
 		return value == null ? "" : value.trim();
 	}
 }

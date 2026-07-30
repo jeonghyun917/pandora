@@ -24,7 +24,7 @@ class RagDocumentMapperXmlTests {
 	private static final String OBJECT_STORAGE_DOCUMENTS_STATEMENT =
 		"com.kaces.pandora.rag.persistence.RagDocumentMapper.findActiveDocumentsForObjectStorage";
 	private static final String UPDATE_OBJECT_KEY_STATEMENT =
-		"com.kaces.pandora.rag.persistence.RagDocumentMapper.updateObjectKey";
+		"com.kaces.pandora.rag.persistence.RagDocumentMapper.assignObjectKeyIfHashMatches";
 
 	@Test
 	void headingSearchFiltersAndRanksHeadingFieldsWithoutSearchingBodyText() throws Exception {
@@ -118,7 +118,7 @@ class RagDocumentMapperXmlTests {
 	}
 
 	@Test
-	void objectStorageStatementsOnlySelectActiveFileBackedDocumentsAndUpdateById() throws Exception {
+	void objectStorageStatementsOnlySelectActiveFileBackedDocumentsAndAssignMatchingHashes() throws Exception {
 		Configuration configuration = parseMapper();
 
 		assertThat(configuration.hasStatement(OBJECT_STORAGE_DOCUMENTS_STATEMENT)).isTrue();
@@ -130,7 +130,11 @@ class RagDocumentMapperXmlTests {
 			.replaceAll("\\s+", " ")
 			.trim();
 		String updateSql = configuration.getMappedStatement(UPDATE_OBJECT_KEY_STATEMENT)
-			.getBoundSql(Map.of("documentId", 7L, "objectKey", "rag-originals/sha256/ab/example.pdf"))
+			.getBoundSql(Map.of(
+				"documentId", 7L,
+				"fileHash", "a".repeat(64),
+				"objectKey", "rag-originals/sha256/ab/example.pdf"
+			))
 			.getSql()
 			.replaceAll("\\s+", " ")
 			.trim();
@@ -145,6 +149,7 @@ class RagDocumentMapperXmlTests {
 			.contains("UPDATE rag_documents")
 			.contains("SET object_key = ?")
 			.contains("WHERE document_id = ?")
+			.contains("AND file_hash = ?")
 			.contains("AND use_yn = 'Y'");
 	}
 

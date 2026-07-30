@@ -61,8 +61,9 @@ public interface RagDocumentMapper {
 
 	List<RagDocumentRow> findActiveDocumentsForObjectStorage();
 
-	int updateObjectKey(
+	int assignObjectKeyIfHashMatches(
 		@Param("documentId") long documentId,
+		@Param("fileHash") String fileHash,
 		@Param("objectKey") String objectKey
 	);
 

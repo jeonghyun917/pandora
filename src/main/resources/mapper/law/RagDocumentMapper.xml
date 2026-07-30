@@ -122,10 +122,11 @@
     ORDER BY document_id
   </select>
 
-  <update id="updateObjectKey">
+  <update id="assignObjectKeyIfHashMatches">
     UPDATE rag_documents
     SET object_key = #{objectKey}
     WHERE document_id = #{documentId}
+      AND file_hash = #{fileHash}
       AND use_yn = 'Y'
   </update>
 

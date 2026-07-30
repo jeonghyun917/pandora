@@ -97,7 +97,7 @@ public class S3RagOriginalDocumentStore implements RagOriginalDocumentStore {
 		}
 	}
 
-	static String objectKey(String fileHash, String fileName) {
+	public static String objectKey(String fileHash, String fileName) {
 		String hash = normalizeHash(fileHash);
 		return "rag-originals/sha256/" + hash.substring(0, 2) + "/" + hash + extension(fileName);
 	}
