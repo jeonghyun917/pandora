@@ -19,6 +19,10 @@ const {
   resolveReportPaths,
   selectionHash,
 } = require('./lib/rag-eval-provenance');
+const {
+  assertSameManifest,
+  buildBaselineManifest,
+} = require('./lib/rag-baseline-manifest');
 const { buildBlockingGates } = require('./lib/rag-eval-gates');
 
 const baseUrl = process.env.RAG_EVAL_BASE_URL || 'http://127.0.0.1:8080';
@@ -41,6 +45,7 @@ let checkpointPath = process.env.RAG_EVAL_CHECKPOINT || 'logs/rag-eval-gate-targ
 const resumeFromCheckpoint = ['1', 'true', 'yes', 'y'].includes(
   String(process.env.RAG_EVAL_RESUME || '').trim().toLowerCase(),
 );
+const baselineManifestPath = String(process.env.RAG_EVAL_BASELINE_MANIFEST || '').trim();
 
 async function main() {
   const allCases = loadCases();
@@ -48,10 +53,18 @@ async function main() {
   const scope = determineRunScope(cases, allCases, caseIds, caseLimit);
   const reportPaths = resolveReportPaths(scope);
   checkpointPath = reportPaths.checkpointPath;
+  const suppliedBaselineManifest = loadBaselineManifest();
   const runtimeInfo = await loadRuntimeInfo();
   assertEvaluationRuntimeReady(runtimeInfo, scope);
   const datasetHashValue = datasetHash(datasetPaths.filter((casePath) => fs.existsSync(casePath)));
   const selectionHashValue = selectionHash(cases);
+  if (suppliedBaselineManifest) {
+    assertSameManifest(suppliedBaselineManifest, buildCurrentBaselineManifest(
+      runtimeInfo,
+      datasetHashValue,
+      selectionHashValue,
+    ));
+  }
   const checkpointIdentity = buildCheckpointIdentity({
     scope,
     baseUrl,
@@ -70,6 +83,13 @@ async function main() {
   const finalRuntimeInfo = await loadRuntimeInfo();
   if (!isRuntimeStable(runtimeInfo, finalRuntimeInfo)) {
     throw new Error('[rag-eval-gate] runtime identity changed or became unavailable during evaluation');
+  }
+  if (suppliedBaselineManifest) {
+    assertSameManifest(suppliedBaselineManifest, buildCurrentBaselineManifest(
+      finalRuntimeInfo,
+      datasetHashValue,
+      selectionHashValue,
+    ));
   }
   if (usesBatchCheckpoint) {
     writeJson(checkpointPath, recomputeGate({
@@ -92,6 +112,7 @@ async function main() {
       totalCaseCount: allCases.length,
       gateProfile,
       runtimeInfo,
+      baselineManifestId: suppliedBaselineManifest?.manifestId || null,
     }),
     breakdown: evaluationBreakdown(body.results ?? []),
   };
@@ -141,6 +162,7 @@ async function loadRuntimeInfo() {
     runtimeInstanceId: process.env.RAG_EVAL_RUNTIME_INSTANCE_ID || null,
     runtimeConfigSha256: process.env.RAG_EVAL_RUNTIME_CONFIG_SHA256 || null,
     indexRevision: process.env.RAG_EVAL_INDEX_REVISION || null,
+    lexicalRevision: process.env.RAG_EVAL_LEXICAL_REVISION || null,
     qdrantReady: false,
     qdrantSearchFailureCount: null,
   };
@@ -279,6 +301,29 @@ async function runEvaluation(payload, label = "all") {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function loadBaselineManifest() {
+  if (!baselineManifestPath) {
+    return null;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(baselineManifestPath, 'utf8'));
+  } catch (error) {
+    throw new Error(`[rag-eval-gate] unable to load baseline manifest: ${error?.message ?? error}`);
+  }
+  return parsed;
+}
+
+function buildCurrentBaselineManifest(runtimeInfo, datasetHashValue, selectionHashValue) {
+  return buildBaselineManifest({
+    gitCommit: gitOutput(['rev-parse', 'HEAD']),
+    gitDirty: Boolean(gitOutput(['status', '--porcelain'])),
+    runtimeInfo,
+    datasetHash: datasetHashValue,
+    selectionHash: selectionHashValue,
+  });
 }
 
 function restoreCaseClassification(results, cases) {
@@ -539,6 +584,8 @@ function writeReport(filePath, body, baseUrl) {
     `- Runtime instance ID: ${body.provenance?.runtimeInstanceId ?? '-'}`,
     `- Runtime config SHA-256: ${body.provenance?.runtimeConfigSha256 ?? '-'}`,
     `- Index revision: ${body.provenance?.indexRevision ?? '-'}`,
+    `- Lexical revision: ${body.provenance?.lexicalRevision ?? '-'}`,
+    `- Baseline manifest ID: ${body.provenance?.baselineManifestId ?? '-'}`,
     `- Qdrant ready: ${body.provenance?.qdrantReady === true}`,
     `- Qdrant search failures at start: ${body.provenance?.qdrantSearchFailureCount ?? '-'}`,
     `- Execution port: ${body.provenance?.executionPort ?? '-'}`,

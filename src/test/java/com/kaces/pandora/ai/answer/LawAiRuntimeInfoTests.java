@@ -30,6 +30,7 @@ class LawAiRuntimeInfoTests {
 			LawAiRuntimeInfo runtimeInfo = service.runtimeInfo();
 
 			assertThat(runtimeInfo.indexRevision()).matches("[0-9a-f]{64}");
+			assertThat(runtimeInfo.lexicalRevision()).isEqualTo("legacy-law-like-v1+rag-terms-v2-unavailable");
 			assertThat(runtimeInfo.qdrantReady()).isTrue();
 			assertThat(runtimeInfo.qdrantSearchFailureCount()).isZero();
 		} finally {
@@ -52,6 +53,7 @@ class LawAiRuntimeInfoTests {
 			LawAiRuntimeInfo runtimeInfo = service.runtimeInfo();
 
 			assertThat(runtimeInfo.indexRevision()).isNull();
+			assertThat(runtimeInfo.lexicalRevision()).isEqualTo("legacy-law-like-v1+rag-terms-v2-unavailable");
 			assertThat(runtimeInfo.qdrantReady()).isTrue();
 		} finally {
 			service.shutdownExecutors();

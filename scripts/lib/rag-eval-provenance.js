@@ -84,6 +84,7 @@ function buildCheckpointIdentity({
     runtimeInstanceId: runtimeInfo?.runtimeInstanceId || null,
     runtimeConfigSha256: runtimeInfo?.runtimeConfigSha256 || null,
     indexRevision: runtimeInfo?.indexRevision || null,
+    lexicalRevision: runtimeInfo?.lexicalRevision || null,
     qdrantReady: runtimeInfo?.qdrantReady === true,
     qdrantSearchFailureCount: normalizeFailureCount(runtimeInfo?.qdrantSearchFailureCount),
   };
@@ -107,6 +108,7 @@ function isCheckpointCompatible(checkpoint, expectedIdentity) {
     'runtimeInstanceId',
     'runtimeConfigSha256',
     'indexRevision',
+    'lexicalRevision',
   ];
   if (actualIdentity.runtimeInfoSource !== 'server'
     || expectedIdentity.runtimeInfoSource !== 'server'
@@ -137,6 +139,7 @@ function isCheckpointCompatible(checkpoint, expectedIdentity) {
     'runtimeInstanceId',
     'runtimeConfigSha256',
     'indexRevision',
+    'lexicalRevision',
     'qdrantReady',
     'qdrantSearchFailureCount',
   ];
@@ -170,6 +173,7 @@ function isRuntimeStable(startRuntimeInfo, endRuntimeInfo) {
     'runtimeInstanceId',
     'runtimeConfigSha256',
     'indexRevision',
+    'lexicalRevision',
     'qdrantReady',
     'qdrantSearchFailureCount',
   ];
@@ -225,6 +229,7 @@ function buildProvenance({
   totalCaseCount,
   gateProfile = 'release',
   runtimeInfo,
+  baselineManifestId = null,
   generatedAt = new Date().toISOString(),
 }) {
   const parsedUrl = new URL(baseUrl);
@@ -240,6 +245,7 @@ function buildProvenance({
     gitDirty: Boolean(gitDirty),
     datasetHash: datasetHashValue,
     selectionHash: selectionHashValue,
+    baselineManifestId,
     selectedCaseCount: selectedCount,
     totalCaseCount,
     indexVersion: runtimeInfo?.indexVersion || null,
@@ -256,6 +262,7 @@ function buildProvenance({
     runtimeInstanceId: runtimeInfo?.runtimeInstanceId || null,
     runtimeConfigSha256: runtimeInfo?.runtimeConfigSha256 || null,
     indexRevision: runtimeInfo?.indexRevision || null,
+    lexicalRevision: runtimeInfo?.lexicalRevision || null,
     qdrantReady: runtimeInfo?.qdrantReady === true,
     qdrantSearchFailureCount: normalizeFailureCount(runtimeInfo?.qdrantSearchFailureCount),
     runtimeInfoSource: runtimeInfo?.source || 'unavailable',

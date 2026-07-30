@@ -280,9 +280,19 @@ public class LawAiAnswerService {
 			RuntimeConfigurationIdentity.instanceId(),
 			RuntimeConfigurationIdentity.sha256(properties),
 			indexRevision,
+			lexicalRevision(),
 			qdrantReady,
 			qdrantSearchFailureCount
 		);
+	}
+
+	private String lexicalRevision() {
+		if (ragChunkSearchIndexService == null) {
+			return "legacy-law-like-v1+rag-terms-v2-unavailable";
+		}
+		return ragChunkSearchIndexService.isReady()
+			? "legacy-law-like-v1+rag-terms-v2-ready"
+			: "legacy-law-like-v1+rag-terms-v2-building";
 	}
 
 	private String currentIndexRevision(String lawCollection, String ragCollection) {

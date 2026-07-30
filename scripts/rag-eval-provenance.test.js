@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
 const test = require('node:test');
 const {
   loadEvalCases,
@@ -21,6 +21,10 @@ const {
   resolveReportPaths,
   selectionHash,
 } = require('./lib/rag-eval-provenance');
+const {
+  assertSameManifest,
+  buildBaselineManifest,
+} = require('./lib/rag-baseline-manifest');
 
 const repositoryRoot = path.resolve(__dirname, '..');
 const baseEvaluationCasePaths = [
@@ -35,6 +39,32 @@ const answerOraclePath = path.join(
   'rag-answer-evaluation-oracles.tsv',
 );
 const evaluationDatasetPaths = [...baseEvaluationCasePaths, answerOraclePath];
+
+test('baseline manifest is canonical and rejects index revision drift', () => {
+  const manifest = buildBaselineManifest({
+    gitCommit: 'abc123',
+    gitDirty: false,
+    runtimeInfo: {
+      runtimeArtifactSha256: 'jar-a',
+      runtimeArtifactSize: 52000000,
+      runtimeInstanceId: 'instance-a',
+      runtimeConfigSha256: 'config-a',
+      indexRevision: 'index-a',
+      lexicalRevision: 'legacy-law-like-v1+rag-terms-v2-ready',
+      qdrantReady: true,
+      qdrantSearchFailureCount: 0,
+    },
+    datasetHash: 'dataset-a',
+    selectionHash: 'selection-a',
+  });
+
+  assert.match(manifest.manifestId, /^[0-9a-f]{64}$/);
+  assert.equal(assertSameManifest(manifest, { ...manifest }), true);
+  assert.throws(
+    () => assertSameManifest(manifest, { ...manifest, indexRevision: 'index-b' }),
+    /indexRevision/,
+  );
+});
 
 async function runGateAgainstResults(requestedIds, results, options = {}) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pandora-rag-eval-'));
@@ -53,6 +83,7 @@ async function runGateAgainstResults(requestedIds, results, options = {}) {
     runtimeInstanceId: 'test-instance',
     runtimeConfigSha256: 'test-config',
     indexRevision: 'test-index',
+    lexicalRevision: 'legacy-law-like-v1+rag-terms-v2-ready',
     qdrantReady: true,
     qdrantSearchFailureCount: 0,
   };
@@ -119,12 +150,16 @@ async function runGateAgainstResults(requestedIds, results, options = {}) {
         results: options.checkpointResults,
       }), 'utf8');
     }
+    const baselineManifestPath = options.baselineRuntimeInfo
+      ? writeBaselineManifest(tempDir, requestedIds, runtimeInfo, options.baselineRuntimeInfo)
+      : '';
     const child = spawn(process.execPath, [path.join(repositoryRoot, 'scripts', 'rag-eval-gate.js')], {
       cwd: repositoryRoot,
       env: {
         ...process.env,
         RAG_EVAL_ARCHIVE: 'false',
         RAG_EVAL_BASE_URL: baseUrl,
+        RAG_EVAL_BASELINE_MANIFEST: baselineManifestPath,
         RAG_EVAL_CASE_BATCH_SIZE: String(options.caseBatchSize ?? 10),
         RAG_EVAL_CASE_IDS: requestedIds.join(','),
         RAG_EVAL_CHECKPOINT: checkpointPath,
@@ -164,6 +199,21 @@ async function runGateAgainstResults(requestedIds, results, options = {}) {
     await new Promise((resolve) => server.close(resolve));
     fs.rmSync(tempDir, { force: true, recursive: true });
   }
+}
+
+function writeBaselineManifest(tempDir, requestedIds, runtimeInfo, runtimeOverrides) {
+  const allCases = loadEvalCases(baseEvaluationCasePaths, { answerOraclePath });
+  const selectedCases = selectEvalCases(allCases, { caseIds: requestedIds, caseLimit: 0 });
+  const manifest = buildBaselineManifest({
+    gitCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' }).trim(),
+    gitDirty: Boolean(execFileSync('git', ['status', '--porcelain'], { cwd: repositoryRoot, encoding: 'utf8' }).trim()),
+    runtimeInfo: { ...runtimeInfo, ...runtimeOverrides },
+    datasetHash: datasetHash(evaluationDatasetPaths),
+    selectionHash: selectionHash(selectedCases),
+  });
+  const manifestPath = path.join(tempDir, 'baseline-manifest.json');
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest), 'utf8');
+  return manifestPath;
 }
 
 test('dataset provenance hash changes when only the answer-oracle sidecar changes', (t) => {
@@ -256,6 +306,7 @@ test('provenance records runtime identity without secrets', () => {
       runtimeInstanceId: 'instance-a',
       runtimeConfigSha256: 'config-a',
       indexRevision: 'snapshot-a',
+      lexicalRevision: 'legacy-law-like-v1+rag-terms-v2-ready',
       qdrantReady: true,
       qdrantSearchFailureCount: 0,
     },
@@ -267,6 +318,7 @@ test('provenance records runtime identity without secrets', () => {
   assert.equal(provenance.runtimeInstanceId, 'instance-a');
   assert.equal(provenance.runtimeConfigSha256, 'config-a');
   assert.equal(provenance.indexRevision, 'snapshot-a');
+  assert.equal(provenance.lexicalRevision, 'legacy-law-like-v1+rag-terms-v2-ready');
   assert.equal(provenance.qdrantReady, true);
   assert.equal(provenance.qdrantSearchFailureCount, 0);
   assert.equal(Object.hasOwn(provenance, 'apiKey'), false);
@@ -299,6 +351,7 @@ test('checkpoint reuse requires the same inputs and server artifact', () => {
       runtimeInstanceId: 'instance-a',
       runtimeConfigSha256: 'config-a',
       indexRevision: 'snapshot-a',
+      lexicalRevision: 'legacy-law-like-v1+rag-terms-v2-ready',
       qdrantReady: true,
       qdrantSearchFailureCount: 0,
       indexVersion: 'law_chunks+rag_chunks_v4',
@@ -346,6 +399,7 @@ test('runtime stability detects same-jar restarts and configuration changes', ()
     runtimeInstanceId: 'instance-a',
     runtimeConfigSha256: 'config-a',
     indexRevision: null,
+    lexicalRevision: 'legacy-law-like-v1+rag-terms-v2-ready',
     indexVersion: 'law_chunks+rag_chunks_v4',
     embeddingModel: 'text-embedding-3-small',
     answerModel: 'gpt-5-mini',
@@ -436,6 +490,19 @@ test('gate accepts a response with exactly one result per requested case ID', as
 
   assert.equal(result.code, 0, result.stderr);
   assert.match(result.stdout, /PASS 2\/2/);
+});
+
+test('gate rejects a supplied baseline manifest before evaluation when the index revision differs', async () => {
+  const result = await runGateAgainstResults(
+    ['project-review-target'],
+    [{ id: 'project-review-target', passed: true, resultMsg: 'OK' }],
+    { baselineRuntimeInfo: { indexRevision: 'different-index' } },
+  );
+
+  assert.notEqual(result.code, 0, result.stdout);
+  assert.equal(result.evaluationRequestCount, 0);
+  assert.equal(result.outputBody, null);
+  assert.match(result.stderr, /baseline manifest mismatch: indexRevision/i);
 });
 
 test('gate fails closed when a generated result uses a truthy non-boolean passed value', async () => {

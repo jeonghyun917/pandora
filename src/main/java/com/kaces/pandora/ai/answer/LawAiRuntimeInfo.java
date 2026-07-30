@@ -12,6 +12,7 @@ public record LawAiRuntimeInfo(
 	String runtimeInstanceId,
 	String runtimeConfigSha256,
 	String indexRevision,
+	String lexicalRevision,
 	boolean qdrantReady,
 	long qdrantSearchFailureCount
 ) {
