@@ -1,24 +1,25 @@
 package com.kaces.pandora.rag.document;
 
-
+import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
+import com.kaces.pandora.lawdata.detail.LawDetailResponse;
+import com.kaces.pandora.lawdata.detail.LawDetailSectionResponse;
 import com.kaces.pandora.rag.chunk.RagTextNoiseFilter;
 import com.kaces.pandora.rag.common.HwpxTextCleaner;
 import com.kaces.pandora.rag.importing.RagImportResponse;
 import com.kaces.pandora.rag.importing.RagImportService;
+import com.kaces.pandora.rag.persistence.RagDocumentMapper;
 import com.kaces.pandora.rag.preview.HwpxHtmlPreviewService;
 import com.kaces.pandora.rag.preview.RagDocumentPreviewService;
-import com.kaces.pandora.lawdata.detail.LawDetailResponse;
-import com.kaces.pandora.lawdata.detail.LawDetailSectionResponse;
-import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
-import com.kaces.pandora.rag.persistence.RagDocumentMapper;
-import com.kaces.pandora.rag.document.RagDocumentRow;
+import com.kaces.pandora.rag.storage.RagOriginalDocumentStore;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Stream;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.http.ContentDisposition;
@@ -40,17 +41,20 @@ public class RagDocumentController {
 	private final RagDocumentMapper mapper;
 	private final RagDocumentPreviewService previewService;
 	private final HwpxHtmlPreviewService htmlPreviewService;
+	private final RagOriginalDocumentStore originalDocumentStore;
 
 	public RagDocumentController(
 		RagImportService importService,
 		RagDocumentMapper mapper,
 		RagDocumentPreviewService previewService,
-		HwpxHtmlPreviewService htmlPreviewService
+		HwpxHtmlPreviewService htmlPreviewService,
+		RagOriginalDocumentStore originalDocumentStore
 	) {
 		this.importService = importService;
 		this.mapper = mapper;
 		this.previewService = previewService;
 		this.htmlPreviewService = htmlPreviewService;
+		this.originalDocumentStore = originalDocumentStore;
 	}
 
 	@PostMapping("/import-folder")
@@ -60,7 +64,6 @@ public class RagDocumentController {
 		@RequestParam(defaultValue = "true") boolean indexNow,
 		@RequestParam(defaultValue = "false") boolean force
 	) {
-		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		return ResponseEntity.ok(importService.importFolder(documentType, path, indexNow, force));
 	}
 
@@ -70,28 +73,18 @@ public class RagDocumentController {
 		@RequestParam(defaultValue = "false") boolean indexNow,
 		@RequestParam(defaultValue = "true") boolean force
 	) {
-		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		return ResponseEntity.ok(importService.reimportExistingDocuments(documentType, indexNow, force));
 	}
 
 	@GetMapping("/{documentId}/detail")
-	// 메소드 설명: detail 처리 흐름을 수행합니다.
 	public ResponseEntity<LawDetailResponse> detail(@PathVariable long documentId) {
 		RagDocumentRow document = mapper.findDocumentById(documentId);
 		if (document == null) {
-			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 			return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
 		}
 
-		List<LawSemanticChunkRow> chunks = mapper.findSemanticChunksByDocumentId(documentId);
-		List<LawDetailSectionResponse> sections = chunks.stream()
-			.map(chunk -> new LawDetailSectionResponse(
-				cleanHwpxText(chunk.chunkTitle()),
-				cleanHwpxText(chunk.chunkText()),
-				chunk.pageNo(),
-				chunk.sourcePath(),
-				chunk.chunkId()
-			))
+		List<LawDetailSectionResponse> sections = mapper.findSemanticChunksByDocumentId(documentId).stream()
+			.map(chunk -> section(chunk))
 			.filter(section -> !RagTextNoiseFilter.isTableOfContents(section.title(), section.body()))
 			.filter(section -> !RagTextNoiseFilter.isMeaninglessSection(section.title(), section.body()))
 			.toList();
@@ -100,11 +93,10 @@ public class RagDocumentController {
 			nonBlank(document.sourceOrg(), document.fileName()),
 			nonBlank(document.publishedDate(), document.version())
 		).filter(value -> value != null && !value.isBlank()).toList();
-		String originalFileUrl = hasReadableSourceFile(document)
+		String originalFileUrl = originalDocumentStore.exists(document)
 			? "/api/rag-documents/" + document.documentId() + "/file"
 			: null;
 
-		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		return ResponseEntity.ok(new LawDetailResponse(
 			false,
 			"rag",
@@ -122,48 +114,34 @@ public class RagDocumentController {
 	}
 
 	@GetMapping("/{documentId}/file")
-	// 메소드 설명: file 처리 흐름을 수행합니다.
-	public ResponseEntity<Resource> file(@PathVariable long documentId) throws MalformedURLException {
+	public ResponseEntity<Resource> file(@PathVariable long documentId) {
 		RagDocumentRow document = mapper.findDocumentById(documentId);
-		if (document == null || document.filePath() == null || document.filePath().isBlank()) {
-			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		if (document == null || !originalDocumentStore.exists(document)) {
 			return ResponseEntity.notFound().build();
 		}
-
-		Path file = Path.of(document.filePath()).toAbsolutePath().normalize();
-		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		if (!Files.isRegularFile(file) || !Files.isReadable(file)) {
-			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-			return ResponseEntity.notFound().build();
-		}
-
-		Resource resource = new UrlResource(file.toUri());
-		String mimeType = nonBlank(document.mimeType(), null);
-		if (mimeType == null) {
-			try {
-				// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-				mimeType = Files.probeContentType(file);
-			} catch (Exception ignored) {
-				mimeType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
+		try {
+			RagOriginalDocumentStore.StoredOriginal original = originalDocumentStore.open(document);
+			ResponseEntity.BodyBuilder response = ResponseEntity.ok()
+				.contentType(mediaType(original.contentType(), document.mimeType()))
+				.header(
+					HttpHeaders.CONTENT_DISPOSITION,
+					inlineDisposition(document.fileName() == null ? "document" : document.fileName())
+				);
+			if (original.contentLength() >= 0) {
+				response.contentLength(original.contentLength());
 			}
+			return response.body(new InputStreamResource(original.inputStream()));
+		} catch (FileNotFoundException exception) {
+			return ResponseEntity.notFound().build();
+		} catch (IOException exception) {
+			return ResponseEntity.status(HttpStatus.BAD_GATEWAY).build();
 		}
-
-		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		return ResponseEntity.ok()
-			.contentType(MediaType.parseMediaType(mimeType == null ? MediaType.APPLICATION_OCTET_STREAM_VALUE : mimeType))
-			.header(
-				HttpHeaders.CONTENT_DISPOSITION,
-				inlineDisposition(document.fileName() == null ? file.getFileName().toString() : document.fileName())
-			)
-			.body(resource);
 	}
 
 	@GetMapping("/{documentId}/preview.pdf")
-	// 메소드 설명: previewPdf 처리 흐름을 수행합니다.
 	public ResponseEntity<Resource> previewPdf(@PathVariable long documentId) throws MalformedURLException {
 		RagDocumentRow document = mapper.findDocumentById(documentId);
 		Resource resource = previewService.previewPdf(document);
-		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		return ResponseEntity.ok()
 			.contentType(MediaType.APPLICATION_PDF)
 			.header(
@@ -173,6 +151,29 @@ public class RagDocumentController {
 			.body(resource);
 	}
 
+	@GetMapping(value = "/{documentId}/preview.html", produces = MediaType.TEXT_HTML_VALUE)
+	public ResponseEntity<String> previewHtml(@PathVariable long documentId) {
+		RagDocumentRow document = mapper.findDocumentById(documentId);
+		return ResponseEntity.ok()
+			.contentType(MediaType.TEXT_HTML)
+			.body(htmlPreviewService.previewHtml(document));
+	}
+
+	@GetMapping("/{documentId}/preview-assets/{fileName}")
+	public ResponseEntity<Resource> previewAsset(@PathVariable long documentId, @PathVariable String fileName) throws MalformedURLException {
+		RagDocumentRow document = mapper.findDocumentById(documentId);
+		Path asset = htmlPreviewService.previewAsset(document, fileName);
+		String mimeType;
+		try {
+			mimeType = Files.probeContentType(asset);
+		} catch (Exception exception) {
+			mimeType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
+		}
+		return ResponseEntity.ok()
+			.contentType(mediaType(mimeType, null))
+			.body(new UrlResource(asset.toUri()));
+	}
+
 	static String inlineDisposition(String fileName) {
 		return ContentDisposition.inline()
 			.filename(fileName, StandardCharsets.UTF_8)
@@ -180,35 +181,16 @@ public class RagDocumentController {
 			.toString();
 	}
 
-	@GetMapping(value = "/{documentId}/preview.html", produces = MediaType.TEXT_HTML_VALUE)
-	// 메소드 설명: previewHtml 처리 흐름을 수행합니다.
-	public ResponseEntity<String> previewHtml(@PathVariable long documentId) {
-		RagDocumentRow document = mapper.findDocumentById(documentId);
-		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		return ResponseEntity.ok()
-			.contentType(MediaType.TEXT_HTML)
-			.body(htmlPreviewService.previewHtml(document));
+	private LawDetailSectionResponse section(LawSemanticChunkRow chunk) {
+		return new LawDetailSectionResponse(
+			HwpxTextCleaner.clean(chunk.chunkTitle()),
+			HwpxTextCleaner.clean(chunk.chunkText()),
+			chunk.pageNo(),
+			chunk.sourcePath(),
+			chunk.chunkId()
+		);
 	}
 
-	@GetMapping("/{documentId}/preview-assets/{fileName}")
-	// 메소드 설명: previewAsset 처리 흐름을 수행합니다.
-	public ResponseEntity<Resource> previewAsset(@PathVariable long documentId, @PathVariable String fileName) throws MalformedURLException {
-		RagDocumentRow document = mapper.findDocumentById(documentId);
-		Path asset = htmlPreviewService.previewAsset(document, fileName);
-		String mimeType;
-		try {
-			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-			mimeType = Files.probeContentType(asset);
-		} catch (Exception exception) {
-			mimeType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
-		}
-		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		return ResponseEntity.ok()
-			.contentType(MediaType.parseMediaType(mimeType == null ? MediaType.APPLICATION_OCTET_STREAM_VALUE : mimeType))
-			.body(new UrlResource(asset.toUri()));
-	}
-
-	// 메소드 설명: label 처리 흐름을 수행합니다.
 	private String label(String documentType) {
 		return switch (String.valueOf(documentType)) {
 			case RagDocumentType.OFFICIAL_DOC -> "공식 가이드 문서";
@@ -218,28 +200,19 @@ public class RagDocumentController {
 		};
 	}
 
-	private boolean hasReadableSourceFile(RagDocumentRow document) {
-		if (document == null || document.filePath() == null || document.filePath().isBlank()) {
-			return false;
-		}
+	private MediaType mediaType(String preferred, String fallback) {
+		String value = nonBlank(preferred, nonBlank(fallback, MediaType.APPLICATION_OCTET_STREAM_VALUE));
 		try {
-			Path file = Path.of(document.filePath()).toAbsolutePath().normalize();
-			return Files.isRegularFile(file) && Files.isReadable(file);
-		} catch (InvalidPathException exception) {
-			return false;
+			return MediaType.parseMediaType(value);
+		} catch (Exception ignored) {
+			return MediaType.APPLICATION_OCTET_STREAM;
 		}
 	}
 
-	// 메소드 설명: nonBlank 처리 흐름을 수행합니다.
 	private String nonBlank(String first, String second) {
 		if (first != null && !first.isBlank()) {
 			return first;
 		}
 		return second;
-	}
-
-	// 메소드 설명: cleanHwpxText 처리 흐름을 수행합니다.
-	private String cleanHwpxText(String value) {
-		return HwpxTextCleaner.clean(value);
 	}
 }
