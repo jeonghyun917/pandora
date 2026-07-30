@@ -10,6 +10,54 @@ class ClaimEvidenceMatcherRelationTests {
 	private final ClaimEvidenceMatcher matcher = new ClaimEvidenceMatcher();
 
 	@Test
+	void exactDocumentIdentityClaimCanUseTheSelectedDocumentTitle() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"결론부터 말씀드리면, 찾으시는 문서는 "
+				+ "\"공공소프트웨어사업 과업심의 가이드(2022. 12.)\"입니다.",
+			List.of(ground(
+				"공공소프트웨어사업 과업심의 가이드(2022. 12.)",
+				"본문에는 문서 제목을 다시 서술하지 않는다."
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(match.evidenceSentence())
+			.isEqualTo("공공소프트웨어사업 과업심의 가이드(2022. 12.)");
+	}
+
+	@Test
+	void documentTitleMetadataCannotSupportAContentOrObligationClaim() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"공공소프트웨어사업 과업심의 가이드는 모든 하드웨어 구매를 심의하도록 요구합니다.",
+			List.of(ground(
+				"공공소프트웨어사업 과업심의 가이드(2022. 12.)",
+				"이 문장은 문서 내용과 무관하다."
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void documentIdentityDescriptorMustMatchSelectedDocumentMetadata() {
+		LawAiAnswerGround ground = ground(
+			"공공소프트웨어사업 과업심의 가이드(2022. 12.)",
+			"본문에는 문서 제목을 다시 서술하지 않는다."
+		);
+
+		assertThat(matcher.match(
+			"요약하면, 요청하신 문서는 제목이 "
+				+ "\"공공소프트웨어사업 과업심의 가이드(2022. 12.)\"인 공식 가이드 문서입니다.",
+			List.of(ground)
+		).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(
+			"요약하면, 요청하신 문서는 제목이 "
+				+ "\"공공소프트웨어사업 과업심의 가이드(2022. 12.)\"인 법률 문서입니다.",
+			List.of(ground)
+		).status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
 	void requiresTheAddedConceptInAMultiConceptRelationClaim() {
 		ClaimEvidenceMatcher.Match match = matcher.match(
 			"과업심의 대상 사업은 사전협의도 함께 해야 합니다.",
@@ -575,6 +623,30 @@ class ClaimEvidenceMatcherRelationTests {
 		ClaimEvidenceMatcher.Match match = matcher.match(
 			"이 사업은 비대상입니다.",
 			List.of(ground("과업심의 가이드", "이 사업은 비대상입니다."))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void inlineUniversalTargetHeadingIsSelfContainedWithinASingleDocumentScope() {
+		String source =
+			"적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW 포함)";
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			source,
+			List.of(ground("공공소프트웨어사업 과업심의 가이드", source))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void inlineUniversalTargetHeadingCannotBorrowAnAmbiguousMultiScopeTitle() {
+		String source =
+			"적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW 포함)";
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			source,
+			List.of(ground("과업심의 및 사전협의 통합 가이드", source))
 		);
 
 		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
@@ -3166,6 +3238,33 @@ class ClaimEvidenceMatcherRelationTests {
 		);
 
 		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void negativeClassificationBoundaryDoesNotConflictWithThePositiveBusinessCondition() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"소프트웨어사업에 해당하면 과업심의 대상입니다.",
+			List.of(ground(
+				"공공소프트웨어사업 과업심의 가이드",
+				"적용 대상 사업은 국가기관 등이 발주하는 모든 SW사업입니다. "
+					+ "단순 H/W 도입·설치처럼 소프트웨어사업으로 볼 수 없는 경우는 비대상입니다."
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void negativeClassificationBoundaryAloneDoesNotContradictThePositiveBusinessCondition() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"소프트웨어사업에 해당하면 과업심의 대상입니다.",
+			List.of(ground(
+				"공공소프트웨어사업 과업심의 가이드",
+				"단순 H/W 도입·설치처럼 소프트웨어사업으로 볼 수 없는 경우는 비대상입니다."
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
 	}
 
 	@Test

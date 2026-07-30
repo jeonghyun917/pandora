@@ -131,6 +131,75 @@ class AnswerOracleMatcherTests {
 	}
 
 	@Test
+	void acceptsTheOfficialPerformanceAggregationWording() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"평가기간 : 2025. 12. 17 ~ 2026. 10. 31. "
+				+ "등록요청 수 및 등록완료 수는 평가기간 동안 집계된 요청 수, 완료 수를 모두 합산하여 산정합니다.",
+			defaultCase("performance-measure-when")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
+	void acceptsTheOfficialEgovPreliminaryReviewTargetWording() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"다음 해에 정보화사업을 추진하고자 하는 중앙행정기관의 장, 시ㆍ도지사 및 시ㆍ도 교육감은 "
+				+ "사업의 목적과 적용 범위 등을 제출하고 예비검토를 신청하여야 한다.",
+			defaultCase("egov-preliminary-review-target")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
+	void acceptsTheOfficialIntegratedGuidePurposeWording() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"이 안내서는 개인정보처리자가 개인정보 처리와 관련한 개편 내용에 대하여 "
+				+ "현장에서 이해하기 쉽도록 개인정보 처리 시 준수해야 하는 사항을 "
+				+ "안내할 목적으로 마련되었습니다.",
+			defaultCase("privacy-integrated-guide-purpose")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
+	void acceptsTheStatutoryConsentRefusalNoticeWording() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"개인정보 수집·이용 동의를 받을 때 동의를 거부할 권리가 있다는 사실 및 "
+				+ "동의 거부에 따른 불이익이 있는 경우 그 불이익의 내용을 알려야 합니다.",
+			defaultCase("privacy-consent-refusal")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
+	void acceptsSeparatelyStatedWhistleblowerProtectionMeasures() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"공익신고자의 신분비밀을 보장합니다. "
+				+ "공익신고자는 신변보호조치를 권익위에 요구할 수 있습니다. "
+				+ "공익신고자는 보호조치를 권익위에 신청할 수 있습니다.",
+			defaultCase("whistleblower-protection-scope")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
+	void acceptsTheOfficialWhistleblowerDisadvantageProtectionWording() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"공익신고자등이 공익신고등을 이유로 불이익 조치를 받은 때에는 "
+				+ "권익위에 보호조치를 신청할 수 있습니다. "
+				+ "공익신고자의 신분비밀을 보장합니다.",
+			defaultCase("whistleblower-disadvantage")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
 	void rejectsHardwareAliasInsideAViewSupersededByTheFinalAssertion() {
 		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
 			"비대상이라는 견해도 있지만 실제로는 과업심의 대상입니다",
@@ -295,6 +364,95 @@ class AnswerOracleMatcherTests {
 		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
 			"공개된 장소 CCTV 설치는 원칙적으로 금지입니다. 다만 법령상 예외 사유가 있는 경우에만 설치할 수 있습니다.",
 			defaultCase("cctv-public-place-rule")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
+	void latestRuntimeCctvSourceAtomSatisfiesTheExplicitOracle() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"누구든지 공개된 장소에 고정형 영상정보처리기기를 설치·운영하는 것은 원칙적으로 금지되며 "
+				+ "다른 법익의 보호를 위하여 필요한 경우 예외적으로 설치·운영이 허용됩니다. "
+				+ "공개된 장소에서의 고정형 영상정보처리기기 설치는 원칙적으로 금지되고, "
+				+ "예외적으로 법 제25조에서 정하는 사유에 해당하는 경우에만 설치·운영할 수 있습니다.",
+			defaultCase("cctv-public-place-rule")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
+	void latestRuntimePseudonymSourceAtomSatisfiesTheExplicitOracle() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"가명처리 수행에 따라 추가정보에 대하여 일정기간 보관이 필요하여 보관하고 "
+				+ "개인정보처리자는 추가정보를 가명정보와 분리하여 별도로 저장관리하고 "
+				+ "다만, 불필요한경우 파기해야함",
+			defaultCase("pipc-pseudonym-additional-info")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
+	void latestRuntimePrivacyMinimumCollectionSourceAtomSatisfiesTheExplicitOracle() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"개인정보처리자는 개인정보의 처리 목적을 명확하게 하여야 하고 "
+				+ "그 목적에 필요한 범위에서 최소한의 개인정보만을 적법하고 정당하게 수집하여야 한다.",
+			defaultCase("privacy-minimum-collection")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
+	void officialProjectReviewScopeAndHardwareBoundarySatisfyTheOracle() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"국가기관 등이 발주하는 모든 SW사업(상용SW 포함)은 적용 대상이다. "
+				+ "단순 H/W 도입·설치처럼 소프트웨어사업으로 볼 수 없는 경우는 비대상이다.",
+			defaultCase("project-review-simple-software")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
+	void latestRuntimeProjectReviewSourceAtomSatisfiesTheExplicitOracle() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW 포함)",
+			defaultCase("project-review-target")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
+	void officialPreConsultationInstitutionAndProjectScopeSatisfyTheOracle() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"중앙·공공기관의 신규 사업은 대상에 포함된다. "
+				+ "사전협의의 대상사업은 대상기관이 추진하는 모든 정보화사업이다.",
+			defaultCase("pre-consultation-target")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
+	void officialCctvPrincipleAndArticleExceptionSatisfyTheOracle() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"공개된 장소의 고정형 영상정보처리기기 설치는 원칙적으로 금지되고, "
+				+ "법 제25조에서 정하는 사유에 해당하는 경우에만 설치할 수 있다.",
+			defaultCase("pipc-cctv-public-place-exception")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
+	void officialPreConsultationPlanSequenceSatisfiesTheOracle() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"사업계획을 수립한 후 지체 없이 사업계획서 등을 제출하여 사전협의를 요청해야 합니다.",
+			defaultCase("pre-consultation-plan-stage")
 		);
 
 		assertThat(result.passed()).as(result.message()).isTrue();

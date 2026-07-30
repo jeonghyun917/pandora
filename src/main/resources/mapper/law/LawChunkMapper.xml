@@ -394,6 +394,69 @@
     LIMIT #{limit}
   </select>
 
+  <select id="findSemanticChunksByHeadingOrDocumentTitle"
+          resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow"
+          timeout="3">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.target AS target,
+      doc.external_id AS externalId,
+      doc.title AS title,
+      doc.agency_name AS agencyName,
+      doc.category_name AS categoryName,
+      doc.source_date AS sourceDate,
+      doc.effective_status AS effectiveStatus,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      NULL AS pageNo,
+      c.source_path AS sourcePath,
+      c.source_url AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash,
+      <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
+      <include refid="sectionTypeExpression"/> AS sectionType
+    FROM law_api_document_chunks c
+    JOIN law_api_documents doc ON doc.document_id = c.document_id
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      <include refid="effectiveSearchFilter"/>
+      <if test="targets != null and targets.size() > 0">
+        AND doc.target IN
+        <foreach collection="targets" item="target" open="(" separator="," close=")">
+          #{target}
+        </foreach>
+      </if>
+      <if test="keywords != null and keywords.size() > 0">
+        AND (
+        <foreach collection="keywords" item="keyword" separator=" OR ">
+          c.chunk_title LIKE CONCAT('%', #{keyword}, '%')
+          OR doc.title LIKE CONCAT('%', #{keyword}, '%')
+        </foreach>
+        )
+      </if>
+    ORDER BY
+      (
+      <foreach collection="keywords" item="keyword" separator=" + ">
+        (CASE WHEN c.chunk_title = #{keyword} THEN 9 ELSE 0 END)
+        + (CASE WHEN c.chunk_title LIKE CONCAT(#{keyword}, '%') THEN 8 ELSE 0 END)
+        + (CASE WHEN c.chunk_title LIKE CONCAT('%', #{keyword}, '%') THEN 7 ELSE 0 END)
+        + (CASE WHEN doc.title = #{keyword} THEN 6 ELSE 0 END)
+        + (CASE WHEN doc.title LIKE CONCAT(#{keyword}, '%') THEN 5 ELSE 0 END)
+        + (CASE WHEN doc.title LIKE CONCAT('%', #{keyword}, '%') THEN 4 ELSE 0 END)
+      </foreach>
+      ) DESC,
+      CASE doc.target
+        WHEN 'law' THEN 0
+        WHEN 'admrul' THEN 1
+        ELSE 2
+      END,
+      doc.title,
+      c.sort_order
+    LIMIT #{limit}
+  </select>
+
   <select id="findSemanticChunksByDocumentTitle" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
     SELECT
       c.chunk_id AS chunkId,

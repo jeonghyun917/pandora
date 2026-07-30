@@ -25,6 +25,26 @@ class ClaimVerifierTests {
 	}
 
 	@Test
+	void exactOfficialHardwareBoundaryRemainsSupportedWithSlashAndMiddleDot() {
+		String boundary =
+			"단순 H/W 도입·설치처럼 소프트웨어사업으로 볼 수 없는 경우는 비대상이다.";
+		assertThat(new ClaimEvidenceAtomizer().atomize(boundary)).containsExactly(boundary);
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(
+			boundary,
+			List.of(ground(
+				"공공소프트웨어사업 과업심의 가이드",
+				"적용 대상 사업",
+				boundary
+			))
+		);
+
+		assertThat(result.insufficientEvidence()).as(result.toString()).isFalse();
+		assertThat(result.unsupportedClaims()).isEmpty();
+		assertThat(result.supportedStrongClaimCount()).isEqualTo(1);
+	}
+
+	@Test
 	void verifiesCoordinatedGeneralProhibitionAndItsScopedExceptionSeparately() {
 		String answer = "결론부터 말하면, 공개된 장소에 CCTV(고정형 영상정보처리기기)를 "
 			+ "설치하는 것은 원칙적으로 금지되어 있으며, 법 제25조에서 정한 사유에 "
@@ -856,6 +876,61 @@ class ClaimVerifierTests {
 		assertThat(result.insufficientEvidence()).isFalse();
 		assertThat(result.unsupportedClaims()).isEmpty();
 		assertThat(result.verifiedAnswer()).isEqualTo(answer);
+	}
+
+	@Test
+	void supportsAtomicContractCompletionProcedureParaphrasesFromDirectArticles() {
+		String inspectionArticle = "\uACC4\uC57D\uC0C1\uB300\uC790\uB294 \uC6A9\uC5ED\uC744 \uC644\uC131\uD558\uC600\uC744 \uB54C\uC5D0\uB294 \uADF8 \uC0AC\uC2E4\uC744 \uACC4\uC57D\uB2F4\uB2F9\uACF5\uBB34\uC6D0\uC5D0\uAC8C \uC11C\uBA74\uC73C\uB85C \uD1B5\uC9C0\uD558\uACE0 \uD544\uC694\uD55C \uAC80\uC0AC\uB97C \uBC1B\uC544\uC57C \uD55C\uB2E4.";
+		String paymentArticle = "\uAC80\uC0AC\uC5D0 \uD569\uACA9\uD55C \uB54C\uC5D0\uB294 \uB300\uAC00\uC9C0\uAE09\uCCAD\uAD6C\uC11C\uB97C \uC81C\uCD9C\uD558\uB294 \uB4F1 \uC18C\uC815\uC758 \uC808\uCC28\uC5D0 \uB530\uB77C \uB300\uAC00\uC9C0\uAE09\uC744 \uCCAD\uAD6C\uD560 \uC218 \uC788\uB2E4.";
+		LawAiAnswerGround inspectionGround = ground(
+			"(\uACC4\uC57D\uC608\uADDC) \uC6A9\uC5ED\uACC4\uC57D\uC77C\uBC18\uC870\uAC74",
+			"\uC81C20\uC870(\uAC80\uC0AC)",
+			inspectionArticle
+		);
+		LawAiAnswerGround paymentGround = ground(
+			"(\uACC4\uC57D\uC608\uADDC) \uC6A9\uC5ED\uACC4\uC57D\uC77C\uBC18\uC870\uAC74",
+			"\uC81C27\uC870(\uB300\uAC00\uC758 \uC9C0\uAE09)",
+			paymentArticle
+		);
+		ClaimEvidenceMatcher matcher = new ClaimEvidenceMatcher();
+		assertThat(new ClaimEvidenceAtomizer().atomize(inspectionArticle))
+			.as("inspection article atoms")
+			.containsExactly(inspectionArticle);
+		assertThat(matcher.match(inspectionArticle, List.of(inspectionGround)).status())
+			.as("exact inspection article")
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(
+			"\uACC4\uC57D\uC0C1\uB300\uC790\uB294 \uC6A9\uC5ED\uC744 \uC644\uC131\uD558\uBA74 \uADF8 \uC0AC\uC2E4\uC744 \uACC4\uC57D\uB2F4\uB2F9\uACF5\uBB34\uC6D0\uC5D0\uAC8C \uC11C\uBA74\uC73C\uB85C \uD1B5\uC9C0\uD558\uACE0 \uD544\uC694\uD55C \uAC80\uC0AC\uB97C \uBC1B\uC544\uC57C \uD55C\uB2E4.",
+			List.of(inspectionGround)
+		).status())
+			.as("completion condition paraphrase")
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(
+			"\uACC4\uC57D\uC0C1\uB300\uC790\uB294 \uC6A9\uC5ED\uC744 \uC644\uC131\uD558\uC600\uC744 \uB54C\uC5D0\uB294 \uADF8 \uC0AC\uC2E4\uC744 \uACC4\uC57D\uB2F4\uB2F9\uACF5\uBB34\uC6D0\uC5D0\uAC8C \uC11C\uBA74\uC73C\uB85C \uD1B5\uC9C0\uD558\uACE0 \uD544\uC694\uD55C \uAC80\uC0AC\uB97C \uBC1B\uC544\uC57C \uD569\uB2C8\uB2E4.",
+			List.of(inspectionGround)
+		).status())
+			.as("polite terminal paraphrase")
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(paymentArticle, List.of(paymentGround)).status())
+			.as("exact payment article")
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(
+			"\uAC80\uC0AC\uC5D0 \uD569\uACA9\uD55C \uD6C4\uC5D0\uB294 \uB300\uAC00\uC9C0\uAE09\uCCAD\uAD6C\uC11C\uB97C \uC81C\uCD9C\uD558\uB294 \uB4F1 \uC18C\uC815\uC758 \uC808\uCC28\uC5D0 \uB530\uB77C \uB300\uAC00\uC9C0\uAE09\uC744 \uCCAD\uAD6C\uD560 \uC218 \uC788\uB2E4.",
+			List.of(paymentGround)
+		).status())
+			.as("payment timing paraphrase only")
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		String answer = "\uACC4\uC57D\uC0C1\uB300\uC790\uB294 \uC6A9\uC5ED\uC744 \uC644\uC131\uD558\uBA74 \uADF8 \uC0AC\uC2E4\uC744 \uACC4\uC57D\uB2F4\uB2F9\uACF5\uBB34\uC6D0\uC5D0\uAC8C \uC11C\uBA74\uC73C\uB85C \uD1B5\uC9C0\uD558\uACE0 \uD544\uC694\uD55C \uAC80\uC0AC\uB97C \uBC1B\uC544\uC57C \uD569\uB2C8\uB2E4. "
+			+ "\uAC80\uC0AC\uC5D0 \uD569\uACA9\uD55C \uB54C\uC5D0\uB294 \uB300\uAC00\uC9C0\uAE09\uCCAD\uAD6C\uC11C\uB97C \uC81C\uCD9C\uD558\uB294 \uB4F1 \uC18C\uC815\uC758 \uC808\uCC28\uC5D0 \uB530\uB77C \uB300\uAC00\uC9C0\uAE09\uC744 \uCCAD\uAD6C\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.";
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(
+			answer,
+			List.of(inspectionGround, paymentGround)
+		);
+
+		assertThat(result.insufficientEvidence()).as("result=%s", result).isFalse();
+		assertThat(result.unsupportedClaims()).isEmpty();
+		assertThat(result.supportedStrongClaimCount()).isEqualTo(2);
 	}
 
 	private LawAiAnswerGround ground(String title, String chunkTitle, String snippet) {

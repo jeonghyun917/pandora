@@ -17,7 +17,7 @@ class LawAiEvaluationCaseCatalogTests {
 	void loadsEnoughDefaultCasesForRegressionGate() {
 		List<LawAiEvalRequest.EvalCase> cases = LawAiEvaluationCaseCatalog.loadDefaultCases();
 
-		assertThat(cases).hasSizeGreaterThanOrEqualTo(25);
+		assertThat(cases).hasSizeGreaterThanOrEqualTo(1_004);
 	}
 
 	@Test
@@ -36,12 +36,12 @@ class LawAiEvaluationCaseCatalogTests {
 	}
 
 	@Test
-	void loadsExactlyEightyFiveCompleteExplicitAnswerOracles() {
+	void loadsExactlyEightyNineCompleteExplicitAnswerOracles() {
 		List<LawAiEvalRequest.EvalCase> oracleCases = LawAiEvaluationCaseCatalog.loadDefaultCases().stream()
 			.filter(evalCase -> !evalCase.requiredPropositionGroups().isEmpty())
 			.toList();
 
-		assertThat(oracleCases).hasSize(85);
+		assertThat(oracleCases).hasSize(89);
 		for (LawAiEvalRequest.EvalCase evalCase : oracleCases) {
 			assertThat(evalCase.answerVerificationRequired()).as(evalCase.id()).isTrue();
 			assertThat(evalCase.requiredPropositionGroups()).as(evalCase.id()).allSatisfy(group ->
@@ -55,6 +55,26 @@ class LawAiEvaluationCaseCatalogTests {
 				assertThat(expression).isNotBlank()
 			);
 			assertThat(evalCase.forbiddenAnswerTerms()).as(evalCase.id()).isNotEmpty();
+		}
+	}
+
+	@Test
+	void contractCompletionOraclesRequireProcedureAndRejectUnconditionalAnswers() {
+		List<LawAiEvalRequest.EvalCase> cases = LawAiEvaluationCaseCatalog.loadDefaultCases();
+
+		for (String id : List.of(
+			"contract-completion-before-period",
+			"contract-completion-before-period-paraphrase",
+			"contract-completion-actual-finished",
+			"contract-completion-work-remaining-control"
+		)) {
+			LawAiEvalRequest.EvalCase evalCase = find(cases, id);
+			assertThat(evalCase.requiredPropositionGroups()).as(id).isNotEmpty();
+			assertThat(evalCase.requiredConditionGroups()).as(id).isNotEmpty();
+			assertThat(evalCase.forbiddenAnswerTerms()).as(id).contains(
+				"\uC6A9\uC5ED\uAE30\uAC04 \uC804\uC774\uBA74 \uBB34\uC870\uAC74 \uC81C\uCD9C \uAC00\uB2A5",
+				"\uC6A9\uC5ED\uAE30\uAC04 \uC804 \uC81C\uCD9C\uC740 \uBC95\uC73C\uB85C \uAE08\uC9C0"
+			);
 		}
 	}
 

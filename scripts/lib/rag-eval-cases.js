@@ -86,6 +86,10 @@ const CANONICAL_ANSWER_ORACLE_IDS = new Set([
   'admrul-notice-exception',
   'no-unrelated-privacy-for-sw',
   'public-data-obligation-system',
+  'contract-completion-before-period',
+  'contract-completion-before-period-paraphrase',
+  'contract-completion-actual-finished',
+  'contract-completion-work-remaining-control',
 ]);
 
 function parseEvalCasesTsv(text, source = 'evaluation TSV') {

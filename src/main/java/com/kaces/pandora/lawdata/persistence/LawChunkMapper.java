@@ -74,6 +74,13 @@ public interface LawChunkMapper {
 		@Param("limit") int limit
 	);
 
+	List<LawSemanticChunkRow> findSemanticChunksByHeadingOrDocumentTitle(
+		@Param("targets") List<String> targets,
+		@Param("keywords") List<String> keywords,
+		@Param("includeFuture") boolean includeFuture,
+		@Param("limit") int limit
+	);
+
 	List<LawSemanticChunkRow> findSemanticChunksByDocumentTitle(
 		@Param("targets") List<String> targets,
 		@Param("keywords") List<String> keywords,

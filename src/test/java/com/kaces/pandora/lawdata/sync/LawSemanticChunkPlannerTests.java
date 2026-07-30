@@ -433,6 +433,70 @@ class LawSemanticChunkPlannerTests {
 	}
 
 	@Test
+	void planKeepsAdministrativeRuleArticleIdentityAcrossSizeSplits() {
+		String article = "\uC81C27\uC870(\uB300\uAC00\uC758 \uC9C0\uAE09) "
+			+ "\uC6A9\uC5ED \uC644\uB8CC\uC640 \uAC80\uC0AC \uD6C4 \uB300\uAC00\uB97C \uC9C0\uAE09\uD55C\uB2E4. ".repeat(180);
+
+		List<PlannedLawChunk> chunks = planner.plan(List.of(
+			new SyncDetailSection(
+				"admin-rule-article",
+				"\uC81C27\uC870",
+				"\uC81C27\uC870(\uB300\uAC00\uC758 \uC9C0\uAE09)",
+				article,
+				"$.AdmRulService.\uC870\uBB38\uB0B4\uC6A9[26]",
+				27,
+				1
+			)
+		));
+
+		assertThat(chunks).hasSizeGreaterThan(1);
+		assertThat(chunks).allSatisfy(chunk -> {
+			assertThat(chunk.no()).startsWith("\uC81C27\uC870");
+			assertThat(chunk.title()).startsWith("\uC81C27\uC870(\uB300\uAC00\uC758 \uC9C0\uAE09)");
+			assertThat(chunk.no()).doesNotStartWith("\uC81C1\uC870");
+			assertThat(chunk.sourcePath()).isEqualTo("$.AdmRulService.\uC870\uBB38\uB0B4\uC6A9");
+			assertThat(chunk.text()).hasSizeLessThanOrEqualTo(2_500);
+		});
+	}
+
+	@Test
+	void planDoesNotMergeAdjacentAdministrativeRuleArticles() {
+		List<PlannedLawChunk> chunks = planner.plan(List.of(
+			new SyncDetailSection(
+				"admin-rule-article",
+				"\uC81C1\uC870",
+				"\uC81C1\uC870(\uBAA9\uC801)",
+				"\uC81C1\uC870(\uBAA9\uC801) \uC6A9\uC5ED\uACC4\uC57D\uC758 \uBAA9\uC801\uC744 \uC815\uD55C\uB2E4.",
+				"$.AdmRulService.\uC870\uBB38\uB0B4\uC6A9[0]",
+				1,
+				1
+			),
+			new SyncDetailSection(
+				"admin-rule-article",
+				"\uC81C20\uC870",
+				"\uC81C20\uC870(\uAC80\uC0AC)",
+				"\uC81C20\uC870(\uAC80\uC0AC) \uC644\uB8CC\uB41C \uC6A9\uC5ED\uC744 \uAC80\uC0AC\uD55C\uB2E4.",
+				"$.AdmRulService.\uC870\uBB38\uB0B4\uC6A9[1]",
+				20,
+				1
+			),
+			new SyncDetailSection(
+				"admin-rule-article",
+				"\uC81C27\uC870",
+				"\uC81C27\uC870(\uB300\uAC00\uC758 \uC9C0\uAE09)",
+				"\uC81C27\uC870(\uB300\uAC00\uC758 \uC9C0\uAE09) \uAC80\uC0AC \uD6C4 \uB300\uAC00\uB97C \uC9C0\uAE09\uD55C\uB2E4.",
+				"$.AdmRulService.\uC870\uBB38\uB0B4\uC6A9[2]",
+				27,
+				1
+			)
+		));
+
+		assertThat(chunks).hasSize(3);
+		assertThat(chunks).extracting(PlannedLawChunk::no)
+			.containsExactly("\uC81C1\uC870", "\uC81C20\uC870", "\uC81C27\uC870");
+	}
+
+	@Test
 	void planSplitsLongAdministrativeRuleTextIntoSearchSizedChildren() {
 		String longText = "가".repeat(2_700) + ". " + "나".repeat(2_700) + ".";
 

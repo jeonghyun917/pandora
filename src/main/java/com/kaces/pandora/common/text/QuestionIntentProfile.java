@@ -53,6 +53,22 @@ public record QuestionIntentProfile(
 	private static final Set<String> DOCUMENT_IDENTITY_RESPONSE_SUFFIXES = Set.of(
 		"", "알려줘", "알려주세요", "설명해줘", "설명해주세요", "말해줘", "말해주세요", "답해줘", "답해주세요"
 	);
+	private static final Set<String> DOCUMENT_LOOKUP_RESPONSE_SUFFIXES = Set.of(
+		"찾아줘", "찾아주세요", "찾아", "찾아줄래", "찾아줄래요"
+	);
+	private static final List<String> DOCUMENT_DISCOVERY_NOUN_CUES = List.of(
+		"가이드라인", "시행규칙", "행정규칙", "시행령",
+		"법령", "법률", "조례", "규정",
+		"가이드", "안내서", "해설서", "매뉴얼", "자료", "문서"
+	);
+	private static final Set<String> DOCUMENT_DISCOVERY_RESPONSE_SUFFIXES = Set.of(
+		"",
+		"찾아", "찾아줘", "찾아주세요", "찾아줄래", "찾아줄래요",
+		"알려줘", "알려주세요", "보여줘", "보여주세요"
+	);
+	private static final List<String> DOCUMENT_DISCOVERY_TOPIC_SUFFIXES = List.of(
+		"관련", "관한", "대한", "적용되는", "적용할", "참고할"
+	);
 
 	public static QuestionIntentProfile from(String question) {
 		String normalized = KoreanQueryNormalizer.normalizeForMatch(question);
@@ -64,11 +80,14 @@ public record QuestionIntentProfile(
 			QuestionIntentDictionary.values("policy." + policyId + ".suppress_intents", List.of())
 		));
 		boolean documentIdentityQuestion = isDocumentIdentityQuestion(normalized);
+		boolean documentDiscoveryQuestion = !documentIdentityQuestion
+			&& isDocumentDiscoveryQuestion(normalized);
 		boolean documentPurposeQuestion = matchedPolicyIds.contains("document_purpose");
 		boolean documentPurposeContextQuestion = documentPurposeQuestion
 			|| (containsAny(normalized, DOCUMENT_NOUN_CUES)
 				&& containsAny(normalized, DOCUMENT_PURPOSE_CONTEXT_CUES));
 		boolean suppressProcedureIntent = documentIdentityQuestion
+			|| documentDiscoveryQuestion
 			|| (documentPurposeContextQuestion && !containsAny(normalized, EXPLICIT_PROCEDURE_CUES));
 		List<String> terms = queryTerms(question);
 		LinkedHashSet<String> lexical = new LinkedHashSet<>();
@@ -133,11 +152,18 @@ public record QuestionIntentProfile(
 			intentTypes.remove("procedure");
 			sectionTypes.remove("procedure");
 		}
+		if (documentDiscoveryQuestion) {
+			intentTypes.clear();
+			intentTypes.add("document_discovery");
+			intentGroups.clear();
+			directEvidenceGroups.clear();
+			sectionTypes.clear();
+		}
 
-		boolean focusedSearch = !focused.isEmpty()
+		boolean focusedSearch = !documentDiscoveryQuestion && (!focused.isEmpty()
 			|| !directEvidenceGroups.isEmpty()
 			|| sectionTypes.contains("target_scope")
-			|| sectionTypes.contains("requirement");
+			|| sectionTypes.contains("requirement"));
 		return new QuestionIntentProfile(
 			normalized,
 			terms,
@@ -188,6 +214,24 @@ public record QuestionIntentProfile(
 			))
 			.filter(intent -> !intent.terms().isEmpty() || !intent.directEvidenceGroups().isEmpty())
 			.toList();
+	}
+
+	/**
+	 * Returns policy-configured proposition groups that a final answer must cover
+	 * collectively. This is intentionally separate from direct-evidence groups:
+	 * retrieval may satisfy a broad alternative group with one chunk, while a
+	 * procedural answer can require several grounded stages across multiple chunks.
+	 */
+	public List<List<String>> configuredAnswerCoverageGroups() {
+		if (documentDiscoveryQuestion()) {
+			return List.of();
+		}
+		return distinctGroups(matchedPolicyIds.stream()
+			.flatMap(policyId -> QuestionIntentDictionary.groups(
+				"policy." + policyId + ".answer_required",
+				List.of()
+			).stream())
+			.toList());
 	}
 
 	public record ConfiguredIntent(
@@ -276,6 +320,54 @@ public record QuestionIntentProfile(
 			}
 			String trailingText = normalized.substring(cueIndex + cue.length());
 			if (DOCUMENT_IDENTITY_RESPONSE_SUFFIXES.contains(trailingText)) {
+				return true;
+			}
+		}
+		for (String documentNoun : DOCUMENT_NOUN_CUES) {
+			String normalizedNoun = KoreanQueryNormalizer.normalizeForMatch(documentNoun);
+			int nounIndex = normalized.lastIndexOf(normalizedNoun);
+			if (nounIndex < 0) {
+				continue;
+			}
+			String trailingText = normalized.substring(nounIndex + normalizedNoun.length());
+			if (DOCUMENT_LOOKUP_RESPONSE_SUFFIXES.contains(trailingText)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	public boolean documentIdentityQuestion() {
+		return isDocumentIdentityQuestion(normalizedQuestion);
+	}
+
+	public boolean documentDiscoveryQuestion() {
+		return !documentIdentityQuestion() && isDocumentDiscoveryQuestion(normalizedQuestion);
+	}
+
+	private static boolean isDocumentDiscoveryQuestion(String normalized) {
+		if (normalized == null || normalized.isBlank()) {
+			return false;
+		}
+		for (String noun : DOCUMENT_DISCOVERY_NOUN_CUES) {
+			String normalizedNoun = KoreanQueryNormalizer.normalizeForMatch(noun);
+			int nounIndex = normalized.lastIndexOf(normalizedNoun);
+			if (nounIndex < 0) {
+				continue;
+			}
+			String trailingText = normalized.substring(nounIndex + normalizedNoun.length());
+			if (!DOCUMENT_DISCOVERY_RESPONSE_SUFFIXES.contains(trailingText)) {
+				continue;
+			}
+			String topic = normalized.substring(0, nounIndex);
+			for (String topicSuffix : DOCUMENT_DISCOVERY_TOPIC_SUFFIXES) {
+				String normalizedSuffix = KoreanQueryNormalizer.normalizeForMatch(topicSuffix);
+				if (topic.endsWith(normalizedSuffix)) {
+					topic = topic.substring(0, topic.length() - normalizedSuffix.length());
+					break;
+				}
+			}
+			if (topic.length() >= 2) {
 				return true;
 			}
 		}

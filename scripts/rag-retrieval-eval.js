@@ -182,12 +182,7 @@ async function loadDebugResponse(evalCase, options) {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
-      body: JSON.stringify({
-        targets: evalCase.targets,
-        question: evalCase.question,
-        limit: options.k,
-        includeFuture: true,
-      }),
+      body: JSON.stringify(buildDebugRequest(evalCase, options.k)),
       signal: controller.signal,
     });
     const text = await response.text();
@@ -200,7 +195,8 @@ async function loadDebugResponse(evalCase, options) {
     if (!response.ok || !body) {
       throw new Error(`debug search HTTP ${response.status}: ${text.slice(0, 200)}`);
     }
-    return assertDebugResponse(body);
+    const auditGroupCount = buildAuditTermGroups(evalCase).length;
+    return assertDebugResponse(body, auditGroupCount);
   } catch (error) {
     if (error?.name === 'AbortError') {
       throw new Error(`debug search timed out after ${options.timeoutMs}ms`);
@@ -211,7 +207,24 @@ async function loadDebugResponse(evalCase, options) {
   }
 }
 
-function assertDebugResponse(body) {
+function buildDebugRequest(evalCase, k) {
+  return {
+    targets: evalCase?.targets ?? [],
+    question: evalCase?.question ?? '',
+    limit: k,
+    includeFuture: true,
+    auditTermGroups: buildAuditTermGroups(evalCase),
+  };
+}
+
+function buildAuditTermGroups(evalCase) {
+  return [
+    ...(Array.isArray(evalCase?.requiredPropositionGroups) ? evalCase.requiredPropositionGroups : []),
+    ...(Array.isArray(evalCase?.requiredConditionGroups) ? evalCase.requiredConditionGroups : []),
+  ];
+}
+
+function assertDebugResponse(body, auditGroupCount = 0) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw new Error('debug search response must be an object');
   }
@@ -226,10 +239,20 @@ function assertDebugResponse(body) {
       if (!item || typeof item !== 'object' || Array.isArray(item)) {
         throw new Error(`debug search response ${stage}[${index}] must be an object`);
       }
-      const missing = ['parentSectionTitle', 'sectionType']
+      const requiredFields = ['parentSectionTitle', 'sectionType'];
+      if (auditGroupCount > 0) {
+        requiredFields.push('matchedAuditGroupIndexes', 'matchedAuditAliases');
+      }
+      const missing = requiredFields
         .filter((field) => !Object.hasOwn(item, field));
       if (missing.length > 0) {
         throw new Error(`debug search response ${stage}[${index}] missing ${missing.join(', ')}`);
+      }
+      if (auditGroupCount > 0 && (
+        !Array.isArray(item.matchedAuditGroupIndexes)
+          || !Array.isArray(item.matchedAuditAliases)
+      )) {
+        throw new Error(`debug search response ${stage}[${index}] audit matches must be arrays`);
       }
     }
   }
@@ -349,6 +372,7 @@ if (require.main === module) {
 
 module.exports = {
   assertDebugResponse,
+  buildDebugRequest,
   main,
   parseOptions,
 };

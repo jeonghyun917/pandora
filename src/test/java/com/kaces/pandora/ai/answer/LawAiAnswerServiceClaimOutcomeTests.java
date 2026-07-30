@@ -11,6 +11,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.kaces.pandora.infra.openai.OpenAiAnswerClient;
@@ -35,6 +36,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 class LawAiAnswerServiceClaimOutcomeTests {
 
 	private static final String QUESTION = "연차 유급휴가의 기준을 알려줘";
+	private static final String DISCOVERY_QUESTION = "연차휴가 관련 법령";
 	private static final String GENERATED_ANSWER = "사용자는 언제나 30일의 휴가를 주어야 합니다.";
 	private static final String SAFE_ANSWER = "제공된 근거만으로는 30일의 휴가 의무를 확인할 수 없습니다.";
 	private static final String ALIGNED_EVIDENCE =
@@ -112,6 +114,80 @@ class LawAiAnswerServiceClaimOutcomeTests {
 		assertThat(response.resultMsg()).isEqualTo("ANSWER_CLAIM_UNSUPPORTED");
 		assertThat(response.answer()).isEqualTo(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE);
 		assertThat(response.totalCnt()).isEqualTo(1);
+	}
+
+	@Test
+	void documentDiscoveryUsesSelectedGroundMetadataWithoutGeneratingALegalAnswer() {
+		LawAiAnswerResponse response = service.answer(discoveryRequest());
+
+		assertThat(response.resultCode()).isEqualTo("00");
+		assertThat(response.resultMsg()).isEqualTo("OK");
+		assertThat(response.answer())
+			.contains("관련 문서 검색 결과입니다.")
+			.contains("[법령] 근로기준법")
+			.contains("[근거 1]")
+			.doesNotContain(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE);
+		assertThat(response.grounds()).extracting(LawAiAnswerGround::title)
+			.containsExactly("근로기준법");
+		verifyNoInteractions(answerClient, answerVerificationService);
+	}
+
+	@Test
+	void streamingDocumentDiscoveryEmitsTheSameDeterministicAnswer() throws Exception {
+		CapturingEmitter emitter = new CapturingEmitter();
+
+		invokeStream(discoveryRequest(), emitter);
+
+		assertThat(deltaTexts(emitter))
+			.singleElement()
+			.asString()
+			.contains("[법령] 근로기준법", "[근거 1]");
+		assertThat(emitter.data()).filteredOn(LawAiAnswerResponse.class::isInstance)
+			.map(LawAiAnswerResponse.class::cast)
+			.anySatisfy(response -> {
+				assertThat(response.resultMsg()).isEqualTo("OK");
+				assertThat(response.answer()).contains("관련 문서 검색 결과입니다.");
+			});
+		assertThat(emitter.data()).filteredOn(Map.class::isInstance)
+			.map(Map.class::cast)
+			.anySatisfy(done -> {
+				assertThat(done.get("ok")).isEqualTo(true);
+				assertThat(done.get("resultMsg")).isEqualTo("OK");
+			});
+		verifyNoInteractions(answerClient, answerVerificationService);
+	}
+
+	@Test
+	void evaluationUsesTheSameDeterministicDocumentDiscoveryAnswer() {
+		LawAiEvalRequest.EvalCase evalCase = new LawAiEvalRequest.EvalCase(
+			"document-discovery-eval-path",
+			DISCOVERY_QUESTION,
+			List.of("law"),
+			List.of("연차 유급휴가"),
+			1,
+			List.of("근로기준법"),
+			List.of(),
+			List.of(),
+			List.of(),
+			List.of(),
+			List.of(),
+			"검색된 문서 목록을 출처 유형과 함께 제시",
+			List.of("OK"),
+			true,
+			List.of("관련 문서 검색 결과입니다", "[법령] 근로기준법"),
+			List.of(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE)
+		);
+
+		LawAiEvalResponse.CaseResult result = service.evaluate(
+			new LawAiEvalRequest(List.of(evalCase), List.of(), null)
+		).results().get(0);
+
+		assertThat(result.passed()).isTrue();
+		assertThat(result.answerVerified()).isTrue();
+		assertThat(result.verifiedAnswer())
+			.contains("관련 문서 검색 결과입니다", "[법령] 근로기준법", "[근거 1]");
+		assertThat(result.unsupportedAnswerClaims()).isEmpty();
+		verifyNoInteractions(answerClient, answerVerificationService);
 	}
 
 	@Test
@@ -398,13 +474,17 @@ class LawAiAnswerServiceClaimOutcomeTests {
 	}
 
 	private void invokeStream(CapturingEmitter emitter) throws Exception {
+		invokeStream(request(), emitter);
+	}
+
+	private void invokeStream(LawAiAnswerRequest request, CapturingEmitter emitter) throws Exception {
 		Method method = LawAiAnswerService.class.getDeclaredMethod(
 			"streamAnswer",
 			LawAiAnswerRequest.class,
 			SseEmitter.class
 		);
 		method.setAccessible(true);
-		method.invoke(service, request(), emitter);
+		method.invoke(service, request, emitter);
 	}
 
 	private List<String> deltaTexts(CapturingEmitter emitter) {
@@ -419,6 +499,10 @@ class LawAiAnswerServiceClaimOutcomeTests {
 
 	private LawAiAnswerRequest request() {
 		return new LawAiAnswerRequest("law", List.of("law"), QUESTION, 1, false);
+	}
+
+	private LawAiAnswerRequest discoveryRequest() {
+		return new LawAiAnswerRequest("law", List.of("law"), DISCOVERY_QUESTION, 1, false);
 	}
 
 	private AnswerVerificationService.Result verificationResult(

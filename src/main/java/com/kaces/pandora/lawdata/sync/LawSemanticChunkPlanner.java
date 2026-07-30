@@ -314,7 +314,20 @@ final class LawSemanticChunkPlanner {
 	}
 
 	private boolean sameMergeFamily(PlannedLawChunk left, PlannedLawChunk right) {
+		boolean leftAdministrativeRuleArticle = isAdministrativeRuleArticle(left);
+		boolean rightAdministrativeRuleArticle = isAdministrativeRuleArticle(right);
+		if (leftAdministrativeRuleArticle || rightAdministrativeRuleArticle) {
+			String leftNo = baseNo(left.no());
+			return leftAdministrativeRuleArticle
+				&& rightAdministrativeRuleArticle
+				&& StringUtils.hasText(leftNo)
+				&& leftNo.equals(baseNo(right.no()));
+		}
 		return mergeFamily(left.sourcePath()).equals(mergeFamily(right.sourcePath()));
+	}
+
+	private boolean isAdministrativeRuleArticle(PlannedLawChunk chunk) {
+		return chunk != null && "admin-rule-article".equals(chunk.type());
 	}
 
 	private String mergeFamily(String sourcePath) {

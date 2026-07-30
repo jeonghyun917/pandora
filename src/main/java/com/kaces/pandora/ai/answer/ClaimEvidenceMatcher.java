@@ -152,6 +152,18 @@ public class ClaimEvidenceMatcher {
 			+ "(?=\\s|$)",
 		Pattern.CASE_INSENSITIVE
 	);
+	private static final Pattern DOCUMENT_IDENTITY_DESCRIPTOR_REMAINDER = Pattern.compile(
+		"(?:(?:결론부터|요약하면|정리하면)(?:말씀드리면|말하면)?)?"
+			+ "(?:찾으시는|요청하신|해당)?"
+			+ "(?:문서|문서명|문서제목)(?:은|는|이|가)?"
+			+ "제목(?:은|는|이|가)?인"
+			+ "([\\p{IsHangul}a-z0-9]{2,40})"
+			+ "문서(?:입니다|이다|임)?",
+		Pattern.CASE_INSENSITIVE
+	);
+	private static final Pattern POST_EVENT_CONDITION = Pattern.compile(
+		"[\\p{IsHangul}]{2,}(?:한|된|받은|마친)후(?:에는|에|부터)?"
+	);
 	private static final Pattern CASE_CONDITION_PREFIX = Pattern.compile(
 		"(?:^|[.!?]\\s*)([^.!?\\n]{2,80}?)\\s+(?:경우|때)(?:에는|엔|에|는)?(?=\\s|$)",
 		Pattern.CASE_INSENSITIVE
@@ -374,6 +386,24 @@ public class ClaimEvidenceMatcher {
 		List<Candidate> supported = new ArrayList<>();
 		List<Candidate> contradicted = new ArrayList<>();
 		for (EvidenceSentence sentence : sentences) {
+			if (sentence.documentTitleMetadata()) {
+				if (isDocumentIdentityClaim(
+					claim,
+					sentence.text(),
+					sentence.anchorContext()
+				)) {
+					int overlap = overlapCount(claimTokens, sentence.tokens());
+					double coverage = (double) overlap
+						/ Math.max(1, new LinkedHashSet<>(claimTokens).size());
+					supported.add(new Candidate(
+						sentence,
+						overlap,
+						coverage,
+						10.0d + overlap + coverage
+					));
+				}
+				continue;
+			}
 			if (isStructuralOnlyEvidence(sentence.text())
 				|| (sentence.denseStructuralSource()
 					&& !isIndependentAssertiveEvidence(sentence.text(), claimNumbers))) {
@@ -469,6 +499,42 @@ public class ClaimEvidenceMatcher {
 			return false;
 		}
 		return denseStructuralLabels;
+	}
+
+	static boolean isDocumentIdentityClaim(String claim, String documentTitle) {
+		return isDocumentIdentityClaim(claim, documentTitle, "");
+	}
+
+	static boolean isDocumentIdentityClaim(
+		String claim,
+		String documentTitle,
+		String documentMetadataContext
+	) {
+		String normalizedClaim = KoreanQueryNormalizer.normalizeForMatch(claim).replaceAll("\\s+", "");
+		String normalizedTitle = KoreanQueryNormalizer.normalizeForMatch(documentTitle).replaceAll("\\s+", "");
+		if (normalizedClaim.isBlank()
+			|| normalizedTitle.length() < 4
+			|| !normalizedClaim.contains(normalizedTitle)) {
+			return false;
+		}
+		String remainder = normalizedClaim.replace(normalizedTitle, "");
+		if (remainder.matches(
+			"(?:(?:결론부터|요약하면|정리하면)(?:말씀드리면|말하면)?)?"
+				+ "(?:찾으시는|요청하신|해당)?"
+				+ "(?:문서|문서명|문서제목)(?:은|는|이|가)?(?:바로)?"
+				+ "(?:입니다|이다|임)?"
+		)) {
+			return true;
+		}
+		Matcher descriptorMatcher = DOCUMENT_IDENTITY_DESCRIPTOR_REMAINDER.matcher(remainder);
+		if (!descriptorMatcher.matches()) {
+			return false;
+		}
+		String normalizedContext = KoreanQueryNormalizer
+			.normalizeForMatch(documentMetadataContext)
+			.replaceAll("\\s+", "");
+		String descriptor = descriptorMatcher.group(1);
+		return normalizedContext.contains(descriptor) && normalizedContext.contains("문서");
 	}
 
 	private boolean isDenseCheckboxForm(String text) {
@@ -567,6 +633,7 @@ public class ClaimEvidenceMatcher {
 					|| isStructuralSourceIntroduction(ground.snippet())
 					|| isStructuralSourceIntroduction(ground.parentContextText())
 			) && hasDenseStructuralLabels(structuralContext);
+			addDocumentTitleEvidence(unique, ground.number(), ground.title(), anchorContext);
 			addEvidenceFragments(
 				unique,
 				ground.number(),
@@ -590,6 +657,34 @@ public class ClaimEvidenceMatcher {
 			);
 		}
 		return List.copyOf(unique.values());
+	}
+
+	private void addDocumentTitleEvidence(
+		Map<String, EvidenceSentence> unique,
+		int groundNumber,
+		String title,
+		String anchorContext
+	) {
+		String cleaned = String.valueOf(title == null ? "" : title)
+			.replaceAll("\\s+", " ")
+			.trim();
+		String normalizedTitle = normalize(cleaned);
+		if (cleaned.length() < 4 || normalizedTitle.isBlank()) {
+			return;
+		}
+		unique.putIfAbsent(
+			groundNumber + "|document-title|" + normalizedTitle,
+			new EvidenceSentence(
+				groundNumber,
+				cleaned,
+				tokenize(cleaned),
+				ClaimNumericNormalizer.tokens(cleaned),
+				ClaimNumericNormalizer.orderedTokens(cleaned),
+				anchorContext,
+				false,
+				true
+			)
+		);
 	}
 
 	private void addEvidenceFragments(
@@ -617,7 +712,8 @@ public class ClaimEvidenceMatcher {
 					ClaimNumericNormalizer.tokens(cleaned),
 					ClaimNumericNormalizer.orderedTokens(cleaned),
 					anchorContext,
-					denseStructuralContext
+					denseStructuralContext,
+					false
 				));
 			}
 		}
@@ -629,6 +725,16 @@ public class ClaimEvidenceMatcher {
 			return Relation.NOT_ENTAILED;
 		}
 		boolean exactProposition = claim.normalizedText().equals(evidence.normalizedText());
+		if (exactProposition) {
+			return targetScopeAligned(claim, evidence, evidenceAnchorContext)
+				? Relation.COMPATIBLE
+				: Relation.NOT_ENTAILED;
+		}
+		boolean equivalentProposition = exactProposition
+			|| canonicalAssertiveEndingText(claim.normalizedText())
+				.equals(canonicalAssertiveEndingText(evidence.normalizedText()))
+			|| canonicalCompletionCondition(canonicalAssertiveEndingText(claim.normalizedText()))
+				.equals(canonicalCompletionCondition(canonicalAssertiveEndingText(evidence.normalizedText())));
 		boolean namedUniversalDefinition = namedUniversalDefinitionAligned(claim, evidence);
 		if (evidence.disjunctiveCoordination() && !exactProposition) {
 			return Relation.NOT_ENTAILED;
@@ -652,6 +758,9 @@ public class ClaimEvidenceMatcher {
 							namedUniversalDefinition
 						)
 				)) {
+			return Relation.NOT_ENTAILED;
+		}
+		if (oppositeClassificationConditions(claim, evidence)) {
 			return Relation.NOT_ENTAILED;
 		}
 		if (!claim.requiredConditionAnchors().isEmpty()) {
@@ -696,6 +805,9 @@ public class ClaimEvidenceMatcher {
 					evidence.enumerationScopeAnchors()
 				))) {
 			return Relation.NOT_ENTAILED;
+		}
+		if (equivalentProposition) {
+			return Relation.COMPATIBLE;
 		}
 		if (!claim.hasExplicitSemantics()) {
 			if (!neutralRolesAligned(claim, evidence)) {
@@ -747,6 +859,36 @@ public class ClaimEvidenceMatcher {
 		return Relation.COMPATIBLE;
 	}
 
+	private boolean oppositeClassificationConditions(
+		ClaimSemantics claim,
+		ClaimSemantics evidence
+	) {
+		return !claim.requiredConditionAnchors().isEmpty()
+			&& conditionAnchorsCovered(
+				claim.requiredConditionAnchors(),
+				evidence.normalizedText()
+			)
+			&& ClaimSemantics.containsAny(
+				claim.normalizedText(),
+				"해당하면", "해당하는경우", "해당할경우",
+				"포함되면", "포함되는경우", "포함될경우"
+			)
+			&& ClaimSemantics.containsAny(
+				evidence.normalizedText(),
+				"볼수없는경우", "해당하지않는경우", "해당하지않을경우",
+				"포함되지않는경우", "포함하지않는경우"
+			);
+	}
+
+	private String canonicalAssertiveEndingText(String text) {
+		return String.valueOf(text == null ? "" : text)
+			.replaceFirst("\uD569\uB2C8\uB2E4$", "\uD55C\uB2E4")
+			.replaceFirst("\uB429\uB2C8\uB2E4$", "\uB41C\uB2E4")
+			.replaceFirst("\uC788\uC2B5\uB2C8\uB2E4$", "\uC788\uB2E4")
+			.replaceFirst("\uC5C6\uC2B5\uB2C8\uB2E4$", "\uC5C6\uB2E4")
+			.replaceFirst("\uC544\uB2D9\uB2C8\uB2E4$", "\uC544\uB2C8\uB2E4");
+	}
+
 	private boolean targetScopeAligned(
 		ClaimSemantics claim,
 		ClaimSemantics evidence,
@@ -758,6 +900,12 @@ public class ClaimEvidenceMatcher {
 		}
 		Set<String> claimAnchors = claim.targetScopeAnchors();
 		Set<String> evidenceAnchors = evidence.targetScopeAnchors();
+		if (claim.normalizedText().equals(evidence.normalizedText())
+			&& !claim.requiredConditionAnchors().isEmpty()
+			&& claimAnchors.isEmpty()
+			&& evidenceAnchors.isEmpty()) {
+			return true;
+		}
 		Set<String> contextAnchors = ClaimSemantics.namedTargetScopes(evidenceAnchorContext);
 		if (claimAnchors.isEmpty()) {
 			if (!evidenceAnchors.isEmpty()) {
@@ -767,12 +915,26 @@ public class ClaimEvidenceMatcher {
 				return true;
 			}
 			return contextAnchors.size() == 1
-				&& implicitSingleScopeEnumerationAligned(claim, evidence);
+				&& (
+					implicitSingleScopeEnumerationAligned(claim, evidence)
+						|| inlineUniversalTargetDefinitionAligned(claim, evidence)
+				);
 		}
 		if (!evidenceAnchors.isEmpty()) {
 			return targetScopeSetsAligned(claimAnchors, evidenceAnchors);
 		}
 		return !contextAnchors.isEmpty() && targetScopeSetsAligned(claimAnchors, contextAnchors);
+	}
+
+	private boolean inlineUniversalTargetDefinitionAligned(
+		ClaimSemantics claim,
+		ClaimSemantics evidence
+	) {
+		return claim.normalizedText().equals(evidence.normalizedText())
+			&& claim.targetMode() == TargetMode.INCLUDED
+			&& evidence.targetMode() == TargetMode.INCLUDED
+			&& !claim.universalScopeAnchors().isEmpty()
+			&& claim.universalScopeAnchors().equals(evidence.universalScopeAnchors());
 	}
 
 	private boolean implicitSingleScopeEnumerationAligned(
@@ -810,11 +972,21 @@ public class ClaimEvidenceMatcher {
 			);
 		}
 		String withoutTrailingJosa = KoreanQueryNormalizer.stripTrailingJosa(normalizedAnchor);
-		return canonicalSoftwareTerm(withoutTrailingJosa);
+		return canonicalCompletionCondition(canonicalSoftwareTerm(withoutTrailingJosa));
 	}
 
 	private String canonicalConditionText(String text) {
-		return canonicalSoftwareTerm(normalize(text));
+		return canonicalCompletionCondition(canonicalSoftwareTerm(normalize(text)));
+	}
+
+	private String canonicalCompletionCondition(String text) {
+		return String.valueOf(text == null ? "" : text)
+			.replaceAll("\\s+", "")
+			.replaceAll("\uD558(?:\uC600\uC744|\uC600|\uC5C8\uC744|\uC5C8|\uC744)\uB54C(?:\uC5D0\uB294|\uC5D0|\uB294)?", "\uD558")
+			.replaceAll("\uD558\uBA74", "\uD558")
+			.replaceAll("\uD55C(?:\uD6C4|\uB54C)(?:\uC5D0\uB294|\uC5D0|\uB294)?", "")
+			.replaceAll("\uD558(?:\uC600\uC744|\uC600|\uC5C8\uC744|\uC5C8|\uC744)$", "\uD558")
+			.replaceAll("\uD55C$", "");
 	}
 
 	private static String canonicalSoftwareTerm(String text) {
@@ -1293,7 +1465,8 @@ public class ClaimEvidenceMatcher {
 		Set<String> numbers,
 		List<String> orderedNumbers,
 		String anchorContext,
-		boolean denseStructuralSource
+		boolean denseStructuralSource,
+		boolean documentTitleMetadata
 	) {
 	}
 
@@ -1445,7 +1618,8 @@ public class ClaimEvidenceMatcher {
 			boolean conditional = containsAny(conditionNormalized,
 				"경우", "때에는", "일때", "이면", "라면", "조건", "한하여",
 				"하면", "한다면", "되면", "된다면", "받으면", "있으면", "없으면",
-				"않으면", "지나면", "넘으면");
+				"않으면", "지나면", "넘으면")
+				|| POST_EVENT_CONDITION.matcher(conditionNormalized).find();
 			boolean narrowingCondition = containsAny(conditionNormalized,
 				"이상", "이하", "미만", "초과", "한하여", "일정규모", "특정", "요건을충족", "조건을충족")
 				|| ADDITIONAL_RESTRICTIVE_REQUIREMENT.matcher(conditionNormalized).find()

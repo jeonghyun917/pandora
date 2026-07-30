@@ -57,6 +57,8 @@ public record LawAiDebugResponse(
 		double finalScore,
 		boolean selected,
 		List<String> matchedTerms,
+		List<Integer> matchedAuditGroupIndexes,
+		List<String> matchedAuditAliases,
 		String snippet
 	) {
 	}

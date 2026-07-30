@@ -51,6 +51,88 @@ function measureRetrievalCase(evalCase, response, k = 10) {
       ...Object.fromEntries(DOWNSTREAM_STAGES.map((stage) => [stage, candidateEntryHit && stages[stage].directHit])),
     },
     stages,
+    oraclePresence: measureOraclePresence(evalCase, response, safeK),
+  };
+}
+
+function measureOraclePresence(evalCase, response, k) {
+  const propositionGroups = Array.isArray(evalCase?.requiredPropositionGroups)
+    ? evalCase.requiredPropositionGroups
+    : [];
+  const conditionGroups = Array.isArray(evalCase?.requiredConditionGroups)
+    ? evalCase.requiredConditionGroups
+    : [];
+  const totalGroupCount = propositionGroups.length + conditionGroups.length;
+  if (totalGroupCount === 0) {
+    return {
+      auditable: false,
+      classification: 'NO_EXPLICIT_ORACLE',
+      propositionGroupCount: 0,
+      conditionGroupCount: 0,
+      totalGroupCount: 0,
+      firstLossStage: null,
+      stages: {},
+    };
+  }
+
+  const candidateItems = uniqueItems([
+    ...topK(response?.vectorHits, k),
+    ...topK(response?.lexicalHits, k),
+  ]);
+  const stages = {
+    candidateSources: measureAuditStage(candidateItems, candidateItems.length, totalGroupCount),
+    ...Object.fromEntries(STAGE_NAMES.map((stage) => [
+      stage,
+      measureAuditStage(response?.[stage], k, totalGroupCount),
+    ])),
+  };
+  const candidate = stages.candidateSources;
+  const selected = stages.selected;
+  let classification;
+  let firstLossStage = null;
+  if (!candidate.anyRequiredPresent) {
+    classification = 'ABSENT_FROM_TOP_K_CANDIDATES';
+    firstLossStage = 'candidateSources';
+  } else if (!candidate.allRequiredPresent) {
+    classification = 'PARTIAL_IN_CANDIDATES';
+    firstLossStage = 'candidateSources';
+  } else if (selected.allRequiredPresent) {
+    classification = 'PRESENT_IN_SELECTED';
+  } else {
+    classification = 'DROPPED_BEFORE_SELECTED';
+    firstLossStage = DOWNSTREAM_STAGES.find((stage) => !stages[stage].allRequiredPresent) ?? 'selected';
+  }
+  return {
+    auditable: true,
+    classification,
+    propositionGroupCount: propositionGroups.length,
+    conditionGroupCount: conditionGroups.length,
+    totalGroupCount,
+    firstLossStage,
+    stages,
+  };
+}
+
+function measureAuditStage(items, k, totalGroupCount) {
+  const matchedGroupIndexes = Array.from(new Set(
+    topK(items, Math.max(1, k))
+      .flatMap((item) => Array.isArray(item?.matchedAuditGroupIndexes)
+        ? item.matchedAuditGroupIndexes
+        : [])
+      .filter((index) => Number.isSafeInteger(index) && index >= 0 && index < totalGroupCount),
+  )).sort((left, right) => left - right);
+  const matched = new Set(matchedGroupIndexes);
+  const missingGroupIndexes = Array.from(
+    { length: totalGroupCount },
+    (_, index) => index,
+  ).filter((index) => !matched.has(index));
+  return {
+    matchedGroupIndexes,
+    missingGroupIndexes,
+    matchedGroupCount: matchedGroupIndexes.length,
+    requiredGroupCount: totalGroupCount,
+    anyRequiredPresent: matchedGroupIndexes.length > 0,
+    allRequiredPresent: matchedGroupIndexes.length === totalGroupCount,
   };
 }
 
@@ -247,6 +329,7 @@ function average(values) {
 
 module.exports = {
   STAGE_NAMES,
+  measureOraclePresence,
   measureRetrievalCase,
   summarizeRetrievalCases,
 };

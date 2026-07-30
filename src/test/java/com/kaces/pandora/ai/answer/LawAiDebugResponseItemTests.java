@@ -12,6 +12,11 @@ class LawAiDebugResponseItemTests {
 		assertThat(Arrays.stream(LawAiDebugResponse.Item.class.getRecordComponents())
 			.map(component -> component.getName())
 			.toList())
-			.contains("parentSectionTitle", "sectionType");
+			.contains(
+				"parentSectionTitle",
+				"sectionType",
+				"matchedAuditGroupIndexes",
+				"matchedAuditAliases"
+			);
 	}
 }

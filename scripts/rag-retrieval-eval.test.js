@@ -168,7 +168,7 @@ test('answer-oracle merge rejects duplicate, orphan, missing, and malformed rows
   );
 });
 
-test('bundled answer-oracle sidecar merges exactly 85 explicit cases', () => {
+test('bundled answer-oracle sidecar merges exactly 89 explicit cases', () => {
   const repositoryRoot = path.resolve(__dirname, '..');
   const cases = caseParser.loadEvalCases([
     path.join(repositoryRoot, 'src', 'main', 'resources', 'rag-evaluation-cases.tsv'),
@@ -178,9 +178,22 @@ test('bundled answer-oracle sidecar merges exactly 85 explicit cases', () => {
   });
   const explicit = cases.filter((item) => item.requiredPropositionGroups.length > 0);
 
-  assert.equal(explicit.length, 85);
+  assert.equal(cases.length, 1004);
+  assert.equal(explicit.length, 89);
   assert.equal(explicit.every((item) => item.answerVerificationRequired === true), true);
   assert.equal(explicit.every((item) => item.forbiddenAnswerTerms.length > 0), true);
+  assert.deepEqual(
+    explicit
+      .filter((item) => item.id.startsWith('contract-completion-'))
+      .map((item) => item.id)
+      .sort(),
+    [
+      'contract-completion-actual-finished',
+      'contract-completion-before-period',
+      'contract-completion-before-period-paraphrase',
+      'contract-completion-work-remaining-control',
+    ],
+  );
 });
 
 test('case selection rejects every requested ID that is missing', () => {
@@ -454,6 +467,124 @@ test('judged and selected stages distinguish judge rejection from ground rejecti
 
   assert.equal(retrievalMetrics.measureRetrievalCase(evalCase, judgeRejected, 10).firstDropStage, 'judged');
   assert.equal(retrievalMetrics.measureRetrievalCase(evalCase, groundRejected, 10).firstDropStage, 'selected');
+});
+
+test('oracle presence aggregates server-confirmed body groups and records first loss', () => {
+  const evalCase = {
+    id: 'oracle-drop',
+    expectedTitleTerms: ['정답 문서'],
+    expectedDocumentTerms: [],
+    expectedSectionTypes: [],
+    expectedParentTerms: [],
+    expectedResultMsgs: ['OK'],
+    requiredPropositionGroups: [
+      ['직접 결론', '결론 별칭'],
+      ['절차 결과'],
+    ],
+    requiredConditionGroups: [
+      ['적용 조건'],
+    ],
+  };
+  const complete = {
+    chunkId: 1,
+    target: 'official_doc',
+    title: '정답 문서',
+    parentSectionTitle: '',
+    sectionType: '',
+    matchedAuditGroupIndexes: [0, 1, 2],
+    matchedAuditAliases: ['직접 결론', '절차 결과', '적용 조건'],
+  };
+  const partial = {
+    ...complete,
+    matchedAuditGroupIndexes: [0, 2],
+    matchedAuditAliases: ['직접 결론', '적용 조건'],
+  };
+  const response = Object.fromEntries(retrievalMetrics.STAGE_NAMES.map((stage) => [stage, [complete]]));
+  response.resultMsg = 'OK';
+  response.intentFiltered = [partial];
+  response.judgeCandidates = [partial];
+  response.judged = [partial];
+  response.selected = [partial];
+
+  const measured = retrievalMetrics.measureRetrievalCase(evalCase, response, 10);
+
+  assert.equal(measured.oraclePresence.auditable, true);
+  assert.equal(measured.oraclePresence.propositionGroupCount, 2);
+  assert.equal(measured.oraclePresence.conditionGroupCount, 1);
+  assert.deepEqual(measured.oraclePresence.stages.candidateSources.matchedGroupIndexes, [0, 1, 2]);
+  assert.deepEqual(measured.oraclePresence.stages.selected.missingGroupIndexes, [1]);
+  assert.equal(measured.oraclePresence.firstLossStage, 'intentFiltered');
+  assert.equal(measured.oraclePresence.classification, 'DROPPED_BEFORE_SELECTED');
+});
+
+test('oracle presence distinguishes partial, absent, selected, and no-oracle cases', () => {
+  const baseCase = {
+    id: 'presence',
+    expectedTitleTerms: [],
+    expectedDocumentTerms: [],
+    expectedSectionTypes: [],
+    expectedParentTerms: [],
+    expectedResultMsgs: ['OK'],
+    requiredPropositionGroups: [['first'], ['second']],
+    requiredConditionGroups: [],
+  };
+  const item = (indexes) => ({
+    chunkId: indexes.join('-') || 0,
+    target: 'law',
+    title: 'law',
+    parentSectionTitle: '',
+    sectionType: '',
+    matchedAuditGroupIndexes: indexes,
+    matchedAuditAliases: indexes.map((index) => index === 0 ? 'first' : 'second'),
+  });
+  const response = (candidate, selected) => {
+    const value = Object.fromEntries(retrievalMetrics.STAGE_NAMES.map((stage) => [stage, selected]));
+    value.resultMsg = 'OK';
+    value.vectorHits = candidate;
+    value.lexicalHits = [];
+    return value;
+  };
+
+  assert.equal(
+    retrievalMetrics.measureRetrievalCase(baseCase, response([item([0])], []), 10)
+      .oraclePresence.classification,
+    'PARTIAL_IN_CANDIDATES',
+  );
+  assert.equal(
+    retrievalMetrics.measureRetrievalCase(baseCase, response([item([])], []), 10)
+      .oraclePresence.classification,
+    'ABSENT_FROM_TOP_K_CANDIDATES',
+  );
+  assert.equal(
+    retrievalMetrics.measureRetrievalCase(baseCase, response([item([0, 1])], [item([0, 1])]), 10)
+      .oraclePresence.classification,
+    'PRESENT_IN_SELECTED',
+  );
+  assert.equal(
+    retrievalMetrics.measureRetrievalCase({
+      ...baseCase,
+      requiredPropositionGroups: [],
+    }, response([], []), 10).oraclePresence.classification,
+    'NO_EXPLICIT_ORACLE',
+  );
+});
+
+test('debug request sends proposition groups before condition groups', () => {
+  assert.equal(typeof retrievalRunner.buildDebugRequest, 'function');
+  const request = retrievalRunner.buildDebugRequest({
+    targets: ['law'],
+    question: 'question',
+    requiredPropositionGroups: [['p1', 'p1 alias'], ['p2']],
+    requiredConditionGroups: [['c1']],
+  }, 30);
+
+  assert.deepEqual(request, {
+    targets: ['law'],
+    question: 'question',
+    limit: 30,
+    includeFuture: true,
+    auditTermGroups: [['p1', 'p1 alias'], ['p2'], ['c1']],
+  });
 });
 
 test('downstream survival excludes cases that were absent from candidate sources', () => {
