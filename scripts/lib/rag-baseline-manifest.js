@@ -2,6 +2,8 @@ const crypto = require('crypto');
 
 const REQUIRED_STRING_FIELDS = [
   'gitCommit',
+  'lawCollection',
+  'ragCollection',
 	'runtimeArtifactSha256',
 	'runtimeArtifactPath',
 	'runtimeArtifactModifiedAt',
@@ -26,9 +28,11 @@ function buildBaselineManifest({
   selectionCaseIds,
 }) {
   const manifest = {
-		schemaVersion: 2,
+    schemaVersion: 2,
     gitCommit,
     gitDirty,
+    lawCollection: runtimeInfo?.lawCollection,
+    ragCollection: runtimeInfo?.ragCollection,
 		runtimeArtifactSha256: runtimeInfo?.runtimeArtifactSha256,
 		runtimeArtifactSize: runtimeInfo?.runtimeArtifactSize,
 		runtimeArtifactPath: runtimeInfo?.runtimeArtifactPath,
@@ -79,6 +83,9 @@ function assertManifestIntegrity(manifest, label) {
 }
 
 function validateBaselineManifest(manifest) {
+  if (manifest?.schemaVersion !== 2) {
+    throw new Error('baseline manifest requires schemaVersion 2');
+  }
   for (const field of REQUIRED_STRING_FIELDS) {
     if (typeof manifest?.[field] !== 'string' || !manifest[field].trim()) {
       throw new Error(`baseline manifest requires ${field}`);

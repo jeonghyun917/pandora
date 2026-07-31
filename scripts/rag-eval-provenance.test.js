@@ -47,6 +47,8 @@ test('baseline manifest is canonical and rejects index revision drift', () => {
     gitCommit: 'abc123',
     gitDirty: false,
     runtimeInfo: {
+      lawCollection: 'law_chunks',
+      ragCollection: 'rag_chunks_v4',
       runtimeArtifactSha256: 'jar-a',
       runtimeArtifactSize: 52000000,
       runtimeArtifactPath: 'C:/runtime/pandora.jar',
@@ -72,6 +74,9 @@ test('baseline manifest is canonical and rejects index revision drift', () => {
   });
 
   assert.match(manifest.manifestId, /^[0-9a-f]{64}$/);
+  assert.equal(manifest.schemaVersion, 2);
+  assert.equal(manifest.lawCollection, 'law_chunks');
+  assert.equal(manifest.ragCollection, 'rag_chunks_v4');
   assert.equal(manifest.runtimeArtifactPath, 'C:/runtime/pandora.jar');
   assert.equal(manifest.runtimeArtifactModifiedAt, '2026-07-31T00:00:00Z');
   assert.equal(manifest.embeddingModel, 'text-embedding-3-small');
@@ -84,6 +89,10 @@ test('baseline manifest is canonical and rejects index revision drift', () => {
   assert.equal(manifest.ragDatabaseContentFingerprint, 'b'.repeat(64));
   assert.equal(assertSameManifest(manifest, { ...manifest }), true);
   assert.throws(
+    () => assertSameManifest({ ...manifest, schemaVersion: 1 }, manifest),
+    /schemaVersion/,
+  );
+  assert.throws(
     () => assertSameManifest(manifest, { ...manifest, indexRevision: 'index-b' }),
     /indexRevision/,
   );
@@ -94,6 +103,8 @@ test('baseline manifest accepts a requested subset from its recorded baseline un
     gitCommit: 'abc123',
     gitDirty: false,
     runtimeInfo: {
+      lawCollection: 'law_chunks',
+      ragCollection: 'rag_chunks_v4',
       runtimeArtifactSha256: 'jar-a',
       runtimeArtifactSize: 52000000,
       runtimeArtifactPath: 'C:/runtime/pandora.jar',
