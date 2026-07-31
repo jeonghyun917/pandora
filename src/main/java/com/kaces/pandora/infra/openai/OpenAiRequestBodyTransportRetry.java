@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.web.client.ResourceAccessException;
 
 final class OpenAiRequestBodyTransportRetry {
 
@@ -55,13 +56,9 @@ final class OpenAiRequestBodyTransportRetry {
 	}
 
 	private boolean isRequestBodyWriteFailure(RuntimeException exception) {
-		boolean hasIOException = false;
-		boolean hasRequestBodyWriteMessage = false;
-		for (Throwable current : causeChain(exception)) {
-			hasIOException |= current instanceof IOException;
-			hasRequestBodyWriteMessage |= describesRequestBodyWrite(current.getMessage());
-		}
-		return hasIOException && hasRequestBodyWriteMessage;
+		return exception instanceof ResourceAccessException resourceAccessException
+			&& resourceAccessException.getCause() instanceof IOException
+			&& describesRequestBodyWrite(resourceAccessException.getMessage());
 	}
 
 	private boolean describesRequestBodyWrite(String message) {
@@ -69,7 +66,7 @@ final class OpenAiRequestBodyTransportRetry {
 			return false;
 		}
 		String normalized = message.toLowerCase(java.util.Locale.ROOT);
-		return normalized.contains("write") && normalized.contains("request body");
+		return normalized.contains("error writing request body");
 	}
 
 	private Throwable rootCause(Throwable exception) {

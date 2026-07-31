@@ -87,6 +87,23 @@ class OpenAiRequestBodyTransportRetryTests {
 	}
 
 	@Test
+	void doesNotRetryWhenRequestBodyWriteMessageAndIOExceptionAreInDifferentCauseLinks() {
+		AtomicInteger attempts = new AtomicInteger();
+		OpenAiRequestBodyTransportRetry retry = new OpenAiRequestBodyTransportRetry(delay -> { }, metadata -> { });
+		IllegalStateException failure = new IllegalStateException(
+			"Could not write JSON: Error writing request body to server",
+			new ResourceAccessException("I/O error during response read", new IOException("connection reset during response read"))
+		);
+
+		assertThatThrownBy(() -> retry.execute("embeddings", () -> {
+			attempts.incrementAndGet();
+			throw failure;
+		})).isSameAs(failure);
+
+		assertThat(attempts).hasValue(1);
+	}
+
+	@Test
 	void restoresInterruptedFlagAndPropagatesInterruptedRetryDelay() {
 		AtomicInteger attempts = new AtomicInteger();
 		OpenAiRequestBodyTransportRetry retry = new OpenAiRequestBodyTransportRetry(delay -> {
