@@ -22,7 +22,9 @@ class LawAiAnswerServiceEvidenceGateTests {
 		try {
 			java.lang.reflect.Field field = LawAiAnswerService.class.getDeclaredField("runtimeArtifactIdentity");
 			field.setAccessible(true);
-			RuntimeArtifactIdentity snapshot = new RuntimeArtifactIdentity("jar", "startup-sha256", 123L);
+			RuntimeArtifactIdentity snapshot = new RuntimeArtifactIdentity(
+				"jar", "startup-sha256", 123L, "C:/runtime/pandora.jar", "2026-07-31T00:00:00Z"
+			);
 			field.set(service, snapshot);
 
 			LawAiRuntimeInfo runtimeInfo = service.runtimeInfo();
@@ -30,6 +32,8 @@ class LawAiAnswerServiceEvidenceGateTests {
 			assertThat(runtimeInfo.runtimeArtifactKind()).isEqualTo("jar");
 			assertThat(runtimeInfo.runtimeArtifactSha256()).isEqualTo("startup-sha256");
 			assertThat(runtimeInfo.runtimeArtifactSize()).isEqualTo(123L);
+			assertThat(runtimeInfo.runtimeArtifactPath()).isEqualTo("C:/runtime/pandora.jar");
+			assertThat(runtimeInfo.runtimeArtifactModifiedAt()).isEqualTo("2026-07-31T00:00:00Z");
 		} finally {
 			service.shutdownExecutors();
 		}

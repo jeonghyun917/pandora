@@ -3,11 +3,10 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const {
   loadEvalCases,
-  selectEvalCases,
   splitCaseIds,
 } = require('./lib/rag-eval-cases');
 const { buildBaselineManifest } = require('./lib/rag-baseline-manifest');
-const { datasetHash, selectionHash } = require('./lib/rag-eval-provenance');
+const { assertFullBaselineUniverse, datasetHash, selectionHash } = require('./lib/rag-eval-provenance');
 
 const baseUrl = process.env.RAG_EVAL_BASE_URL || 'http://127.0.0.1:8080';
 const runtimeInfoEndpoint = `${baseUrl.replace(/\/$/, '')}/api/law-data/ai/debug/runtime-info`;
@@ -23,9 +22,11 @@ async function main() {
   if (!process.argv.slice(2).includes('--write')) {
     throw new Error('usage: node scripts/rag-baseline-manifest.js --write');
   }
-  const runtimeInfo = await loadRuntimeInfo();
   const allCases = loadEvalCases(casePaths, { answerOraclePath });
-  const cases = selectEvalCases(filterCasesByGateProfile(allCases), { caseIds, caseLimit });
+  const gateProfile = String(process.env.RAG_EVAL_GATE_PROFILE ?? 'release').trim().toLowerCase() || 'release';
+  assertFullBaselineUniverse(allCases, allCases, { caseIds, caseLimit, gateProfile });
+  const runtimeInfo = await loadRuntimeInfo();
+  const cases = allCases;
   const manifest = buildBaselineManifest({
     gitCommit: gitOutput(['rev-parse', 'HEAD']),
     gitDirty: Boolean(gitOutput(['status', '--porcelain'])),
@@ -53,24 +54,6 @@ async function loadRuntimeInfo() {
   } finally {
     clearTimeout(timer);
   }
-}
-
-function filterCasesByGateProfile(cases) {
-  const profile = String(process.env.RAG_EVAL_GATE_PROFILE ?? 'release').trim().toLowerCase() || 'release';
-  if (profile === 'release') {
-    return cases;
-  }
-  if (profile === 'curated') {
-    return cases.filter((item) => !String(item.id ?? '').startsWith('gen-'));
-  }
-  if (profile === 'answer-oracle') {
-    return cases.filter((item) => item.answerVerificationRequired === true);
-  }
-  if (profile === 'no-grounds') {
-    return cases.filter((item) =>
-      (item.expectedResultMsgs ?? []).includes('NO_GROUNDS') || String(item.id ?? '').startsWith('no-'));
-  }
-  throw new Error(`unsupported RAG_EVAL_GATE_PROFILE: ${profile}`);
 }
 
 function gitOutput(args) {

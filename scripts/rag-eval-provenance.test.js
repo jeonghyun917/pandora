@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
-const { execFileSync, spawn } = require('node:child_process');
+const { execFileSync, spawn, spawnSync } = require('node:child_process');
 const test = require('node:test');
 const {
   loadEvalCases,
@@ -11,6 +11,7 @@ const {
 } = require('./lib/rag-eval-cases');
 const {
   assertEvaluationRuntimeReady,
+  assertFullBaselineUniverse,
   buildProvenance,
   buildCheckpointIdentity,
   datasetHash,
@@ -48,10 +49,20 @@ test('baseline manifest is canonical and rejects index revision drift', () => {
     runtimeInfo: {
       runtimeArtifactSha256: 'jar-a',
       runtimeArtifactSize: 52000000,
+      runtimeArtifactPath: 'C:/runtime/pandora.jar',
+      runtimeArtifactModifiedAt: '2026-07-31T00:00:00Z',
       runtimeInstanceId: 'instance-a',
       runtimeConfigSha256: 'config-a',
       indexRevision: 'index-a',
       lexicalRevision: 'legacy-law-like-v1+rag-terms-v2-ready',
+      embeddingModel: 'text-embedding-3-small',
+      answerModel: 'gpt-5-mini',
+      lawQdrantExactPointCount: 20,
+      ragQdrantExactPointCount: 10,
+      lawDatabaseIndexedCount: 20,
+      ragDatabaseIndexedCount: 10,
+      lawDatabaseContentFingerprint: 'a'.repeat(64),
+      ragDatabaseContentFingerprint: 'b'.repeat(64),
       qdrantReady: true,
       qdrantSearchFailureCount: 0,
     },
@@ -61,6 +72,16 @@ test('baseline manifest is canonical and rejects index revision drift', () => {
   });
 
   assert.match(manifest.manifestId, /^[0-9a-f]{64}$/);
+  assert.equal(manifest.runtimeArtifactPath, 'C:/runtime/pandora.jar');
+  assert.equal(manifest.runtimeArtifactModifiedAt, '2026-07-31T00:00:00Z');
+  assert.equal(manifest.embeddingModel, 'text-embedding-3-small');
+  assert.equal(manifest.answerModel, 'gpt-5-mini');
+  assert.equal(manifest.lawQdrantExactPointCount, 20);
+  assert.equal(manifest.ragQdrantExactPointCount, 10);
+  assert.equal(manifest.lawDatabaseIndexedCount, 20);
+  assert.equal(manifest.ragDatabaseIndexedCount, 10);
+  assert.equal(manifest.lawDatabaseContentFingerprint, 'a'.repeat(64));
+  assert.equal(manifest.ragDatabaseContentFingerprint, 'b'.repeat(64));
   assert.equal(assertSameManifest(manifest, { ...manifest }), true);
   assert.throws(
     () => assertSameManifest(manifest, { ...manifest, indexRevision: 'index-b' }),
@@ -75,10 +96,20 @@ test('baseline manifest accepts a requested subset from its recorded baseline un
     runtimeInfo: {
       runtimeArtifactSha256: 'jar-a',
       runtimeArtifactSize: 52000000,
+      runtimeArtifactPath: 'C:/runtime/pandora.jar',
+      runtimeArtifactModifiedAt: '2026-07-31T00:00:00Z',
       runtimeInstanceId: 'instance-a',
       runtimeConfigSha256: 'config-a',
       indexRevision: 'index-a',
       lexicalRevision: 'legacy-law-like-v1+rag-terms-v2-ready',
+      embeddingModel: 'text-embedding-3-small',
+      answerModel: 'gpt-5-mini',
+      lawQdrantExactPointCount: 20,
+      ragQdrantExactPointCount: 10,
+      lawDatabaseIndexedCount: 20,
+      ragDatabaseIndexedCount: 10,
+      lawDatabaseContentFingerprint: 'a'.repeat(64),
+      ragDatabaseContentFingerprint: 'b'.repeat(64),
       qdrantReady: true,
       qdrantSearchFailureCount: 0,
     },
@@ -92,6 +123,34 @@ test('baseline manifest accepts a requested subset from its recorded baseline un
     () => assertManifestSelection(manifest, ['unknown-case']),
     /outside the baseline manifest universe/,
   );
+});
+
+test('baseline manifest creation requires the full release universe', () => {
+  const allCases = [{ id: 'a' }, { id: 'b' }];
+  assert.equal(assertFullBaselineUniverse(allCases, allCases, {
+    caseIds: [], caseLimit: 0, gateProfile: 'release',
+  }), true);
+  assert.throws(
+    () => assertFullBaselineUniverse(allCases, [allCases[0]], {
+      caseIds: ['a'], caseLimit: 0, gateProfile: 'release',
+    }),
+    /full release universe/,
+  );
+});
+
+test('baseline manifest writer rejects case selectors before calling the runtime endpoint', () => {
+  const result = spawnSync(process.execPath, [path.join(repositoryRoot, 'scripts', 'rag-baseline-manifest.js'), '--write'], {
+    cwd: repositoryRoot,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      RAG_EVAL_BASE_URL: 'http://127.0.0.1:1',
+      RAG_EVAL_CASE_IDS: 'project-review-target',
+    },
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /full release universe without case selectors/i);
 });
 
 async function runGateAgainstResults(requestedIds, results, options = {}) {
@@ -108,10 +167,18 @@ async function runGateAgainstResults(requestedIds, results, options = {}) {
     runtimeArtifactKind: 'jar',
     runtimeArtifactSha256: 'test-jar',
     runtimeArtifactSize: 123,
+    runtimeArtifactPath: 'C:/runtime/pandora.jar',
+    runtimeArtifactModifiedAt: '2026-07-31T00:00:00Z',
     runtimeInstanceId: 'test-instance',
     runtimeConfigSha256: 'test-config',
     indexRevision: 'test-index',
     lexicalRevision: 'legacy-law-like-v1+rag-terms-v2-ready',
+    lawQdrantExactPointCount: 20,
+    ragQdrantExactPointCount: 10,
+    lawDatabaseIndexedCount: 20,
+    ragDatabaseIndexedCount: 10,
+    lawDatabaseContentFingerprint: 'a'.repeat(64),
+    ragDatabaseContentFingerprint: 'b'.repeat(64),
     qdrantReady: true,
     qdrantSearchFailureCount: 0,
   };
@@ -146,6 +213,7 @@ async function runGateAgainstResults(requestedIds, results, options = {}) {
           minimumPassed: responseResults.length,
           blockingFailureIds: responseResults.filter((result) => !result.passed).map((result) => result.id),
         };
+        options.afterEvaluationRequest?.();
         response.statusCode = responseStatus;
         response.end(JSON.stringify(responseBody));
       });
@@ -162,6 +230,9 @@ async function runGateAgainstResults(requestedIds, results, options = {}) {
     });
     const address = server.address();
     const baseUrl = `http://127.0.0.1:${address.port}`;
+    const baselineManifest = (options.baselineRuntimeInfo || Object.hasOwn(options, 'checkpointResults'))
+      ? writeBaselineManifest(tempDir, runtimeInfo, options.baselineRuntimeInfo ?? {})
+      : null;
     if (Object.hasOwn(options, 'checkpointResults')) {
       const allCases = loadEvalCases(baseEvaluationCasePaths, { answerOraclePath });
       const selectedCases = selectEvalCases(allCases, { caseIds: requestedIds, caseLimit: 0 });
@@ -172,15 +243,14 @@ async function runGateAgainstResults(requestedIds, results, options = {}) {
         selectionHashValue: selectionHash(selectedCases),
         selectedCount: selectedCases.length,
         runtimeInfo: { ...runtimeInfo, source: 'server' },
+        baselineManifestId: baselineManifest.manifestId,
       });
       fs.writeFileSync(checkpointPath, JSON.stringify({
         checkpointIdentity,
         results: options.checkpointResults,
       }), 'utf8');
     }
-    const baselineManifestPath = options.baselineRuntimeInfo
-      ? writeBaselineManifest(tempDir, requestedIds, runtimeInfo, options.baselineRuntimeInfo)
-      : '';
+    const baselineManifestPath = baselineManifest?.path ?? '';
     const child = spawn(process.execPath, [path.join(repositoryRoot, 'scripts', 'rag-eval-gate.js')], {
       cwd: repositoryRoot,
       env: {
@@ -229,20 +299,19 @@ async function runGateAgainstResults(requestedIds, results, options = {}) {
   }
 }
 
-function writeBaselineManifest(tempDir, requestedIds, runtimeInfo, runtimeOverrides) {
+function writeBaselineManifest(tempDir, runtimeInfo, runtimeOverrides) {
   const allCases = loadEvalCases(baseEvaluationCasePaths, { answerOraclePath });
-  const selectedCases = selectEvalCases(allCases, { caseIds: requestedIds, caseLimit: 0 });
   const manifest = buildBaselineManifest({
     gitCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' }).trim(),
     gitDirty: Boolean(execFileSync('git', ['status', '--porcelain'], { cwd: repositoryRoot, encoding: 'utf8' }).trim()),
     runtimeInfo: { ...runtimeInfo, ...runtimeOverrides },
     datasetHash: datasetHash(evaluationDatasetPaths),
-    selectionHash: selectionHash(selectedCases),
-    selectionCaseIds: selectedCases.map((item) => item.id),
+    selectionHash: selectionHash(allCases),
+    selectionCaseIds: allCases.map((item) => item.id),
   });
   const manifestPath = path.join(tempDir, 'baseline-manifest.json');
   fs.writeFileSync(manifestPath, JSON.stringify(manifest), 'utf8');
-  return manifestPath;
+  return { manifest, manifestId: manifest.manifestId, path: manifestPath };
 }
 
 test('dataset provenance hash changes when only the answer-oracle sidecar changes', (t) => {
@@ -373,6 +442,7 @@ test('checkpoint reuse requires the same inputs and server artifact', () => {
     datasetHashValue: 'dataset-a',
     selectionHashValue: 'selection-a',
     selectedCount: 12,
+    baselineManifestId: 'manifest-a',
     gateProfile: 'release',
     runtimeInfo: {
       source: 'server',
@@ -396,6 +466,10 @@ test('checkpoint reuse requires the same inputs and server artifact', () => {
   assert.equal(isCheckpointCompatible({ checkpointIdentity: identity }, {
     ...identity,
     gateProfile: 'curated',
+  }), false);
+  assert.equal(isCheckpointCompatible({ checkpointIdentity: identity }, {
+    ...identity,
+    baselineManifestId: 'manifest-b',
   }), false);
   assert.equal(isCheckpointCompatible({
     checkpointIdentity: { ...identity, selectionHash: 'selection-b' },
@@ -691,6 +765,29 @@ test('gate preserves exact response validation across multiple batches', async (
   assert.equal(result.code, 0, result.stderr);
   assert.equal(result.evaluationRequestCount, 2);
   assert.match(result.stdout, /PASS 2\/2/);
+});
+
+test('gate fails closed when an evaluation source changes during the run', async (t) => {
+  const generatedCasePath = baseEvaluationCasePaths[1];
+  const originalContents = fs.readFileSync(generatedCasePath, 'utf8');
+  t.after(() => fs.writeFileSync(generatedCasePath, originalContents, 'utf8'));
+
+  const result = await runGateAgainstResults(
+    ['project-review-target'],
+    (payload) => payload.cases.map((item) => ({ id: item.id, passed: true, resultMsg: 'OK' })),
+    {
+      afterEvaluationRequest: () => fs.writeFileSync(
+        generatedCasePath,
+        `${originalContents}\n# deterministic mid-run mutation\n`,
+        'utf8',
+      ),
+    },
+  );
+
+  assert.notEqual(result.code, 0, result.stdout);
+  assert.equal(result.evaluationRequestCount, 1);
+  assert.equal(result.outputBody, null);
+  assert.match(result.stderr, /evaluation dataset or selection changed during evaluation/i);
 });
 
 test('gate persists successful evaluation-error retries in the final batch checkpoint', async () => {

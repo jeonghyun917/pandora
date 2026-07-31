@@ -49,9 +49,8 @@ const resumeFromCheckpoint = ['1', 'true', 'yes', 'y'].includes(
 const baselineManifestPath = String(process.env.RAG_EVAL_BASELINE_MANIFEST || '').trim();
 
 async function main() {
-  const allCases = loadCases();
-  const cases = selectCases(allCases);
-  const scope = determineRunScope(cases, allCases, caseIds, caseLimit);
+  const evaluationState = loadEvaluationState();
+  const { allCases, cases, scope, datasetHashValue, selectionHashValue } = evaluationState;
   const reportPaths = resolveReportPaths(scope);
   checkpointPath = reportPaths.checkpointPath;
   const suppliedBaselineManifest = loadBaselineManifest();
@@ -60,8 +59,6 @@ async function main() {
     : null;
   const runtimeInfo = await loadRuntimeInfo();
   assertEvaluationRuntimeReady(runtimeInfo, scope);
-  const datasetHashValue = datasetHash(datasetPaths.filter((casePath) => fs.existsSync(casePath)));
-  const selectionHashValue = selectionHash(cases);
   if (suppliedBaselineManifest) {
     assertManifestSelection(suppliedBaselineManifest, cases.map((item) => item.id));
     assertSameManifest(suppliedBaselineManifest, buildCurrentBaselineManifest(
@@ -78,6 +75,7 @@ async function main() {
     selectedCount: cases.length,
     gateProfile,
     runtimeInfo,
+    baselineManifestId: suppliedBaselineManifest?.manifestId || null,
   });
   if (resumeFromCheckpoint && !checkpointIdentity.indexRevision) {
     console.warn('[rag-eval-gate] resume disabled: server index revision is unavailable');
@@ -85,15 +83,21 @@ async function main() {
   const usesBatchCheckpoint = caseBatchSize > 0 && cases.length > caseBatchSize;
   let body = await runEvaluationForCases(cases, checkpointIdentity);
   body = await retryEvaluationErrors(body);
+  const finalEvaluationState = loadEvaluationState();
+  assertSameEvaluationState(evaluationState, finalEvaluationState);
   const finalRuntimeInfo = await loadRuntimeInfo();
   if (!isRuntimeStable(runtimeInfo, finalRuntimeInfo)) {
     throw new Error('[rag-eval-gate] runtime identity changed or became unavailable during evaluation');
   }
   if (suppliedBaselineManifest) {
+    const finalBaselineSelectionCases = selectBaselineManifestCases(
+      finalEvaluationState.allCases,
+      suppliedBaselineManifest,
+    );
     assertSameManifest(suppliedBaselineManifest, buildCurrentBaselineManifest(
       finalRuntimeInfo,
-      datasetHashValue,
-      baselineSelectionCases,
+      finalEvaluationState.datasetHashValue,
+      finalBaselineSelectionCases,
     ));
   }
   if (usesBatchCheckpoint) {
@@ -111,10 +115,10 @@ async function main() {
       baseUrl,
       gitCommit: gitOutput(['rev-parse', 'HEAD']),
       gitDirty: Boolean(gitOutput(['status', '--porcelain'])),
-      datasetHashValue,
-      selectionHashValue,
-      selectedCount: cases.length,
-      totalCaseCount: allCases.length,
+      datasetHashValue: finalEvaluationState.datasetHashValue,
+      selectionHashValue: finalEvaluationState.selectionHashValue,
+      selectedCount: finalEvaluationState.cases.length,
+      totalCaseCount: finalEvaluationState.allCases.length,
       gateProfile,
       runtimeInfo,
       baselineManifestId: suppliedBaselineManifest?.manifestId || null,
@@ -507,6 +511,31 @@ function isCompletedFailingEvaluationResponse(body) {
 
 function loadCases() {
   return loadEvalCases(casePaths, { answerOraclePath });
+}
+
+function loadEvaluationState() {
+  const allCases = loadCases();
+  const cases = selectCases(allCases);
+  return {
+    allCases,
+    cases,
+    scope: determineRunScope(cases, allCases, caseIds, caseLimit),
+    datasetHashValue: datasetHash(datasetPaths.filter((casePath) => fs.existsSync(casePath))),
+    allSelectionHashValue: selectionHash(allCases),
+    selectionHashValue: selectionHash(cases),
+  };
+}
+
+function assertSameEvaluationState(startState, endState) {
+  const stableKeys = [
+    'scope',
+    'datasetHashValue',
+    'allSelectionHashValue',
+    'selectionHashValue',
+  ];
+  if (stableKeys.some((key) => startState[key] !== endState[key])) {
+    throw new Error('[rag-eval-gate] evaluation dataset or selection changed during evaluation');
+  }
 }
 
 function selectCases(cases) {

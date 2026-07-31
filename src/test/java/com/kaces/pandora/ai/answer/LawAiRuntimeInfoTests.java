@@ -31,6 +31,12 @@ class LawAiRuntimeInfoTests {
 
 			assertThat(runtimeInfo.indexRevision()).matches("[0-9a-f]{64}");
 			assertThat(runtimeInfo.lexicalRevision()).isEqualTo("legacy-law-like-v1+rag-terms-v2-unavailable");
+			assertThat(runtimeInfo.lawQdrantExactPointCount()).isEqualTo(20L);
+			assertThat(runtimeInfo.ragQdrantExactPointCount()).isEqualTo(10L);
+			assertThat(runtimeInfo.lawDatabaseIndexedCount()).isEqualTo(20L);
+			assertThat(runtimeInfo.ragDatabaseIndexedCount()).isEqualTo(10L);
+			assertThat(runtimeInfo.lawDatabaseContentFingerprint()).isEqualTo("a".repeat(64));
+			assertThat(runtimeInfo.ragDatabaseContentFingerprint()).isEqualTo("b".repeat(64));
 			assertThat(runtimeInfo.qdrantReady()).isTrue();
 			assertThat(runtimeInfo.qdrantSearchFailureCount()).isZero();
 		} finally {

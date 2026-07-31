@@ -2,11 +2,17 @@ const crypto = require('crypto');
 
 const REQUIRED_STRING_FIELDS = [
   'gitCommit',
-  'runtimeArtifactSha256',
-  'runtimeInstanceId',
+	'runtimeArtifactSha256',
+	'runtimeArtifactPath',
+	'runtimeArtifactModifiedAt',
+	'runtimeInstanceId',
   'runtimeConfigSha256',
   'indexRevision',
-  'lexicalRevision',
+	'lexicalRevision',
+	'embeddingModel',
+	'answerModel',
+	'lawDatabaseContentFingerprint',
+	'ragDatabaseContentFingerprint',
   'datasetHash',
   'selectionHash',
 ];
@@ -20,15 +26,25 @@ function buildBaselineManifest({
   selectionCaseIds,
 }) {
   const manifest = {
-    schemaVersion: 1,
+		schemaVersion: 2,
     gitCommit,
     gitDirty,
-    runtimeArtifactSha256: runtimeInfo?.runtimeArtifactSha256,
-    runtimeArtifactSize: runtimeInfo?.runtimeArtifactSize,
-    runtimeInstanceId: runtimeInfo?.runtimeInstanceId,
+		runtimeArtifactSha256: runtimeInfo?.runtimeArtifactSha256,
+		runtimeArtifactSize: runtimeInfo?.runtimeArtifactSize,
+		runtimeArtifactPath: runtimeInfo?.runtimeArtifactPath,
+		runtimeArtifactModifiedAt: runtimeInfo?.runtimeArtifactModifiedAt,
+		runtimeInstanceId: runtimeInfo?.runtimeInstanceId,
     runtimeConfigSha256: runtimeInfo?.runtimeConfigSha256,
     indexRevision: runtimeInfo?.indexRevision,
-    lexicalRevision: runtimeInfo?.lexicalRevision,
+		lexicalRevision: runtimeInfo?.lexicalRevision,
+		embeddingModel: runtimeInfo?.embeddingModel,
+		answerModel: runtimeInfo?.answerModel,
+		lawQdrantExactPointCount: runtimeInfo?.lawQdrantExactPointCount,
+		ragQdrantExactPointCount: runtimeInfo?.ragQdrantExactPointCount,
+		lawDatabaseIndexedCount: runtimeInfo?.lawDatabaseIndexedCount,
+		ragDatabaseIndexedCount: runtimeInfo?.ragDatabaseIndexedCount,
+		lawDatabaseContentFingerprint: runtimeInfo?.lawDatabaseContentFingerprint,
+		ragDatabaseContentFingerprint: runtimeInfo?.ragDatabaseContentFingerprint,
     datasetHash,
     selectionHash,
     selectionCaseIds,
@@ -71,9 +87,19 @@ function validateBaselineManifest(manifest) {
   if (typeof manifest.gitDirty !== 'boolean') {
     throw new Error('baseline manifest requires gitDirty');
   }
-  if (!Number.isSafeInteger(Number(manifest.runtimeArtifactSize)) || Number(manifest.runtimeArtifactSize) <= 0) {
+	if (!Number.isSafeInteger(Number(manifest.runtimeArtifactSize)) || Number(manifest.runtimeArtifactSize) <= 0) {
     throw new Error('baseline manifest requires a positive runtimeArtifactSize');
-  }
+	}
+	for (const field of [
+		'lawQdrantExactPointCount',
+		'ragQdrantExactPointCount',
+		'lawDatabaseIndexedCount',
+		'ragDatabaseIndexedCount',
+	]) {
+		if (!Number.isSafeInteger(Number(manifest[field])) || Number(manifest[field]) <= 0) {
+			throw new Error(`baseline manifest requires a positive ${field}`);
+		}
+	}
   if (manifest.qdrantReady !== true) {
     throw new Error('baseline manifest requires qdrantReady');
   }

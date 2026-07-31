@@ -55,6 +55,21 @@ function selectionHash(cases) {
   return hash.digest('hex');
 }
 
+function assertFullBaselineUniverse(allCases, selectedCases, {
+  caseIds = [],
+  caseLimit = 0,
+  gateProfile = 'release',
+} = {}) {
+  if ((caseIds?.length ?? 0) > 0 || Number(caseLimit ?? 0) > 0 || gateProfile !== 'release') {
+    throw new Error('baseline manifest requires the full release universe without case selectors');
+  }
+  if (allCases.length !== selectedCases.length
+    || allCases.some((item, index) => item.id !== selectedCases[index]?.id)) {
+    throw new Error('baseline manifest requires the full release universe');
+  }
+  return true;
+}
+
 function buildCheckpointIdentity({
   scope,
   baseUrl,
@@ -63,14 +78,16 @@ function buildCheckpointIdentity({
   selectedCount,
   gateProfile = 'release',
   runtimeInfo,
+  baselineManifestId = null,
 }) {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     runScope: scope,
     gateProfile,
     baseUrl: String(baseUrl ?? '').replace(/\/$/, ''),
     datasetHash: datasetHashValue || null,
     selectionHash: selectionHashValue || null,
+    baselineManifestId,
     selectedCaseCount: Number(selectedCount ?? 0),
     indexVersion: runtimeInfo?.indexVersion || null,
     embeddingModel: runtimeInfo?.embeddingModel || null,
@@ -104,6 +121,7 @@ function isCheckpointCompatible(checkpoint, expectedIdentity) {
     return false;
   }
   const requiredValues = [
+    'baselineManifestId',
     'runtimeArtifactSha256',
     'runtimeInstanceId',
     'runtimeConfigSha256',
@@ -128,6 +146,7 @@ function isCheckpointCompatible(checkpoint, expectedIdentity) {
     'baseUrl',
     'datasetHash',
     'selectionHash',
+    'baselineManifestId',
     'selectedCaseCount',
     'indexVersion',
     'embeddingModel',
@@ -170,10 +189,18 @@ function isRuntimeStable(startRuntimeInfo, endRuntimeInfo) {
     'runtimeArtifactKind',
     'runtimeArtifactSha256',
     'runtimeArtifactSize',
+	'runtimeArtifactPath',
+	'runtimeArtifactModifiedAt',
     'runtimeInstanceId',
     'runtimeConfigSha256',
     'indexRevision',
     'lexicalRevision',
+	'lawQdrantExactPointCount',
+	'ragQdrantExactPointCount',
+	'lawDatabaseIndexedCount',
+	'ragDatabaseIndexedCount',
+	'lawDatabaseContentFingerprint',
+	'ragDatabaseContentFingerprint',
     'qdrantReady',
     'qdrantSearchFailureCount',
   ];
@@ -277,6 +304,7 @@ function archivePaths(scope, runId) {
 }
 
 module.exports = {
+  assertFullBaselineUniverse,
   assertEvaluationRuntimeReady,
   archivePaths,
   buildCheckpointIdentity,

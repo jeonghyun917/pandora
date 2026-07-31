@@ -9,7 +9,11 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import org.springframework.boot.system.ApplicationHome;
 
-record RuntimeArtifactIdentity(String kind, String sha256, Long size) {
+record RuntimeArtifactIdentity(String kind, String sha256, Long size, String path, String modifiedAt) {
+
+	RuntimeArtifactIdentity(String kind, String sha256, Long size) {
+		this(kind, sha256, size, null, null);
+	}
 
 	static RuntimeArtifactIdentity from(Class<?> anchor) {
 		try {
@@ -26,20 +30,32 @@ record RuntimeArtifactIdentity(String kind, String sha256, Long size) {
 				return unavailable();
 			}
 			if (Files.isDirectory(source)) {
-				return new RuntimeArtifactIdentity("classes", null, null);
+				return identified("classes", null, null, source);
 			}
 			if (!Files.isRegularFile(source)) {
 				return unavailable();
 			}
 			String fileName = String.valueOf(source.getFileName()).toLowerCase(java.util.Locale.ROOT);
-			return new RuntimeArtifactIdentity(
+			return identified(
 				fileName.endsWith(".jar") ? "jar" : "file",
 				sha256(source),
-				Files.size(source)
+				Files.size(source),
+				source
 			);
 		} catch (IOException | SecurityException exception) {
 			return unavailable();
 		}
+	}
+
+	private static RuntimeArtifactIdentity identified(String kind, String sha256, Long size, Path source) throws IOException {
+		Path absolutePath = source.toAbsolutePath().normalize();
+		return new RuntimeArtifactIdentity(
+			kind,
+			sha256,
+			size,
+			absolutePath.toString(),
+			Files.getLastModifiedTime(absolutePath).toInstant().toString()
+		);
 	}
 
 	private static String sha256(Path source) throws IOException {
@@ -61,6 +77,6 @@ record RuntimeArtifactIdentity(String kind, String sha256, Long size) {
 	}
 
 	private static RuntimeArtifactIdentity unavailable() {
-		return new RuntimeArtifactIdentity("unavailable", null, null);
+		return new RuntimeArtifactIdentity("unavailable", null, null, null, null);
 	}
 }

@@ -6,6 +6,7 @@ import com.kaces.pandora.common.text.QuestionSearchPlan;
 import com.kaces.pandora.infra.openai.OpenAiAnswerClient;
 import com.kaces.pandora.infra.openai.OpenAiEmbeddingClient;
 import com.kaces.pandora.infra.qdrant.QdrantClient;
+import com.kaces.pandora.infra.qdrant.QdrantIndexSnapshot;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
 import com.kaces.pandora.lawdata.search.LawSearchQuery;
@@ -265,8 +266,8 @@ public class LawAiAnswerService {
 		RuntimeArtifactIdentity artifact = runtimeArtifactIdentity;
 		boolean qdrantReady = semanticVectorSearchService.isReady();
 		long qdrantSearchFailureCount = semanticVectorSearchService.searchFailureCount();
-		String indexRevision = qdrantReady
-			? currentIndexRevision(lawCollection, ragCollection)
+		RuntimeIndexIdentity indexIdentity = qdrantReady
+			? currentIndexIdentity(lawCollection, ragCollection)
 			: null;
 		return new LawAiRuntimeInfo(
 			lawCollection + "+" + ragCollection,
@@ -277,10 +278,18 @@ public class LawAiAnswerService {
 			artifact.kind(),
 			artifact.sha256(),
 			artifact.size(),
+			artifact.path(),
+			artifact.modifiedAt(),
 			RuntimeConfigurationIdentity.instanceId(),
 			RuntimeConfigurationIdentity.sha256(properties),
-			indexRevision,
+			indexIdentity == null ? null : indexIdentity.revision(),
 			lexicalRevision(),
+			indexIdentity == null ? null : pointCount(indexIdentity.lawQdrant()),
+			indexIdentity == null ? null : pointCount(indexIdentity.ragQdrant()),
+			indexIdentity == null ? null : indexIdentity.lawDatabase().currentIndexedCount(),
+			indexIdentity == null ? null : indexIdentity.ragDatabase().currentIndexedCount(),
+			indexIdentity == null ? null : indexIdentity.lawDatabase().contentFingerprint(),
+			indexIdentity == null ? null : indexIdentity.ragDatabase().contentFingerprint(),
 			qdrantReady,
 			qdrantSearchFailureCount
 		);
@@ -295,7 +304,7 @@ public class LawAiAnswerService {
 			: "legacy-law-like-v1+rag-terms-v2-building";
 	}
 
-	private String currentIndexRevision(String lawCollection, String ragCollection) {
+	private RuntimeIndexIdentity currentIndexIdentity(String lawCollection, String ragCollection) {
 		if (lawChunkMapper == null || ragDocumentMapper == null) {
 			return null;
 		}
@@ -309,13 +318,18 @@ public class LawAiAnswerService {
 				embeddingModel,
 				ragCollection
 			);
-			return semanticVectorSearchService.indexRevision(
+			QdrantIndexSnapshot lawQdrant = semanticVectorSearchService.indexSnapshot(lawCollection);
+			QdrantIndexSnapshot ragQdrant = semanticVectorSearchService.indexSnapshot(ragCollection);
+			String revision = semanticVectorSearchService.indexRevision(
 				embeddingModel,
 				lawCollection,
 				lawSnapshot,
+				lawQdrant,
 				ragCollection,
-				ragSnapshot
+				ragSnapshot,
+				ragQdrant
 			);
+			return revision == null ? null : new RuntimeIndexIdentity(revision, lawSnapshot, ragSnapshot, lawQdrant, ragQdrant);
 		} catch (RuntimeException exception) {
 			log.warn("Dynamic index revision is unavailable. failureType={}",
 				exception.getClass().getSimpleName()
@@ -1967,6 +1981,19 @@ public class LawAiAnswerService {
 		} catch (RuntimeException exception) {
 			return AnswerEvalResult.failed("Answer-level evaluation failed: " + exception.getMessage());
 		}
+	}
+
+	private Long pointCount(QdrantIndexSnapshot snapshot) {
+		return snapshot == null ? null : snapshot.exactPointCount();
+	}
+
+	private record RuntimeIndexIdentity(
+		String revision,
+		IndexContentSnapshot lawDatabase,
+		IndexContentSnapshot ragDatabase,
+		QdrantIndexSnapshot lawQdrant,
+		QdrantIndexSnapshot ragQdrant
+	) {
 	}
 
 	private AnswerEvalResult evaluateMetadataOnlyAnswer(

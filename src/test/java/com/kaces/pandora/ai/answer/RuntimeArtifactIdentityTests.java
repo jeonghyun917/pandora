@@ -15,7 +15,7 @@ class RuntimeArtifactIdentityTests {
 	Path tempDir;
 
 	@Test
-	void fingerprintsJarWithoutExposingItsPath() throws IOException {
+	void fingerprintsJarWithItsAbsolutePathAndModifiedTimestamp() throws IOException {
 		Path jar = tempDir.resolve("pandora.jar");
 		Files.writeString(jar, "pandora-artifact", StandardCharsets.UTF_8);
 
@@ -25,6 +25,8 @@ class RuntimeArtifactIdentityTests {
 		assertThat(identity.sha256())
 			.isEqualTo("e76590ef5e07c5eea15aeb4ac36e83729418454ad47104af528f2109290a4c9c");
 		assertThat(identity.size()).isEqualTo(16L);
+		assertThat(identity.path()).isEqualTo(jar.toAbsolutePath().normalize().toString());
+		assertThat(identity.modifiedAt()).isNotBlank();
 	}
 
 	@Test
@@ -34,6 +36,8 @@ class RuntimeArtifactIdentityTests {
 		assertThat(identity.kind()).isEqualTo("classes");
 		assertThat(identity.sha256()).isNull();
 		assertThat(identity.size()).isNull();
+		assertThat(identity.path()).isEqualTo(tempDir.toAbsolutePath().normalize().toString());
+		assertThat(identity.modifiedAt()).isNotBlank();
 	}
 
 	@Test
@@ -43,5 +47,7 @@ class RuntimeArtifactIdentityTests {
 		assertThat(identity.kind()).isEqualTo("unavailable");
 		assertThat(identity.sha256()).isNull();
 		assertThat(identity.size()).isNull();
+		assertThat(identity.path()).isNull();
+		assertThat(identity.modifiedAt()).isNull();
 	}
 }
