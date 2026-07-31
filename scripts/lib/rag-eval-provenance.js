@@ -2,6 +2,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
+const RELEASE_EVALUATION_CASE_COUNT = 1004;
+
 function determineRunScope(selectedCases, allCases, caseIds, caseLimit) {
   const explicitlyTargeted = (caseIds?.length ?? 0) > 0 || Number(caseLimit ?? 0) > 0;
   return !explicitlyTargeted && selectedCases.length === allCases.length ? 'full' : 'targeted';
@@ -62,6 +64,9 @@ function assertFullBaselineUniverse(allCases, selectedCases, {
 } = {}) {
   if ((caseIds?.length ?? 0) > 0 || Number(caseLimit ?? 0) > 0 || gateProfile !== 'release') {
     throw new Error('baseline manifest requires the full release universe without case selectors');
+  }
+  if (allCases.length !== RELEASE_EVALUATION_CASE_COUNT) {
+    throw new Error(`baseline manifest requires the full release universe of ${RELEASE_EVALUATION_CASE_COUNT} cases`);
   }
   if (allCases.length !== selectedCases.length
     || allCases.some((item, index) => item.id !== selectedCases[index]?.id)) {
@@ -304,6 +309,7 @@ function archivePaths(scope, runId) {
 }
 
 module.exports = {
+  RELEASE_EVALUATION_CASE_COUNT,
   assertFullBaselineUniverse,
   assertEvaluationRuntimeReady,
   archivePaths,

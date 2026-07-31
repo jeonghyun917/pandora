@@ -12,6 +12,7 @@ const {
 const {
   assertEvaluationRuntimeReady,
   assertFullBaselineUniverse,
+  RELEASE_EVALUATION_CASE_COUNT,
   buildProvenance,
   buildCheckpointIdentity,
   datasetHash,
@@ -137,13 +138,14 @@ test('baseline manifest accepts a requested subset from its recorded baseline un
 });
 
 test('baseline manifest creation requires the full release universe', () => {
-  const allCases = [{ id: 'a' }, { id: 'b' }];
-  assert.equal(assertFullBaselineUniverse(allCases, allCases, {
+  const releaseCases = Array.from({ length: RELEASE_EVALUATION_CASE_COUNT }, (_, index) => ({ id: `case-${index + 1}` }));
+  const truncatedCases = releaseCases.slice(0, -1);
+  assert.equal(assertFullBaselineUniverse(releaseCases, releaseCases, {
     caseIds: [], caseLimit: 0, gateProfile: 'release',
   }), true);
   assert.throws(
-    () => assertFullBaselineUniverse(allCases, [allCases[0]], {
-      caseIds: ['a'], caseLimit: 0, gateProfile: 'release',
+    () => assertFullBaselineUniverse(truncatedCases, truncatedCases, {
+      caseIds: [], caseLimit: 0, gateProfile: 'release',
     }),
     /full release universe/,
   );
