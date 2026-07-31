@@ -32,6 +32,7 @@ async function main() {
     runtimeInfo,
     datasetHash: datasetHash([...casePaths, answerOraclePath].filter((filePath) => fs.existsSync(filePath))),
     selectionHash: selectionHash(cases),
+    selectionCaseIds: cases.map((item) => item.id),
   });
   const outputPath = path.resolve(process.env.RAG_EVAL_BASELINE_MANIFEST_OUTPUT
     || `logs/rag-baseline-manifest-${runId()}.json`);

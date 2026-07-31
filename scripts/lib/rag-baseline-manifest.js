@@ -17,6 +17,7 @@ function buildBaselineManifest({
   runtimeInfo,
   datasetHash,
   selectionHash,
+  selectionCaseIds,
 }) {
   const manifest = {
     schemaVersion: 1,
@@ -30,6 +31,7 @@ function buildBaselineManifest({
     lexicalRevision: runtimeInfo?.lexicalRevision,
     datasetHash,
     selectionHash,
+    selectionCaseIds,
     qdrantReady: runtimeInfo?.qdrantReady,
     qdrantSearchFailureCount: runtimeInfo?.qdrantSearchFailureCount,
   };
@@ -79,6 +81,25 @@ function validateBaselineManifest(manifest) {
     || Number(manifest.qdrantSearchFailureCount) < 0) {
     throw new Error('baseline manifest requires qdrantSearchFailureCount');
   }
+  if (!Array.isArray(manifest.selectionCaseIds) || manifest.selectionCaseIds.length === 0
+    || manifest.selectionCaseIds.some((id) => typeof id !== 'string' || !id.trim())
+    || new Set(manifest.selectionCaseIds).size !== manifest.selectionCaseIds.length) {
+    throw new Error('baseline manifest requires unique selectionCaseIds');
+  }
+}
+
+function assertManifestSelection(manifest, selectedCaseIds) {
+  assertManifestIntegrity(manifest, 'expected');
+  if (!Array.isArray(selectedCaseIds) || selectedCaseIds.length === 0
+    || selectedCaseIds.some((id) => typeof id !== 'string' || !id.trim())) {
+    throw new Error('evaluation requires selected case IDs');
+  }
+  const baselineUniverse = new Set(manifest.selectionCaseIds);
+  const outside = selectedCaseIds.filter((id) => !baselineUniverse.has(id));
+  if (outside.length > 0) {
+    throw new Error(`evaluation selection is outside the baseline manifest universe: ${outside.join(', ')}`);
+  }
+  return true;
 }
 
 function manifestId(manifest) {
@@ -144,6 +165,7 @@ function isPlainObject(value) {
 }
 
 module.exports = {
+  assertManifestSelection,
   assertSameManifest,
   buildBaselineManifest,
   canonicalJson,

@@ -20,6 +20,7 @@ const {
   selectionHash,
 } = require('./lib/rag-eval-provenance');
 const {
+  assertManifestSelection,
   assertSameManifest,
   buildBaselineManifest,
 } = require('./lib/rag-baseline-manifest');
@@ -54,15 +55,19 @@ async function main() {
   const reportPaths = resolveReportPaths(scope);
   checkpointPath = reportPaths.checkpointPath;
   const suppliedBaselineManifest = loadBaselineManifest();
+  const baselineSelectionCases = suppliedBaselineManifest
+    ? selectBaselineManifestCases(allCases, suppliedBaselineManifest)
+    : null;
   const runtimeInfo = await loadRuntimeInfo();
   assertEvaluationRuntimeReady(runtimeInfo, scope);
   const datasetHashValue = datasetHash(datasetPaths.filter((casePath) => fs.existsSync(casePath)));
   const selectionHashValue = selectionHash(cases);
   if (suppliedBaselineManifest) {
+    assertManifestSelection(suppliedBaselineManifest, cases.map((item) => item.id));
     assertSameManifest(suppliedBaselineManifest, buildCurrentBaselineManifest(
       runtimeInfo,
       datasetHashValue,
-      selectionHashValue,
+      baselineSelectionCases,
     ));
   }
   const checkpointIdentity = buildCheckpointIdentity({
@@ -88,7 +93,7 @@ async function main() {
     assertSameManifest(suppliedBaselineManifest, buildCurrentBaselineManifest(
       finalRuntimeInfo,
       datasetHashValue,
-      selectionHashValue,
+      baselineSelectionCases,
     ));
   }
   if (usesBatchCheckpoint) {
@@ -316,14 +321,25 @@ function loadBaselineManifest() {
   return parsed;
 }
 
-function buildCurrentBaselineManifest(runtimeInfo, datasetHashValue, selectionHashValue) {
+function buildCurrentBaselineManifest(runtimeInfo, datasetHashValue, baselineSelectionCases) {
   return buildBaselineManifest({
     gitCommit: gitOutput(['rev-parse', 'HEAD']),
     gitDirty: Boolean(gitOutput(['status', '--porcelain'])),
     runtimeInfo,
     datasetHash: datasetHashValue,
-    selectionHash: selectionHashValue,
+    selectionHash: selectionHash(baselineSelectionCases),
+    selectionCaseIds: baselineSelectionCases.map((item) => item.id),
   });
+}
+
+function selectBaselineManifestCases(allCases, manifest) {
+  const byId = new Map(allCases.map((item) => [item.id, item]));
+  const cases = manifest.selectionCaseIds.map((id) => byId.get(id));
+  if (cases.some((item) => !item)) {
+    const unknown = manifest.selectionCaseIds.filter((id) => !byId.has(id));
+    throw new Error(`[rag-eval-gate] baseline manifest selection contains unknown case IDs: ${unknown.join(', ')}`);
+  }
+  return cases;
 }
 
 function restoreCaseClassification(results, cases) {

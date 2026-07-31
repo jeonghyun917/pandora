@@ -23,6 +23,7 @@ const {
 } = require('./lib/rag-eval-provenance');
 const {
   assertSameManifest,
+  assertManifestSelection,
   buildBaselineManifest,
 } = require('./lib/rag-baseline-manifest');
 
@@ -56,6 +57,7 @@ test('baseline manifest is canonical and rejects index revision drift', () => {
     },
     datasetHash: 'dataset-a',
     selectionHash: 'selection-a',
+    selectionCaseIds: ['case-a'],
   });
 
   assert.match(manifest.manifestId, /^[0-9a-f]{64}$/);
@@ -63,6 +65,32 @@ test('baseline manifest is canonical and rejects index revision drift', () => {
   assert.throws(
     () => assertSameManifest(manifest, { ...manifest, indexRevision: 'index-b' }),
     /indexRevision/,
+  );
+});
+
+test('baseline manifest accepts a requested subset from its recorded baseline universe', () => {
+  const manifest = buildBaselineManifest({
+    gitCommit: 'abc123',
+    gitDirty: false,
+    runtimeInfo: {
+      runtimeArtifactSha256: 'jar-a',
+      runtimeArtifactSize: 52000000,
+      runtimeInstanceId: 'instance-a',
+      runtimeConfigSha256: 'config-a',
+      indexRevision: 'index-a',
+      lexicalRevision: 'legacy-law-like-v1+rag-terms-v2-ready',
+      qdrantReady: true,
+      qdrantSearchFailureCount: 0,
+    },
+    datasetHash: 'dataset-a',
+    selectionHash: 'all-selection-a',
+    selectionCaseIds: ['focused-a', 'focused-b', 'other-c'],
+  });
+
+  assert.equal(assertManifestSelection(manifest, ['focused-a', 'focused-b']), true);
+  assert.throws(
+    () => assertManifestSelection(manifest, ['unknown-case']),
+    /outside the baseline manifest universe/,
   );
 });
 
@@ -210,6 +238,7 @@ function writeBaselineManifest(tempDir, requestedIds, runtimeInfo, runtimeOverri
     runtimeInfo: { ...runtimeInfo, ...runtimeOverrides },
     datasetHash: datasetHash(evaluationDatasetPaths),
     selectionHash: selectionHash(selectedCases),
+    selectionCaseIds: selectedCases.map((item) => item.id),
   });
   const manifestPath = path.join(tempDir, 'baseline-manifest.json');
   fs.writeFileSync(manifestPath, JSON.stringify(manifest), 'utf8');
