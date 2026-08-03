@@ -10,6 +10,16 @@ public record StoredChunk(
 	String sourcePath,
 	String sourceUrl,
 	int sortOrder,
-	String contentHash
+	String contentHash,
+	int chunkSchemaVersion,
+	int chunkVersion,
+	String activationStatus,
+	String parentKey,
+	String parentTitle,
+	String parentSourcePath,
+	int childOrder,
+	String embeddingText,
+	String qualityStatus,
+	String qualityReason
 ) {
 }

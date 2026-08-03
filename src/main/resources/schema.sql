@@ -77,6 +77,16 @@ CREATE TABLE IF NOT EXISTS law_api_document_chunks (
     source_url VARCHAR(4000) NULL COMMENT '청크 출처 URL',
     sort_order INT NOT NULL DEFAULT 0 COMMENT '문서 내 표시 및 색인 순서',
     content_hash CHAR(64) NULL COMMENT '청크 텍스트 변경 감지용 SHA-256 해시',
+    chunk_schema_version INT NOT NULL DEFAULT 1 COMMENT 'chunk metadata schema version',
+    chunk_version INT NOT NULL DEFAULT 1 COMMENT 'document chunk version',
+    activation_status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' COMMENT 'CANDIDATE, ACTIVE, RETIRED',
+    parent_key CHAR(64) NULL COMMENT 'stable parent identity',
+    parent_title VARCHAR(500) NULL COMMENT 'stored parent heading',
+    parent_source_path VARCHAR(500) NULL COMMENT 'canonical parent source path',
+    child_order INT NOT NULL DEFAULT 0 COMMENT 'child order within parent',
+    embedding_text LONGTEXT NULL COMMENT 'exact text submitted for embedding',
+    quality_status VARCHAR(20) NOT NULL DEFAULT 'PASS' COMMENT 'PASS, CONTEXT_ONLY, REVIEW, REJECT',
+    quality_reason VARCHAR(100) NULL COMMENT 'chunk quality decision reason',
     indexed_at DATETIME NULL COMMENT '검색/벡터 인덱스에 마지막으로 반영한 일시',
     index_status VARCHAR(30) NOT NULL DEFAULT 'PENDING' COMMENT '검색/벡터 인덱싱 상태',
     last_error_message TEXT NULL COMMENT '마지막 청크 처리 오류 메시지',
@@ -85,6 +95,8 @@ CREATE TABLE IF NOT EXISTS law_api_document_chunks (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일시',
     PRIMARY KEY (chunk_id),
     KEY idx_law_api_document_chunks_document (document_id, sort_order),
+    KEY idx_law_api_document_chunks_active_version (document_id, activation_status, chunk_version, sort_order),
+    KEY idx_law_api_document_chunks_parent_child (document_id, parent_key, child_order),
     KEY idx_law_api_document_chunks_detail (detail_id),
     KEY idx_law_api_document_chunks_type (chunk_type),
     KEY idx_law_api_document_chunks_index_status (index_status),
@@ -306,6 +318,20 @@ CREATE TABLE IF NOT EXISTS rag_chunk_search_terms (
     CONSTRAINT fk_rag_chunk_search_terms_document
         FOREIGN KEY (document_id) REFERENCES rag_documents (document_id)
         ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS law_api_document_chunk_versions (
+    document_id BIGINT NOT NULL COMMENT 'connected document id',
+    chunk_version INT NOT NULL COMMENT 'chunk version within document',
+    activation_status VARCHAR(20) NOT NULL DEFAULT 'CANDIDATE' COMMENT 'CANDIDATE, ACTIVE, RETIRED',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created at',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'updated at',
+    PRIMARY KEY (document_id, chunk_version),
+    CONSTRAINT fk_law_api_document_chunk_versions_document
+        FOREIGN KEY (document_id) REFERENCES law_api_documents (document_id)
+        ON DELETE CASCADE,
+    CONSTRAINT chk_law_api_document_chunk_versions_status
+        CHECK (activation_status IN ('CANDIDATE', 'ACTIVE', 'RETIRED'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS rag_chunk_search_index_state (

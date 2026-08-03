@@ -60,6 +60,26 @@ class LawChunkMapperXmlTests {
 			.contains("WHEN 'admrul' THEN 1");
 	}
 
+	@Test
+	void indexingProjectionUsesStoredEmbeddingTextWhileRetrievalKeepsChildText() throws Exception {
+		Configuration configuration = parseMapper();
+		String indexingSql = configuration.getMappedStatement(
+			"com.kaces.pandora.lawdata.persistence.LawChunkMapper.findSemanticIndexCandidates"
+		).getBoundSql(Map.of("target", "law", "query", "", "model", "text-embedding-3-small", "vectorStore", "law_chunks", "limit", 10))
+			.getSql().replaceAll("\\s+", " ").trim();
+		String retrievalSql = configuration.getMappedStatement(
+			"com.kaces.pandora.lawdata.persistence.LawChunkMapper.findSemanticChunksByIds"
+		).getBoundSql(Map.of("chunkIds", List.of(1L), "includeFuture", true))
+			.getSql().replaceAll("\\s+", " ").trim();
+
+		assertThat(indexingSql)
+			.contains("c.chunk_text AS chunkText", "c.embedding_text AS embeddingText")
+			.contains("c.parent_key AS parentKey", "NULLIF(c.parent_title");
+		assertThat(retrievalSql)
+			.contains("c.chunk_text AS chunkText")
+			.doesNotContain("c.embedding_text AS chunkText");
+	}
+
 	private Configuration parseMapper() throws Exception {
 		Configuration configuration = new Configuration();
 		try (InputStream input = Resources.getResourceAsStream(MAPPER_RESOURCE)) {

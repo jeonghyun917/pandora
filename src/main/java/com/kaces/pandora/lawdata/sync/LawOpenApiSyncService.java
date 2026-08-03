@@ -120,7 +120,7 @@ public class LawOpenApiSyncService {
 		int rebuiltChunks = 0;
 		for (LawChunkRebuildRow row : rows) {
 			SyncDetailDocument detail = payloadParser.parseDetailDocument(row.rawJson(), row.detailTitle() == null ? row.title() : row.detailTitle());
-			rebuiltChunks += documentWriter.replaceChunks(row.documentId(), row.detailId(), detail.sections(), sourceUrl(row));
+			rebuiltChunks += documentWriter.replaceChunks(row.documentId(), row.detailId(), row.target(), row.title(), detail.sections(), sourceUrl(row));
 			rebuiltDocuments++;
 		}
 		return new ChunkRebuildResult(safeTarget, safeOffset, rebuiltDocuments, rebuiltChunks);
@@ -246,7 +246,7 @@ public class LawOpenApiSyncService {
 		int rebuiltChunks = 0;
 		for (LawChunkRebuildRow row : rows) {
 			SyncDetailDocument detail = payloadParser.parseDetailDocument(row.rawJson(), row.detailTitle() == null ? row.title() : row.detailTitle());
-			rebuiltChunks += documentWriter.replaceChunks(row.documentId(), row.detailId(), detail.sections(), sourceUrl(row));
+			rebuiltChunks += documentWriter.replaceChunks(row.documentId(), row.detailId(), row.target(), row.title(), detail.sections(), sourceUrl(row));
 			rebuiltDocuments++;
 		}
 		return new ChunkRebuildResult(safeTarget, 0, rebuiltDocuments, rebuiltChunks);
@@ -254,7 +254,10 @@ public class LawOpenApiSyncService {
 
 	private ChunkRebuildPreviewItem previewItem(LawChunkRebuildRow row) {
 		SyncDetailDocument detail = payloadParser.parseDetailDocument(row.rawJson(), row.detailTitle() == null ? row.title() : row.detailTitle());
-		List<PlannedLawChunk> planned = chunkPlanner.plan(detail.sections());
+		List<PlannedLawChunk> planned = chunkPlanner.plan(
+			new ChunkPlanningContext(row.target(), row.documentId(), row.title()),
+			detail.sections()
+		);
 		int projectedTinyChunks = (int) planned.stream()
 			.filter(chunk -> chunk.text() != null && chunk.text().length() < 80)
 			.count();
@@ -340,7 +343,7 @@ public class LawOpenApiSyncService {
 			
 			long detailId = documentWriter.upsertDetail(documentId, detail, detailJson);
 			
-			chunkCount += documentWriter.replaceChunks(documentId, detailId, detail.sections(), document.detailLink());
+			chunkCount += documentWriter.replaceChunks(documentId, detailId, document.target(), document.title(), detail.sections(), document.detailLink());
 			
 			assetCount += documentWriter.replaceAssets(documentId, detailId, detail.assets());
 			detailCount++;

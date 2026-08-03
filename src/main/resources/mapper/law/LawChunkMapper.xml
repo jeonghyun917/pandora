@@ -16,6 +16,7 @@
 
   <sql id="parentSectionTitleExpression">
     COALESCE(
+      NULLIF(c.parent_title, ''),
       NULLIF(TRIM(REGEXP_REPLACE(c.chunk_title, '\\s*문단\\s*[0-9]+.*$', '')), ''),
       NULLIF(c.chunk_title, ''),
       NULLIF(c.chunk_no, ''),
@@ -59,12 +60,22 @@
   <insert id="insertChunk">
     INSERT INTO law_api_document_chunks (
       document_id, detail_id, chunk_type, chunk_no, chunk_title, chunk_text,
-      source_path, source_url, sort_order, content_hash, index_status
+      source_path, source_url, sort_order, content_hash, chunk_schema_version,
+      chunk_version, activation_status, parent_key, parent_title, parent_source_path,
+      child_order, embedding_text, quality_status, quality_reason, index_status
     )
     VALUES (
       #{chunk.documentId}, #{chunk.detailId}, #{chunk.chunkType}, #{chunk.chunkNo}, #{chunk.chunkTitle}, #{chunk.chunkText},
-      #{chunk.sourcePath}, #{chunk.sourceUrl}, #{chunk.sortOrder}, #{chunk.contentHash}, 'PENDING'
+      #{chunk.sourcePath}, #{chunk.sourceUrl}, #{chunk.sortOrder}, #{chunk.contentHash}, #{chunk.chunkSchemaVersion},
+      #{chunk.chunkVersion}, #{chunk.activationStatus}, #{chunk.parentKey}, #{chunk.parentTitle}, #{chunk.parentSourcePath},
+      #{chunk.childOrder}, #{chunk.embeddingText}, #{chunk.qualityStatus}, #{chunk.qualityReason}, 'PENDING'
     )
+  </insert>
+
+  <insert id="upsertChunkVersion">
+    INSERT INTO law_api_document_chunk_versions (document_id, chunk_version, activation_status)
+    VALUES (#{version.documentId}, #{version.chunkVersion}, #{version.activationStatus})
+    ON DUPLICATE KEY UPDATE activation_status = VALUES(activation_status)
   </insert>
   <!-- 위치 기반 청크 본문 검색에서 일치하는 전체 건수를 조회합니다. -->
   <select id="countChunkSearch" resultType="int">
@@ -145,7 +156,9 @@
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
-      <include refid="sectionTypeExpression"/> AS sectionType
+      <include refid="sectionTypeExpression"/> AS sectionType,
+      c.embedding_text AS embeddingText,
+      c.parent_key AS parentKey
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     LEFT JOIN law_api_chunk_embeddings e
@@ -211,7 +224,9 @@
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
-      <include refid="sectionTypeExpression"/> AS sectionType
+      <include refid="sectionTypeExpression"/> AS sectionType,
+      c.embedding_text AS embeddingText,
+      c.parent_key AS parentKey
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     LEFT JOIN law_api_chunk_embeddings e
@@ -254,7 +269,9 @@
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
-      <include refid="sectionTypeExpression"/> AS sectionType
+      <include refid="sectionTypeExpression"/> AS sectionType,
+      NULL AS embeddingText,
+      c.parent_key AS parentKey
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
@@ -286,7 +303,9 @@
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
-      <include refid="sectionTypeExpression"/> AS sectionType
+      <include refid="sectionTypeExpression"/> AS sectionType,
+      c.embedding_text AS embeddingText,
+      c.parent_key AS parentKey
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
@@ -317,7 +336,9 @@
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
-      <include refid="sectionTypeExpression"/> AS sectionType
+      <include refid="sectionTypeExpression"/> AS sectionType,
+      NULL AS embeddingText,
+      c.parent_key AS parentKey
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
@@ -347,7 +368,9 @@
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
-      <include refid="sectionTypeExpression"/> AS sectionType
+      <include refid="sectionTypeExpression"/> AS sectionType,
+      NULL AS embeddingText,
+      c.parent_key AS parentKey
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
@@ -416,7 +439,9 @@
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
-      <include refid="sectionTypeExpression"/> AS sectionType
+      <include refid="sectionTypeExpression"/> AS sectionType,
+      c.embedding_text AS embeddingText,
+      c.parent_key AS parentKey
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
@@ -477,7 +502,9 @@
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
-      <include refid="sectionTypeExpression"/> AS sectionType
+      <include refid="sectionTypeExpression"/> AS sectionType,
+      NULL AS embeddingText,
+      c.parent_key AS parentKey
     FROM (
       SELECT
         doc.document_id,
@@ -566,7 +593,9 @@
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
-      <include refid="sectionTypeExpression"/> AS sectionType
+      <include refid="sectionTypeExpression"/> AS sectionType,
+      NULL AS embeddingText,
+      c.parent_key AS parentKey
     FROM (
       SELECT
         doc.document_id,

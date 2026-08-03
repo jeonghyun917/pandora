@@ -3,6 +3,7 @@ package com.kaces.pandora.lawdata.persistence;
 
 import com.kaces.pandora.lawdata.chunk.LawChunkSearchRow;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
+import com.kaces.pandora.lawdata.chunk.LawChunkVersionRow;
 import com.kaces.pandora.lawdata.sync.StoredChunk;
 import com.kaces.pandora.semantic.provenance.IndexContentSnapshot;
 import com.kaces.pandora.semantic.integrity.LawIndexIntegrityRow;
@@ -18,6 +19,8 @@ public interface LawChunkMapper {
 	void deleteChunks(@Param("documentId") long documentId);
 	
 	void insertChunk(@Param("chunk") StoredChunk chunk);
+
+	void upsertChunkVersion(@Param("version") LawChunkVersionRow version);
 	
 	int countChunkSearch(
 		@Param("target") String target,

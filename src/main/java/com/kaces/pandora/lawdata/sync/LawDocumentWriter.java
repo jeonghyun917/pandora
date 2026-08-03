@@ -11,6 +11,7 @@ import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
 import com.kaces.pandora.lawdata.persistence.LawDetailMapper;
 import com.kaces.pandora.lawdata.persistence.LawDocumentMapper;
 import com.kaces.pandora.lawdata.persistence.LawDocumentSyncState;
+import com.kaces.pandora.lawdata.chunk.LawChunkVersionRow;
 import com.kaces.pandora.lawdata.version.LawVersionStatusService;
 import java.util.List;
 import java.util.Map;
@@ -113,13 +114,24 @@ public class LawDocumentWriter {
 
 	
 	// 메소드 설명: replaceChunks 처리 흐름을 수행합니다.
-	public int replaceChunks(long documentId, long detailId, List<SyncDetailSection> sections, String sourceUrl) {
+	public int replaceChunks(
+		long documentId,
+		long detailId,
+		String documentTarget,
+		String documentTitle,
+		List<SyncDetailSection> sections,
+		String sourceUrl
+	) {
 		
 		List<Long> oldChunkIds = lawChunkMapper.findChunkIdsByDocumentId(documentId);
 		
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		lawChunkMapper.deleteChunks(documentId);
-		List<PlannedLawChunk> plannedChunks = chunkPlanner.plan(sections);
+		List<PlannedLawChunk> plannedChunks = chunkPlanner.plan(
+			new ChunkPlanningContext(documentTarget, documentId, documentTitle),
+			sections
+		);
+		lawChunkMapper.upsertChunkVersion(new LawChunkVersionRow(documentId, 2, "ACTIVE"));
 		int count = 0;
 		for (PlannedLawChunk chunk : plannedChunks) {
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
@@ -133,7 +145,17 @@ public class LawDocumentWriter {
 				emptyToNull(chunk.sourcePath()),
 				emptyToNull(sourceUrl),
 				count,
-				sha256(chunk.text())
+				sha256(chunk.embeddingText()),
+				chunk.chunkSchemaVersion(),
+				chunk.chunkSchemaVersion(),
+				"ACTIVE",
+				chunk.parentKey(),
+				chunk.parentTitle(),
+				emptyToNull(chunk.sourcePath()),
+				chunk.childOrder(),
+				chunk.embeddingText(),
+				chunk.qualityStatus(),
+				chunk.qualityReason()
 			));
 			count++;
 		}

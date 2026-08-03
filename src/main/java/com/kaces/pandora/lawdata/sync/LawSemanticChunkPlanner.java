@@ -1,5 +1,7 @@
 package com.kaces.pandora.lawdata.sync;
 
+import static com.kaces.pandora.common.text.LawHashUtils.sha256;
+
 import com.kaces.pandora.common.text.LawTextUtils;
 import java.util.ArrayList;
 import java.util.List;
@@ -40,6 +42,10 @@ final class LawSemanticChunkPlanner {
 	);
 
 	List<PlannedLawChunk> plan(List<SyncDetailSection> sections) {
+		return plan(sections, false);
+	}
+
+	private List<PlannedLawChunk> plan(List<SyncDetailSection> sections, boolean preserveParentBoundaries) {
 		List<PlannedLawChunk> planned = new ArrayList<>();
 		SectionGroup current = null;
 		for (SyncDetailSection section : sections) {
@@ -58,13 +64,13 @@ final class LawSemanticChunkPlanner {
 			}
 		}
 		flush(planned, current);
-		return mergeShortAdjacentChunks(planned).stream()
+		return mergeShortAdjacentChunks(planned, preserveParentBoundaries).stream()
 			.map(this::withInferredMetadata)
 			.map(this::normalizeForStorage)
 			.toList();
 	}
 
-	private List<PlannedLawChunk> mergeShortAdjacentChunks(List<PlannedLawChunk> planned) {
+	private List<PlannedLawChunk> mergeShortAdjacentChunks(List<PlannedLawChunk> planned, boolean preserveParentBoundaries) {
 		if (planned.size() <= 1) {
 			return planned;
 		}
@@ -75,7 +81,7 @@ final class LawSemanticChunkPlanner {
 				current = next;
 				continue;
 			}
-			if (shouldMerge(current, next)) {
+			if (shouldMerge(current, next, preserveParentBoundaries)) {
 				current = merge(current, next);
 				continue;
 			}
@@ -85,7 +91,7 @@ final class LawSemanticChunkPlanner {
 		if (current != null) {
 			merged.add(current);
 		}
-		return removeContainedShortDuplicates(mergeTinyOrphans(mergeShortWithPrevious(merged)));
+		return removeContainedShortDuplicates(mergeTinyOrphans(mergeShortWithPrevious(merged, preserveParentBoundaries), preserveParentBoundaries));
 	}
 
 	private List<PlannedLawChunk> removeContainedShortDuplicates(List<PlannedLawChunk> planned) {
@@ -131,7 +137,7 @@ final class LawSemanticChunkPlanner {
 		return text.replaceAll("\\s+", " ").trim();
 	}
 
-	private List<PlannedLawChunk> mergeShortWithPrevious(List<PlannedLawChunk> planned) {
+	private List<PlannedLawChunk> mergeShortWithPrevious(List<PlannedLawChunk> planned, boolean preserveParentBoundaries) {
 		if (planned.size() <= 1) {
 			return planned;
 		}
@@ -142,7 +148,7 @@ final class LawSemanticChunkPlanner {
 				current = next;
 				continue;
 			}
-			if (shouldMergeIntoPrevious(current, next)) {
+			if (shouldMergeIntoPrevious(current, next, preserveParentBoundaries)) {
 				current = merge(current, next);
 				continue;
 			}
@@ -155,8 +161,8 @@ final class LawSemanticChunkPlanner {
 		return merged;
 	}
 
-	private boolean shouldMerge(PlannedLawChunk current, PlannedLawChunk next) {
-		if (!sameMergeFamily(current, next)) {
+	private boolean shouldMerge(PlannedLawChunk current, PlannedLawChunk next, boolean preserveParentBoundaries) {
+		if (!canMerge(current, next, preserveParentBoundaries)) {
 			return false;
 		}
 		int currentLength = length(current.text());
@@ -164,8 +170,8 @@ final class LawSemanticChunkPlanner {
 		return currentLength < MIN_CHILD_CHARS && combinedLength <= MAX_CHILD_CHARS;
 	}
 
-	private boolean shouldMergeIntoPrevious(PlannedLawChunk current, PlannedLawChunk next) {
-		if (!sameMergeFamily(current, next)) {
+	private boolean shouldMergeIntoPrevious(PlannedLawChunk current, PlannedLawChunk next, boolean preserveParentBoundaries) {
+		if (!canMerge(current, next, preserveParentBoundaries)) {
 			return false;
 		}
 		int nextLength = length(next.text());
@@ -173,7 +179,7 @@ final class LawSemanticChunkPlanner {
 		return nextLength < MIN_CHILD_CHARS && combinedLength <= MAX_CHILD_CHARS;
 	}
 
-	private List<PlannedLawChunk> mergeTinyOrphans(List<PlannedLawChunk> planned) {
+	private List<PlannedLawChunk> mergeTinyOrphans(List<PlannedLawChunk> planned, boolean preserveParentBoundaries) {
 		if (planned.size() <= 1) {
 			return planned;
 		}
@@ -184,27 +190,27 @@ final class LawSemanticChunkPlanner {
 				merged.add(chunk);
 				continue;
 			}
-			if (!merged.isEmpty() && canMergeTiny(merged.get(merged.size() - 1), chunk)) {
+			if (!merged.isEmpty() && canMergeTiny(merged.get(merged.size() - 1), chunk, preserveParentBoundaries)) {
 				PlannedLawChunk previous = merged.remove(merged.size() - 1);
 				merged.add(merge(previous, chunk));
 				continue;
 			}
 			if (!merged.isEmpty()) {
 				PlannedLawChunk previous = merged.get(merged.size() - 1);
-				List<PlannedLawChunk> rebalanced = rebalanceTiny(previous, chunk);
+				List<PlannedLawChunk> rebalanced = rebalanceTiny(previous, chunk, preserveParentBoundaries);
 				if (!rebalanced.isEmpty()) {
 					merged.remove(merged.size() - 1);
 					merged.addAll(rebalanced);
 					continue;
 				}
 			}
-			if (index + 1 < planned.size() && canMergeTiny(chunk, planned.get(index + 1))) {
+			if (index + 1 < planned.size() && canMergeTiny(chunk, planned.get(index + 1), preserveParentBoundaries)) {
 				merged.add(merge(chunk, planned.get(index + 1)));
 				index++;
 				continue;
 			}
 			if (index + 1 < planned.size()) {
-				List<PlannedLawChunk> rebalanced = rebalanceTiny(chunk, planned.get(index + 1));
+				List<PlannedLawChunk> rebalanced = rebalanceTiny(chunk, planned.get(index + 1), preserveParentBoundaries);
 				if (!rebalanced.isEmpty()) {
 					merged.addAll(rebalanced);
 					index++;
@@ -281,15 +287,15 @@ final class LawSemanticChunkPlanner {
 		return count;
 	}
 
-	private boolean canMergeTiny(PlannedLawChunk left, PlannedLawChunk right) {
-		if (!sameMergeFamily(left, right)) {
+	private boolean canMergeTiny(PlannedLawChunk left, PlannedLawChunk right, boolean preserveParentBoundaries) {
+		if (!canMerge(left, right, preserveParentBoundaries)) {
 			return false;
 		}
 		return length(left.text()) + 1 + length(right.text()) <= MAX_CHILD_CHARS;
 	}
 
-	private List<PlannedLawChunk> rebalanceTiny(PlannedLawChunk left, PlannedLawChunk right) {
-		if (!sameMergeFamily(left, right)) {
+	private List<PlannedLawChunk> rebalanceTiny(PlannedLawChunk left, PlannedLawChunk right, boolean preserveParentBoundaries) {
+		if (!canMerge(left, right, preserveParentBoundaries)) {
 			return List.of();
 		}
 		PlannedLawChunk merged = merge(left, right);
@@ -324,6 +330,41 @@ final class LawSemanticChunkPlanner {
 				&& leftNo.equals(baseNo(right.no()));
 		}
 		return mergeFamily(left.sourcePath()).equals(mergeFamily(right.sourcePath()));
+	}
+
+	private boolean canMerge(PlannedLawChunk left, PlannedLawChunk right, boolean preserveParentBoundaries) {
+		return sameMergeFamily(left, right)
+			&& (!preserveParentBoundaries || sameCanonicalParent(left, right));
+	}
+
+	private boolean sameCanonicalParent(PlannedLawChunk left, PlannedLawChunk right) {
+		return canonicalParentSourcePath(left.sourcePath()).equals(canonicalParentSourcePath(right.sourcePath()))
+			&& baseNo(left.no()).equals(baseNo(right.no()));
+	}
+
+	List<PlannedLawChunk> plan(ChunkPlanningContext context, List<SyncDetailSection> sections) {
+		List<PlannedLawChunk> planned = plan(sections, true);
+		java.util.Map<String, Integer> nextChildOrders = new java.util.LinkedHashMap<>();
+		List<PlannedLawChunk> versioned = new ArrayList<>();
+		for (PlannedLawChunk chunk : planned) {
+			String parentNumber = baseNo(chunk.no());
+			String parentPath = canonicalParentSourcePath(chunk.sourcePath());
+			String parentTitle = parentTitle(chunk, context, parentNumber);
+			String parentKey = sha256(String.join("\n",
+				context.documentTarget().trim(),
+				String.valueOf(context.documentId()),
+				parentPath,
+				parentNumber
+			));
+			int childOrder = nextChildOrders.getOrDefault(parentKey, 0);
+			nextChildOrders.put(parentKey, childOrder + 1);
+			String embeddingText = embeddingText(context.documentTitle(), parentNumber, parentTitle, chunk);
+			versioned.add(new PlannedLawChunk(
+				chunk.type(), chunk.no(), chunk.title(), chunk.text(), chunk.sourcePath(),
+				2, parentKey, parentTitle, childOrder, embeddingText, "PASS", null
+			));
+		}
+		return versioned;
 	}
 
 	private boolean isAdministrativeRuleArticle(PlannedLawChunk chunk) {
@@ -994,6 +1035,13 @@ final class LawSemanticChunkPlanner {
 		if (!StringUtils.hasText(sourcePath)) {
 			return "";
 		}
+		return canonicalParentSourcePath(sourcePath);
+	}
+
+	private String canonicalParentSourcePath(String sourcePath) {
+		if (!StringUtils.hasText(sourcePath)) {
+			return "";
+		}
 		sourcePath = sourcePath.replaceFirst("#\\d+$", "");
 		var article = LAW_ARTICLE_SOURCE_PATH.matcher(sourcePath);
 		if (article.matches()) {
@@ -1004,6 +1052,32 @@ final class LawSemanticChunkPlanner {
 			return appendix.group(1);
 		}
 		return sourcePath.replaceFirst("\\[[0-9]+]$", "");
+	}
+
+	private String parentTitle(PlannedLawChunk chunk, ChunkPlanningContext context, String parentNumber) {
+		String title = baseTitle(chunk.title());
+		if (StringUtils.hasText(title) && !isGenericTitle(title)) {
+			return title;
+		}
+		if (StringUtils.hasText(parentNumber)) {
+			return parentNumber;
+		}
+		return StringUtils.hasText(context.documentTitle()) ? context.documentTitle().trim() : "Document section";
+	}
+
+	private String embeddingText(String documentTitle, String parentNumber, String parentTitle, PlannedLawChunk chunk) {
+		return String.join("\n",
+			nullToEmpty(documentTitle),
+			nullToEmpty(parentNumber),
+			nullToEmpty(parentTitle),
+			nullToEmpty(chunk.title()),
+			nullToEmpty(chunk.type()),
+			nullToEmpty(chunk.text())
+		).trim();
+	}
+
+	private String nullToEmpty(String value) {
+		return value == null ? "" : value;
 	}
 
 	private String sectionType(SyncDetailSection section) {

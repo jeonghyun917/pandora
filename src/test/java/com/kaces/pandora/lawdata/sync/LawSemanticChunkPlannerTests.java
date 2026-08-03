@@ -8,6 +8,54 @@ import org.junit.jupiter.api.Test;
 class LawSemanticChunkPlannerTests {
 
 	private final LawSemanticChunkPlanner planner = new LawSemanticChunkPlanner();
+	private final ChunkPlanningContext planningContext = new ChunkPlanningContext("law", 41L, "Personal Information Protection Act");
+
+	@Test
+	void planAssignsVersionedParentChildMetadataForSplitProvision() {
+		String article = "Article 9 (Exception) "
+			+ "A controller may retain information only when the statutory exception applies. ".repeat(110);
+
+		List<PlannedLawChunk> chunks = planner.plan(planningContext, List.of(
+			new SyncDetailSection(
+				"article",
+				"Article 9",
+				"Article 9 (Exception)",
+				article,
+				"$.law.articles[8].body",
+				9,
+				1
+			)
+		));
+
+		assertThat(chunks).hasSizeGreaterThan(1);
+		assertThat(chunks).allSatisfy(chunk -> {
+			assertThat(chunk.chunkSchemaVersion()).isEqualTo(2);
+			assertThat(chunk.parentKey()).matches("[0-9a-f]{64}");
+			assertThat(chunk.parentTitle()).isNotBlank();
+			assertThat(chunk.childOrder()).isGreaterThanOrEqualTo(0);
+			assertThat(chunk.qualityStatus()).isIn("PASS", "CONTEXT_ONLY", "REVIEW", "REJECT");
+			assertThat(chunk.embeddingText()).contains(
+				"Personal Information Protection Act",
+				"Article 9",
+				"Article 9 (Exception)",
+				"article",
+				chunk.text()
+			);
+		});
+		assertThat(chunks).extracting(PlannedLawChunk::parentKey).containsOnly(chunks.get(0).parentKey());
+		assertThat(chunks).extracting(PlannedLawChunk::childOrder).containsExactly(0, 1, 2, 3);
+	}
+
+	@Test
+	void planUsesDistinctDocumentScopedParentKeysForAdjacentArticles() {
+		List<PlannedLawChunk> chunks = planner.plan(planningContext, List.of(
+			new SyncDetailSection("article", "Article 1", "Article 1 (Purpose)", "Purpose ".repeat(130), "$.law.articles[0].body", 1, 1),
+			new SyncDetailSection("article", "Article 2", "Article 2 (Scope)", "Scope ".repeat(130), "$.law.articles[1].body", 2, 1)
+		));
+
+		assertThat(chunks).hasSize(2);
+		assertThat(chunks).extracting(PlannedLawChunk::parentKey).doesNotHaveDuplicates();
+	}
 
 	@Test
 	void planMergesLineLevelLawFragmentsUnderSameProvision() {
