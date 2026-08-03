@@ -129,6 +129,28 @@ public class QdrantClient {
 		setLawPointActivationStatus(pointIds, "RETIRED");
 	}
 
+	public void markLawPointsCandidate(List<Long> pointIds) {
+		setLawPointActivationStatus(pointIds, "CANDIDATE");
+	}
+
+	public Set<Long> findLawPointIdsWithActivationStatus(List<Long> pointIds, String activationStatus) {
+		List<Long> ids = pointIds == null ? List.of() : pointIds.stream().filter(id -> id != null && id > 0).distinct().toList();
+		if (ids.isEmpty()) return Set.of();
+		byte[] response = restClient.post().uri("/collections/{collection}/points", properties.qdrant().collection())
+			.body(Map.of("ids", ids, "with_payload", true, "with_vector", false)).retrieve().body(byte[].class);
+		try {
+			Map<?, ?> envelope = objectMapper.readValue(response, Map.class);
+			if (!(envelope.get("result") instanceof List<?> points)) throw new IllegalStateException("Qdrant point status response did not contain a result list.");
+			Set<Long> matching = new LinkedHashSet<>();
+			for (Object value : points) {
+				if (value instanceof Map<?, ?> point && point.get("payload") instanceof Map<?, ?> payload
+					&& activationStatus.equals(String.valueOf(payload.get("activationStatus")))) matching.add(strictPositivePointId(point.get("id")));
+			}
+			return Set.copyOf(matching);
+		} catch (RuntimeException exception) { throw exception;
+		} catch (Exception exception) { throw new IllegalStateException("Qdrant point status response was not valid JSON.", exception); }
+	}
+
 	private void setLawPointActivationStatus(List<Long> pointIds, String status) {
 		List<Long> ids = pointIds == null ? List.of() : pointIds.stream().filter(id -> id != null && id > 0).distinct().toList();
 		if (ids.isEmpty()) {

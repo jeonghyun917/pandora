@@ -138,7 +138,7 @@ public class LawDocumentWriter {
 			new ChunkPlanningContext(documentTarget, documentId, documentTitle),
 			sections
 		);
-		lawChunkMapper.upsertChunkVersion(new LawChunkVersionRow(documentId, 1, "ACTIVE", plannedChunks.size(), true, 0));
+		lawChunkMapper.upsertChunkVersion(new LawChunkVersionRow(documentId, 1, "ACTIVE", plannedChunks.size(), true, 0, null));
 		int count = 0;
 		for (PlannedLawChunk chunk : plannedChunks) {
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
@@ -178,7 +178,7 @@ public class LawDocumentWriter {
 		List<SyncDetailSection> sections,
 		String sourceUrl
 	) {
-		return createCandidateChunks(documentId, detailId, documentTarget, documentTitle, sections, sourceUrl, false, Integer.MAX_VALUE);
+		return createCandidateChunks(documentId, detailId, documentTarget, documentTitle, sections, sourceUrl, null, Integer.MAX_VALUE);
 	}
 
 	@Transactional
@@ -188,7 +188,7 @@ public class LawDocumentWriter {
 		List<SyncDetailSection> sections,
 		String sourceUrl
 	) {
-		return createCandidateChunks(documentId, detailId, "law", "", sections, sourceUrl, false, Integer.MAX_VALUE);
+		return createCandidateChunks(documentId, detailId, "law", "", sections, sourceUrl, null, Integer.MAX_VALUE);
 	}
 
 	@Transactional
@@ -199,7 +199,7 @@ public class LawDocumentWriter {
 		String documentTitle,
 		List<SyncDetailSection> sections,
 		String sourceUrl,
-		boolean previewApproved,
+		String previewTokenHash,
 		int unexplainedLossSpanCount
 	) {
 		int candidateVersion = Math.max(2, lawChunkMapper.findNextChunkVersion(documentId));
@@ -209,51 +209,20 @@ public class LawDocumentWriter {
 			throw new IllegalArgumentException("Candidate chunk version must contain at least one chunk.");
 		}
 		lawChunkMapper.upsertChunkVersion(new LawChunkVersionRow(
-			documentId, candidateVersion, "CANDIDATE", plannedChunks.size(), previewApproved, Math.max(0, unexplainedLossSpanCount)));
+			documentId, candidateVersion, "CANDIDATE", plannedChunks.size(), previewTokenHash != null && !previewTokenHash.isBlank(), Math.max(0, unexplainedLossSpanCount), previewTokenHash));
 		for (int sortOrder = 0; sortOrder < plannedChunks.size(); sortOrder++) {
 			PlannedLawChunk chunk = plannedChunks.get(sortOrder);
 			lawChunkMapper.insertChunk(storedChunk(
 				documentId, detailId, chunk, sourceUrl, sortOrder, candidateVersion, "CANDIDATE"));
 		}
 		return new CandidateChunkVersionResult(
-			documentId, candidateVersion, "CANDIDATE", plannedChunks.size(), previewApproved, Math.max(0, unexplainedLossSpanCount),
+			documentId, candidateVersion, "CANDIDATE", plannedChunks.size(), previewTokenHash != null && !previewTokenHash.isBlank(), Math.max(0, unexplainedLossSpanCount), previewTokenHash,
 			lawChunkMapper.findChunkIdsByDocumentIdAndVersion(documentId, candidateVersion));
 	}
 
 	@Transactional
 	public ChunkActivationResult activateCandidate(long documentId, int candidateVersion) {
-		if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-			return ChunkActivationResult.blocked(documentId, candidateVersion, "Candidate activation requires an active transaction.");
-		}
-		LawChunkVersionVerification verification = lawChunkMapper.findChunkVersionVerification(
-			documentId, candidateVersion, properties.openai().embeddingModel(), properties.qdrant().collection());
-		if (verification == null || !verification.databaseGatesPass()) {
-			return ChunkActivationResult.blocked(documentId, candidateVersion, "Candidate database verification failed.");
-		}
-		if (!candidatePointsArePresent(documentId, candidateVersion)
-			|| qdrantClient.indexSnapshot(qdrantClient.lawCandidateCollection())
-				.filter(snapshot -> snapshot.isStable() && snapshot.vectorSize() == properties.qdrant().vectorSize())
-				.isEmpty()) {
-			return ChunkActivationResult.blocked(documentId, candidateVersion, "Candidate Qdrant verification failed.");
-		}
-		List<Long> candidateChunkIds = lawChunkMapper.findChunkIdsByDocumentIdAndVersion(documentId, candidateVersion);
-		List<Long> retiredChunkIds = lawChunkMapper.findChunkIdsByDocumentId(documentId).stream()
-			.filter(chunkId -> !candidateChunkIds.contains(chunkId))
-			.toList();
-		qdrantClient.promoteLawCandidatePoints(candidateChunkIds);
-		lawChunkMapper.retireOtherChunkVersions(documentId, candidateVersion);
-		lawChunkMapper.activateChunkVersion(documentId, candidateVersion);
-		lawChunkMapper.retireOtherActiveChunkVersionStates(documentId, candidateVersion);
-		lawChunkMapper.updateChunkVersionStatus(documentId, candidateVersion, "ACTIVE");
-		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-			@Override
-			public void afterCommit() {
-				qdrantClient.markLawPointsActive(candidateChunkIds);
-				qdrantClient.markLawPointsRetired(retiredChunkIds);
-				qdrantClient.deleteLawPointsBestEffort(retiredChunkIds);
-			}
-		});
-		return new ChunkActivationResult(documentId, candidateVersion, true, "ACTIVATED", retiredChunkIds);
+		return ChunkActivationResult.blocked(documentId, candidateVersion, "Activation must use the durable activation saga.");
 	}
 
 	@Transactional

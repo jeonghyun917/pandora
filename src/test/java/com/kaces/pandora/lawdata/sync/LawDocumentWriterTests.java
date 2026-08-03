@@ -67,7 +67,7 @@ class LawDocumentWriterTests {
 		verify(chunkMapper, never()).deleteChunks(42L);
 		ArgumentCaptor<LawChunkVersionRow> version = ArgumentCaptor.forClass(LawChunkVersionRow.class);
 		verify(chunkMapper).upsertChunkVersion(version.capture());
-		assertThat(version.getValue()).isEqualTo(new LawChunkVersionRow(42L, 2, "CANDIDATE", 1, false, Integer.MAX_VALUE));
+		assertThat(version.getValue()).isEqualTo(new LawChunkVersionRow(42L, 2, "CANDIDATE", 1, false, Integer.MAX_VALUE, null));
 	}
 
 	@Test
@@ -82,45 +82,25 @@ class LawDocumentWriterTests {
 		ChunkActivationResult result = writer.activateCandidate(42L, 2);
 
 		assertThat(result.activated()).isFalse();
-		assertThat(result.reason()).isEqualTo("Candidate activation requires an active transaction.");
+		assertThat(result.reason()).isEqualTo("Activation must use the durable activation saga.");
 		verify(chunkMapper, never()).activateChunkVersion(42L, 2);
 		verify(chunkMapper, never()).retireOtherChunkVersions(42L, 2);
 	}
 
 	@Test
-	void activationWaitsForCommitBeforeMakingCandidateSearchableAndRetiringOldPoints() {
+	void writerRejectsTheLegacyAfterCommitActivationPath() {
 		LawChunkMapper chunkMapper = mock(LawChunkMapper.class);
 		QdrantClient qdrantClient = mock(QdrantClient.class);
-		when(chunkMapper.findChunkVersionVerification(42L, 2, "text-embedding-3-small", "law_chunks"))
-			.thenReturn(new LawChunkVersionVerification(1, 1, 1, 0, true, 0));
-		when(chunkMapper.findChunkIdsByDocumentIdAndVersion(42L, 2)).thenReturn(List.of(202L));
-		when(chunkMapper.findChunkIdsByDocumentId(42L)).thenReturn(List.of(101L, 202L));
-		when(qdrantClient.findExistingLawCandidatePointIds(List.of(202L))).thenReturn(java.util.Set.of(202L));
-		when(qdrantClient.lawCandidateCollection()).thenReturn("law_chunks_candidate");
-		when(qdrantClient.indexSnapshot("law_chunks_candidate")).thenReturn(Optional.of(
-			new QdrantIndexSnapshot("law_chunks_candidate", "green", 0, 1, 1536, "Cosine", 1, 1)
-		));
 		LawDocumentWriter writer = new LawDocumentWriter(
 			mock(LawDocumentMapper.class), mock(LawDetailMapper.class), chunkMapper,
 			mock(LawAssetMapper.class), mock(LawJsonWriter.class), qdrantClient,
 			mock(LawVersionStatusService.class), testProperties()
 		);
 
-		TransactionSynchronizationManager.initSynchronization();
-		try {
-			ChunkActivationResult result = writer.activateCandidate(42L, 2);
+		ChunkActivationResult result = writer.activateCandidate(42L, 2);
 
-			assertThat(result.activated()).isTrue();
-			verify(qdrantClient).promoteLawCandidatePoints(List.of(202L));
-			verify(qdrantClient, never()).markLawPointsActive(List.of(202L));
-			verify(qdrantClient, never()).markLawPointsRetired(List.of(101L));
-			TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
-			verify(qdrantClient).markLawPointsActive(List.of(202L));
-			verify(qdrantClient).markLawPointsRetired(List.of(101L));
-			verify(qdrantClient).deleteLawPointsBestEffort(List.of(101L));
-		} finally {
-			TransactionSynchronizationManager.clearSynchronization();
-		}
+		assertThat(result.activated()).isFalse();
+		verify(qdrantClient, never()).promoteLawCandidatePoints(List.of(202L));
 	}
 
 	@Test

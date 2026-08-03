@@ -29,6 +29,7 @@ public class LawOpenApiSyncService {
 	private final LawDetailMapper lawDetailMapper;
 	private final LawSyncHistoryMapper syncHistoryMapper;
 	private final LawJsonWriter jsonWriter;
+	private final LawChunkActivationSaga activationSaga;
 	private final LawSemanticChunkPlanner chunkPlanner = new LawSemanticChunkPlanner();
 
 	
@@ -38,7 +39,8 @@ public class LawOpenApiSyncService {
 		LawDocumentWriter documentWriter,
 		LawDetailMapper lawDetailMapper,
 		LawSyncHistoryMapper syncHistoryMapper,
-		LawJsonWriter jsonWriter
+		LawJsonWriter jsonWriter,
+		LawChunkActivationSaga activationSaga
 	) {
 		this.lawOpenApiService = lawOpenApiService;
 		this.payloadParser = payloadParser;
@@ -46,6 +48,7 @@ public class LawOpenApiSyncService {
 		this.lawDetailMapper = lawDetailMapper;
 		this.syncHistoryMapper = syncHistoryMapper;
 		this.jsonWriter = jsonWriter;
+		this.activationSaga = activationSaga;
 	}
 
 	
@@ -157,11 +160,11 @@ public class LawOpenApiSyncService {
 
 	@Transactional
 	public CandidateChunkVersionResult createCandidateChunks(String target, long documentId) {
-		return createCandidateChunks(target, documentId, false);
+		return createCandidateChunks(target, documentId, "");
 	}
 
 	@Transactional
-	public CandidateChunkVersionResult createCandidateChunks(String target, long documentId, boolean previewApproved) {
+	public CandidateChunkVersionResult createCandidateChunks(String target, long documentId, String previewApprovalToken) {
 		String safeTarget = requireSupportedTarget(target);
 		if (documentId <= 0) {
 			throw new IllegalArgumentException("documentId is required.");
@@ -177,14 +180,16 @@ public class LawOpenApiSyncService {
 		}
 		SyncDetailDocument detail = payloadParser.parseDetailDocument(
 			row.rawJson(), row.detailTitle() == null ? row.title() : row.detailTitle());
+		if (!preview.approvalToken().equals(previewApprovalToken)) {
+			throw new IllegalArgumentException("Preview approval token is missing, stale, or does not match the current source.");
+		}
 		return documentWriter.createCandidateChunks(
 			row.documentId(), row.detailId(), row.target(), row.title(), detail.sections(), sourceUrl(row),
-			previewApproved, preview.unexplainedLossSpanCount());
+			preview.approvalToken(), preview.unexplainedLossSpanCount());
 	}
 
-	@Transactional
 	public ChunkActivationResult activateCandidate(long documentId, int candidateVersion) {
-		return documentWriter.activateCandidate(documentId, candidateVersion);
+		return activationSaga.activate(documentId, candidateVersion);
 	}
 
 	@Transactional
@@ -327,7 +332,8 @@ public class LawOpenApiSyncService {
 			.mapToInt(String::length)
 			.max()
 			.orElse(0);
-		int unexplainedLossSpanCount = row.currentChunkCount() > 0 && planned.isEmpty() ? 1 : 0;
+		ChunkPreviewApproval approval = ChunkPreviewApproval.assess(
+			row.target(), row.documentId(), row.detailId(), row.rawJson(), detail.sections(), planned);
 		return new ChunkRebuildPreviewItem(
 			row.documentId(),
 			row.target(),
@@ -340,7 +346,8 @@ public class LawOpenApiSyncService {
 			maxProjectedLength,
 			sourceUrl(row),
 			projectedTinySamples,
-			unexplainedLossSpanCount
+			approval.unexplainedLossSpanCount(),
+			approval.token()
 		);
 	}
 
@@ -528,7 +535,8 @@ public class LawOpenApiSyncService {
 		int maxProjectedLength,
 		String sourceUrl,
 		List<String> projectedTinySamples,
-		int unexplainedLossSpanCount
+		int unexplainedLossSpanCount,
+		String approvalToken
 	) {
 	}
 }

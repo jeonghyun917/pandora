@@ -6,6 +6,7 @@ public record LawChunkVersionRow(
 	String activationStatus,
 	int expectedChunkCount,
 	boolean previewApproved,
-	int unexplainedLossSpanCount
+	int unexplainedLossSpanCount,
+	String previewTokenHash
 ) {
 }

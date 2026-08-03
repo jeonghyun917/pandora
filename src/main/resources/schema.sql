@@ -327,6 +327,7 @@ CREATE TABLE IF NOT EXISTS law_api_document_chunk_versions (
     expected_chunk_count INT NOT NULL DEFAULT 0 COMMENT 'candidate chunk count required for activation',
     preview_approved TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'preview approved with no unexplained loss',
     unexplained_loss_span_count INT NOT NULL DEFAULT 0 COMMENT 'unexplained source coverage loss spans',
+    preview_token_hash CHAR(64) NULL COMMENT 'deterministic preview approval token hash',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created at',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'updated at',
     PRIMARY KEY (document_id, chunk_version),

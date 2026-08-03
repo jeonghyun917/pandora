@@ -64,9 +64,9 @@ public class LawSyncController {
 	public CandidateChunkVersionResult createCandidateChunks(
 		@RequestParam(defaultValue = "law") String target,
 		@RequestParam long documentId,
-		@RequestParam(defaultValue = "false") boolean previewApproved
+		@RequestParam(defaultValue = "") String previewApprovalToken
 	) {
-		return lawOpenApiSyncService.createCandidateChunks(target, documentId, previewApproved);
+		return lawOpenApiSyncService.createCandidateChunks(target, documentId, previewApprovalToken);
 	}
 
 	@PostMapping("/chunks/activate-candidate")

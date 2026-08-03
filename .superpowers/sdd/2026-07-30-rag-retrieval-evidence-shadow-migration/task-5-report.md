@@ -116,3 +116,27 @@ collection and promotion path must be exercised only under the later fixed
 runtime/index identity gate; if a process dies after production copy but before
 commit, its CANDIDATE points remain deliberately non-searchable and require
 explicit cleanup rather than automatic promotion.
+
+## Preview binding and durable activation follow-up
+
+- Preview approval is now a deterministic SHA-256 token bound to target,
+  document/detail identity, raw-source hash, exact normalized source and
+  planned-content fingerprints, and measured loss spans.  Candidate creation
+  recomputes it and rejects absent or stale values; the stored version row keeps
+  the token hash, approval state, and loss count.
+- Source coverage checks normalized section text against planned chunk text and
+  reports each non-whitespace lost span.  Any loss blocks activation through the
+  existing verification gate.
+- Activation is now a separate transaction-backed saga: CANDIDATE becomes
+  ACTIVATING while old chunks remain ACTIVE; idempotent Qdrant promotion,
+  ACTIVE marking, and status verification run outside the DB flip; a second
+  transaction atomically retires old DB chunks and activates the candidate.
+  DB flip failure best-effort demotes Qdrant points and leaves ACTIVATING for a
+  retry.  Cleanup failure persists ACTIVE_CLEANUP_PENDING and a repeated
+  activation retries finalization without making the new DB version unavailable.
+- `--apply=true` now rejects a missing real `RAG_BASELINE_MANIFEST_ID`; dry-run
+  reports a clearly named selection fingerprint instead.
+
+Focused fix2 verification: 37 Java tests passed, Node wave tests 2/0, both
+wave scripts passed syntax checks, and `git diff --check` passed.  No live
+runtime, DB, Qdrant, 8080, or 18080 operation was performed.

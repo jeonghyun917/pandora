@@ -436,14 +436,12 @@ ORDER BY c.chunk_version, c.chunk_id;
 }
 
 function manifestIdentityForSelection(selected) {
-  const configured = String(process.env.RAG_BASELINE_MANIFEST_ID || "").trim();
-  if (configured) return configured;
   const stableSelection = (selected || []).map((item) => ({
     documentId: number(item.documentId),
     target: String(item.target || ""),
     projectedChunks: number(item.projectedChunks),
   })).sort((left, right) => left.documentId - right.documentId || left.target.localeCompare(right.target));
-  return `wave-selection:${crypto.createHash("sha256").update(JSON.stringify(stableSelection)).digest("hex")}`;
+  return `selection-fingerprint:${crypto.createHash("sha256").update(JSON.stringify(stableSelection)).digest("hex")}`;
 }
 
 function candidateArtifact(candidate, previous, manifestIdentity) {
@@ -533,6 +531,14 @@ async function main() {
   const runnerStatus = await ensureRunner();
   const qdrantHealth = await qdrantCollectionInfo(vectorStore);
   const active = activeBatchJobs();
+	const baselineManifestId = String(process.env.RAG_BASELINE_MANIFEST_ID || "").trim();
+	if (apply && !baselineManifestId) {
+		const result = { generatedAt, mode: "apply", status: "BLOCKED_BASELINE_MANIFEST_REQUIRED", runnerStatus, active, qdrantHealth };
+		writeReports(result);
+		printResult(result);
+		process.exitCode = 5;
+		return;
+	}
   if (apply && requireQdrantGreen && !isQdrantGreen(qdrantHealth)) {
     const result = {
       generatedAt,
@@ -602,7 +608,8 @@ async function main() {
   }
 
   const documentIds = allSelected.map((item) => Number(item.documentId));
-  const manifestIdentity = manifestIdentityForSelection(allSelected);
+	const selectionFingerprint = manifestIdentityForSelection(allSelected);
+	const manifestIdentity = apply ? baselineManifestId : null;
   let rebuildResults = [];
   let candidateResults = [];
   let candidateArtifacts = [];
@@ -625,7 +632,7 @@ async function main() {
         const candidate = await postJson("/api/law-data/chunks/create-candidate", {
           target,
           documentId,
-          previewApproved: true,
+			previewApprovalToken: allSelected.find((item) => item.target === target && String(item.documentId) === String(documentId))?.approvalToken || "",
         }, 300000);
         const candidateWithTarget = { ...candidate, target };
         candidateResults.push(candidateWithTarget);
@@ -778,6 +785,7 @@ async function main() {
   const result = {
     generatedAt,
     manifestIdentity,
+		selectionFingerprint,
     mode: apply ? "apply" : "dry-run",
     status: finalStatus,
     options: {

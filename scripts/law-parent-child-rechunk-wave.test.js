@@ -23,7 +23,7 @@ test("candidate artifact binds a deterministic manifest, point identities, and e
     chunkIds: [202, 203, 204],
   }, { version: 1, pointIds: [101, 102] }, manifestIdentity);
 
-  assert.match(manifestIdentity, /^wave-selection:[0-9a-f]{64}$/);
+  assert.match(manifestIdentity, /^selection-fingerprint:[0-9a-f]{64}$/);
   assert.deepEqual(artifact.oldPointIds, [101, 102]);
   assert.deepEqual(artifact.newPointIds, [202, 203, 204]);
   assert.equal(artifact.oldChunkVersion, 1);

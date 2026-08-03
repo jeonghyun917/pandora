@@ -9,6 +9,7 @@ public record CandidateChunkVersionResult(
 	int expectedChunkCount,
 	boolean previewApproved,
 	int unexplainedLossSpanCount,
+	String previewTokenHash,
 	List<Long> chunkIds
 ) {
 }
