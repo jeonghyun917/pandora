@@ -5,6 +5,8 @@ import com.kaces.pandora.semantic.config.LawAiProperties;
 import com.kaces.pandora.semantic.search.QdrantSearchHit;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import jakarta.annotation.PreDestroy;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -101,10 +103,10 @@ public class QdrantClient {
 			}
 			Set<Long> existing = new LinkedHashSet<>();
 			for (Object item : result) {
-				if (!(item instanceof Map<?, ?> point) || !(point.get("id") instanceof Number id)) {
+				if (!(item instanceof Map<?, ?> point)) {
 					throw new IllegalStateException("Qdrant point lookup response contained a malformed point.");
 				}
-				existing.add(id.longValue());
+				existing.add(strictPositivePointId(point.get("id")));
 			}
 			return Set.copyOf(existing);
 		} catch (RuntimeException exception) {
@@ -112,6 +114,27 @@ public class QdrantClient {
 		} catch (Exception exception) {
 			throw new IllegalStateException("Qdrant point lookup response was not valid JSON.", exception);
 		}
+	}
+
+	private long strictPositivePointId(Object value) {
+		if (!(value instanceof Number number)
+			|| number instanceof Float
+			|| number instanceof Double) {
+			throw new IllegalStateException("Qdrant point lookup response contained a malformed point.");
+		}
+		BigInteger id;
+		try {
+			id = number instanceof BigInteger bigInteger
+				? bigInteger
+				: number instanceof BigDecimal decimal ? decimal.toBigIntegerExact()
+				: BigInteger.valueOf(number.longValue());
+		} catch (RuntimeException exception) {
+			throw new IllegalStateException("Qdrant point lookup response contained a malformed point.", exception);
+		}
+		if (id.signum() <= 0 || id.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0) {
+			throw new IllegalStateException("Qdrant point lookup response contained a malformed point.");
+		}
+		return id.longValueExact();
 	}
 
 	public boolean isSearchReady() {

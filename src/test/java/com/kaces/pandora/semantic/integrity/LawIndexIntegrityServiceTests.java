@@ -1,14 +1,87 @@
 package com.kaces.pandora.semantic.integrity;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
 import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class LawIndexIntegrityServiceTests {
+
+	@Test
+	void auditUsesStoredVectorPointIdRatherThanChunkId() {
+		AtomicReference<Set<Long>> requestedPointIds = new AtomicReference<>();
+		LawIndexIntegrityService service = new LawIndexIntegrityService(
+			mapper(row(10, true, "current", "current", "INDEXED", "900")),
+			ids -> {
+				requestedPointIds.set(Set.copyOf(ids));
+				return Set.of(900L);
+			}
+		);
+
+		assertThat(service.audit("law", 100).issues()).isEmpty();
+		assertThat(requestedPointIds).hasValue(Set.of(900L));
+	}
+
+	@Test
+	void auditMarksMissingAndNonNumericStoredPointIdsAsMissingPoints() {
+		LawIndexIntegrityService service = new LawIndexIntegrityService(
+			mapper(
+				row(10, true, "current", "current", "INDEXED", null),
+				row(11, true, "current", "current", "INDEXED", "not-a-number")
+			),
+			ids -> Set.of()
+		);
+
+		assertThat(service.audit("law", 100).issues()).extracting(LawIndexIntegrityIssue::cause)
+			.containsExactly(
+				LawIndexIntegrityIssue.Cause.QDRANT_POINT_MISSING,
+				LawIndexIntegrityIssue.Cause.QDRANT_POINT_MISSING
+			);
+	}
+
+	@Test
+	void errorStatusTakesRetryableFailurePrecedenceOverHashAndPointProblems() {
+		LawIndexIntegrityService service = new LawIndexIntegrityService(
+			mapper(row(10, true, "current", "stale", "ERROR", null)),
+			ids -> Set.of()
+		);
+
+		assertThat(service.audit("law", 100).issues()).extracting(LawIndexIntegrityIssue::cause)
+			.containsExactly(LawIndexIntegrityIssue.Cause.RETRYABLE_EMBEDDING_FAILURE);
+	}
+
+	@Test
+	void previewRepairRejectsStaleEmbeddingHash() {
+		LawIndexIntegrityService service = new LawIndexIntegrityService(
+			mapper(row(10, true, "chunk", "embedding-current", "INDEXED", "10")),
+			ids -> Set.of()
+		);
+
+		LawIndexIntegrityService.RepairPreview preview = service.previewRepair(
+			"law",
+			LawIndexIntegrityIssue.Cause.QDRANT_POINT_MISSING,
+			List.of(new LawIndexIntegrityService.RepairCandidate(10, "chunk", "embedding-stale"))
+		);
+
+		assertThat(preview.acceptedIssueIds()).isEmpty();
+		assertThat(preview.rejectedIssueIds()).containsExactly(10L);
+	}
+
+	@Test
+	void auditRejectsInvalidTargetsAndCanonicalizesAll() {
+		LawIndexIntegrityService service = new LawIndexIntegrityService(mapper(), ids -> Set.of());
+
+		assertThatThrownBy(() -> service.audit("official_doc", 100))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("target");
+		assertThat(service.audit(" ALL ", 100).target()).isEmpty();
+		assertThat(service.audit(" LAW ", 100).target()).isEqualTo("law");
+	}
 
 	@Test
 	void auditClassifiesEachIntegrityCauseInRequiredPrecedenceOrder() {
@@ -62,6 +135,17 @@ class LawIndexIntegrityServiceTests {
 		String embeddingContentHash,
 		String embeddingStatus
 	) {
-		return new LawIndexIntegrityRow(chunkId, active, chunkContentHash, embeddingContentHash, embeddingStatus, String.valueOf(chunkId));
+		return row(chunkId, active, chunkContentHash, embeddingContentHash, embeddingStatus, String.valueOf(chunkId));
+	}
+
+	private LawIndexIntegrityRow row(
+		long chunkId,
+		boolean active,
+		String chunkContentHash,
+		String embeddingContentHash,
+		String embeddingStatus,
+		String vectorPointId
+	) {
+		return new LawIndexIntegrityRow(chunkId, active, chunkContentHash, embeddingContentHash, embeddingStatus, vectorPointId);
 	}
 }

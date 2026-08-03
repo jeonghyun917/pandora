@@ -1,6 +1,7 @@
 package com.kaces.pandora.infra.qdrant;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.kaces.pandora.semantic.config.LawAiProperties;
 import com.sun.net.httpserver.HttpExchange;
@@ -25,6 +26,19 @@ class QdrantClientTests {
 		}
 		if (server != null) {
 			server.stop(0);
+		}
+	}
+
+	@Test
+	void findExistingLawPointIdsRejectsNonIntegralNonPositiveAndOutOfRangeResponseIds() throws IOException {
+		for (String invalidId : java.util.List.of("10.5", "0", "9223372036854775808")) {
+			startPointLookupServer("{\"result\":[{\"id\":" + invalidId + "}]}");
+			client = client("law_chunks", "rag");
+
+			assertThatThrownBy(() -> client.findExistingLawPointIds(java.util.List.of(10L)))
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("malformed point");
+			tearDown();
 		}
 	}
 
@@ -203,6 +217,12 @@ class QdrantClientTests {
 		server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 		server.createContext("/collections/law", exchange -> respond(exchange, 200, readyCollection(1536, 10)));
 		server.createContext("/collections/rag", exchange -> respond(exchange, ragStatus, ragBody));
+		server.start();
+	}
+
+	private void startPointLookupServer(String body) throws IOException {
+		server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		server.createContext("/collections/law_chunks/points", exchange -> respond(exchange, 200, body));
 		server.start();
 	}
 

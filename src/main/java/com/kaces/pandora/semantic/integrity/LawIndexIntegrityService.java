@@ -7,6 +7,9 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.OptionalLong;
+import java.util.Objects;
 import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -72,7 +75,8 @@ public class LawIndexIntegrityService {
 			boolean matchesCurrentAudit = current.issues().stream().anyMatch(issue ->
 				issue.chunkId() == candidate.chunkId()
 					&& issue.cause() == cause
-					&& equalsHash(issue.chunkContentHash(), candidate.chunkContentHash())
+					&& Objects.equals(issue.chunkContentHash(), candidate.chunkContentHash())
+					&& Objects.equals(issue.embeddingContentHash(), candidate.embeddingContentHash())
 			);
 			(matchesCurrentAudit ? accepted : rejected).add(candidate.chunkId());
 		}
@@ -82,7 +86,7 @@ public class LawIndexIntegrityService {
 	private Set<Long> findExistingPointIds(List<LawIndexIntegrityRow> rows) {
 		List<Long> pointIds = rows.stream()
 			.filter(this::requiresPointCheck)
-			.map(LawIndexIntegrityRow::chunkId)
+			.map(row -> pointId(row).orElseThrow())
 			.distinct()
 			.toList();
 		Set<Long> existing = new LinkedHashSet<>();
@@ -95,7 +99,8 @@ public class LawIndexIntegrityService {
 	private boolean requiresPointCheck(LawIndexIntegrityRow row) {
 		return hasText(row.embeddingStatus())
 			&& !isRetryableFailure(row.embeddingStatus())
-			&& equalsHash(row.chunkContentHash(), row.embeddingContentHash());
+			&& equalsHash(row.chunkContentHash(), row.embeddingContentHash())
+			&& pointId(row).isPresent();
 	}
 
 	private java.util.Optional<LawIndexIntegrityIssue> classify(LawIndexIntegrityRow row, Set<Long> existingPointIds) {
@@ -106,7 +111,7 @@ public class LawIndexIntegrityService {
 			cause = LawIndexIntegrityIssue.Cause.RETRYABLE_EMBEDDING_FAILURE;
 		} else if (!equalsHash(row.chunkContentHash(), row.embeddingContentHash())) {
 			cause = LawIndexIntegrityIssue.Cause.CONTENT_HASH_MISMATCH;
-		} else if (!existingPointIds.contains(row.chunkId())) {
+		} else if (pointId(row).isEmpty() || !existingPointIds.contains(pointId(row).getAsLong())) {
 			cause = LawIndexIntegrityIssue.Cause.QDRANT_POINT_MISSING;
 		} else if (!"INDEXED".equalsIgnoreCase(row.embeddingStatus())) {
 			cause = LawIndexIntegrityIssue.Cause.STALE_DATABASE_STATUS;
@@ -119,7 +124,7 @@ public class LawIndexIntegrityService {
 	}
 
 	private boolean isRetryableFailure(String status) {
-		return "FAILED".equalsIgnoreCase(status);
+		return "FAILED".equalsIgnoreCase(status) || "ERROR".equalsIgnoreCase(status);
 	}
 
 	private static boolean hasText(String value) {
@@ -131,7 +136,26 @@ public class LawIndexIntegrityService {
 	}
 
 	private static String normalizeTarget(String target) {
-		return target == null ? "" : target.trim();
+		String normalized = target == null ? "" : target.trim().toLowerCase(Locale.ROOT);
+		if (normalized.isEmpty() || "all".equals(normalized)) {
+			return "";
+		}
+		if ("law".equals(normalized) || "admrul".equals(normalized)) {
+			return normalized;
+		}
+		throw new IllegalArgumentException("Unsupported law index integrity target: " + target);
+	}
+
+	private OptionalLong pointId(LawIndexIntegrityRow row) {
+		String value = row.vectorPointId();
+		if (value == null || !value.matches("[1-9]\\d*")) {
+			return OptionalLong.empty();
+		}
+		try {
+			return OptionalLong.of(Long.parseLong(value));
+		} catch (NumberFormatException exception) {
+			return OptionalLong.empty();
+		}
 	}
 
 	@FunctionalInterface
@@ -139,7 +163,7 @@ public class LawIndexIntegrityService {
 		Set<Long> findExisting(Collection<Long> pointIds);
 	}
 
-	public record RepairCandidate(long chunkId, String chunkContentHash) {
+	public record RepairCandidate(long chunkId, String chunkContentHash, String embeddingContentHash) {
 	}
 
 	public record RepairPreview(LawIndexIntegrityIssue.Cause cause, List<Long> acceptedIssueIds, List<Long> rejectedIssueIds) {

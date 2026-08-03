@@ -3,6 +3,7 @@ const path = require("node:path");
 
 const workspace = path.resolve(__dirname, "..");
 const apiBaseUrl = (process.env.PANDORA_API_BASE_URL || "http://127.0.0.1:8080").replace(/\/$/, "");
+const adminToken = process.env.PANDORA_ADMIN_TOKEN || "";
 const args = Object.fromEntries(process.argv.slice(2).map((arg) => {
   const [key, ...rest] = arg.replace(/^--/, "").split("=");
   return [key, rest.join("=") || "true"];
@@ -12,11 +13,33 @@ const limit = Math.max(1, Math.min(Number(args.limit || 1000), 10000));
 const jsonPath = path.resolve(workspace, "logs", "law-index-integrity-audit-latest.json");
 const markdownPath = path.resolve(workspace, "logs", "law-index-integrity-audit-latest.md");
 
-function runtimeMetadata() {
+function requestOptions() {
   return {
-    runtimeInstance: process.env.PANDORA_RUNTIME_INSTANCE || process.env.COMPUTERNAME || "unknown",
-    indexRevision: process.env.PANDORA_INDEX_REVISION || "unknown",
+    headers: adminToken ? { "X-Pandora-Admin-Token": adminToken } : {},
+    signal: AbortSignal.timeout(30000),
   };
+}
+
+function runtimeMetadata(runtimeInfo) {
+  const runtimeInstanceId = String(runtimeInfo?.runtimeInstanceId || "").trim();
+  const indexRevision = String(runtimeInfo?.indexRevision || "").trim();
+  if (!runtimeInstanceId || !indexRevision) {
+    throw new Error("Runtime metadata was incomplete: runtimeInstanceId and indexRevision are required.");
+  }
+  return { runtimeInstanceId, indexRevision };
+}
+
+function sameRuntime(first, second) {
+  return first.runtimeInstanceId === second.runtimeInstanceId
+    && first.indexRevision === second.indexRevision;
+}
+
+async function fetchJson(pathname) {
+  const response = await fetch(`${apiBaseUrl}${pathname}`, requestOptions());
+  if (!response.ok) {
+    throw new Error(`Request failed for ${pathname}: HTTP ${response.status}`);
+  }
+  return response.json();
 }
 
 function markdown(artifact) {
@@ -30,7 +53,7 @@ function markdown(artifact) {
     "# Law Index Integrity Audit",
     "",
     `- Generated: ${artifact.generatedAt}`,
-    `- Runtime instance: ${artifact.runtimeInstance}`,
+    `- Runtime instance: ${artifact.runtimeInstanceId}`,
     `- Index revision: ${artifact.indexRevision}`,
     `- Target: ${artifact.target || "all"}`,
     `- Limit: ${artifact.limit}`,
@@ -49,20 +72,20 @@ function markdown(artifact) {
 }
 
 async function main() {
-  const response = await fetch(
-    `${apiBaseUrl}/api/admin/law-index-integrity/audit?target=${encodeURIComponent(target)}&limit=${limit}`,
-    { signal: AbortSignal.timeout(30000) }
+  const runtimeBefore = runtimeMetadata(await fetchJson("/api/law-data/ai/debug/runtime-info"));
+  const report = await fetchJson(
+    `/api/admin/law-index-integrity/audit?target=${encodeURIComponent(target)}&limit=${limit}`
   );
-  if (!response.ok) {
-    throw new Error(`Integrity audit request failed: HTTP ${response.status}`);
+  const runtimeAfter = runtimeMetadata(await fetchJson("/api/law-data/ai/debug/runtime-info"));
+  if (!sameRuntime(runtimeBefore, runtimeAfter)) {
+    throw new Error("Runtime metadata drifted while the integrity audit was running.");
   }
-  const report = await response.json();
   if (!Array.isArray(report.issues) || typeof report.causeCounts !== "object" || report.causeCounts === null) {
     throw new Error("Integrity audit response was malformed.");
   }
   const artifact = {
     generatedAt: new Date().toISOString(),
-    ...runtimeMetadata(),
+    ...runtimeBefore,
     target: report.target || "",
     limit: report.limit,
     causeCounts: report.causeCounts,
@@ -79,7 +102,11 @@ async function main() {
   console.log(`Wrote ${path.relative(workspace, jsonPath)} and ${path.relative(workspace, markdownPath)}`);
 }
 
-main().catch((error) => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { runtimeMetadata, sameRuntime };
