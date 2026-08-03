@@ -16,6 +16,7 @@ final class OpenAiRequestBodyTransportRetry {
 
 	private static final Logger log = LoggerFactory.getLogger(OpenAiRequestBodyTransportRetry.class);
 	private static final int MAX_RETRIES = 1;
+	private static final int MAX_DIAGNOSTIC_CAUSE_CHAIN_CLASSES = 8;
 	private static final Duration RETRY_DELAY = Duration.ofMillis(200);
 	private static final String REQUEST_BODY_WRITE_FAILURE = "Error writing request body to server";
 	private static final String SPRING_REQUEST_BODY_WRITE_FAILURE = "Could not write JSON: " + REQUEST_BODY_WRITE_FAILURE;
@@ -62,6 +63,7 @@ final class OpenAiRequestBodyTransportRetry {
 				try {
 					retryDelay.pause(RETRY_DELAY);
 				} catch (InterruptedException interrupted) {
+					failureRecorder.accept(failureSummary(exception, true, retries, true));
 					Thread.currentThread().interrupt();
 					throw interrupted;
 				}
@@ -70,15 +72,28 @@ final class OpenAiRequestBodyTransportRetry {
 	}
 
 	FailureSummary failureSummary(RuntimeException exception, boolean classifierAccepted, int attempts) {
+		return failureSummary(exception, classifierAccepted, attempts, false);
+	}
+
+	FailureSummary failureSummary(
+		RuntimeException exception,
+		boolean classifierAccepted,
+		int attempts,
+		boolean interrupted
+	) {
 		List<String> causeChainClasses = new java.util.ArrayList<>();
 		boolean requestBodyTransportMarkerExact = false;
-		for (Throwable cause : causeChain(exception)) {
-			if (causeChainClasses.size() < 8) {
-				causeChainClasses.add(cause.getClass().getName());
-			}
+		Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+		Throwable cause = exception;
+		while (cause != null && seen.add(cause) && causeChainClasses.size() < MAX_DIAGNOSTIC_CAUSE_CHAIN_CLASSES) {
+			causeChainClasses.add(cause.getClass().getName());
 			if (cause instanceof IOException ioException && isRequestBodyWriteTransportException(ioException)) {
 				requestBodyTransportMarkerExact = true;
 			}
+			if (causeChainClasses.size() == MAX_DIAGNOSTIC_CAUSE_CHAIN_CLASSES) {
+				break;
+			}
+			cause = cause.getCause();
 		}
 		boolean springOuterMarkerExact = exception instanceof HttpMessageNotWritableException
 			&& describesSpringRequestBodyWrite(exception.getMessage());
@@ -89,7 +104,8 @@ final class OpenAiRequestBodyTransportRetry {
 			requestBodyTransportMarkerExact,
 			classifierAccepted,
 			attempts,
-			classifierAccepted && attempts > MAX_RETRIES
+			classifierAccepted && attempts > MAX_RETRIES,
+			interrupted
 		);
 	}
 
@@ -174,7 +190,8 @@ final class OpenAiRequestBodyTransportRetry {
 		boolean requestBodyTransportMarkerExact,
 		boolean classifierAccepted,
 		int attempts,
-		boolean retryExhausted
+		boolean retryExhausted,
+		boolean interrupted
 	) {
 	}
 }

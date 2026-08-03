@@ -104,14 +104,15 @@ public class OpenAiEmbeddingClient {
 
 	private static void logEscapedTransportFailure(OpenAiRequestBodyTransportRetry.FailureSummary summary) {
 		log.warn(
-			"OpenAI transport failure escaped. operationStage=embedding outerExceptionClass={} causeChainClasses={} springOuterMarkerExact={} requestBodyTransportMarkerExact={} classifierAccepted={} attempts={} retryExhausted={}",
+			"OpenAI transport failure escaped. operationStage=embedding outerExceptionClass={} causeChainClasses={} springOuterMarkerExact={} requestBodyTransportMarkerExact={} classifierAccepted={} attempts={} retryExhausted={} interrupted={}",
 			summary.outerExceptionClass(),
 			summary.causeChainClasses(),
 			summary.springOuterMarkerExact(),
 			summary.requestBodyTransportMarkerExact(),
 			summary.classifierAccepted(),
 			summary.attempts(),
-			summary.retryExhausted()
+			summary.retryExhausted(),
+			summary.interrupted()
 		);
 	}
 

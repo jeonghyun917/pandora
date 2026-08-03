@@ -178,6 +178,58 @@ class OpenAiRequestBodyTransportRetryTests {
 		assertThat(Thread.currentThread().isInterrupted()).isTrue();
 	}
 
+	@Test
+	void failureSummaryStopsBeforeNinthCauseInLongChainAndIgnoresItsTransportMarker() {
+		OpenAiRequestBodyTransportRetry retry = new OpenAiRequestBodyTransportRetry(delay -> { }, metadata -> { });
+		Throwable failure = new IllegalStateException("first");
+		Throwable current = failure;
+		for (int index = 1; index < 7; index++) {
+			Throwable next = new IllegalStateException("link-" + index);
+			current.initCause(next);
+			current = next;
+		}
+		IOException ninthCause = new IOException("Error writing request body to server");
+		TrackingRuntimeException eighthCause = new TrackingRuntimeException(ninthCause);
+		current.initCause(eighthCause);
+		Throwable tail = ninthCause;
+		for (int index = 0; index < 256; index++) {
+			Throwable next = new IllegalStateException("long-tail-" + index);
+			tail.initCause(next);
+			tail = next;
+		}
+
+		OpenAiRequestBodyTransportRetry.FailureSummary summary = retry.failureSummary(
+			(RuntimeException) failure,
+			false,
+			1
+		);
+
+		assertThat(summary.causeChainClasses()).hasSize(8);
+		assertThat(summary.requestBodyTransportMarkerExact()).isFalse();
+		assertThat(eighthCause.causeCalls()).isZero();
+		assertThat(summary.interrupted()).isFalse();
+	}
+
+	private static final class TrackingRuntimeException extends RuntimeException {
+		private final Throwable next;
+		private int causeCalls;
+
+		private TrackingRuntimeException(Throwable next) {
+			super("eighth");
+			this.next = next;
+		}
+
+		@Override
+		public synchronized Throwable getCause() {
+			causeCalls++;
+			return next;
+		}
+
+		private int causeCalls() {
+			return causeCalls;
+		}
+	}
+
 	private ResourceAccessException requestBodyWriteFailure() {
 		return new ResourceAccessException(
 			"Could not write JSON: Error writing request body to server",

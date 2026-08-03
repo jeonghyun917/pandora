@@ -9,12 +9,18 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
 
 class OpenAiEmbeddingClientTests {
+
+	@AfterEach
+	void clearInterruptedFlag() {
+		Thread.interrupted();
+	}
 
 	@Test
 	void retriesTheEmbeddingRequestBodyWriteAndReturnsTheRetriedEmbedding() {
@@ -57,6 +63,7 @@ class OpenAiEmbeddingClientTests {
 			false,
 			false,
 			1,
+			false,
 			false
 		));
 		assertThat(diagnostics.toString()).doesNotContain("SECRET", "sensitive query");
@@ -112,6 +119,42 @@ class OpenAiEmbeddingClientTests {
 			assertThat(summary.retryExhausted()).isFalse();
 			assertThat(summary.toString()).doesNotContain("SECRET");
 		});
+	}
+
+	@Test
+	void recordsOriginalTransportDiagnosticWhenRetryDelayIsInterrupted() {
+		AtomicInteger attempts = new AtomicInteger();
+		List<OpenAiRequestBodyTransportRetry.FailureSummary> diagnostics = new ArrayList<>();
+		OpenAiEmbeddingClient client = new OpenAiEmbeddingClient(
+			properties(),
+			(apiKey, model, inputs) -> {
+				attempts.incrementAndGet();
+				throw new ResourceAccessException(
+					"SECRET outer transport message",
+					new IOException("Error writing request body to server")
+				);
+			},
+			new OpenAiRequestBodyTransportRetry(delay -> {
+				throw new InterruptedException("SECRET interrupted delay");
+			}, metadata -> { }),
+			diagnostics::add
+		);
+
+		assertThatThrownBy(() -> client.embed(List.of("SECRET query"))).isInstanceOf(IllegalStateException.class);
+
+		assertThat(attempts).hasValue(1);
+		assertThat(Thread.currentThread().isInterrupted()).isTrue();
+		assertThat(diagnostics).containsExactly(new OpenAiRequestBodyTransportRetry.FailureSummary(
+			ResourceAccessException.class.getName(),
+			List.of(ResourceAccessException.class.getName(), IOException.class.getName()),
+			false,
+			true,
+			true,
+			1,
+			false,
+			true
+		));
+		assertThat(diagnostics.toString()).doesNotContain("SECRET");
 	}
 
 	private OpenAiEmbeddingClient clientThatFails(
