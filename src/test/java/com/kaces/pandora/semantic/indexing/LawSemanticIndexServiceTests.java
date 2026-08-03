@@ -2,12 +2,17 @@ package com.kaces.pandora.semantic.indexing;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.kaces.pandora.common.json.LawJsonWriter;
 import com.kaces.pandora.infra.openai.OpenAiEmbeddingClient;
 import com.kaces.pandora.infra.qdrant.QdrantClient;
 import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
 import com.kaces.pandora.semantic.config.LawAiProperties;
+import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class LawSemanticIndexServiceTests {
@@ -21,5 +26,28 @@ class LawSemanticIndexServiceTests {
 
 		assertThat(service.indexCandidate("law", 0L, 2, 10).indexed()).isZero();
 		assertThat(service.indexCandidate("law", 42L, 0, 10).requested()).isZero();
+	}
+
+	@Test
+	void indexCandidateWritesOnlyToTheIsolatedCandidateCollection() {
+		LawChunkMapper mapper = mock(LawChunkMapper.class);
+		QdrantClient qdrantClient = mock(QdrantClient.class);
+		when(mapper.findSemanticIndexCandidatesByDocumentIdAndVersion("law", 42L, 2,
+			"text-embedding-3-small", "law_chunks", 10)).thenReturn(List.of(candidateChunk()));
+		OpenAiEmbeddingClient embeddingClient = mock(OpenAiEmbeddingClient.class);
+		when(embeddingClient.embed(List.of(candidateChunk().embeddingInput()))).thenReturn(List.of(List.of(0.1d)));
+		LawSemanticIndexService service = new LawSemanticIndexService(
+			mapper, new LawAiProperties(null, null, null, null), embeddingClient, qdrantClient, mock(LawJsonWriter.class)
+		);
+
+		service.indexCandidate("law", 42L, 2, 10);
+
+		verify(qdrantClient).upsertLawCandidates(List.of(candidateChunk()), List.of(List.of(0.1d)));
+		verify(qdrantClient, never()).upsert(List.of(candidateChunk()), List.of(List.of(0.1d)));
+	}
+
+	private LawSemanticChunkRow candidateChunk() {
+		return new LawSemanticChunkRow(101L, 42L, "law", "x", "Title", "", "", "", "CURRENT",
+			"Article 1", "Scope", "candidate text", null, "$.body", "", 0, "a".repeat(64), "Scope", "provision", "PASS");
 	}
 }

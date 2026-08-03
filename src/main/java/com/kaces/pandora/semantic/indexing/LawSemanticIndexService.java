@@ -101,7 +101,24 @@ public class LawSemanticIndexService {
 		String vectorStore = properties.qdrant().collection();
 		List<LawSemanticChunkRow> chunks = lawChunkMapper.findSemanticIndexCandidatesByDocumentIdAndVersion(
 			normalizedTarget, documentId, candidateVersion, model, vectorStore, safeLimit);
-		return indexChunks(chunks, model, vectorStore, chunks.size());
+		return indexCandidateChunks(chunks, model, vectorStore, chunks.size());
+	}
+
+	private LawSemanticIndexResult indexCandidateChunks(
+		List<LawSemanticChunkRow> chunks, String model, String vectorStore, int requested
+	) {
+		int indexed = 0;
+		for (int start = 0; start < chunks.size(); start += EMBEDDING_BATCH_SIZE) {
+			int end = Math.min(chunks.size(), start + EMBEDDING_BATCH_SIZE);
+			List<LawSemanticChunkRow> batch = chunks.subList(start, end);
+			List<List<Double>> vectors = embeddingClient.embed(batch.stream().map(LawSemanticChunkRow::embeddingInput).toList());
+			qdrantClient.upsertLawCandidates(batch, vectors);
+			for (LawSemanticChunkRow chunk : batch) {
+				markChunkIndexed(chunk, model, vectorStore);
+			}
+			indexed += batch.size();
+		}
+		return new LawSemanticIndexResult(qdrantClient.lawCandidateCollection(), model, requested, indexed);
 	}
 
 	private LawSemanticIndexResult indexChunks(

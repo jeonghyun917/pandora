@@ -10,6 +10,8 @@ import static org.mockito.Mockito.when;
 
 import com.kaces.pandora.common.json.LawJsonWriter;
 import com.kaces.pandora.infra.qdrant.QdrantClient;
+import com.kaces.pandora.infra.qdrant.QdrantIndexSnapshot;
+import com.kaces.pandora.lawdata.chunk.LawChunkVersionVerification;
 import com.kaces.pandora.lawdata.persistence.LawAssetMapper;
 import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
 import com.kaces.pandora.lawdata.persistence.LawDetailMapper;
@@ -18,8 +20,10 @@ import com.kaces.pandora.lawdata.version.LawVersionStatusService;
 import com.kaces.pandora.lawdata.chunk.LawChunkVersionRow;
 import com.kaces.pandora.semantic.config.LawAiProperties;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 class LawDocumentWriterTests {
 
@@ -63,7 +67,7 @@ class LawDocumentWriterTests {
 		verify(chunkMapper, never()).deleteChunks(42L);
 		ArgumentCaptor<LawChunkVersionRow> version = ArgumentCaptor.forClass(LawChunkVersionRow.class);
 		verify(chunkMapper).upsertChunkVersion(version.capture());
-		assertThat(version.getValue()).isEqualTo(new LawChunkVersionRow(42L, 2, "CANDIDATE", 1));
+		assertThat(version.getValue()).isEqualTo(new LawChunkVersionRow(42L, 2, "CANDIDATE", 1, false, Integer.MAX_VALUE));
 	}
 
 	@Test
@@ -78,9 +82,51 @@ class LawDocumentWriterTests {
 		ChunkActivationResult result = writer.activateCandidate(42L, 2);
 
 		assertThat(result.activated()).isFalse();
-		assertThat(result.reason()).isEqualTo("Candidate database verification failed.");
+		assertThat(result.reason()).isEqualTo("Candidate activation requires an active transaction.");
 		verify(chunkMapper, never()).activateChunkVersion(42L, 2);
 		verify(chunkMapper, never()).retireOtherChunkVersions(42L, 2);
+	}
+
+	@Test
+	void activationWaitsForCommitBeforeMakingCandidateSearchableAndRetiringOldPoints() {
+		LawChunkMapper chunkMapper = mock(LawChunkMapper.class);
+		QdrantClient qdrantClient = mock(QdrantClient.class);
+		when(chunkMapper.findChunkVersionVerification(42L, 2, "text-embedding-3-small", "law_chunks"))
+			.thenReturn(new LawChunkVersionVerification(1, 1, 1, 0, true, 0));
+		when(chunkMapper.findChunkIdsByDocumentIdAndVersion(42L, 2)).thenReturn(List.of(202L));
+		when(chunkMapper.findChunkIdsByDocumentId(42L)).thenReturn(List.of(101L, 202L));
+		when(qdrantClient.findExistingLawCandidatePointIds(List.of(202L))).thenReturn(java.util.Set.of(202L));
+		when(qdrantClient.lawCandidateCollection()).thenReturn("law_chunks_candidate");
+		when(qdrantClient.indexSnapshot("law_chunks_candidate")).thenReturn(Optional.of(
+			new QdrantIndexSnapshot("law_chunks_candidate", "green", 0, 1, 1536, "Cosine", 1, 1)
+		));
+		LawDocumentWriter writer = new LawDocumentWriter(
+			mock(LawDocumentMapper.class), mock(LawDetailMapper.class), chunkMapper,
+			mock(LawAssetMapper.class), mock(LawJsonWriter.class), qdrantClient,
+			mock(LawVersionStatusService.class), testProperties()
+		);
+
+		TransactionSynchronizationManager.initSynchronization();
+		try {
+			ChunkActivationResult result = writer.activateCandidate(42L, 2);
+
+			assertThat(result.activated()).isTrue();
+			verify(qdrantClient).promoteLawCandidatePoints(List.of(202L));
+			verify(qdrantClient, never()).markLawPointsActive(List.of(202L));
+			verify(qdrantClient, never()).markLawPointsRetired(List.of(101L));
+			TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
+			verify(qdrantClient).markLawPointsActive(List.of(202L));
+			verify(qdrantClient).markLawPointsRetired(List.of(101L));
+			verify(qdrantClient).deleteLawPointsBestEffort(List.of(101L));
+		} finally {
+			TransactionSynchronizationManager.clearSynchronization();
+		}
+	}
+
+	@Test
+	void databaseVerificationRejectsUnapprovedPreviewAndUnexplainedLosses() {
+		assertThat(new LawChunkVersionVerification(1, 1, 1, 0, false, 0).databaseGatesPass()).isFalse();
+		assertThat(new LawChunkVersionVerification(1, 1, 1, 0, true, 1).databaseGatesPass()).isFalse();
 	}
 
 	private LawAiProperties testProperties() {

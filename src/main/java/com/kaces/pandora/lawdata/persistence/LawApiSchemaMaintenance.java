@@ -50,6 +50,8 @@ public class LawApiSchemaMaintenance implements ApplicationRunner {
 				chunk_version INT NOT NULL,
 				activation_status VARCHAR(20) NOT NULL DEFAULT 'CANDIDATE',
 				expected_chunk_count INT NOT NULL DEFAULT 0,
+				preview_approved TINYINT(1) NOT NULL DEFAULT 0,
+				unexplained_loss_span_count INT NOT NULL DEFAULT 0,
 				created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				PRIMARY KEY (document_id, chunk_version),
@@ -58,6 +60,8 @@ public class LawApiSchemaMaintenance implements ApplicationRunner {
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 			""");
 		ensureVersionTableColumn("expected_chunk_count", "INT NOT NULL DEFAULT 0");
+		ensureVersionTableColumn("preview_approved", "TINYINT(1) NOT NULL DEFAULT 0");
+		ensureVersionTableColumn("unexplained_loss_span_count", "INT NOT NULL DEFAULT 0");
 	}
 
 	private void ensureVersionTableColumn(String columnName, String definition) {

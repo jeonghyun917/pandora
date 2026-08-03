@@ -4,6 +4,8 @@ public record LawChunkVersionRow(
 	long documentId,
 	int chunkVersion,
 	String activationStatus,
-	int expectedChunkCount
+	int expectedChunkCount,
+	boolean previewApproved,
+	int unexplainedLossSpanCount
 ) {
 }

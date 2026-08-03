@@ -65,3 +65,54 @@ git diff --check
 
 Commit subject: `feat: activate law chunk versions safely` (the final SHA is
 reported in the task handoff after the final schema consistency amendment).
+
+## Isolation hardening follow-up
+
+### Root cause and correction
+
+- Candidate embeddings had been written into the production `law_chunks`
+  collection before their database version became ACTIVE.  A failed cleanup
+  could therefore consume retrieval top-K capacity even though database reads
+  filtered inactive chunks.
+- Candidate embeddings now go exclusively to derived
+  `law_chunks_candidate`.  Activation copies verified points to production with
+  `activationStatus=CANDIDATE`; only the transaction `afterCommit` callback
+  marks them ACTIVE.  The old version is marked RETIRED before its best-effort
+  deletion, and Qdrant searches exclude both CANDIDATE and RETIRED points.
+- Candidate-version rows persist `preview_approved` and
+  `unexplained_loss_span_count`.  The create endpoint requires an explicit
+  `previewApproved=true` request to make a version activatable; any absent
+  approval or nonzero unexplained loss fails the database gate.
+- Generic semantic-index selection and the current indexed-source snapshot are
+  now explicitly ACTIVE-only; candidate selection remains an explicit
+  document/version path.
+
+### Wave artifact contract
+
+Each wave JSON now records a deterministic manifest identity (or the supplied
+baseline manifest ID), old and new point IDs, old and new chunk versions, and
+an executable PowerShell rollback command.  Candidate verification counts the
+candidate collection before activation, then checks ACTIVE production points
+after activation.  The script still uses only app-dev 8080 and contains no
+18080/batch-runner path.
+
+### Focused verification
+
+```text
+./mvnw.cmd -Dtest=LawDocumentWriterTests,LawOpenApiSyncServiceChunkPreviewTests,LawApiSchemaMaintenanceTests,QdrantClientTests,LawSemanticIndexServiceTests,LawChunkMapperXmlTests test
+Tests run: 31, Failures: 0, Errors: 0, Skipped: 0
+
+node --test scripts/law-parent-child-rechunk-wave.test.js
+pass 2, fail 0
+
+node --check scripts/law-parent-child-rechunk-wave.js
+git diff --check
+```
+
+### Review residual risk
+
+No live Qdrant, MariaDB, 8080, or 18080 action was performed.  The candidate
+collection and promotion path must be exercised only under the later fixed
+runtime/index identity gate; if a process dies after production copy but before
+commit, its CANDIDATE points remain deliberately non-searchable and require
+explicit cleanup rather than automatic promotion.

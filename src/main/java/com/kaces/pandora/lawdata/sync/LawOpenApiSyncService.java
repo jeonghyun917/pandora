@@ -157,6 +157,11 @@ public class LawOpenApiSyncService {
 
 	@Transactional
 	public CandidateChunkVersionResult createCandidateChunks(String target, long documentId) {
+		return createCandidateChunks(target, documentId, false);
+	}
+
+	@Transactional
+	public CandidateChunkVersionResult createCandidateChunks(String target, long documentId, boolean previewApproved) {
 		String safeTarget = requireSupportedTarget(target);
 		if (documentId <= 0) {
 			throw new IllegalArgumentException("documentId is required.");
@@ -173,7 +178,8 @@ public class LawOpenApiSyncService {
 		SyncDetailDocument detail = payloadParser.parseDetailDocument(
 			row.rawJson(), row.detailTitle() == null ? row.title() : row.detailTitle());
 		return documentWriter.createCandidateChunks(
-			row.documentId(), row.detailId(), row.target(), row.title(), detail.sections(), sourceUrl(row));
+			row.documentId(), row.detailId(), row.target(), row.title(), detail.sections(), sourceUrl(row),
+			previewApproved, preview.unexplainedLossSpanCount());
 	}
 
 	@Transactional
@@ -321,6 +327,7 @@ public class LawOpenApiSyncService {
 			.mapToInt(String::length)
 			.max()
 			.orElse(0);
+		int unexplainedLossSpanCount = row.currentChunkCount() > 0 && planned.isEmpty() ? 1 : 0;
 		return new ChunkRebuildPreviewItem(
 			row.documentId(),
 			row.target(),
@@ -332,7 +339,8 @@ public class LawOpenApiSyncService {
 			projectedShortChunks,
 			maxProjectedLength,
 			sourceUrl(row),
-			projectedTinySamples
+			projectedTinySamples,
+			unexplainedLossSpanCount
 		);
 	}
 
@@ -519,7 +527,8 @@ public class LawOpenApiSyncService {
 		int projectedShortChunks,
 		int maxProjectedLength,
 		String sourceUrl,
-		List<String> projectedTinySamples
+		List<String> projectedTinySamples,
+		int unexplainedLossSpanCount
 	) {
 	}
 }

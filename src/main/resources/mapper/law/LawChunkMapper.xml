@@ -69,6 +69,11 @@
     WHERE document_id = #{documentId}
   </select>
 
+  <select id="findChunkVersionStatus" resultType="string">
+    SELECT activation_status FROM law_api_document_chunk_versions
+    WHERE document_id = #{documentId} AND chunk_version = #{chunkVersion}
+  </select>
+
   <!-- 특정 문서의 기존 검색 청크를 모두 삭제합니다. -->
   <delete id="deleteChunks">
     DELETE FROM law_api_document_chunks
@@ -94,7 +99,9 @@
     SELECT COALESCE(v.expected_chunk_count, 0) AS expectedChunkCount,
       COUNT(c.chunk_id) AS candidateChunkCount,
       COALESCE(SUM(CASE WHEN e.status = 'INDEXED' AND e.content_hash = c.content_hash THEN 1 ELSE 0 END), 0) AS indexedCurrentCount,
-      COALESCE(SUM(CASE WHEN c.quality_status IN ('REVIEW', 'REJECT') THEN 1 ELSE 0 END), 0) AS blockingQualityCount
+      COALESCE(SUM(CASE WHEN c.quality_status IN ('REVIEW', 'REJECT') THEN 1 ELSE 0 END), 0) AS blockingQualityCount,
+      v.preview_approved AS previewApproved,
+      v.unexplained_loss_span_count AS unexplainedLossSpanCount
     FROM law_api_document_chunk_versions v
     LEFT JOIN law_api_document_chunks c ON c.document_id = v.document_id
       AND c.chunk_version = v.chunk_version AND c.activation_status = 'CANDIDATE' AND c.use_yn = 'Y'
@@ -102,7 +109,7 @@
       AND e.embedding_model = #{model} AND e.vector_store = #{vectorStore}
     WHERE v.document_id = #{documentId} AND v.chunk_version = #{chunkVersion}
       AND v.activation_status = 'CANDIDATE'
-    GROUP BY v.expected_chunk_count
+    GROUP BY v.expected_chunk_count, v.preview_approved, v.unexplained_loss_span_count
   </select>
 
   <update id="activateChunkVersion">
@@ -136,10 +143,12 @@
   </update>
 
   <insert id="upsertChunkVersion">
-    INSERT INTO law_api_document_chunk_versions (document_id, chunk_version, activation_status, expected_chunk_count)
-    VALUES (#{version.documentId}, #{version.chunkVersion}, #{version.activationStatus}, #{version.expectedChunkCount})
+    INSERT INTO law_api_document_chunk_versions (document_id, chunk_version, activation_status, expected_chunk_count, preview_approved, unexplained_loss_span_count)
+    VALUES (#{version.documentId}, #{version.chunkVersion}, #{version.activationStatus}, #{version.expectedChunkCount}, #{version.previewApproved}, #{version.unexplainedLossSpanCount})
     ON DUPLICATE KEY UPDATE activation_status = VALUES(activation_status),
-      expected_chunk_count = VALUES(expected_chunk_count)
+      expected_chunk_count = VALUES(expected_chunk_count),
+      preview_approved = VALUES(preview_approved),
+      unexplained_loss_span_count = VALUES(unexplained_loss_span_count)
   </insert>
   <!-- 위치 기반 청크 본문 검색에서 일치하는 전체 건수를 조회합니다. -->
   <select id="countChunkSearch" resultType="int">
@@ -234,6 +243,7 @@
       AND e.vector_store = #{vectorStore}
     WHERE doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
       AND (#{target} = '' OR doc.target = #{target})
       AND (
         #{query} = ''
@@ -650,7 +660,6 @@
     JOIN law_api_document_chunks c ON c.document_id = doc.document_id
     WHERE c.use_yn = 'Y'
       AND c.activation_status = 'ACTIVE'
-      AND c.activation_status = 'ACTIVE'
       <if test="targets != null and targets.size() > 0">
         AND doc.target IN
         <foreach collection="targets" item="target" open="(" separator="," close=")">
@@ -812,6 +821,7 @@
       AND e.status = 'INDEXED'
       AND e.content_hash = c.content_hash
       AND c.content_hash REGEXP '^[0-9A-Fa-f]{64}$'
+		AND c.activation_status = 'ACTIVE'
   </select>
 
   <select id="findLawIndexIntegrityRows"

@@ -138,7 +138,7 @@ public class LawDocumentWriter {
 			new ChunkPlanningContext(documentTarget, documentId, documentTitle),
 			sections
 		);
-		lawChunkMapper.upsertChunkVersion(new LawChunkVersionRow(documentId, 1, "ACTIVE", plannedChunks.size()));
+		lawChunkMapper.upsertChunkVersion(new LawChunkVersionRow(documentId, 1, "ACTIVE", plannedChunks.size(), true, 0));
 		int count = 0;
 		for (PlannedLawChunk chunk : plannedChunks) {
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
@@ -173,10 +173,22 @@ public class LawDocumentWriter {
 	public CandidateChunkVersionResult createCandidateChunks(
 		long documentId,
 		long detailId,
+		String documentTarget,
+		String documentTitle,
 		List<SyncDetailSection> sections,
 		String sourceUrl
 	) {
-		return createCandidateChunks(documentId, detailId, "law", "", sections, sourceUrl);
+		return createCandidateChunks(documentId, detailId, documentTarget, documentTitle, sections, sourceUrl, false, Integer.MAX_VALUE);
+	}
+
+	@Transactional
+	public CandidateChunkVersionResult createCandidateChunks(
+		long documentId,
+		long detailId,
+		List<SyncDetailSection> sections,
+		String sourceUrl
+	) {
+		return createCandidateChunks(documentId, detailId, "law", "", sections, sourceUrl, false, Integer.MAX_VALUE);
 	}
 
 	@Transactional
@@ -186,7 +198,9 @@ public class LawDocumentWriter {
 		String documentTarget,
 		String documentTitle,
 		List<SyncDetailSection> sections,
-		String sourceUrl
+		String sourceUrl,
+		boolean previewApproved,
+		int unexplainedLossSpanCount
 	) {
 		int candidateVersion = Math.max(2, lawChunkMapper.findNextChunkVersion(documentId));
 		List<PlannedLawChunk> plannedChunks = chunkPlanner.plan(
@@ -195,26 +209,29 @@ public class LawDocumentWriter {
 			throw new IllegalArgumentException("Candidate chunk version must contain at least one chunk.");
 		}
 		lawChunkMapper.upsertChunkVersion(new LawChunkVersionRow(
-			documentId, candidateVersion, "CANDIDATE", plannedChunks.size()));
+			documentId, candidateVersion, "CANDIDATE", plannedChunks.size(), previewApproved, Math.max(0, unexplainedLossSpanCount)));
 		for (int sortOrder = 0; sortOrder < plannedChunks.size(); sortOrder++) {
 			PlannedLawChunk chunk = plannedChunks.get(sortOrder);
 			lawChunkMapper.insertChunk(storedChunk(
 				documentId, detailId, chunk, sourceUrl, sortOrder, candidateVersion, "CANDIDATE"));
 		}
 		return new CandidateChunkVersionResult(
-			documentId, candidateVersion, "CANDIDATE", plannedChunks.size(),
+			documentId, candidateVersion, "CANDIDATE", plannedChunks.size(), previewApproved, Math.max(0, unexplainedLossSpanCount),
 			lawChunkMapper.findChunkIdsByDocumentIdAndVersion(documentId, candidateVersion));
 	}
 
 	@Transactional
 	public ChunkActivationResult activateCandidate(long documentId, int candidateVersion) {
+		if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+			return ChunkActivationResult.blocked(documentId, candidateVersion, "Candidate activation requires an active transaction.");
+		}
 		LawChunkVersionVerification verification = lawChunkMapper.findChunkVersionVerification(
 			documentId, candidateVersion, properties.openai().embeddingModel(), properties.qdrant().collection());
 		if (verification == null || !verification.databaseGatesPass()) {
 			return ChunkActivationResult.blocked(documentId, candidateVersion, "Candidate database verification failed.");
 		}
 		if (!candidatePointsArePresent(documentId, candidateVersion)
-			|| qdrantClient.indexSnapshot(properties.qdrant().collection())
+			|| qdrantClient.indexSnapshot(qdrantClient.lawCandidateCollection())
 				.filter(snapshot -> snapshot.isStable() && snapshot.vectorSize() == properties.qdrant().vectorSize())
 				.isEmpty()) {
 			return ChunkActivationResult.blocked(documentId, candidateVersion, "Candidate Qdrant verification failed.");
@@ -223,16 +240,30 @@ public class LawDocumentWriter {
 		List<Long> retiredChunkIds = lawChunkMapper.findChunkIdsByDocumentId(documentId).stream()
 			.filter(chunkId -> !candidateChunkIds.contains(chunkId))
 			.toList();
+		qdrantClient.promoteLawCandidatePoints(candidateChunkIds);
 		lawChunkMapper.retireOtherChunkVersions(documentId, candidateVersion);
 		lawChunkMapper.activateChunkVersion(documentId, candidateVersion);
 		lawChunkMapper.retireOtherActiveChunkVersionStates(documentId, candidateVersion);
 		lawChunkMapper.updateChunkVersionStatus(documentId, candidateVersion, "ACTIVE");
-		deleteOldQdrantPointsAfterCommit(retiredChunkIds);
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override
+			public void afterCommit() {
+				qdrantClient.markLawPointsActive(candidateChunkIds);
+				qdrantClient.markLawPointsRetired(retiredChunkIds);
+				qdrantClient.deleteLawPointsBestEffort(retiredChunkIds);
+			}
+		});
 		return new ChunkActivationResult(documentId, candidateVersion, true, "ACTIVATED", retiredChunkIds);
 	}
 
 	@Transactional
 	public ChunkActivationResult rollbackToVersion(long documentId, int retiredVersion) {
+		if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+			return ChunkActivationResult.blocked(documentId, retiredVersion, "Rollback requires an active transaction.");
+		}
+		if (!"RETIRED".equals(lawChunkMapper.findChunkVersionStatus(documentId, retiredVersion))) {
+			return ChunkActivationResult.blocked(documentId, retiredVersion, "Requested version is not retired.");
+		}
 		List<Long> rollbackChunkIds = lawChunkMapper.findChunkIdsByDocumentIdAndVersion(documentId, retiredVersion);
 		if (!pointsArePresent(rollbackChunkIds)) {
 			return ChunkActivationResult.blocked(documentId, retiredVersion, "Retired version Qdrant verification failed.");
@@ -244,12 +275,32 @@ public class LawDocumentWriter {
 		lawChunkMapper.reactivateChunkVersion(documentId, retiredVersion);
 		lawChunkMapper.retireOtherActiveChunkVersionStates(documentId, retiredVersion);
 		lawChunkMapper.updateChunkVersionStatus(documentId, retiredVersion, "ACTIVE");
-		deleteOldQdrantPointsAfterCommit(activeChunkIds);
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+			@Override
+			public void afterCommit() {
+				qdrantClient.markLawPointsActive(rollbackChunkIds);
+				qdrantClient.markLawPointsRetired(activeChunkIds);
+				qdrantClient.deleteLawPointsBestEffort(activeChunkIds);
+			}
+		});
 		return new ChunkActivationResult(documentId, retiredVersion, true, "ROLLED_BACK", activeChunkIds);
 	}
 
 	private boolean candidatePointsArePresent(long documentId, int candidateVersion) {
-		return pointsArePresent(lawChunkMapper.findChunkIdsByDocumentIdAndVersion(documentId, candidateVersion));
+		return candidatePointsArePresent(lawChunkMapper.findChunkIdsByDocumentIdAndVersion(documentId, candidateVersion));
+	}
+
+	private boolean candidatePointsArePresent(List<Long> pointIds) {
+		if (pointIds == null || pointIds.isEmpty()) {
+			return false;
+		}
+		for (int start = 0; start < pointIds.size(); start += 256) {
+			List<Long> batch = pointIds.subList(start, Math.min(pointIds.size(), start + 256));
+			if (qdrantClient.findExistingLawCandidatePointIds(batch).size() != batch.size()) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private boolean pointsArePresent(List<Long> pointIds) {
@@ -281,7 +332,6 @@ public class LawDocumentWriter {
 			return;
 		}
 		if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-			qdrantClient.deleteLawPointsBestEffort(oldChunkIds);
 			return;
 		}
 		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {

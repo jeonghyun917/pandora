@@ -325,6 +325,8 @@ CREATE TABLE IF NOT EXISTS law_api_document_chunk_versions (
     chunk_version INT NOT NULL COMMENT 'chunk version within document',
     activation_status VARCHAR(20) NOT NULL DEFAULT 'CANDIDATE' COMMENT 'CANDIDATE, ACTIVE, RETIRED',
     expected_chunk_count INT NOT NULL DEFAULT 0 COMMENT 'candidate chunk count required for activation',
+    preview_approved TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'preview approved with no unexplained loss',
+    unexplained_loss_span_count INT NOT NULL DEFAULT 0 COMMENT 'unexplained source coverage loss spans',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created at',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'updated at',
     PRIMARY KEY (document_id, chunk_version),

@@ -78,6 +78,67 @@ public class QdrantClient {
 	}
 
 	public Set<Long> findExistingLawPointIds(List<Long> pointIds) {
+		return findExistingLawPointIds(pointIds, properties.qdrant().collection());
+	}
+
+	public Set<Long> findExistingLawCandidatePointIds(List<Long> pointIds) {
+		return findExistingLawPointIds(pointIds, lawCandidateCollection());
+	}
+
+	public void promoteLawCandidatePoints(List<Long> pointIds) {
+		List<Long> ids = pointIds == null ? List.of() : pointIds.stream().filter(id -> id != null && id > 0).distinct().toList();
+		if (ids.isEmpty()) {
+			throw new IllegalArgumentException("Candidate point promotion requires at least one point.");
+		}
+		byte[] response = restClient.post()
+			.uri("/collections/{collection}/points", lawCandidateCollection())
+			.body(Map.of("ids", ids, "with_payload", true, "with_vector", true))
+			.retrieve()
+			.body(byte[].class);
+		try {
+			Map<?, ?> envelope = objectMapper.readValue(response, Map.class);
+			if (!(envelope.get("result") instanceof List<?> points) || points.size() != ids.size()) {
+				throw new IllegalStateException("Candidate points are incomplete.");
+			}
+			List<Map<String, Object>> activePoints = new ArrayList<>();
+			for (Object value : points) {
+				if (!(value instanceof Map<?, ?> point) || point.get("id") == null || point.get("vector") == null) {
+					throw new IllegalStateException("Candidate point is malformed.");
+				}
+				Map<String, Object> payload = new LinkedHashMap<>();
+				if (point.get("payload") instanceof Map<?, ?> sourcePayload) {
+					sourcePayload.forEach((key, item) -> payload.put(String.valueOf(key), item));
+				}
+				payload.put("activationStatus", "CANDIDATE");
+				activePoints.add(Map.of("id", point.get("id"), "vector", point.get("vector"), "payload", payload));
+			}
+			restClient.put().uri("/collections/{collection}/points?wait=true", properties.qdrant().collection())
+				.body(Map.of("points", activePoints)).retrieve().toBodilessEntity();
+		} catch (RuntimeException exception) {
+			throw exception;
+		} catch (Exception exception) {
+			throw new IllegalStateException("Candidate point promotion response was not valid JSON.", exception);
+		}
+	}
+
+	public void markLawPointsActive(List<Long> pointIds) {
+		setLawPointActivationStatus(pointIds, "ACTIVE");
+	}
+
+	public void markLawPointsRetired(List<Long> pointIds) {
+		setLawPointActivationStatus(pointIds, "RETIRED");
+	}
+
+	private void setLawPointActivationStatus(List<Long> pointIds, String status) {
+		List<Long> ids = pointIds == null ? List.of() : pointIds.stream().filter(id -> id != null && id > 0).distinct().toList();
+		if (ids.isEmpty()) {
+			return;
+		}
+		restClient.put().uri("/collections/{collection}/points/payload?wait=true", properties.qdrant().collection())
+			.body(Map.of("payload", Map.of("activationStatus", status), "points", ids)).retrieve().toBodilessEntity();
+	}
+
+	private Set<Long> findExistingLawPointIds(List<Long> pointIds, String collection) {
 		List<Long> ids = pointIds == null ? List.of() : pointIds.stream()
 			.filter(id -> id != null && id > 0)
 			.distinct()
@@ -89,7 +150,7 @@ public class QdrantClient {
 			throw new IllegalArgumentException("Law point lookup is limited to 256 IDs.");
 		}
 		byte[] response = restClient.post()
-			.uri("/collections/{collection}/points", properties.qdrant().collection())
+			.uri("/collections/{collection}/points", collection)
 			.body(Map.of("ids", ids, "with_payload", false, "with_vector", false))
 			.retrieve()
 			.body(byte[].class);
@@ -322,6 +383,10 @@ public class QdrantClient {
 		ensureCollection(properties.qdrant().collection());
 	}
 
+	public String lawCandidateCollection() {
+		return properties.qdrant().collection() + "_candidate";
+	}
+
 	public void ensureRagCollection() {
 		ensureCollection(ragCollection());
 	}
@@ -357,6 +422,11 @@ public class QdrantClient {
 		upsert(chunks, vectors, false);
 	}
 
+	public void upsertLawCandidates(List<LawSemanticChunkRow> chunks, List<List<Double>> vectors) {
+		ensureCollection(lawCandidateCollection());
+		upsert(chunks, vectors, false, lawCandidateCollection(), "CANDIDATE");
+	}
+
 	// 메소드 설명: upsertRag 처리 흐름을 수행합니다.
 	public void upsertRag(List<LawSemanticChunkRow> chunks, List<List<Double>> vectors) {
 		ensureRagCollection();
@@ -365,10 +435,14 @@ public class QdrantClient {
 
 	// 메소드 설명: upsert 처리 흐름을 수행합니다.
 	private void upsert(List<LawSemanticChunkRow> chunks, List<List<Double>> vectors, boolean stringPointId) {
-		upsert(chunks, vectors, stringPointId, properties.qdrant().collection());
+		upsert(chunks, vectors, stringPointId, properties.qdrant().collection(), "ACTIVE");
 	}
 
 	private void upsert(List<LawSemanticChunkRow> chunks, List<List<Double>> vectors, boolean stringPointId, String collection) {
+		upsert(chunks, vectors, stringPointId, collection, "ACTIVE");
+	}
+
+	private void upsert(List<LawSemanticChunkRow> chunks, List<List<Double>> vectors, boolean stringPointId, String collection, String activationStatus) {
 		if (chunks.size() != vectors.size()) {
 			throw new IllegalArgumentException("Chunk and vector counts must match.");
 		}
@@ -390,6 +464,7 @@ public class QdrantClient {
 			payload.put("effectiveStatus", blankIfNull(chunk.effectiveStatus()));
 			payload.put("chunkNo", blankIfNull(chunk.chunkNo()));
 			payload.put("chunkVersion", chunkVersion(chunk));
+			payload.put("activationStatus", activationStatus);
 			payload.put("sourcePath", blankIfNull(chunk.sourcePath()));
 			points.add(Map.of(
 				"id", stringPointId ? ragPointId(chunk.chunkId()) : chunk.chunkId(),
@@ -575,7 +650,8 @@ public class QdrantClient {
 				"vector", vector,
 				"limit", limit,
 				"with_payload", SEARCH_PAYLOAD_FIELDS,
-				"with_vector", false
+				"with_vector", false,
+				"filter", Map.of("must_not", List.of(Map.of("key", "activationStatus", "match", Map.of("any", List.of("CANDIDATE", "RETIRED")))))
 			)
 			: Map.of(
 			"vector", vector,
@@ -586,7 +662,8 @@ public class QdrantClient {
 				"must", List.of(Map.of(
 					"key", "target",
 					"match", Map.of("value", target)
-				))
+				)),
+				"must_not", List.of(Map.of("key", "activationStatus", "match", Map.of("any", List.of("CANDIDATE", "RETIRED"))))
 			)
 		);
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.

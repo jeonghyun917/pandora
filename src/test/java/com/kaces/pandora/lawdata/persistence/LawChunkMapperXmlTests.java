@@ -74,10 +74,22 @@ class LawChunkMapperXmlTests {
 
 		assertThat(indexingSql)
 			.contains("c.chunk_text AS chunkText", "c.embedding_text AS embeddingText")
-			.contains("c.parent_key AS parentKey", "c.chunk_version AS chunkVersion", "NULLIF(c.parent_title");
+			.contains("c.parent_key AS parentKey", "c.chunk_version AS chunkVersion", "NULLIF(c.parent_title")
+			.contains("c.activation_status = 'ACTIVE'");
 		assertThat(retrievalSql)
 			.contains("c.chunk_text AS chunkText")
 			.doesNotContain("c.embedding_text AS chunkText");
+	}
+
+	@Test
+	void currentIndexSnapshotExcludesCandidateAndRetiredChunks() throws Exception {
+		Configuration configuration = parseMapper();
+		String sql = configuration.getMappedStatement(
+			"com.kaces.pandora.lawdata.persistence.LawChunkMapper.findCurrentIndexedSnapshot"
+		).getBoundSql(Map.of("model", "text-embedding-3-small", "vectorStore", "law_chunks"))
+			.getSql().replaceAll("\\s+", " ").trim();
+
+		assertThat(sql).contains("c.activation_status = 'ACTIVE'");
 	}
 
 	private Configuration parseMapper() throws Exception {

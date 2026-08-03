@@ -222,6 +222,47 @@ class QdrantClientTests {
 	}
 
 	@Test
+	void productionSearchExcludesCandidateAndRetiredPointsWhenCleanupIsDelayed() throws IOException {
+		java.util.concurrent.atomic.AtomicReference<String> body = new java.util.concurrent.atomic.AtomicReference<>();
+		server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		server.createContext("/collections/law/points/search", exchange -> {
+			body.set(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+			respond(exchange, 200, "{\"result\":[]}");
+		});
+		server.start();
+		client = client();
+
+		client.search(java.util.List.of(0.25d), "law", 1);
+
+		assertThat(body.get()).contains("\"activationStatus\"", "\"CANDIDATE\"", "\"RETIRED\"", "\"must_not\"");
+	}
+
+	@Test
+	void candidateUpsertUsesTheIsolatedCandidateCollection() throws IOException {
+		java.util.concurrent.atomic.AtomicReference<String> pointPath = new java.util.concurrent.atomic.AtomicReference<>();
+		java.util.concurrent.atomic.AtomicReference<String> pointBody = new java.util.concurrent.atomic.AtomicReference<>();
+		server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		server.createContext("/collections/law_chunks_candidate", exchange -> {
+			if (exchange.getRequestURI().getPath().endsWith("/points")) {
+				pointPath.set(exchange.getRequestURI().getPath());
+				pointBody.set(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+			}
+			respond(exchange, 200, readyCollection(1536, 1));
+		});
+		server.start();
+		client = client("law_chunks", "rag");
+
+		client.upsertLawCandidates(java.util.List.of(new LawSemanticChunkRow(
+			7L, 41L, "law", "x", "Title", null, null, null, null,
+			"Article 1", "Article 1", "candidate", null, "$.law.articles[0].body", null,
+			0, "hash", "Article 1", "provision", "PASS", "embedding", "parent", 2
+		)), java.util.List.of(java.util.List.of(0.25d)));
+
+		assertThat(pointPath).hasValue("/collections/law_chunks_candidate/points");
+		assertThat(pointBody.get()).contains("\"activationStatus\":\"CANDIDATE\"");
+	}
+
+	@Test
 	void upsertUsesExplicitStoredChunkVersionForVersionTwoLawPayload() throws IOException {
 		java.util.concurrent.atomic.AtomicReference<String> body = new java.util.concurrent.atomic.AtomicReference<>();
 		server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);

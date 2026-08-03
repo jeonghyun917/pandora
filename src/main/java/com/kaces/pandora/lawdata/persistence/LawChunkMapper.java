@@ -25,6 +25,8 @@ public interface LawChunkMapper {
 	int findActiveChunkVersion(@Param("documentId") long documentId);
 
 	int findNextChunkVersion(@Param("documentId") long documentId);
+
+	String findChunkVersionStatus(@Param("documentId") long documentId, @Param("chunkVersion") int chunkVersion);
 	
 	void deleteChunks(@Param("documentId") long documentId);
 	

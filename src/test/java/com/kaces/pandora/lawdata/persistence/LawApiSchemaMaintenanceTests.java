@@ -34,8 +34,12 @@ class LawApiSchemaMaintenanceTests {
 			.anySatisfy(sql -> assertThat(sql).contains("idx_law_api_document_chunks_active_version"))
 			.anySatisfy(sql -> assertThat(sql).contains("idx_law_api_document_chunks_parent_child"))
 			.anySatisfy(sql -> assertThat(sql).contains("CREATE TABLE IF NOT EXISTS law_api_document_chunk_versions")
-				.contains("expected_chunk_count INT NOT NULL DEFAULT 0"))
-			.anySatisfy(sql -> assertThat(sql).contains("ADD COLUMN expected_chunk_count INT NOT NULL DEFAULT 0"));
+				.contains("expected_chunk_count INT NOT NULL DEFAULT 0")
+				.contains("preview_approved TINYINT(1) NOT NULL DEFAULT 0")
+				.contains("unexplained_loss_span_count INT NOT NULL DEFAULT 0"))
+			.anySatisfy(sql -> assertThat(sql).contains("ADD COLUMN expected_chunk_count INT NOT NULL DEFAULT 0"))
+			.anySatisfy(sql -> assertThat(sql).contains("ADD COLUMN preview_approved TINYINT(1) NOT NULL DEFAULT 0"))
+			.anySatisfy(sql -> assertThat(sql).contains("ADD COLUMN unexplained_loss_span_count INT NOT NULL DEFAULT 0"));
 	}
 
 	@Test
