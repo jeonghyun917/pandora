@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import java.io.InputStream;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -22,14 +25,18 @@ class LawChunkMapperXmlTests {
 		"com.kaces.pandora.lawdata.persistence.LawChunkMapper.findSemanticChunksByHeadingOrDocumentTitle";
 	private static final String INTEGRITY_AUDIT_STATEMENT =
 		"com.kaces.pandora.lawdata.persistence.LawChunkMapper.findLawIndexIntegrityRows";
-	private static final List<String> SEMANTIC_CHUNK_COMPONENTS = List.of(
-		"chunkId", "documentId", "target", "externalId", "title", "agencyName", "categoryName",
-		"sourceDate", "effectiveStatus", "chunkNo", "chunkTitle", "chunkText", "pageNo", "sourcePath",
-		"sourceUrl", "sortOrder", "contentHash", "parentSectionTitle", "sectionType", "qualityStatus",
-		"embeddingText", "parentKey", "chunkVersion"
-	);
+	private static final String MAPPER_NAMESPACE = LawChunkMapper.class.getName();
+	private static final List<String> SEMANTIC_CHUNK_COMPONENTS = Arrays.stream(
+		LawSemanticChunkRow.class.getRecordComponents()
+	).map(component -> component.getName()).toList();
 	private static final Pattern PROJECTION_ALIAS = Pattern.compile(
 		"(?i)\\bAS\\s+([A-Za-z][A-Za-z0-9]*)\\s*(?=,|$)"
+	);
+	private static final Pattern TYPED_PAGE_NO = Pattern.compile(
+		"(?i)CAST\\(NULL AS SIGNED\\)\\s+AS\\s+pageNo(?=,|$)"
+	);
+	private static final Pattern VALID_EMBEDDING_TEXT = Pattern.compile(
+		"(?i)(?:CAST\\(NULL AS CHAR\\)|c\\.embedding_text)\\s+AS\\s+embeddingText(?=,|$)"
 	);
 
 	@Test
@@ -123,28 +130,43 @@ class LawChunkMapperXmlTests {
 	@Test
 	void everySemanticChunkSelectMatchesTheCanonicalRecordProjection() throws Exception {
 		Configuration configuration = parseMapper();
-		List<MappedStatement> statements = configuration.getMappedStatements().stream()
+		List<String> mapperMethodNames = semanticChunkMapperMethodNames();
+		List<String> mappedStatementNames = configuration.getMappedStatements().stream()
 			.filter(MappedStatement.class::isInstance)
 			.map(MappedStatement.class::cast)
 			.distinct()
+			.filter(statement -> statement.getId().startsWith(MAPPER_NAMESPACE + "."))
 			.filter(statement -> statement.getResultMaps().stream()
 				.anyMatch(resultMap -> resultMap.getType().equals(LawSemanticChunkRow.class)))
-			.sorted(Comparator.comparing(MappedStatement::getId))
+			.map(statement -> statement.getId().substring(MAPPER_NAMESPACE.length() + 1))
+			.sorted()
 			.toList();
 
-		assertThat(statements).isNotEmpty();
-		for (MappedStatement statement : statements) {
+		assertThat(mappedStatementNames)
+			.as("LawChunkMapper List<LawSemanticChunkRow> methods and XML statements")
+			.containsExactlyElementsOf(mapperMethodNames);
+
+		for (String mapperMethodName : mapperMethodNames) {
+			String statementId = MAPPER_NAMESPACE + "." + mapperMethodName;
+			assertThat(configuration.hasStatement(statementId, false))
+				.as("mapped statement for %s", mapperMethodName)
+				.isTrue();
+			MappedStatement statement = configuration.getMappedStatement(statementId);
+			assertThat(statement.getResultMaps())
+				.as("LawSemanticChunkRow result map for %s", mapperMethodName)
+				.singleElement()
+				.satisfies(resultMap -> assertThat(resultMap.getType()).isEqualTo(LawSemanticChunkRow.class));
+
 			String sql = boundSql(statement);
 			assertThat(projectionAliases(sql))
 				.as("canonical LawSemanticChunkRow projection for %s", statement.getId())
 				.containsExactlyElementsOf(SEMANTIC_CHUNK_COMPONENTS);
-			assertThat(sql)
+			assertThat(TYPED_PAGE_NO.matcher(projection(sql)).results().count())
 				.as("stable Integer pageNo constructor type for %s", statement.getId())
-				.contains("CAST(NULL AS SIGNED) AS pageNo")
-				.doesNotContain("NULL AS pageNo");
-			assertThat(sql)
+				.isEqualTo(1);
+			assertThat(VALID_EMBEDDING_TEXT.matcher(projection(sql)).results().count())
 				.as("stable String embeddingText constructor type for %s", statement.getId())
-				.doesNotContain("NULL AS embeddingText");
+				.isEqualTo(1);
 		}
 	}
 
@@ -185,17 +207,37 @@ class LawChunkMapperXmlTests {
 	}
 
 	private List<String> projectionAliases(String sql) {
-		int selectStart = sql.toUpperCase().indexOf("SELECT ") + "SELECT ".length();
-		assertThat(selectStart).as("SELECT boundary in %s", sql).isGreaterThan("SELECT ".length() - 1);
-		int fromStart = sql.toUpperCase().indexOf(" FROM ", selectStart);
-		assertThat(fromStart).as("outer FROM boundary in %s", sql).isGreaterThan(selectStart);
-		String projection = sql.substring(selectStart, fromStart);
-		Matcher matcher = PROJECTION_ALIAS.matcher(projection);
+		Matcher matcher = PROJECTION_ALIAS.matcher(projection(sql));
 		List<String> aliases = new java.util.ArrayList<>();
 		while (matcher.find()) {
 			aliases.add(matcher.group(1));
 		}
 		return aliases;
+	}
+
+	private String projection(String sql) {
+		int selectStart = sql.toUpperCase().indexOf("SELECT ") + "SELECT ".length();
+		assertThat(selectStart).as("SELECT boundary in %s", sql).isGreaterThan("SELECT ".length() - 1);
+		int fromStart = sql.toUpperCase().indexOf(" FROM ", selectStart);
+		assertThat(fromStart).as("outer FROM boundary in %s", sql).isGreaterThan(selectStart);
+		return sql.substring(selectStart, fromStart);
+	}
+
+	private List<String> semanticChunkMapperMethodNames() {
+		return Arrays.stream(LawChunkMapper.class.getMethods())
+			.filter(method -> isListOfSemanticChunks(method.getGenericReturnType()))
+			.map(method -> method.getName())
+			.distinct()
+			.sorted(Comparator.naturalOrder())
+			.toList();
+	}
+
+	private boolean isListOfSemanticChunks(Type returnType) {
+		if (!(returnType instanceof ParameterizedType parameterizedType)) {
+			return false;
+		}
+		return parameterizedType.getRawType().equals(List.class)
+			&& Arrays.equals(parameterizedType.getActualTypeArguments(), new Type[] { LawSemanticChunkRow.class });
 	}
 
 	private Configuration parseMapper() throws Exception {
