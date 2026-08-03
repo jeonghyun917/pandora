@@ -678,6 +678,27 @@
       AND c.content_hash REGEXP '^[0-9A-Fa-f]{64}$'
   </select>
 
+  <select id="findLawIndexIntegrityRows"
+          resultType="com.kaces.pandora.semantic.integrity.LawIndexIntegrityRow"
+          timeout="10">
+    SELECT
+      c.chunk_id AS chunkId,
+      CASE WHEN doc.use_yn = 'Y' AND c.use_yn = 'Y' THEN 1 ELSE 0 END AS active,
+      c.content_hash AS chunkContentHash,
+      e.content_hash AS embeddingContentHash,
+      e.status AS embeddingStatus,
+      e.vector_point_id AS vectorPointId
+    FROM law_api_document_chunks c
+    JOIN law_api_documents doc ON doc.document_id = c.document_id
+    LEFT JOIN law_api_chunk_embeddings e
+      ON e.chunk_id = c.chunk_id
+      AND e.embedding_model = #{model}
+      AND e.vector_store = #{vectorStore}
+    WHERE (#{target} = '' OR doc.target = #{target})
+    ORDER BY c.chunk_id
+    LIMIT LEAST(#{limit}, 10000)
+  </select>
+
   <insert id="upsertEmbeddingStatus">
     INSERT INTO law_api_chunk_embeddings (
       chunk_id, embedding_model, vector_store, vector_point_id, content_hash,

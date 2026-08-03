@@ -14,6 +14,27 @@ class LawChunkMapperXmlTests {
 	private static final String MAPPER_RESOURCE = "mapper/law/LawChunkMapper.xml";
 	private static final String DISCOVERY_HEADING_STATEMENT =
 		"com.kaces.pandora.lawdata.persistence.LawChunkMapper.findSemanticChunksByHeadingOrDocumentTitle";
+	private static final String INTEGRITY_AUDIT_STATEMENT =
+		"com.kaces.pandora.lawdata.persistence.LawChunkMapper.findLawIndexIntegrityRows";
+
+	@Test
+	void integrityAuditFiltersTargetAndEnforcesTenThousandRowBound() throws Exception {
+		Configuration configuration = parseMapper();
+		String sql = configuration.getMappedStatement(INTEGRITY_AUDIT_STATEMENT)
+			.getBoundSql(Map.of(
+				"target", "law",
+				"model", "text-embedding-3-small",
+				"vectorStore", "law_chunks",
+				"limit", 99_999
+			))
+			.getSql()
+			.replaceAll("\\s+", " ")
+			.trim();
+
+		assertThat(sql)
+			.contains("doc.use_yn = 'Y'", "(? = '' OR doc.target = ?)", "LIMIT LEAST(?, 10000)")
+			.contains("e.embedding_model = ?", "e.vector_store = ?");
+	}
 
 	@Test
 	void discoveryHeadingSearchDoesNotScanChunkBody() throws Exception {

@@ -13,6 +13,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.LinkedHashSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
@@ -71,6 +73,45 @@ public class QdrantClient {
 
 	public long searchFailureCount() {
 		return searchFailureCount.get();
+	}
+
+	public Set<Long> findExistingLawPointIds(List<Long> pointIds) {
+		List<Long> ids = pointIds == null ? List.of() : pointIds.stream()
+			.filter(id -> id != null && id > 0)
+			.distinct()
+			.toList();
+		if (ids.isEmpty()) {
+			return Set.of();
+		}
+		if (ids.size() > 256) {
+			throw new IllegalArgumentException("Law point lookup is limited to 256 IDs.");
+		}
+		byte[] response = restClient.post()
+			.uri("/collections/{collection}/points", properties.qdrant().collection())
+			.body(Map.of("ids", ids, "with_payload", false, "with_vector", false))
+			.retrieve()
+			.body(byte[].class);
+		if (response == null || response.length == 0) {
+			throw new IllegalStateException("Qdrant point lookup response was empty.");
+		}
+		try {
+			Map<?, ?> envelope = objectMapper.readValue(response, Map.class);
+			if (!(envelope.get("result") instanceof List<?> result)) {
+				throw new IllegalStateException("Qdrant point lookup response did not contain a result list.");
+			}
+			Set<Long> existing = new LinkedHashSet<>();
+			for (Object item : result) {
+				if (!(item instanceof Map<?, ?> point) || !(point.get("id") instanceof Number id)) {
+					throw new IllegalStateException("Qdrant point lookup response contained a malformed point.");
+				}
+				existing.add(id.longValue());
+			}
+			return Set.copyOf(existing);
+		} catch (RuntimeException exception) {
+			throw exception;
+		} catch (Exception exception) {
+			throw new IllegalStateException("Qdrant point lookup response was not valid JSON.", exception);
+		}
 	}
 
 	public boolean isSearchReady() {

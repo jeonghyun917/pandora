@@ -7,6 +7,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.util.Set;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,29 @@ class QdrantClientTests {
 		if (server != null) {
 			server.stop(0);
 		}
+	}
+
+	@Test
+	void findExistingLawPointIdsUsesBoundedPointsLookupWithoutPayloadOrVectors() throws IOException {
+		java.util.concurrent.atomic.AtomicReference<String> method = new java.util.concurrent.atomic.AtomicReference<>();
+		java.util.concurrent.atomic.AtomicReference<String> path = new java.util.concurrent.atomic.AtomicReference<>();
+		java.util.concurrent.atomic.AtomicReference<String> body = new java.util.concurrent.atomic.AtomicReference<>();
+		server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		server.createContext("/collections/law_chunks/points", exchange -> {
+			method.set(exchange.getRequestMethod());
+			path.set(exchange.getRequestURI().getPath());
+			body.set(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+			respond(exchange, 200, "{\"result\":[{\"id\":10},{\"id\":30}]}");
+		});
+		server.start();
+		client = client("law_chunks", "rag");
+
+		Set<Long> existing = client.findExistingLawPointIds(java.util.List.of(10L, 20L, 30L));
+
+		assertThat(existing).containsExactlyInAnyOrder(10L, 30L);
+		assertThat(method).hasValue("POST");
+		assertThat(path).hasValue("/collections/law_chunks/points");
+		assertThat(body.get()).contains("\"with_payload\":false", "\"with_vector\":false", "10", "20", "30");
 	}
 
 	@Test

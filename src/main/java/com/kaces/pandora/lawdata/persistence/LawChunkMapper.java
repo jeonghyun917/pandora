@@ -5,6 +5,7 @@ import com.kaces.pandora.lawdata.chunk.LawChunkSearchRow;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import com.kaces.pandora.lawdata.sync.StoredChunk;
 import com.kaces.pandora.semantic.provenance.IndexContentSnapshot;
+import com.kaces.pandora.semantic.integrity.LawIndexIntegrityRow;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -99,6 +100,13 @@ public interface LawChunkMapper {
 	IndexContentSnapshot findCurrentIndexedSnapshot(
 		@Param("model") String model,
 		@Param("vectorStore") String vectorStore
+	);
+
+	List<LawIndexIntegrityRow> findLawIndexIntegrityRows(
+		@Param("target") String target,
+		@Param("model") String model,
+		@Param("vectorStore") String vectorStore,
+		@Param("limit") int limit
 	);
 
 	void upsertEmbeddingStatus(
