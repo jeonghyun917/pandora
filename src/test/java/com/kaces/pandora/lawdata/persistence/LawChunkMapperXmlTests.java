@@ -92,6 +92,19 @@ class LawChunkMapperXmlTests {
 		assertThat(sql).contains("c.activation_status = 'ACTIVE'");
 	}
 
+	@Test
+	void cleanupCompletionUsesTheClaimedOperationRatherThanThePriorVersionOwner() throws Exception {
+		Configuration configuration = parseMapper();
+		String sql = configuration.getMappedStatement(
+			"com.kaces.pandora.lawdata.persistence.LawChunkMapper.completeCandidateCleanupForOperation"
+		).getBoundSql(Map.of("documentId", 42L, "chunkVersion", 2, "owner", "replacement-owner"))
+			.getSql().replaceAll("\\s+", " ").trim();
+
+		assertThat(sql)
+			.contains("o.owner_token=?", "o.phase='DB_ACTIVE_CLEANUP_PENDING'")
+			.doesNotContain("v.activation_owner=?");
+	}
+
 	private Configuration parseMapper() throws Exception {
 		Configuration configuration = new Configuration();
 		try (InputStream input = Resources.getResourceAsStream(MAPPER_RESOURCE)) {

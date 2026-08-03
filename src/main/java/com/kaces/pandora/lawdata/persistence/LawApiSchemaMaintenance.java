@@ -73,7 +73,7 @@ public class LawApiSchemaMaintenance implements ApplicationRunner {
 		ensureVersionActivationStatusConstraint();
 		jdbcTemplate.execute("""
 			CREATE TABLE IF NOT EXISTS law_api_document_activation_operations (
-				document_id BIGINT NOT NULL, candidate_version INT NOT NULL, owner_token CHAR(36) NOT NULL,
+				document_id BIGINT NOT NULL, candidate_version INT NOT NULL, owner_token CHAR(36) NOT NULL, runtime_instance_id CHAR(36) NOT NULL,
 				lease_expires_at DATETIME NOT NULL, phase VARCHAR(40) NOT NULL, prior_active_version INT NOT NULL DEFAULT 0,
 				prior_point_ids_json LONGTEXT NOT NULL, candidate_point_ids_json LONGTEXT NOT NULL, last_error TEXT NULL,
 				created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -82,6 +82,7 @@ public class LawApiSchemaMaintenance implements ApplicationRunner {
 				CONSTRAINT chk_law_activation_operations_phase CHECK (phase IN ('PREPARING','QDRANT_ACTIVATING','RECOVERY_REQUIRED','DB_ACTIVE_CLEANUP_PENDING','DONE'))
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 			""");
+		ensureActivationOperationColumn("runtime_instance_id", "CHAR(36) NULL");
 	}
 
 	private void ensureVersionActivationStatusConstraint() {
@@ -100,6 +101,16 @@ public class LawApiSchemaMaintenance implements ApplicationRunner {
 			jdbcTemplate.execute("ALTER TABLE law_api_document_chunk_versions DROP CONSTRAINT " + constraint.get("CONSTRAINT_NAME"));
 		}
 		jdbcTemplate.execute("ALTER TABLE law_api_document_chunk_versions ADD CONSTRAINT chk_law_chunk_versions_activation_status CHECK (" + VERSION_ACTIVATION_CHECK + ")");
+	}
+
+	private void ensureActivationOperationColumn(String columnName, String definition) {
+		Integer count = jdbcTemplate.queryForObject("""
+			SELECT COUNT(*) FROM information_schema.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'law_api_document_activation_operations' AND COLUMN_NAME = ?
+			""", Integer.class, columnName);
+		if (count == null || count == 0) {
+			jdbcTemplate.execute("ALTER TABLE law_api_document_activation_operations ADD COLUMN " + columnName + " " + definition);
+		}
 	}
 
 	private boolean isCanonicalVersionActivationCheck(Map<String, Object> constraint) {

@@ -7,14 +7,14 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.UUID;
 
-final class RuntimeConfigurationIdentity {
+public final class RuntimeConfigurationIdentity {
 
 	private static final String INSTANCE_ID = UUID.randomUUID().toString();
 
 	private RuntimeConfigurationIdentity() {
 	}
 
-	static String instanceId() {
+	public static String instanceId() {
 		return INSTANCE_ID;
 	}
 

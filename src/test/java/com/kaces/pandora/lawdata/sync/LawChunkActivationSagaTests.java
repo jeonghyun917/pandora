@@ -48,27 +48,62 @@ class LawChunkActivationSagaTests {
 	}
 
 	@Test
-	void expiredPreFlipOperationIsDemotedVerifiedAndReleasedWithoutPromotion() {
+	void sameRuntimeExpiredQdrantActivationStaysBlockedWithoutQdrantMutation() {
 		LawChunkMapper mapper = preparedMapper();
-		when(mapper.findActivationOperation(42L)).thenReturn(operation(2, "crashed-owner", LawChunkActivationSaga.QDRANT_ACTIVATING, Instant.now().minusSeconds(1), List.of(101L), List.of(202L)));
-		when(mapper.reclaimActivationOperation(anyLong(), anyString(), any(), anyString(), anyString(), any())).thenReturn(1);
+		when(mapper.findActivationOperation(42L)).thenReturn(operation(2, "delayed-owner", "runtime-one", LawChunkActivationSaga.QDRANT_ACTIVATING, Instant.now().minusSeconds(1), List.of(101L), List.of(202L)));
 		QdrantClient qdrant = mock(QdrantClient.class);
-		when(qdrant.findExistingLawCandidatePointIds(List.of(202L))).thenReturn(Set.of(202L));
 
 		ChunkActivationResult result = saga(mapper, qdrant).activate(42L, 3);
 
 		assertThat(result.activated()).isFalse();
+		verify(qdrant, never()).markLawPointsCandidate(any());
+		verify(qdrant, never()).promoteLawCandidatePoints(any());
+		verify(mapper, never()).reclaimActivationOperation(anyLong(), anyString(), anyString(), any(), anyString(), anyString(), any());
+	}
+
+	@Test
+	void differentRuntimeExpiredPreFlipOperationIsDemotedInProductionThenVerifiedAndReleasedWithoutPromotion() {
+		LawChunkMapper mapper = preparedMapper();
+		when(mapper.findActivationOperation(42L)).thenReturn(operation(2, "crashed-owner", LawChunkActivationSaga.QDRANT_ACTIVATING, Instant.now().minusSeconds(1), List.of(101L), List.of(202L)));
+		when(mapper.reclaimActivationOperation(anyLong(), anyString(), anyString(), any(), anyString(), anyString(), any())).thenReturn(1);
+		QdrantClient qdrant = mock(QdrantClient.class);
+		when(qdrant.findExistingLawCandidatePointIds(List.of(202L))).thenReturn(Set.of(202L));
+		when(qdrant.findLawPointIdsWithActivationStatus(List.of(202L), "CANDIDATE")).thenReturn(Set.of(202L));
+
+		ChunkActivationResult result = saga(mapper, qdrant).activate(42L, 3);
+
+		assertThat(result.activated()).isFalse();
+		verify(mapper).reclaimActivationOperation(eq(42L), anyString(), eq("runtime-one"), any(), eq(LawChunkActivationSaga.QDRANT_ACTIVATING), eq(LawChunkActivationSaga.RECOVERY_REQUIRED), isNull());
 		verify(qdrant).markLawPointsCandidate(List.of(202L));
+		verify(qdrant).findLawPointIdsWithActivationStatus(List.of(202L), "CANDIDATE");
 		verify(qdrant, never()).promoteLawCandidatePoints(any());
 		verify(mapper).resetCandidateForOperation(eq(42L), eq(2), anyString(), eq(LawChunkActivationSaga.RECOVERY_REQUIRED));
 		verify(mapper).transitionActivationOperation(eq(42L), anyString(), eq(LawChunkActivationSaga.RECOVERY_REQUIRED), eq(LawChunkActivationSaga.DONE), isNull());
 	}
 
 	@Test
+	void stagingPresenceDoesNotReleaseAProductionPointThatRemainsActive() {
+		LawChunkMapper mapper = preparedMapper();
+		when(mapper.findActivationOperation(42L)).thenReturn(operation(2, "crashed-owner", LawChunkActivationSaga.QDRANT_ACTIVATING, Instant.now().minusSeconds(1), List.of(101L), List.of(202L)));
+		when(mapper.reclaimActivationOperation(anyLong(), anyString(), anyString(), any(), anyString(), anyString(), any())).thenReturn(1);
+		QdrantClient qdrant = mock(QdrantClient.class);
+		when(qdrant.findExistingLawCandidatePointIds(List.of(202L))).thenReturn(Set.of(202L));
+		when(qdrant.findLawPointIdsWithActivationStatus(List.of(202L), "CANDIDATE")).thenReturn(Set.of());
+		when(qdrant.findLawPointIdsWithActivationStatus(List.of(202L), "ACTIVE")).thenReturn(Set.of(202L));
+
+		ChunkActivationResult result = saga(mapper, qdrant).activate(42L, 3);
+
+		assertThat(result.activated()).isFalse();
+		verify(qdrant).findLawPointIdsWithActivationStatus(List.of(202L), "CANDIDATE");
+		verify(mapper, never()).resetCandidateForOperation(anyLong(), anyInt(), anyString(), anyString());
+		verify(mapper).transitionActivationOperation(eq(42L), anyString(), eq(LawChunkActivationSaga.RECOVERY_REQUIRED), eq(LawChunkActivationSaga.RECOVERY_REQUIRED), anyString());
+	}
+
+	@Test
 	void expiredCleanupOperationOnlyCleansThePersistedPriorPointSnapshot() {
 		LawChunkMapper mapper = preparedMapper();
 		when(mapper.findActivationOperation(42L)).thenReturn(operation(2, "crashed-owner", LawChunkActivationSaga.DB_ACTIVE_CLEANUP_PENDING, Instant.now().minusSeconds(1), List.of(101L), List.of(202L)));
-		when(mapper.reclaimActivationOperation(anyLong(), anyString(), any(), anyString(), anyString(), any())).thenReturn(1);
+		when(mapper.reclaimActivationOperation(anyLong(), anyString(), anyString(), any(), anyString(), anyString(), any())).thenReturn(1);
 		when(mapper.completeCandidateCleanupForOperation(anyLong(), anyInt(), anyString())).thenReturn(1);
 		when(mapper.transitionActivationOperation(anyLong(), anyString(), anyString(), anyString(), any())).thenReturn(1);
 		QdrantClient qdrant = mock(QdrantClient.class);
@@ -85,7 +120,7 @@ class LawChunkActivationSagaTests {
 	void demotionFailureRetainsRecoveryRequiredInsteadOfReleasingAmbiguousOwner() {
 		LawChunkMapper mapper = preparedMapper();
 		when(mapper.findActivationOperation(42L)).thenReturn(operation(2, "crashed-owner", LawChunkActivationSaga.QDRANT_ACTIVATING, Instant.now().minusSeconds(1), List.of(101L), List.of(202L)));
-		when(mapper.reclaimActivationOperation(anyLong(), anyString(), any(), anyString(), anyString(), any())).thenReturn(1);
+		when(mapper.reclaimActivationOperation(anyLong(), anyString(), anyString(), any(), anyString(), anyString(), any())).thenReturn(1);
 		QdrantClient qdrant = mock(QdrantClient.class);
 		doThrow(new IllegalStateException("qdrant unavailable")).when(qdrant).markLawPointsCandidate(List.of(202L));
 
@@ -114,8 +149,8 @@ class LawChunkActivationSagaTests {
 		ArgumentCaptor<DocumentActivationOperation> operation = ArgumentCaptor.forClass(DocumentActivationOperation.class);
 		verify(mapper).insertActivationOperation(operation.capture());
 		assertThat(operation.getValue())
-			.extracting(DocumentActivationOperation::priorActiveVersion, DocumentActivationOperation::priorPointIdsJson, DocumentActivationOperation::candidatePointIdsJson)
-			.containsExactly(1, "[101]", "[202,203]");
+			.extracting(DocumentActivationOperation::runtimeInstanceId, DocumentActivationOperation::priorActiveVersion, DocumentActivationOperation::priorPointIdsJson, DocumentActivationOperation::candidatePointIdsJson)
+			.containsExactly("runtime-one", 1, "[101]", "[202,203]");
 	}
 
 	private LawChunkMapper preparedMapper() {
@@ -133,11 +168,15 @@ class LawChunkActivationSagaTests {
 	}
 
 	private LawChunkActivationSaga saga(LawChunkMapper mapper, QdrantClient qdrant) {
-		return new LawChunkActivationSaga(mapper, qdrant, new LawAiProperties(null, null, null, null), directTransactions());
+		return new LawChunkActivationSaga(mapper, qdrant, new LawAiProperties(null, null, null, null), directTransactions(), "runtime-one");
 	}
 
 	private DocumentActivationOperation operation(int candidateVersion, String owner, String phase, Instant leaseExpiresAt, List<Long> priorIds, List<Long> candidateIds) {
-		return new DocumentActivationOperation(42L, candidateVersion, owner, leaseExpiresAt, phase, 1,
+		return operation(candidateVersion, owner, "other-runtime", phase, leaseExpiresAt, priorIds, candidateIds);
+	}
+
+	private DocumentActivationOperation operation(int candidateVersion, String owner, String runtimeInstanceId, String phase, Instant leaseExpiresAt, List<Long> priorIds, List<Long> candidateIds) {
+		return new DocumentActivationOperation(42L, candidateVersion, owner, runtimeInstanceId, leaseExpiresAt, phase, 1,
 			"[" + priorIds.get(0) + "]", "[" + candidateIds.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(",")) + "]", null);
 	}
 

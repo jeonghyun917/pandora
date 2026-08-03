@@ -343,6 +343,7 @@ CREATE TABLE IF NOT EXISTS law_api_document_activation_operations (
     document_id BIGINT NOT NULL,
     candidate_version INT NOT NULL,
     owner_token CHAR(36) NOT NULL,
+    runtime_instance_id CHAR(36) NOT NULL,
     lease_expires_at DATETIME NOT NULL,
     phase VARCHAR(40) NOT NULL,
     prior_active_version INT NOT NULL DEFAULT 0,

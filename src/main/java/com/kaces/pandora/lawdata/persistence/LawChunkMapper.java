@@ -65,6 +65,7 @@ public interface LawChunkMapper {
 	int reclaimActivationOperation(
 		@Param("documentId") long documentId,
 		@Param("owner") String owner,
+		@Param("runtimeInstanceId") String runtimeInstanceId,
 		@Param("leaseExpiresAt") java.time.Instant leaseExpiresAt,
 		@Param("expectedPhase") String expectedPhase,
 		@Param("phase") String phase,

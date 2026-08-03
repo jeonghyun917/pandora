@@ -145,26 +145,26 @@
   </update>
 
   <select id="findActivationOperation" resultType="com.kaces.pandora.lawdata.sync.DocumentActivationOperation">
-    SELECT document_id AS documentId, candidate_version AS candidateVersion, owner_token AS owner,
+    SELECT document_id AS documentId, candidate_version AS candidateVersion, owner_token AS owner, runtime_instance_id AS runtimeInstanceId,
       lease_expires_at AS leaseExpiresAt, phase, prior_active_version AS priorActiveVersion,
       prior_point_ids_json AS priorPointIdsJson, candidate_point_ids_json AS candidatePointIdsJson, last_error AS lastError
     FROM law_api_document_activation_operations WHERE document_id = #{documentId}
   </select>
 
   <insert id="insertActivationOperation">
-    INSERT INTO law_api_document_activation_operations (document_id,candidate_version,owner_token,lease_expires_at,phase,prior_active_version,prior_point_ids_json,candidate_point_ids_json,last_error)
-    VALUES (#{operation.documentId},#{operation.candidateVersion},#{operation.owner},#{operation.leaseExpiresAt},#{operation.phase},#{operation.priorActiveVersion},#{operation.priorPointIdsJson},#{operation.candidatePointIdsJson},#{operation.lastError})
+    INSERT INTO law_api_document_activation_operations (document_id,candidate_version,owner_token,runtime_instance_id,lease_expires_at,phase,prior_active_version,prior_point_ids_json,candidate_point_ids_json,last_error)
+    VALUES (#{operation.documentId},#{operation.candidateVersion},#{operation.owner},#{operation.runtimeInstanceId},#{operation.leaseExpiresAt},#{operation.phase},#{operation.priorActiveVersion},#{operation.priorPointIdsJson},#{operation.candidatePointIdsJson},#{operation.lastError})
   </insert>
 
   <update id="reclaimActivationOperation">
     UPDATE law_api_document_activation_operations
-    SET owner_token=#{owner}, lease_expires_at=#{leaseExpiresAt}, phase=#{phase}, last_error=#{lastError}, updated_at=NOW()
+    SET owner_token=#{owner}, runtime_instance_id=#{runtimeInstanceId}, lease_expires_at=#{leaseExpiresAt}, phase=#{phase}, last_error=#{lastError}, updated_at=NOW()
     WHERE document_id=#{documentId} AND lease_expires_at &lt; NOW() AND phase=#{expectedPhase}
   </update>
 
   <update id="replaceCompletedActivationOperation">
     UPDATE law_api_document_activation_operations
-    SET candidate_version=#{operation.candidateVersion}, owner_token=#{operation.owner}, lease_expires_at=#{operation.leaseExpiresAt},
+    SET candidate_version=#{operation.candidateVersion}, owner_token=#{operation.owner}, runtime_instance_id=#{operation.runtimeInstanceId}, lease_expires_at=#{operation.leaseExpiresAt},
       phase=#{operation.phase}, prior_active_version=#{operation.priorActiveVersion}, prior_point_ids_json=#{operation.priorPointIdsJson},
       candidate_point_ids_json=#{operation.candidatePointIdsJson}, last_error=#{operation.lastError}, updated_at=NOW()
     WHERE document_id=#{operation.documentId} AND phase='DONE'
@@ -242,7 +242,7 @@
     UPDATE law_api_document_chunk_versions v
     SET v.activation_status='ACTIVE', v.activation_owner=NULL, v.updated_at=NOW()
     WHERE v.document_id=#{documentId} AND v.chunk_version=#{chunkVersion}
-      AND v.activation_status='ACTIVE_CLEANUP_PENDING' AND v.activation_owner=#{owner}
+      AND v.activation_status='ACTIVE_CLEANUP_PENDING'
       AND EXISTS (SELECT 1 FROM law_api_document_activation_operations o
         WHERE o.document_id=v.document_id AND o.candidate_version=v.chunk_version
           AND o.owner_token=#{owner} AND o.phase='DB_ACTIVE_CLEANUP_PENDING')

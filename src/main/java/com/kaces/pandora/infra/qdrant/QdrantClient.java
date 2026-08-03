@@ -136,6 +136,14 @@ public class QdrantClient {
 	public Set<Long> findLawPointIdsWithActivationStatus(List<Long> pointIds, String activationStatus) {
 		List<Long> ids = pointIds == null ? List.of() : pointIds.stream().filter(id -> id != null && id > 0).distinct().toList();
 		if (ids.isEmpty()) return Set.of();
+		Set<Long> matching = new LinkedHashSet<>();
+		for (int start = 0; start < ids.size(); start += 256) {
+			matching.addAll(findLawPointIdsWithActivationStatusBatch(ids.subList(start, Math.min(start + 256, ids.size())), activationStatus));
+		}
+		return Set.copyOf(matching);
+	}
+
+	private Set<Long> findLawPointIdsWithActivationStatusBatch(List<Long> ids, String activationStatus) {
 		byte[] response = restClient.post().uri("/collections/{collection}/points", properties.qdrant().collection())
 			.body(Map.of("ids", ids, "with_payload", true, "with_vector", false)).retrieve().body(byte[].class);
 		try {
@@ -168,9 +176,14 @@ public class QdrantClient {
 		if (ids.isEmpty()) {
 			return Set.of();
 		}
-		if (ids.size() > 256) {
-			throw new IllegalArgumentException("Law point lookup is limited to 256 IDs.");
+		Set<Long> existing = new LinkedHashSet<>();
+		for (int start = 0; start < ids.size(); start += 256) {
+			existing.addAll(findExistingLawPointIdsBatch(ids.subList(start, Math.min(start + 256, ids.size())), collection));
 		}
+		return Set.copyOf(existing);
+	}
+
+	private Set<Long> findExistingLawPointIdsBatch(List<Long> ids, String collection) {
 		byte[] response = restClient.post()
 			.uri("/collections/{collection}/points", collection)
 			.body(Map.of("ids", ids, "with_payload", false, "with_vector", false))

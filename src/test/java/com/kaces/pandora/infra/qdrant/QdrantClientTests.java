@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.Set;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
@@ -64,6 +65,31 @@ class QdrantClientTests {
 		assertThat(method).hasValue("POST");
 		assertThat(path).hasValue("/collections/law_chunks/points");
 		assertThat(body.get()).contains("\"with_payload\":false", "\"with_vector\":false", "10", "20", "30");
+	}
+
+	@Test
+	void lawCandidateAndProductionStatusLookupsBatchMoreThanTwoHundredFiftySixPointIds() throws IOException {
+		AtomicInteger candidateRequests = new AtomicInteger();
+		AtomicInteger productionRequests = new AtomicInteger();
+		server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		server.createContext("/collections", exchange -> {
+			String request = new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+			String result = requestPointIds(request).stream()
+				.map(id -> "{\"id\":" + id + ",\"payload\":{\"activationStatus\":\"CANDIDATE\"}}")
+				.collect(java.util.stream.Collectors.joining(",", "{\"result\":[", "]}"));
+			if (exchange.getRequestURI().getPath().contains("law_chunks_candidate")) candidateRequests.incrementAndGet();
+			else productionRequests.incrementAndGet();
+			respond(exchange, 200, result);
+		});
+		server.start();
+		client = client("law_chunks", "rag");
+		java.util.List<Long> ids = java.util.stream.LongStream.rangeClosed(1, 257).boxed().toList();
+
+		assertThat(client.findExistingLawCandidatePointIds(ids)).containsExactlyInAnyOrderElementsOf(ids);
+		assertThat(client.findLawPointIdsWithActivationStatus(ids, "CANDIDATE")).containsExactlyInAnyOrderElementsOf(ids);
+		assertThat(client.findLawPointIdsWithActivationStatus(ids, "ACTIVE")).isEmpty();
+		assertThat(candidateRequests).hasValue(2);
+		assertThat(productionRequests).hasValue(4);
 	}
 
 	@Test
@@ -286,6 +312,13 @@ class QdrantClientTests {
 		server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 		server.createContext("/collections/law_chunks/points", exchange -> respond(exchange, 200, body));
 		server.start();
+	}
+
+	private java.util.List<Long> requestPointIds(String request) {
+		java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\\d+").matcher(request);
+		java.util.List<Long> ids = new java.util.ArrayList<>();
+		while (matcher.find()) ids.add(Long.parseLong(matcher.group()));
+		return ids;
 	}
 
 	private void startSearchServer(int status, String body) throws IOException {

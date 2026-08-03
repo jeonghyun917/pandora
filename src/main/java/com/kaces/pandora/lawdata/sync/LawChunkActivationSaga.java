@@ -1,6 +1,7 @@
 package com.kaces.pandora.lawdata.sync;
 
 import com.kaces.pandora.infra.qdrant.QdrantClient;
+import com.kaces.pandora.ai.answer.RuntimeConfigurationIdentity;
 import com.kaces.pandora.lawdata.chunk.LawChunkVersionVerification;
 import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
 import com.kaces.pandora.semantic.config.LawAiProperties;
@@ -31,12 +32,18 @@ class LawChunkActivationSaga {
 	private final QdrantClient qdrant;
 	private final LawAiProperties properties;
 	private final LawActivationTransactionExecutor transactions;
+	private final String runtimeInstanceId;
 
 	LawChunkActivationSaga(LawChunkMapper mapper, QdrantClient qdrant, LawAiProperties properties, LawActivationTransactionExecutor transactions) {
+		this(mapper, qdrant, properties, transactions, RuntimeConfigurationIdentity.instanceId());
+	}
+
+	LawChunkActivationSaga(LawChunkMapper mapper, QdrantClient qdrant, LawAiProperties properties, LawActivationTransactionExecutor transactions, String runtimeInstanceId) {
 		this.mapper = mapper;
 		this.qdrant = qdrant;
 		this.properties = properties;
 		this.transactions = transactions;
+		this.runtimeInstanceId = runtimeInstanceId;
 	}
 
 	ChunkActivationResult activate(long documentId, int candidateVersion) {
@@ -60,9 +67,12 @@ class LawChunkActivationSaga {
 		DocumentActivationOperation existing = mapper.findActivationOperation(documentId);
 		if (existing == null || DONE.equals(existing.phase())) return claimNewOperation(documentId, candidateVersion, owner, now, existing != null);
 		if (!existing.leaseExpired(now)) return ActivationContext.blocked("Document activation is owned by another request.");
+		if (QDRANT_ACTIVATING.equals(existing.phase()) && sameOrUnknownRuntime(existing.runtimeInstanceId())) {
+			return ActivationContext.blocked("Expired Qdrant activation belongs to this runtime and may still resume.");
+		}
 
 		String reclaimedPhase = DB_ACTIVE_CLEANUP_PENDING.equals(existing.phase()) ? DB_ACTIVE_CLEANUP_PENDING : RECOVERY_REQUIRED;
-		if (mapper.reclaimActivationOperation(documentId, owner, now.plus(LEASE), existing.phase(), reclaimedPhase, existing.lastError()) != 1) {
+		if (mapper.reclaimActivationOperation(documentId, owner, runtimeInstanceId, now.plus(LEASE), existing.phase(), reclaimedPhase, existing.lastError()) != 1) {
 			return ActivationContext.blocked("Document activation ownership changed before reclaim.");
 		}
 		return fromOperation(existing, owner, reclaimedPhase);
@@ -83,7 +93,7 @@ class LawChunkActivationSaga {
 		List<Long> priorIds = mapper.findActiveChunkIdsByDocumentId(documentId);
 		int priorVersion = mapper.findActiveChunkVersion(documentId);
 		DocumentActivationOperation operation = new DocumentActivationOperation(
-			documentId, candidateVersion, owner, now.plus(LEASE), PREPARING, priorVersion,
+			documentId, candidateVersion, owner, runtimeInstanceId, now.plus(LEASE), PREPARING, priorVersion,
 			encodeIds(priorIds), encodeIds(candidateIds), null);
 		int claimed;
 		try {
@@ -167,7 +177,7 @@ class LawChunkActivationSaga {
 		try {
 			if (!renewLease(context, expectedPhase)) return false;
 			qdrant.markLawPointsCandidate(context.candidateIds);
-			if (!qdrant.findExistingLawCandidatePointIds(context.candidateIds).containsAll(context.candidateIds)) {
+			if (!qdrant.findLawPointIdsWithActivationStatus(context.candidateIds, "CANDIDATE").containsAll(context.candidateIds)) {
 				throw new IllegalStateException("Candidate demotion could not be verified.");
 			}
 			transactions.inTransaction(() -> {
@@ -186,6 +196,11 @@ class LawChunkActivationSaga {
 
 	private boolean renewLease(ActivationContext context, String expectedPhase) {
 		return mapper.renewActivationOperationLease(context.documentId, context.owner, expectedPhase, Instant.now().plus(LEASE)) == 1;
+	}
+
+	private boolean sameOrUnknownRuntime(String operationRuntimeInstanceId) {
+		return operationRuntimeInstanceId == null || operationRuntimeInstanceId.isBlank()
+			|| runtimeInstanceId.equals(operationRuntimeInstanceId);
 	}
 
 	private void markRecoveryRequired(ActivationContext context, String expectedPhase, String error) {

@@ -230,3 +230,62 @@ git diff --check
 ### Commit
 
 `fix: persist document activation operations` — SHA recorded in handoff.
+
+## Runtime-fenced activation recovery (fix5)
+
+### Review findings and correction
+
+- Recovery had changed production points to `CANDIDATE` but then checked only
+  the isolated staging collection. It now verifies the persisted candidate IDs
+  in the production collection with `activationStatus=CANDIDATE` before
+  releasing database state.
+- Qdrant point lookups rejected more than 256 IDs. Candidate-staging existence
+  and production ACTIVE/CANDIDATE status lookups now batch at 256 IDs in the
+  client, preserving fail-closed union semantics.
+- A lease alone cannot fence a delayed Qdrant writer. Operations now persist a
+  JVM-stable `runtime_instance_id`, reusing `RuntimeConfigurationIdentity`.
+  Under the single-8080 runtime contract, an expired `QDRANT_ACTIVATING`
+  operation from the same runtime is blocked with zero Qdrant mutation; only a
+  known different runtime may reclaim it into `RECOVERY_REQUIRED` and perform
+  the demotion/release recovery. `RECOVERY_REQUIRED` and cleanup-pending
+  phases retain normal owner-and-phase reclaim behavior.
+- Reclaimed cleanup no longer depends on the old version row's owner token.
+  The current operation owner and `DB_ACTIVE_CLEANUP_PENDING` phase are the
+  authority for completing the already DB-active candidate, while Qdrant
+  cleanup continues to use only persisted prior IDs.
+
+### TDD evidence
+
+- RED: same-runtime expired Qdrant activation attempted a reclaim; it now
+  returns BLOCKED with no Qdrant interaction.
+- RED: recovery never checked production CANDIDATE status, staging-only
+  presence released an externally ACTIVE production point, and the >256 lookup
+  threw its fixed bound exception.
+- RED: cleanup completion required the stale version-owner token rather than
+  the newly reclaimed operation authority.
+
+### Focused verification
+
+```text
+./mvnw.cmd -Dtest=LawDocumentWriterTests,LawOpenApiSyncServiceChunkPreviewTests,LawApiSchemaMaintenanceTests,QdrantClientTests,LawSemanticIndexServiceTests,LawChunkMapperXmlTests,LawChunkActivationSagaTests,RuntimeConfigurationIdentityTests test
+Tests run: 44, Failures: 0, Errors: 0, Skipped: 0
+
+node --test scripts/law-parent-child-rechunk-wave.test.js
+pass 2, fail 0
+
+node --check scripts/law-parent-child-rechunk-wave.js
+node --check scripts/law-parent-child-rechunk-bulk.js
+git diff --check
+```
+
+### Residual risk
+
+This fencing protocol intentionally does not claim support for concurrent app
+instances. Legacy operation rows without a runtime ID are blocked rather than
+guessed to be safe at the Qdrant-activating phase and need explicit recovery.
+No live MariaDB, Qdrant, 8080, or 18080 action, and no broad Spring-context
+suite, was run.
+
+### Commit
+
+`fix: fence document activation runtime` — SHA recorded in handoff.

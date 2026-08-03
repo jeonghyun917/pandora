@@ -42,7 +42,10 @@ class LawApiSchemaMaintenanceTests {
 				.contains("ACTIVATING", "ACTIVE_CLEANUP_PENDING"))
 			.anySatisfy(sql -> assertThat(sql).contains("ADD COLUMN expected_chunk_count INT NOT NULL DEFAULT 0"))
 			.anySatisfy(sql -> assertThat(sql).contains("ADD COLUMN preview_approved TINYINT(1) NOT NULL DEFAULT 0"))
-			.anySatisfy(sql -> assertThat(sql).contains("ADD COLUMN unexplained_loss_span_count INT NOT NULL DEFAULT 0"));
+			.anySatisfy(sql -> assertThat(sql).contains("ADD COLUMN unexplained_loss_span_count INT NOT NULL DEFAULT 0"))
+			.anySatisfy(sql -> assertThat(sql).contains("CREATE TABLE IF NOT EXISTS law_api_document_activation_operations")
+				.contains("runtime_instance_id CHAR(36) NOT NULL"))
+			.anySatisfy(sql -> assertThat(sql).contains("ADD COLUMN runtime_instance_id CHAR(36) NULL"));
 		assertThat(ddl.getAllValues()).anySatisfy(sql -> assertThat(sql)
 			.contains("ADD CONSTRAINT chk_law_chunk_versions_activation_status")
 			.contains("'CANDIDATE','ACTIVATING','ACTIVE_CLEANUP_PENDING','ACTIVE','RETIRED'"));
