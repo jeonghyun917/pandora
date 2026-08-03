@@ -18,14 +18,32 @@ import com.kaces.pandora.infra.qdrant.QdrantClient;
 import com.kaces.pandora.lawdata.chunk.LawChunkVersionVerification;
 import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
 import com.kaces.pandora.semantic.config.LawAiProperties;
+import java.lang.reflect.Constructor;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 
 class LawChunkActivationSagaTests {
+	@Test
+	void productionConstructorIsExplicitlyAutowiredAndRuntimeTestSeamIsNot() {
+		Constructor<?> productionConstructor = Arrays.stream(LawChunkActivationSaga.class.getDeclaredConstructors())
+			.filter(constructor -> constructor.getParameterCount() == 4)
+			.findFirst()
+			.orElseThrow();
+		Constructor<?> runtimeTestSeam = Arrays.stream(LawChunkActivationSaga.class.getDeclaredConstructors())
+			.filter(constructor -> constructor.getParameterCount() == 5)
+			.findFirst()
+			.orElseThrow();
+
+		assertThat(productionConstructor.isAnnotationPresent(Autowired.class)).isTrue();
+		assertThat(runtimeTestSeam.isAnnotationPresent(Autowired.class)).isFalse();
+	}
+
 	@Test
 	void differentVersionConcurrentLoserDoesNoQdrantMutation() {
 		LawChunkMapper mapper = preparedMapper();

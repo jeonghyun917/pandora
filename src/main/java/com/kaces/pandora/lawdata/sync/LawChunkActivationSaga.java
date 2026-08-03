@@ -11,8 +11,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.stereotype.Component;
 
 /**
  * A document has one durable activation operation. Its owner and phase are the only authority to
@@ -34,6 +35,7 @@ class LawChunkActivationSaga {
 	private final LawActivationTransactionExecutor transactions;
 	private final String runtimeInstanceId;
 
+	@Autowired
 	LawChunkActivationSaga(LawChunkMapper mapper, QdrantClient qdrant, LawAiProperties properties, LawActivationTransactionExecutor transactions) {
 		this(mapper, qdrant, properties, transactions, RuntimeConfigurationIdentity.instanceId());
 	}

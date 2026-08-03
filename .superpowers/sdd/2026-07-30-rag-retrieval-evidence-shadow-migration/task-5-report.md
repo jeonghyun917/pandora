@@ -278,7 +278,44 @@ node --check scripts/law-parent-child-rechunk-bulk.js
 git diff --check
 ```
 
-### Residual risk
+## Activation saga constructor wiring regression (fix5)
+
+### Root cause and correction
+
+Spring 7 found both the four-argument production constructor and the
+five-argument runtime-ID test seam, so it could not select a constructor while
+creating `LawChunkActivationSaga`. The production constructor is now explicitly
+annotated with `@Autowired`; the runtime-ID seam remains unannotated.
+
+### TDD evidence
+
+- RED: `productionConstructorIsExplicitlyAutowiredAndRuntimeTestSeamIsNot`
+  failed because the production constructor lacked `@Autowired`.
+- GREEN: after the annotation, the focused saga test passed all 8 tests.
+
+### Focused verification
+
+```text
+./mvnw.cmd -Dtest=LawDocumentWriterTests,LawOpenApiSyncServiceChunkPreviewTests,LawApiSchemaMaintenanceTests,QdrantClientTests,LawSemanticIndexServiceTests,LawChunkMapperXmlTests,LawChunkActivationSagaTests,RuntimeConfigurationIdentityTests test
+Tests run: 45, Failures: 0, Errors: 0, Skipped: 0
+
+node --test scripts/law-parent-child-rechunk-wave.test.js
+pass 2, fail 0
+
+node --check scripts/law-parent-child-rechunk-wave.js
+node --check scripts/law-parent-child-rechunk-bulk.js
+git diff --check
+```
+
+No live MariaDB, Qdrant, 8080, or 18080 action was performed. The broad
+Spring-context suite remains deferred because it can execute configured
+infrastructure hooks; `output/` remains untouched.
+
+### Commit
+
+`fix: wire activation saga constructor` SHA recorded in handoff.
+
+### Residual risk (prior runtime-fencing work)
 
 This fencing protocol intentionally does not claim support for concurrent app
 instances. Legacy operation rows without a runtime ID are blocked rather than
@@ -286,6 +323,6 @@ guessed to be safe at the Qdrant-activating phase and need explicit recovery.
 No live MariaDB, Qdrant, 8080, or 18080 action, and no broad Spring-context
 suite, was run.
 
-### Commit
+### Commit (prior runtime-fencing work)
 
 `fix: fence document activation runtime` — SHA recorded in handoff.
