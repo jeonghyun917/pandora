@@ -36,10 +36,15 @@ class LawApiSchemaMaintenanceTests {
 			.anySatisfy(sql -> assertThat(sql).contains("CREATE TABLE IF NOT EXISTS law_api_document_chunk_versions")
 				.contains("expected_chunk_count INT NOT NULL DEFAULT 0")
 				.contains("preview_approved TINYINT(1) NOT NULL DEFAULT 0")
-				.contains("unexplained_loss_span_count INT NOT NULL DEFAULT 0"))
+				.contains("unexplained_loss_span_count INT NOT NULL DEFAULT 0")
+				.contains("chk_law_chunk_versions_activation_status")
+				.contains("ACTIVATING", "ACTIVE_CLEANUP_PENDING"))
 			.anySatisfy(sql -> assertThat(sql).contains("ADD COLUMN expected_chunk_count INT NOT NULL DEFAULT 0"))
 			.anySatisfy(sql -> assertThat(sql).contains("ADD COLUMN preview_approved TINYINT(1) NOT NULL DEFAULT 0"))
 			.anySatisfy(sql -> assertThat(sql).contains("ADD COLUMN unexplained_loss_span_count INT NOT NULL DEFAULT 0"));
+		assertThat(ddl.getAllValues()).anySatisfy(sql -> assertThat(sql)
+			.contains("ADD CONSTRAINT chk_law_chunk_versions_activation_status")
+			.contains("'CANDIDATE','ACTIVATING','ACTIVE_CLEANUP_PENDING','ACTIVE','RETIRED'"));
 	}
 
 	@Test
@@ -52,7 +57,10 @@ class LawApiSchemaMaintenanceTests {
 		new LawApiSchemaMaintenance(jdbcTemplate).run(new DefaultApplicationArguments());
 
 		ArgumentCaptor<String> ddl = ArgumentCaptor.forClass(String.class);
-		verify(jdbcTemplate).execute(ddl.capture());
-		assertThat(ddl.getValue()).contains("CREATE TABLE IF NOT EXISTS law_api_document_chunk_versions");
+		verify(jdbcTemplate, org.mockito.Mockito.atLeast(2)).execute(ddl.capture());
+		assertThat(ddl.getAllValues())
+			.anySatisfy(sql -> assertThat(sql).contains("CREATE TABLE IF NOT EXISTS law_api_document_chunk_versions"))
+			.anySatisfy(sql -> assertThat(sql).contains("ADD CONSTRAINT chk_law_chunk_versions_activation_status")
+				.contains("ACTIVATING", "ACTIVE_CLEANUP_PENDING"));
 	}
 }

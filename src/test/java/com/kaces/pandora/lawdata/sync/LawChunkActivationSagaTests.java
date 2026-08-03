@@ -28,7 +28,8 @@ class LawChunkActivationSagaTests {
 		ChunkActivationResult result = saga.activate(42L, 2);
 
 		assertThat(result.activated()).isFalse();
-		verify(mapper).updateChunkVersionStatus(42L, 2, "ACTIVATING");
+		verify(mapper).claimCandidateActivation(org.mockito.ArgumentMatchers.eq(42L), org.mockito.ArgumentMatchers.eq(2), org.mockito.ArgumentMatchers.anyString());
+		verify(mapper).releaseCandidateActivation(org.mockito.ArgumentMatchers.eq(42L), org.mockito.ArgumentMatchers.eq(2), org.mockito.ArgumentMatchers.anyString());
 		verify(mapper, never()).retireOtherChunkVersions(42L, 2);
 		verify(mapper, never()).activateChunkVersion(42L, 2);
 	}
@@ -50,6 +51,51 @@ class LawChunkActivationSagaTests {
 		verify(mapper, never()).updateChunkVersionStatus(42L, 2, "ACTIVE");
 	}
 
+	@Test
+	void incompletePostActivationVerificationDemotesCandidateAndReleasesOwnership() {
+		LawChunkMapper mapper = preparedMapper();
+		QdrantClient qdrant = mock(QdrantClient.class);
+		when(qdrant.findExistingLawCandidatePointIds(List.of(202L))).thenReturn(Set.of(202L));
+		when(qdrant.findLawPointIdsWithActivationStatus(List.of(202L), "ACTIVE")).thenReturn(Set.of());
+		LawChunkActivationSaga saga = new LawChunkActivationSaga(mapper, qdrant, new LawAiProperties(null, null, null, null), directTransactions());
+
+		ChunkActivationResult result = saga.activate(42L, 2);
+
+		assertThat(result.activated()).isFalse();
+		verify(qdrant).markLawPointsCandidate(List.of(202L));
+		verify(mapper).releaseCandidateActivation(org.mockito.ArgumentMatchers.eq(42L), org.mockito.ArgumentMatchers.eq(2), org.mockito.ArgumentMatchers.anyString());
+	}
+
+	@Test
+	void thrownPostActivationVerificationAlsoDemotesCandidateAndReleasesOwnership() {
+		LawChunkMapper mapper = preparedMapper();
+		QdrantClient qdrant = mock(QdrantClient.class);
+		when(qdrant.findExistingLawCandidatePointIds(List.of(202L))).thenReturn(Set.of(202L));
+		doThrow(new IllegalStateException("status unavailable")).when(qdrant).findLawPointIdsWithActivationStatus(List.of(202L), "ACTIVE");
+		LawChunkActivationSaga saga = new LawChunkActivationSaga(mapper, qdrant, new LawAiProperties(null, null, null, null), directTransactions());
+
+		ChunkActivationResult result = saga.activate(42L, 2);
+
+		assertThat(result.activated()).isFalse();
+		verify(qdrant).markLawPointsCandidate(List.of(202L));
+		verify(mapper).releaseCandidateActivation(org.mockito.ArgumentMatchers.eq(42L), org.mockito.ArgumentMatchers.eq(2), org.mockito.ArgumentMatchers.anyString());
+	}
+
+	@Test
+	void secondCallerThatLosesCasNeverMutatesTheWinnerCandidatePoints() {
+		LawChunkMapper mapper = preparedMapper();
+		when(mapper.claimCandidateActivation(org.mockito.ArgumentMatchers.eq(42L), org.mockito.ArgumentMatchers.eq(2), org.mockito.ArgumentMatchers.anyString())).thenReturn(0);
+		QdrantClient qdrant = mock(QdrantClient.class);
+		when(qdrant.findExistingLawCandidatePointIds(List.of(202L))).thenReturn(Set.of(202L));
+		LawChunkActivationSaga saga = new LawChunkActivationSaga(mapper, qdrant, new LawAiProperties(null, null, null, null), directTransactions());
+
+		ChunkActivationResult result = saga.activate(42L, 2);
+
+		assertThat(result.activated()).isFalse();
+		verify(qdrant, never()).promoteLawCandidatePoints(List.of(202L));
+		verify(qdrant, never()).markLawPointsCandidate(List.of(202L));
+	}
+
 	private LawChunkMapper preparedMapper() {
 		LawChunkMapper mapper = mock(LawChunkMapper.class);
 		when(mapper.findChunkVersionStatus(42L, 2)).thenReturn("CANDIDATE");
@@ -57,6 +103,8 @@ class LawChunkActivationSagaTests {
 			.thenReturn(new LawChunkVersionVerification(1, 1, 1, 0, true, 0));
 		when(mapper.findChunkIdsByDocumentIdAndVersion(42L, 2)).thenReturn(List.of(202L));
 		when(mapper.findChunkIdsByDocumentId(42L)).thenReturn(List.of(101L, 202L));
+		when(mapper.findActiveChunkIdsByDocumentId(42L)).thenReturn(List.of(101L));
+		when(mapper.claimCandidateActivation(org.mockito.ArgumentMatchers.eq(42L), org.mockito.ArgumentMatchers.eq(2), org.mockito.ArgumentMatchers.anyString())).thenReturn(1);
 		return mapper;
 	}
 

@@ -140,3 +140,22 @@ explicit cleanup rather than automatic promotion.
 Focused fix2 verification: 37 Java tests passed, Node wave tests 2/0, both
 wave scripts passed syntax checks, and `git diff --check` passed.  No live
 runtime, DB, Qdrant, 8080, or 18080 operation was performed.
+
+## Serialization and schema-parity follow-up
+
+- Fresh schema and runtime migration now share the named activation-state CHECK
+  set: CANDIDATE, ACTIVATING, ACTIVE_CLEANUP_PENDING, ACTIVE, and RETIRED.
+  Runtime maintenance inspects and replaces divergent activation checks before
+  adding the named canonical constraint.
+- The saga claims CANDIDATE→ACTIVATING with an atomic owner CAS.  Only the
+  owner can release or complete; a losing caller performs no Qdrant promotion,
+  demotion, flip, or cleanup.  Old-point cleanup selects only actually ACTIVE
+  chunks, not unrelated candidate or retired versions.
+- Any Qdrant status verification miss or exception after marking a candidate
+  ACTIVE compensates it back to CANDIDATE and releases the owned activation
+  claim.  The tests cover incomplete verification, thrown verification, DB
+  flip failure, Qdrant promotion failure, and a competing CAS loser.
+
+Focused fix3 verification: 40 Java tests passed, Node wave tests 2/0, both
+wave scripts passed syntax checks, and `git diff --check` passed.  No live
+runtime, DB, Qdrant, 8080, or 18080 operation was performed.

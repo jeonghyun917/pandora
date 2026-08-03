@@ -328,6 +328,7 @@ CREATE TABLE IF NOT EXISTS law_api_document_chunk_versions (
     preview_approved TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'preview approved with no unexplained loss',
     unexplained_loss_span_count INT NOT NULL DEFAULT 0 COMMENT 'unexplained source coverage loss spans',
     preview_token_hash CHAR(64) NULL COMMENT 'deterministic preview approval token hash',
+    activation_owner CHAR(36) NULL COMMENT 'activation saga owner',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created at',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'updated at',
     PRIMARY KEY (document_id, chunk_version),
@@ -335,7 +336,7 @@ CREATE TABLE IF NOT EXISTS law_api_document_chunk_versions (
         FOREIGN KEY (document_id) REFERENCES law_api_documents (document_id)
         ON DELETE CASCADE,
     CONSTRAINT chk_law_api_document_chunk_versions_status
-        CHECK (activation_status IN ('CANDIDATE', 'ACTIVE', 'RETIRED'))
+        CHECK (activation_status IN ('CANDIDATE', 'ACTIVATING', 'ACTIVE_CLEANUP_PENDING', 'ACTIVE', 'RETIRED'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS rag_chunk_search_index_state (

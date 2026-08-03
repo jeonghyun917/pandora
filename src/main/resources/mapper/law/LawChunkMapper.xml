@@ -57,6 +57,12 @@
     ORDER BY chunk_id
   </select>
 
+  <select id="findActiveChunkIdsByDocumentId" resultType="long">
+    SELECT chunk_id FROM law_api_document_chunks
+    WHERE document_id = #{documentId} AND activation_status = 'ACTIVE' AND use_yn = 'Y'
+    ORDER BY chunk_id
+  </select>
+
   <select id="findActiveChunkVersion" resultType="int">
     SELECT COALESCE(MAX(chunk_version), 0)
     FROM law_api_document_chunks
@@ -136,6 +142,27 @@
   <update id="updateChunkVersionStatus">
     UPDATE law_api_document_chunk_versions SET activation_status = #{activationStatus}, updated_at = NOW()
     WHERE document_id = #{documentId} AND chunk_version = #{chunkVersion}
+  </update>
+
+  <update id="claimCandidateActivation">
+    UPDATE law_api_document_chunk_versions
+    SET activation_status = 'ACTIVATING', activation_owner = #{owner}, updated_at = NOW()
+    WHERE document_id = #{documentId} AND chunk_version = #{chunkVersion}
+      AND activation_status = 'CANDIDATE' AND activation_owner IS NULL
+  </update>
+
+  <update id="releaseCandidateActivation">
+    UPDATE law_api_document_chunk_versions
+    SET activation_status = 'CANDIDATE', activation_owner = NULL, updated_at = NOW()
+    WHERE document_id = #{documentId} AND chunk_version = #{chunkVersion}
+      AND activation_status = 'ACTIVATING' AND activation_owner = #{owner}
+  </update>
+
+  <update id="completeCandidateActivation">
+    UPDATE law_api_document_chunk_versions
+    SET activation_status = #{activationStatus}, activation_owner = NULL, updated_at = NOW()
+    WHERE document_id = #{documentId} AND chunk_version = #{chunkVersion}
+      AND activation_status = 'ACTIVATING' AND activation_owner = #{owner}
   </update>
 
   <update id="retireOtherActiveChunkVersionStates">

@@ -22,6 +22,8 @@ public interface LawChunkMapper {
 		@Param("chunkVersion") int chunkVersion
 	);
 
+	List<Long> findActiveChunkIdsByDocumentId(@Param("documentId") long documentId);
+
 	int findActiveChunkVersion(@Param("documentId") long documentId);
 
 	int findNextChunkVersion(@Param("documentId") long documentId);
@@ -54,6 +56,12 @@ public interface LawChunkMapper {
 		@Param("chunkVersion") int chunkVersion,
 		@Param("activationStatus") String activationStatus
 	);
+
+	int claimCandidateActivation(@Param("documentId") long documentId, @Param("chunkVersion") int chunkVersion, @Param("owner") String owner);
+
+	int releaseCandidateActivation(@Param("documentId") long documentId, @Param("chunkVersion") int chunkVersion, @Param("owner") String owner);
+
+	int completeCandidateActivation(@Param("documentId") long documentId, @Param("chunkVersion") int chunkVersion, @Param("owner") String owner, @Param("activationStatus") String activationStatus);
 
 	void retireOtherActiveChunkVersionStates(
 		@Param("documentId") long documentId,

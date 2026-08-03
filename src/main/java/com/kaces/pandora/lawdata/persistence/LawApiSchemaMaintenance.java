@@ -53,9 +53,11 @@ public class LawApiSchemaMaintenance implements ApplicationRunner {
 				preview_approved TINYINT(1) NOT NULL DEFAULT 0,
 				unexplained_loss_span_count INT NOT NULL DEFAULT 0,
 				preview_token_hash CHAR(64) NULL,
+				activation_owner CHAR(36) NULL,
 				created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				PRIMARY KEY (document_id, chunk_version),
+				CONSTRAINT chk_law_chunk_versions_activation_status CHECK (activation_status IN ('CANDIDATE','ACTIVATING','ACTIVE_CLEANUP_PENDING','ACTIVE','RETIRED')),
 				CONSTRAINT fk_law_api_document_chunk_versions_document
 					FOREIGN KEY (document_id) REFERENCES law_api_documents (document_id) ON DELETE CASCADE
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
@@ -64,6 +66,23 @@ public class LawApiSchemaMaintenance implements ApplicationRunner {
 		ensureVersionTableColumn("preview_approved", "TINYINT(1) NOT NULL DEFAULT 0");
 		ensureVersionTableColumn("unexplained_loss_span_count", "INT NOT NULL DEFAULT 0");
 		ensureVersionTableColumn("preview_token_hash", "CHAR(64) NULL");
+		ensureVersionTableColumn("activation_owner", "CHAR(36) NULL");
+		ensureVersionActivationStatusConstraint();
+	}
+
+	private void ensureVersionActivationStatusConstraint() {
+		List<String> constraints = jdbcTemplate.queryForList("""
+			SELECT tc.CONSTRAINT_NAME
+			FROM information_schema.TABLE_CONSTRAINTS tc
+			JOIN information_schema.CHECK_CONSTRAINTS cc
+			  ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+			WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_NAME = 'law_api_document_chunk_versions'
+			  AND tc.CONSTRAINT_TYPE = 'CHECK' AND cc.CHECK_CLAUSE LIKE '%activation_status%'
+			""", String.class);
+		for (String constraint : constraints) {
+			jdbcTemplate.execute("ALTER TABLE law_api_document_chunk_versions DROP CONSTRAINT " + constraint);
+		}
+		jdbcTemplate.execute("ALTER TABLE law_api_document_chunk_versions ADD CONSTRAINT chk_law_chunk_versions_activation_status CHECK (activation_status IN ('CANDIDATE','ACTIVATING','ACTIVE_CLEANUP_PENDING','ACTIVE','RETIRED'))");
 	}
 
 	private void ensureVersionTableColumn(String columnName, String definition) {
