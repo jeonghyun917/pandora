@@ -323,7 +323,7 @@ CREATE TABLE IF NOT EXISTS rag_chunk_search_terms (
 CREATE TABLE IF NOT EXISTS law_api_document_chunk_versions (
     document_id BIGINT NOT NULL COMMENT 'connected document id',
     chunk_version INT NOT NULL COMMENT 'chunk version within document',
-    activation_status VARCHAR(20) NOT NULL DEFAULT 'CANDIDATE' COMMENT 'CANDIDATE, ACTIVE, RETIRED',
+    activation_status VARCHAR(20) NOT NULL DEFAULT 'CANDIDATE' COMMENT 'CANDIDATE, ACTIVATING, ACTIVE_CLEANUP_PENDING, ACTIVE, RETIRED',
     expected_chunk_count INT NOT NULL DEFAULT 0 COMMENT 'candidate chunk count required for activation',
     preview_approved TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'preview approved with no unexplained loss',
     unexplained_loss_span_count INT NOT NULL DEFAULT 0 COMMENT 'unexplained source coverage loss spans',
@@ -335,8 +335,27 @@ CREATE TABLE IF NOT EXISTS law_api_document_chunk_versions (
     CONSTRAINT fk_law_api_document_chunk_versions_document
         FOREIGN KEY (document_id) REFERENCES law_api_documents (document_id)
         ON DELETE CASCADE,
-    CONSTRAINT chk_law_api_document_chunk_versions_status
+    CONSTRAINT chk_law_chunk_versions_activation_status
         CHECK (activation_status IN ('CANDIDATE', 'ACTIVATING', 'ACTIVE_CLEANUP_PENDING', 'ACTIVE', 'RETIRED'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS law_api_document_activation_operations (
+    document_id BIGINT NOT NULL,
+    candidate_version INT NOT NULL,
+    owner_token CHAR(36) NOT NULL,
+    lease_expires_at DATETIME NOT NULL,
+    phase VARCHAR(40) NOT NULL,
+    prior_active_version INT NOT NULL DEFAULT 0,
+    prior_point_ids_json LONGTEXT NOT NULL,
+    candidate_point_ids_json LONGTEXT NOT NULL,
+    last_error TEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (document_id),
+    KEY idx_law_activation_operations_lease (lease_expires_at),
+    CONSTRAINT fk_law_activation_operations_document FOREIGN KEY (document_id)
+      REFERENCES law_api_documents (document_id) ON DELETE CASCADE,
+    CONSTRAINT chk_law_activation_operations_phase CHECK (phase IN ('PREPARING','QDRANT_ACTIVATING','RECOVERY_REQUIRED','DB_ACTIVE_CLEANUP_PENDING','DONE'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS rag_chunk_search_index_state (

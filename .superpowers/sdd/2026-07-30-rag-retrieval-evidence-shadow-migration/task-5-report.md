@@ -159,3 +159,74 @@ runtime, DB, Qdrant, 8080, or 18080 operation was performed.
 Focused fix3 verification: 40 Java tests passed, Node wave tests 2/0, both
 wave scripts passed syntax checks, and `git diff --check` passed.  No live
 runtime, DB, Qdrant, 8080, or 18080 operation was performed.
+
+## Durable document activation operation (fix4)
+
+### Root cause and rejected design
+
+The per-version `ACTIVATING` compare-and-set did not serialize different
+candidate versions for the same document. A process crash could leave an
+unrecoverable `ACTIVATING` version, and a failed Qdrant demotion could release
+an owner even though the candidate's external state was unknown.
+
+### Implementation
+
+- Added one durable `law_api_document_activation_operations` row per document.
+  It records the candidate version, random owner, lease, phase, exact prior
+  active version and point IDs, exact candidate point IDs, and last error.
+- Replaced the per-version claim/release path with owner-and-phase CAS mapper
+  updates. A duplicate document-operation insert is a handled losing claim and
+  does not issue a Qdrant mutation.
+- Normal activation records `PREPARING`, moves the candidate to `ACTIVATING`,
+  verifies Qdrant ACTIVE points, atomically flips database state to
+  `DB_ACTIVE_CLEANUP_PENDING`, then cleans only the persisted prior snapshot
+  before reaching `DONE`.
+- Expired pre-flip leases are reclaimed into `RECOVERY_REQUIRED`, demoted and
+  verified before the candidate is released. A failed demotion keeps
+  `RECOVERY_REQUIRED`; expired DB-active operations resume cleanup only and
+  never demote the active candidate.
+- Fresh schema and runtime bootstrap now define the same activation-operation
+  table and canonical version-status check name. Runtime check replacement is a
+  no-op when the existing check is already canonical.
+
+### TDD evidence
+
+- RED: the new saga tests failed for expired pre-flip recovery, cleanup-only
+  recovery, and demotion ambiguity against the intermediate operation-row
+  implementation.
+- RED: a simulated duplicate-key different-version operation claim escaped the
+  saga; it now returns a blocked result without Qdrant mutation.
+- RED: canonical CHECK maintenance unnecessarily re-added the canonical
+  constraint; it now leaves it unchanged.
+
+### Focused verification
+
+```text
+./mvnw.cmd -Dtest=LawDocumentWriterTests,LawOpenApiSyncServiceChunkPreviewTests,LawApiSchemaMaintenanceTests,QdrantClientTests,LawSemanticIndexServiceTests,LawChunkMapperXmlTests,LawChunkActivationSagaTests test
+Tests run: 38, Failures: 0, Errors: 0, Skipped: 0
+
+node --test scripts/law-parent-child-rechunk-wave.test.js
+pass 2, fail 0
+
+node --check scripts/law-parent-child-rechunk-wave.js
+node --check scripts/law-parent-child-rechunk-bulk.js
+git diff --check
+```
+
+### Self-review and deferred checks
+
+- Cleanup and prior-version retirement consume only point/version snapshots
+  stored with the claimed operation. Every saga database state mutation is
+  guarded by operation owner and phase; the initial/replacement claim is
+  serialized by the document primary key and expected `DONE` phase.
+- No live MariaDB, Qdrant, 8080, or 18080 action was performed; `output/`
+  remains untouched. The broad Spring-context suite remains intentionally
+  deferred because it can execute schema-maintenance hooks against configured
+  infrastructure.
+- Residual risk: crash recovery and Qdrant idempotence are covered with unit
+  doubles only. Exercise the operation table against a disposable database and
+  isolated Qdrant collection before deployment.
+
+### Commit
+
+`fix: persist document activation operations` — SHA recorded in handoff.

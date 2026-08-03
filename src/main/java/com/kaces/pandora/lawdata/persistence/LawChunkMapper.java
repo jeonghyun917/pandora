@@ -6,6 +6,7 @@ import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import com.kaces.pandora.lawdata.chunk.LawChunkVersionRow;
 import com.kaces.pandora.lawdata.chunk.LawChunkVersionVerification;
 import com.kaces.pandora.lawdata.sync.StoredChunk;
+import com.kaces.pandora.lawdata.sync.DocumentActivationOperation;
 import com.kaces.pandora.semantic.provenance.IndexContentSnapshot;
 import com.kaces.pandora.semantic.integrity.LawIndexIntegrityRow;
 import java.util.List;
@@ -57,11 +58,54 @@ public interface LawChunkMapper {
 		@Param("activationStatus") String activationStatus
 	);
 
-	int claimCandidateActivation(@Param("documentId") long documentId, @Param("chunkVersion") int chunkVersion, @Param("owner") String owner);
+	DocumentActivationOperation findActivationOperation(@Param("documentId") long documentId);
 
-	int releaseCandidateActivation(@Param("documentId") long documentId, @Param("chunkVersion") int chunkVersion, @Param("owner") String owner);
+	int insertActivationOperation(@Param("operation") DocumentActivationOperation operation);
 
-	int completeCandidateActivation(@Param("documentId") long documentId, @Param("chunkVersion") int chunkVersion, @Param("owner") String owner, @Param("activationStatus") String activationStatus);
+	int reclaimActivationOperation(
+		@Param("documentId") long documentId,
+		@Param("owner") String owner,
+		@Param("leaseExpiresAt") java.time.Instant leaseExpiresAt,
+		@Param("expectedPhase") String expectedPhase,
+		@Param("phase") String phase,
+		@Param("lastError") String lastError
+	);
+
+	int replaceCompletedActivationOperation(@Param("operation") DocumentActivationOperation operation);
+
+	int renewActivationOperationLease(
+		@Param("documentId") long documentId,
+		@Param("owner") String owner,
+		@Param("expectedPhase") String expectedPhase,
+		@Param("leaseExpiresAt") java.time.Instant leaseExpiresAt
+	);
+
+	int transitionActivationOperation(
+		@Param("documentId") long documentId,
+		@Param("owner") String owner,
+		@Param("expectedPhase") String expectedPhase,
+		@Param("phase") String phase,
+		@Param("lastError") String lastError
+	);
+
+	int markCandidateActivatingForOperation(@Param("documentId") long documentId, @Param("chunkVersion") int chunkVersion, @Param("owner") String owner);
+
+	int resetCandidateForOperation(
+		@Param("documentId") long documentId,
+		@Param("chunkVersion") int chunkVersion,
+		@Param("owner") String owner,
+		@Param("expectedPhase") String expectedPhase
+	);
+
+	int retireChunkIdsForOperation(@Param("documentId") long documentId, @Param("chunkIds") List<Long> chunkIds, @Param("owner") String owner);
+
+	int activateCandidateChunksForOperation(@Param("documentId") long documentId, @Param("chunkVersion") int chunkVersion, @Param("owner") String owner);
+
+	int markCandidateVersionCleanupPendingForOperation(@Param("documentId") long documentId, @Param("chunkVersion") int chunkVersion, @Param("owner") String owner);
+
+	int retirePriorVersionForOperation(@Param("documentId") long documentId, @Param("priorVersion") int priorVersion, @Param("owner") String owner);
+
+	int completeCandidateCleanupForOperation(@Param("documentId") long documentId, @Param("chunkVersion") int chunkVersion, @Param("owner") String owner);
 
 	void retireOtherActiveChunkVersionStates(
 		@Param("documentId") long documentId,

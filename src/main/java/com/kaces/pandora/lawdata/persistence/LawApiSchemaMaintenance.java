@@ -9,12 +9,15 @@ import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class LawApiSchemaMaintenance implements ApplicationRunner {
 
 	private static final Logger log = LoggerFactory.getLogger(LawApiSchemaMaintenance.class);
+	private static final String VERSION_ACTIVATION_CHECK = "activation_status IN ('CANDIDATE','ACTIVATING','ACTIVE_CLEANUP_PENDING','ACTIVE','RETIRED')";
 
 	private final JdbcTemplate jdbcTemplate;
 
@@ -68,21 +71,44 @@ public class LawApiSchemaMaintenance implements ApplicationRunner {
 		ensureVersionTableColumn("preview_token_hash", "CHAR(64) NULL");
 		ensureVersionTableColumn("activation_owner", "CHAR(36) NULL");
 		ensureVersionActivationStatusConstraint();
+		jdbcTemplate.execute("""
+			CREATE TABLE IF NOT EXISTS law_api_document_activation_operations (
+				document_id BIGINT NOT NULL, candidate_version INT NOT NULL, owner_token CHAR(36) NOT NULL,
+				lease_expires_at DATETIME NOT NULL, phase VARCHAR(40) NOT NULL, prior_active_version INT NOT NULL DEFAULT 0,
+				prior_point_ids_json LONGTEXT NOT NULL, candidate_point_ids_json LONGTEXT NOT NULL, last_error TEXT NULL,
+				created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+				PRIMARY KEY (document_id), KEY idx_law_activation_operations_lease (lease_expires_at),
+				CONSTRAINT fk_law_activation_operations_document FOREIGN KEY (document_id) REFERENCES law_api_documents (document_id) ON DELETE CASCADE,
+				CONSTRAINT chk_law_activation_operations_phase CHECK (phase IN ('PREPARING','QDRANT_ACTIVATING','RECOVERY_REQUIRED','DB_ACTIVE_CLEANUP_PENDING','DONE'))
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+			""");
 	}
 
 	private void ensureVersionActivationStatusConstraint() {
-		List<String> constraints = jdbcTemplate.queryForList("""
-			SELECT tc.CONSTRAINT_NAME
+		List<Map<String, Object>> constraints = jdbcTemplate.queryForList("""
+			SELECT tc.CONSTRAINT_NAME, cc.CHECK_CLAUSE
 			FROM information_schema.TABLE_CONSTRAINTS tc
 			JOIN information_schema.CHECK_CONSTRAINTS cc
 			  ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
 			WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_NAME = 'law_api_document_chunk_versions'
 			  AND tc.CONSTRAINT_TYPE = 'CHECK' AND cc.CHECK_CLAUSE LIKE '%activation_status%'
-			""", String.class);
-		for (String constraint : constraints) {
-			jdbcTemplate.execute("ALTER TABLE law_api_document_chunk_versions DROP CONSTRAINT " + constraint);
+			""");
+		if (constraints.size() == 1 && isCanonicalVersionActivationCheck(constraints.get(0))) {
+			return;
 		}
-		jdbcTemplate.execute("ALTER TABLE law_api_document_chunk_versions ADD CONSTRAINT chk_law_chunk_versions_activation_status CHECK (activation_status IN ('CANDIDATE','ACTIVATING','ACTIVE_CLEANUP_PENDING','ACTIVE','RETIRED'))");
+		for (Map<String, Object> constraint : constraints) {
+			jdbcTemplate.execute("ALTER TABLE law_api_document_chunk_versions DROP CONSTRAINT " + constraint.get("CONSTRAINT_NAME"));
+		}
+		jdbcTemplate.execute("ALTER TABLE law_api_document_chunk_versions ADD CONSTRAINT chk_law_chunk_versions_activation_status CHECK (" + VERSION_ACTIVATION_CHECK + ")");
+	}
+
+	private boolean isCanonicalVersionActivationCheck(Map<String, Object> constraint) {
+		return "chk_law_chunk_versions_activation_status".equals(constraint.get("CONSTRAINT_NAME"))
+			&& normalizeCheckClause(VERSION_ACTIVATION_CHECK).equals(normalizeCheckClause(String.valueOf(constraint.get("CHECK_CLAUSE"))));
+	}
+
+	private String normalizeCheckClause(String clause) {
+		return clause.replace("`", "").replace("(", "").replace(")", "").replaceAll("\\s+", "").toUpperCase(Locale.ROOT);
 	}
 
 	private void ensureVersionTableColumn(String columnName, String definition) {

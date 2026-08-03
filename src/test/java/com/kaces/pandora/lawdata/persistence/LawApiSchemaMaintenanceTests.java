@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.boot.DefaultApplicationArguments;
@@ -62,5 +63,25 @@ class LawApiSchemaMaintenanceTests {
 			.anySatisfy(sql -> assertThat(sql).contains("CREATE TABLE IF NOT EXISTS law_api_document_chunk_versions"))
 			.anySatisfy(sql -> assertThat(sql).contains("ADD CONSTRAINT chk_law_chunk_versions_activation_status")
 				.contains("ACTIVATING", "ACTIVE_CLEANUP_PENDING"));
+	}
+
+	@Test
+	void runDoesNotReplaceAnAlreadyCanonicalActivationStatusCheck() {
+		JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+		when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class))).thenReturn(1);
+		when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), any(Object[].class))).thenReturn(1);
+		when(jdbcTemplate.queryForList(anyString(), eq(String.class), any(Object[].class))).thenReturn(List.of("chk_law_chunk_versions_activation_status"));
+		when(jdbcTemplate.queryForList(anyString())).thenReturn(List.of(Map.of(
+			"CONSTRAINT_NAME", "chk_law_chunk_versions_activation_status",
+			"CHECK_CLAUSE", "(activation_status IN ('CANDIDATE','ACTIVATING','ACTIVE_CLEANUP_PENDING','ACTIVE','RETIRED'))"
+		)));
+
+		new LawApiSchemaMaintenance(jdbcTemplate).run(new DefaultApplicationArguments());
+
+		ArgumentCaptor<String> ddl = ArgumentCaptor.forClass(String.class);
+		verify(jdbcTemplate, org.mockito.Mockito.atLeast(1)).execute(ddl.capture());
+		assertThat(ddl.getAllValues())
+			.noneSatisfy(sql -> assertThat(sql).contains("DROP CONSTRAINT chk_law_chunk_versions_activation_status"))
+			.noneSatisfy(sql -> assertThat(sql).contains("ADD CONSTRAINT chk_law_chunk_versions_activation_status"));
 	}
 }
