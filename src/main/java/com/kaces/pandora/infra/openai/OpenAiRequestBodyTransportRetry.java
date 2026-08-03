@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.web.client.ResourceAccessException;
 
 final class OpenAiRequestBodyTransportRetry {
@@ -15,6 +16,8 @@ final class OpenAiRequestBodyTransportRetry {
 	private static final Logger log = LoggerFactory.getLogger(OpenAiRequestBodyTransportRetry.class);
 	private static final int MAX_RETRIES = 1;
 	private static final Duration RETRY_DELAY = Duration.ofMillis(200);
+	private static final String REQUEST_BODY_WRITE_FAILURE = "Error writing request body to server";
+	private static final String SPRING_REQUEST_BODY_WRITE_FAILURE = "Could not write JSON: " + REQUEST_BODY_WRITE_FAILURE;
 
 	private final RetryDelay retryDelay;
 	private final Consumer<RetryMetadata> retryRecorder;
@@ -56,17 +59,30 @@ final class OpenAiRequestBodyTransportRetry {
 	}
 
 	private boolean isRequestBodyWriteFailure(RuntimeException exception) {
-		return exception instanceof ResourceAccessException resourceAccessException
-			&& resourceAccessException.getCause() instanceof IOException
-			&& describesRequestBodyWrite(resourceAccessException.getMessage());
+		if (exception instanceof ResourceAccessException resourceAccessException) {
+			return resourceAccessException.getCause() instanceof IOException ioException
+				&& isRequestBodyWriteTransportException(ioException);
+		}
+		return exception instanceof HttpMessageNotWritableException messageNotWritableException
+			&& describesSpringRequestBodyWrite(messageNotWritableException.getMessage())
+			&& causeChainContainsRequestBodyWriteTransportException(messageNotWritableException);
 	}
 
-	private boolean describesRequestBodyWrite(String message) {
-		if (message == null) {
-			return false;
+	private boolean causeChainContainsRequestBodyWriteTransportException(Throwable exception) {
+		for (Throwable cause : causeChain(exception)) {
+			if (cause instanceof IOException ioException && isRequestBodyWriteTransportException(ioException)) {
+				return true;
+			}
 		}
-		String normalized = message.toLowerCase(java.util.Locale.ROOT);
-		return normalized.contains("error writing request body");
+		return false;
+	}
+
+	private boolean isRequestBodyWriteTransportException(IOException exception) {
+		return REQUEST_BODY_WRITE_FAILURE.equalsIgnoreCase(exception.getMessage());
+	}
+
+	private boolean describesSpringRequestBodyWrite(String message) {
+		return SPRING_REQUEST_BODY_WRITE_FAILURE.equalsIgnoreCase(message);
 	}
 
 	private Throwable rootCause(Throwable exception) {

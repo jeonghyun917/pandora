@@ -24,7 +24,7 @@ class OpenAiEmbeddingClientTests {
 				if (attempts.incrementAndGet() == 1) {
 					throw new ResourceAccessException(
 						"Could not write JSON: Error writing request body to server",
-						new IOException("connection reset while writing request body")
+						new IOException("Error writing request body to server")
 					);
 				}
 				return Map.of("data", List.of(Map.of("embedding", List.of(0.25d, 0.5d))));
