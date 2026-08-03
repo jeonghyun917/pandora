@@ -65,6 +65,16 @@ public class LawSemanticController {
 		return ResponseEntity.ok(indexService.indexDocuments(target, documentIds, limit));
 	}
 
+	@PostMapping("/index-candidate")
+	public ResponseEntity<LawSemanticIndexResult> indexCandidate(
+		@RequestParam(defaultValue = "") String target,
+		@RequestParam long documentId,
+		@RequestParam int candidateVersion,
+		@RequestParam(defaultValue = "10000") int limit
+	) {
+		return ResponseEntity.ok(indexService.indexCandidate(target, documentId, candidateVersion, limit));
+	}
+
 	@PostMapping("/batch-file")
 	public ResponseEntity<LawSemanticBatchFileResult> createBatchFile(
 		@RequestParam(defaultValue = "") String target,

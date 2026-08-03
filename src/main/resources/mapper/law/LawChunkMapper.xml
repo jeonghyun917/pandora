@@ -51,6 +51,24 @@
     WHERE document_id = #{documentId}
   </select>
 
+  <select id="findChunkIdsByDocumentIdAndVersion" resultType="long">
+    SELECT chunk_id FROM law_api_document_chunks
+    WHERE document_id = #{documentId} AND chunk_version = #{chunkVersion}
+    ORDER BY chunk_id
+  </select>
+
+  <select id="findActiveChunkVersion" resultType="int">
+    SELECT COALESCE(MAX(chunk_version), 0)
+    FROM law_api_document_chunks
+    WHERE document_id = #{documentId} AND activation_status = 'ACTIVE' AND use_yn = 'Y'
+  </select>
+
+  <select id="findNextChunkVersion" resultType="int">
+    SELECT COALESCE(MAX(chunk_version), 0) + 1
+    FROM law_api_document_chunk_versions
+    WHERE document_id = #{documentId}
+  </select>
+
   <!-- 특정 문서의 기존 검색 청크를 모두 삭제합니다. -->
   <delete id="deleteChunks">
     DELETE FROM law_api_document_chunks
@@ -72,10 +90,56 @@
     )
   </insert>
 
+  <select id="findChunkVersionVerification" resultType="com.kaces.pandora.lawdata.chunk.LawChunkVersionVerification">
+    SELECT COALESCE(v.expected_chunk_count, 0) AS expectedChunkCount,
+      COUNT(c.chunk_id) AS candidateChunkCount,
+      COALESCE(SUM(CASE WHEN e.status = 'INDEXED' AND e.content_hash = c.content_hash THEN 1 ELSE 0 END), 0) AS indexedCurrentCount,
+      COALESCE(SUM(CASE WHEN c.quality_status IN ('REVIEW', 'REJECT') THEN 1 ELSE 0 END), 0) AS blockingQualityCount
+    FROM law_api_document_chunk_versions v
+    LEFT JOIN law_api_document_chunks c ON c.document_id = v.document_id
+      AND c.chunk_version = v.chunk_version AND c.activation_status = 'CANDIDATE' AND c.use_yn = 'Y'
+    LEFT JOIN law_api_chunk_embeddings e ON e.chunk_id = c.chunk_id
+      AND e.embedding_model = #{model} AND e.vector_store = #{vectorStore}
+    WHERE v.document_id = #{documentId} AND v.chunk_version = #{chunkVersion}
+      AND v.activation_status = 'CANDIDATE'
+    GROUP BY v.expected_chunk_count
+  </select>
+
+  <update id="activateChunkVersion">
+    UPDATE law_api_document_chunks SET activation_status = 'ACTIVE', updated_at = NOW()
+    WHERE document_id = #{documentId} AND chunk_version = #{chunkVersion} AND activation_status = 'CANDIDATE'
+  </update>
+
+  <update id="retireOtherChunkVersions">
+    UPDATE law_api_document_chunks SET activation_status = 'RETIRED', updated_at = NOW()
+    WHERE document_id = #{documentId} AND chunk_version != #{chunkVersion} AND activation_status = 'ACTIVE'
+  </update>
+
+  <update id="reactivateChunkVersion">
+    UPDATE law_api_document_chunks SET activation_status = 'ACTIVE', updated_at = NOW()
+    WHERE document_id = #{documentId} AND chunk_version = #{chunkVersion} AND activation_status = 'RETIRED'
+  </update>
+
+  <update id="retireActiveChunkVersionsExcept">
+    UPDATE law_api_document_chunks SET activation_status = 'RETIRED', updated_at = NOW()
+    WHERE document_id = #{documentId} AND chunk_version != #{chunkVersion} AND activation_status = 'ACTIVE'
+  </update>
+
+  <update id="updateChunkVersionStatus">
+    UPDATE law_api_document_chunk_versions SET activation_status = #{activationStatus}, updated_at = NOW()
+    WHERE document_id = #{documentId} AND chunk_version = #{chunkVersion}
+  </update>
+
+  <update id="retireOtherActiveChunkVersionStates">
+    UPDATE law_api_document_chunk_versions SET activation_status = 'RETIRED', updated_at = NOW()
+    WHERE document_id = #{documentId} AND chunk_version != #{chunkVersion} AND activation_status = 'ACTIVE'
+  </update>
+
   <insert id="upsertChunkVersion">
-    INSERT INTO law_api_document_chunk_versions (document_id, chunk_version, activation_status)
-    VALUES (#{version.documentId}, #{version.chunkVersion}, #{version.activationStatus})
-    ON DUPLICATE KEY UPDATE activation_status = VALUES(activation_status)
+    INSERT INTO law_api_document_chunk_versions (document_id, chunk_version, activation_status, expected_chunk_count)
+    VALUES (#{version.documentId}, #{version.chunkVersion}, #{version.activationStatus}, #{version.expectedChunkCount})
+    ON DUPLICATE KEY UPDATE activation_status = VALUES(activation_status),
+      expected_chunk_count = VALUES(expected_chunk_count)
   </insert>
   <!-- 위치 기반 청크 본문 검색에서 일치하는 전체 건수를 조회합니다. -->
   <select id="countChunkSearch" resultType="int">
@@ -85,6 +149,7 @@
     WHERE doc.target = #{target}
       AND doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
       <include refid="effectiveSearchFilter"/>
       AND (
         c.chunk_text LIKE CONCAT('%', #{query}, '%')
@@ -117,6 +182,7 @@
     WHERE doc.target = #{target}
       AND doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
       <include refid="effectiveSearchFilter"/>
       AND (
         c.chunk_text LIKE CONCAT('%', #{query}, '%')
@@ -237,6 +303,7 @@
       AND e.vector_store = #{vectorStore}
     WHERE doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
       AND (#{target} = '' OR doc.target = #{target})
       AND c.document_id IN
       <foreach collection="documentIds" item="documentId" open="(" separator="," close=")">
@@ -248,6 +315,30 @@
         OR COALESCE(e.content_hash, '') != COALESCE(c.content_hash, '')
       )
     ORDER BY doc.target, c.document_id, c.sort_order, c.chunk_id
+    LIMIT #{limit}
+  </select>
+
+  <select id="findSemanticIndexCandidatesByDocumentIdAndVersion" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    SELECT c.chunk_id AS chunkId, c.document_id AS documentId, doc.target AS target,
+      doc.external_id AS externalId, doc.title AS title, doc.agency_name AS agencyName,
+      doc.category_name AS categoryName, doc.source_date AS sourceDate,
+      doc.effective_status AS effectiveStatus, c.chunk_no AS chunkNo, c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText, NULL AS pageNo, c.source_path AS sourcePath,
+      c.source_url AS sourceUrl, c.sort_order AS sortOrder, c.content_hash AS contentHash,
+      <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
+      <include refid="sectionTypeExpression"/> AS sectionType, c.embedding_text AS embeddingText,
+      c.parent_key AS parentKey, c.chunk_version AS chunkVersion
+    FROM law_api_document_chunks c
+    JOIN law_api_documents doc ON doc.document_id = c.document_id
+    LEFT JOIN law_api_chunk_embeddings e ON e.chunk_id = c.chunk_id
+      AND e.embedding_model = #{model} AND e.vector_store = #{vectorStore}
+    WHERE doc.use_yn = 'Y' AND c.use_yn = 'Y'
+      AND c.activation_status = 'CANDIDATE'
+      AND (#{target} = '' OR doc.target = #{target})
+      AND c.document_id = #{documentId} AND c.chunk_version = #{chunkVersion}
+      AND (e.chunk_id IS NULL OR e.status IN ('PENDING', 'NO_EMBED', 'FAILED', 'ERROR')
+        OR COALESCE(e.content_hash, '') != COALESCE(c.content_hash, ''))
+    ORDER BY c.sort_order, c.chunk_id
     LIMIT #{limit}
   </select>
 
@@ -279,6 +370,7 @@
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
       <include refid="effectiveSearchFilter"/>
       AND c.chunk_id IN
     <foreach collection="chunkIds" item="chunkId" open="(" separator="," close=")">
@@ -314,6 +406,7 @@
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
       AND c.chunk_id IN
     <foreach collection="chunkIds" item="chunkId" open="(" separator="," close=")">
       #{chunkId}
@@ -348,6 +441,7 @@
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
       AND c.document_id = #{documentId}
       AND c.sort_order BETWEEN #{sortOrder} - #{radius} AND #{sortOrder} + #{radius}
     ORDER BY c.sort_order, c.chunk_id
@@ -381,6 +475,7 @@
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
       <include refid="effectiveSearchFilter"/>
       <if test="targets != null and targets.size() > 0">
         AND doc.target IN
@@ -453,6 +548,7 @@
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
       <include refid="effectiveSearchFilter"/>
       <if test="targets != null and targets.size() > 0">
         AND doc.target IN
@@ -553,6 +649,8 @@
     ) doc
     JOIN law_api_document_chunks c ON c.document_id = doc.document_id
     WHERE c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
+      AND c.activation_status = 'ACTIVE'
       <if test="targets != null and targets.size() > 0">
         AND doc.target IN
         <foreach collection="targets" item="target" open="(" separator="," close=")">

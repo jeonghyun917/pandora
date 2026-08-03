@@ -91,6 +91,19 @@ public class LawSemanticIndexService {
 		return indexChunks(chunks, model, vectorStore, chunks.size());
 	}
 
+	public LawSemanticIndexResult indexCandidate(String target, long documentId, int candidateVersion, int limit) {
+		int safeLimit = Math.max(1, Math.min(limit, MAX_DIRECT_INDEX_LIMIT));
+		if (documentId <= 0 || candidateVersion <= 0) {
+			return new LawSemanticIndexResult(properties.qdrant().collection(), properties.openai().embeddingModel(), 0, 0);
+		}
+		String normalizedTarget = target == null ? "" : target.trim();
+		String model = properties.openai().embeddingModel();
+		String vectorStore = properties.qdrant().collection();
+		List<LawSemanticChunkRow> chunks = lawChunkMapper.findSemanticIndexCandidatesByDocumentIdAndVersion(
+			normalizedTarget, documentId, candidateVersion, model, vectorStore, safeLimit);
+		return indexChunks(chunks, model, vectorStore, chunks.size());
+	}
+
 	private LawSemanticIndexResult indexChunks(
 		List<LawSemanticChunkRow> chunks,
 		String model,

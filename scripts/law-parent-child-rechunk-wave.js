@@ -4,12 +4,25 @@ const path = require("node:path");
 
 const workspace = path.resolve(__dirname, "..");
 const mysql = process.env.MARIADB_EXE || "C:\\Program Files\\MariaDB 12.2\\bin\\mariadb.exe";
-const baseUrl = process.env.PANDORA_BATCH_RUNNER_URL || "http://127.0.0.1:18080";
+const baseUrl = process.env.PANDORA_APP_URL || "http://127.0.0.1:8080";
 const qdrantUrl = process.env.QDRANT_URL || "http://127.0.0.1:6333";
 const model = process.env.PANDORA_EMBEDDING_MODEL || "text-embedding-3-small";
 const vectorStore = process.env.PANDORA_LAW_VECTOR_STORE || "law_chunks";
 const outPath = path.resolve(workspace, "logs", "law-parent-child-rechunk-wave-latest.md");
 const jsonPath = path.resolve(workspace, "logs", "law-parent-child-rechunk-wave-latest.json");
+
+if (process.argv.includes("--help") || process.argv.includes("-h")) {
+  console.log(`
+Usage: node scripts/law-parent-child-rechunk-wave.js [options]
+
+Fail-closed workflow:
+  preview -> create-candidate -> index -> verify -> activate
+
+--apply=false is preview-only and never writes to MariaDB, Qdrant, or the app API.
+--apply=true creates a CANDIDATE version; it never deletes ACTIVE chunks before activation.
+  `.trim());
+  process.exit(0);
+}
 
 const args = parseArgs(process.argv.slice(2));
 const apply = boolArg("apply", false);
@@ -538,6 +551,7 @@ async function main() {
 
   const documentIds = allSelected.map((item) => Number(item.documentId));
   let rebuildResults = [];
+  let candidateResults = [];
   let indexResults = [];
   const indexFailures = [];
   let statusRows = [];
@@ -549,13 +563,13 @@ async function main() {
     for (const target of targets) {
       const ids = allSelected.filter((item) => item.target === target).map((item) => item.documentId);
       if (!ids.length) continue;
-      for (const idChunk of chunksOf(ids, applyRequestChunkSize)) {
-        const rebuild = await postJson("/api/law-data/chunks/rebuild-by-document-ids", {
+      for (const documentId of ids) {
+        const candidate = await postJson("/api/law-data/chunks/create-candidate", {
           target,
-          documentIds: idChunk,
+          documentId,
         }, 300000);
-        rebuildResults.push(rebuild);
-        actions.push(`rebuild:${target}:${idChunk.join(",")}`);
+        candidateResults.push({ ...candidate, target });
+        actions.push(`create-candidate:${target}:${documentId}:v${candidate.chunkVersion}`);
       }
     }
 
@@ -566,16 +580,17 @@ async function main() {
         const ids = allSelected.filter((item) => item.target === target).map((item) => item.documentId);
         if (!ids.length) continue;
         for (const id of ids) {
-          const pendingRow = statusRows.find((row) => row.target === target && String(row.documentId) === String(id));
-          const limit = number(pendingRow?.embeddingPending);
+          const candidate = candidateResults.find((item) => item.target === target && String(item.documentId) === String(id));
+          const limit = number(candidate?.expectedChunkCount);
           if (limit <= 0) {
             actions.push(`index-direct-skip:${target}:${id}`);
             continue;
           }
           try {
-            const indexed = await postJsonWithRetry("/api/law-data/semantic/index-documents", {
+            const indexed = await postJsonWithRetry("/api/law-data/semantic/index-candidate", {
               target,
-              documentIds: [id],
+              documentId: id,
+              candidateVersion: candidate.chunkVersion,
               limit,
             }, 600000, 2);
             indexResults.push({ ...indexed, target, documentId: id });
@@ -590,24 +605,7 @@ async function main() {
       }
       statusRows = postStatusRows(documentIds);
     } else if (indexMode === "batch") {
-      for (const target of targets) {
-        const ids = allSelected.filter((item) => item.target === target).map((item) => item.documentId);
-        if (!ids.length) continue;
-        for (const idChunk of chunksOf(ids, applyRequestChunkSize)) {
-          const idSet = new Set(idChunk.map((id) => String(id)));
-          const limit = Math.max(1, statusRows
-            .filter((row) => row.target === target && idSet.has(String(row.documentId)))
-            .reduce((sum, row) => sum + number(row.embeddingPending), 0));
-          const submitted = await postJson("/api/law-data/semantic/batches/submit-documents", {
-            target,
-            documentIds: idChunk,
-            limit,
-          }, 300000);
-          indexResults.push(submitted);
-          actions.push(`index-batch:${target}:${idChunk.join(",")}`);
-        }
-      }
-      statusRows = postStatusRows(documentIds);
+      throw new Error("Candidate activation requires direct index and verification; batch mode is not supported.");
     } else if (!["none", ""].includes(indexMode)) {
       throw new Error(`unsupported index mode: ${indexMode}`);
     }
@@ -642,6 +640,19 @@ async function main() {
       }
       if (qdrantMismatches.length > 0) {
         postApplyIssues.push(`qdrant-mismatch:${qdrantMismatches.length}`);
+      }
+      if (indexFailures.length === 0 && postApplyIssues.length === 0) {
+        for (const candidate of candidateResults) {
+          const activated = await postJson("/api/law-data/chunks/activate-candidate", {
+            documentId: candidate.documentId,
+            candidateVersion: candidate.chunkVersion,
+          }, 300000);
+          rebuildResults.push(activated);
+          actions.push(`activate:${candidate.target}:${candidate.documentId}:v${candidate.chunkVersion}:${activated.activated}`);
+          if (!activated.activated) {
+            postApplyIssues.push(`candidate-activation-blocked:${candidate.target}:${candidate.documentId}:v${candidate.chunkVersion}`);
+          }
+        }
       }
     }
 
@@ -711,6 +722,7 @@ async function main() {
     targetResults,
     selected: allSelected,
     rebuildResults,
+    candidateResults,
     indexResults,
     indexFailures,
     statusRows,

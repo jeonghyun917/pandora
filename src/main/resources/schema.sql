@@ -324,6 +324,7 @@ CREATE TABLE IF NOT EXISTS law_api_document_chunk_versions (
     document_id BIGINT NOT NULL COMMENT 'connected document id',
     chunk_version INT NOT NULL COMMENT 'chunk version within document',
     activation_status VARCHAR(20) NOT NULL DEFAULT 'CANDIDATE' COMMENT 'CANDIDATE, ACTIVE, RETIRED',
+    expected_chunk_count INT NOT NULL DEFAULT 0 COMMENT 'candidate chunk count required for activation',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created at',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'updated at',
     PRIMARY KEY (document_id, chunk_version),

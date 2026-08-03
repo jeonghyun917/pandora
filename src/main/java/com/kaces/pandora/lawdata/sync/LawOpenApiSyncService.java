@@ -155,6 +155,45 @@ public class LawOpenApiSyncService {
 		return previewRebuildRows(safeTarget, 0, rows);
 	}
 
+	@Transactional
+	public CandidateChunkVersionResult createCandidateChunks(String target, long documentId) {
+		String safeTarget = requireSupportedTarget(target);
+		if (documentId <= 0) {
+			throw new IllegalArgumentException("documentId is required.");
+		}
+		List<LawChunkRebuildRow> rows = lawDetailMapper.findChunkRebuildRowsByDocumentIds(safeTarget, List.of(documentId));
+		if (rows.size() != 1) {
+			throw new IllegalArgumentException("Preview-approved document was not found.");
+		}
+		LawChunkRebuildRow row = rows.get(0);
+		ChunkRebuildPreviewItem preview = previewItem(row);
+		if (preview.projectedChunks() == 0) {
+			throw new IllegalStateException("Candidate creation blocked because preview has no searchable chunks.");
+		}
+		SyncDetailDocument detail = payloadParser.parseDetailDocument(
+			row.rawJson(), row.detailTitle() == null ? row.title() : row.detailTitle());
+		return documentWriter.createCandidateChunks(
+			row.documentId(), row.detailId(), row.target(), row.title(), detail.sections(), sourceUrl(row));
+	}
+
+	@Transactional
+	public ChunkActivationResult activateCandidate(long documentId, int candidateVersion) {
+		return documentWriter.activateCandidate(documentId, candidateVersion);
+	}
+
+	@Transactional
+	public ChunkActivationResult rollbackToVersion(long documentId, int retiredVersion) {
+		return documentWriter.rollbackToVersion(documentId, retiredVersion);
+	}
+
+	private String requireSupportedTarget(String target) {
+		String safeTarget = StringUtils.hasText(target) ? target.trim() : "law";
+		if (!List.of("law", "admrul").contains(safeTarget)) {
+			throw new IllegalArgumentException("Unsupported law data target: " + safeTarget);
+		}
+		return safeTarget;
+	}
+
 	private ChunkRebuildPreviewResult previewRebuildRows(String safeTarget, int safeOffset, List<LawChunkRebuildRow> rows) {
 		List<ChunkRebuildPreviewItem> items = rows.stream()
 			.map(this::previewItem)

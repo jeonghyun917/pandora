@@ -24,7 +24,7 @@ Common options:
   --index=direct|batch|none          Indexing mode after rechunk.
   --eval-every=0                     Run rag-eval-gate every N waves when > 0.
   --compact=true|false               Compact selected-document output.
-  --base-url=http://127.0.0.1:18080  Batch runner base URL.
+  --base-url=http://127.0.0.1:8080  App-dev base URL.
 
 Examples:
   node scripts/law-parent-child-rechunk-bulk.js --apply=false --targets=law --candidate=tiny
@@ -61,7 +61,7 @@ const options = {
   retryAttempts: Number(arg("retry-attempts", "3")),
   retryDelayMs: Number(arg("retry-delay-ms", "5000")),
   evalEvery: Number(arg("eval-every", "0")),
-  baseUrl: arg("base-url", process.env.LAW_BATCH_BASE_URL || "http://127.0.0.1:18080"),
+  baseUrl: arg("base-url", process.env.LAW_APP_URL || "http://127.0.0.1:8080"),
   compact: flag("compact", false),
   finalizeWaitMinutes: Number(arg("finalize-wait-minutes", "10")),
   finalizePollMs: Number(arg("finalize-poll-ms", "10000")),
