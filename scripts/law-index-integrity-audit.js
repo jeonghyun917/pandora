@@ -29,9 +29,11 @@ function runtimeMetadata(runtimeInfo) {
   return { runtimeInstanceId, indexRevision };
 }
 
-function sameRuntime(first, second) {
-  return first.runtimeInstanceId === second.runtimeInstanceId
-    && first.indexRevision === second.indexRevision;
+function sameRuntime(...runtimeInfos) {
+  return runtimeInfos.length > 0 && runtimeInfos.every((runtimeInfo) =>
+    runtimeInfo.runtimeInstanceId === runtimeInfos[0].runtimeInstanceId
+      && runtimeInfo.indexRevision === runtimeInfos[0].indexRevision
+  );
 }
 
 async function fetchJson(pathname) {
@@ -76,8 +78,9 @@ async function main() {
   const report = await fetchJson(
     `/api/admin/law-index-integrity/audit?target=${encodeURIComponent(target)}&limit=${limit}`
   );
+  const runtimeDuringAudit = runtimeMetadata(report);
   const runtimeAfter = runtimeMetadata(await fetchJson("/api/law-data/ai/debug/runtime-info"));
-  if (!sameRuntime(runtimeBefore, runtimeAfter)) {
+  if (!sameRuntime(runtimeBefore, runtimeDuringAudit, runtimeAfter)) {
     throw new Error("Runtime metadata drifted while the integrity audit was running.");
   }
   if (!Array.isArray(report.issues) || typeof report.causeCounts !== "object" || report.causeCounts === null) {
@@ -85,7 +88,7 @@ async function main() {
   }
   const artifact = {
     generatedAt: new Date().toISOString(),
-    ...runtimeBefore,
+    ...runtimeDuringAudit,
     target: report.target || "",
     limit: report.limit,
     causeCounts: report.causeCounts,

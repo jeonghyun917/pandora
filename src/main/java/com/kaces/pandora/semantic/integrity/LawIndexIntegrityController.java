@@ -14,17 +14,39 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/admin/law-index-integrity")
 public class LawIndexIntegrityController {
 	private final LawIndexIntegrityService integrityService;
+	private final LawIndexIntegrityRuntimeInfoProvider runtimeInfoProvider;
 
-	public LawIndexIntegrityController(LawIndexIntegrityService integrityService) {
+	public LawIndexIntegrityController(
+		LawIndexIntegrityService integrityService,
+		LawIndexIntegrityRuntimeInfoProvider runtimeInfoProvider
+	) {
 		this.integrityService = integrityService;
+		this.runtimeInfoProvider = runtimeInfoProvider;
 	}
 
 	@GetMapping("/audit")
-	public ResponseEntity<LawIndexIntegrityReport> audit(
+	public ResponseEntity<LawIndexIntegrityAuditResponse> audit(
 		@RequestParam(defaultValue = "") String target,
 		@RequestParam(defaultValue = "1000") int limit
 	) {
-		return ResponseEntity.ok(integrityService.audit(target, limit));
+		LawIndexIntegrityRuntimeInfo before = currentRuntimeInfo();
+		LawIndexIntegrityReport report = integrityService.audit(target, limit);
+		LawIndexIntegrityRuntimeInfo after = currentRuntimeInfo();
+		if (!before.equals(after)) {
+			throw new IllegalStateException("Law index integrity runtime identity drifted during the audit request.");
+		}
+		return ResponseEntity.ok(new LawIndexIntegrityAuditResponse(
+			report.target(), report.limit(), report.issues(), report.causeCounts(),
+			before.runtimeInstanceId(), before.indexRevision()
+		));
+	}
+
+	private LawIndexIntegrityRuntimeInfo currentRuntimeInfo() {
+		LawIndexIntegrityRuntimeInfo runtimeInfo = runtimeInfoProvider.current();
+		if (runtimeInfo == null || !runtimeInfo.isComplete()) {
+			throw new IllegalStateException("Law index integrity runtime identity is unavailable.");
+		}
+		return runtimeInfo;
 	}
 
 	@PostMapping("/repair")

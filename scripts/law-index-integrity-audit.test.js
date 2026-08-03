@@ -12,7 +12,7 @@ test("runtime metadata requires authoritative nonblank identity fields", () => {
 
 test("runtime drift is detected across the audit window", () => {
   assert.equal(
-    sameRuntime(
+	 sameRuntime(
       { runtimeInstanceId: "instance-a", indexRevision: "revision-a" },
       { runtimeInstanceId: "instance-a", indexRevision: "revision-a" },
     ),
@@ -25,4 +25,12 @@ test("runtime drift is detected across the audit window", () => {
     ),
     false,
   );
+	assert.equal(
+		sameRuntime(
+			{ runtimeInstanceId: "instance-a", indexRevision: "revision-a" },
+			{ runtimeInstanceId: "instance-a", indexRevision: "revision-a" },
+			{ runtimeInstanceId: "instance-b", indexRevision: "revision-a" },
+		),
+		false,
+	);
 });
