@@ -1,6 +1,7 @@
 package com.kaces.pandora.infra.openai;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.kaces.pandora.semantic.config.LawAiProperties;
 import java.io.IOException;
@@ -9,6 +10,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
 
 class OpenAiEmbeddingClientTests {
@@ -35,6 +38,101 @@ class OpenAiEmbeddingClientTests {
 		assertThat(client.embed(List.of("query"))).containsExactly(List.of(0.25d, 0.5d));
 		assertThat(attempts).hasValue(2);
 		assertThat(metadata).hasSize(1);
+	}
+
+	@Test
+	void recordsMessageFreeDiagnosticWhenRejectedWrapperEscapesEmbedding() {
+		List<OpenAiRequestBodyTransportRetry.FailureSummary> diagnostics = new ArrayList<>();
+		OpenAiEmbeddingClient client = clientThatFails(
+			new IllegalStateException("SECRET question context request body", new IOException("SECRET transport message")),
+			diagnostics::add
+		);
+
+		assertThatThrownBy(() -> client.embed(List.of("sensitive query"))).isInstanceOf(IllegalStateException.class);
+
+		assertThat(diagnostics).containsExactly(new OpenAiRequestBodyTransportRetry.FailureSummary(
+			IllegalStateException.class.getName(),
+			List.of(IllegalStateException.class.getName(), IOException.class.getName()),
+			false,
+			false,
+			false,
+			1,
+			false
+		));
+		assertThat(diagnostics.toString()).doesNotContain("SECRET", "sensitive query");
+	}
+
+	@Test
+	void doesNotRecordEscapeDiagnosticWhenRecognizedRetrySucceeds() {
+		AtomicInteger attempts = new AtomicInteger();
+		List<OpenAiRequestBodyTransportRetry.FailureSummary> diagnostics = new ArrayList<>();
+		OpenAiEmbeddingClient client = new OpenAiEmbeddingClient(
+			properties(),
+			(apiKey, model, inputs) -> {
+				if (attempts.incrementAndGet() == 1) {
+					throw requestBodyWriteFailure();
+				}
+				return Map.of("data", List.of(Map.of("embedding", List.of(0.25d))));
+			},
+			new OpenAiRequestBodyTransportRetry(delay -> { }, metadata -> { }),
+			diagnostics::add
+		);
+
+		assertThat(client.embed(List.of("query"))).containsExactly(List.of(0.25d));
+
+		assertThat(attempts).hasValue(2);
+		assertThat(diagnostics).isEmpty();
+	}
+
+	@Test
+	void recordsClassAndMarkerOnlyDiagnosticForHttpAndSemanticFailures() {
+		List<OpenAiRequestBodyTransportRetry.FailureSummary> httpDiagnostics = new ArrayList<>();
+		OpenAiEmbeddingClient httpClient = clientThatFails(
+			new HttpClientErrorException(HttpStatus.BAD_REQUEST),
+			httpDiagnostics::add
+		);
+		List<OpenAiRequestBodyTransportRetry.FailureSummary> semanticDiagnostics = new ArrayList<>();
+		OpenAiEmbeddingClient semanticClient = clientThatFails(
+			new IllegalStateException("SECRET semantic mapping failure"),
+			semanticDiagnostics::add
+		);
+
+		assertThatThrownBy(() -> httpClient.embed(List.of("query"))).isInstanceOf(HttpClientErrorException.class);
+		assertThatThrownBy(() -> semanticClient.embed(List.of("query"))).isInstanceOf(IllegalStateException.class);
+
+		assertThat(httpDiagnostics).singleElement().satisfies(summary -> {
+			assertThat(summary.classifierAccepted()).isFalse();
+			assertThat(summary.attempts()).isEqualTo(1);
+			assertThat(summary.retryExhausted()).isFalse();
+			assertThat(summary.toString()).doesNotContain("query");
+		});
+		assertThat(semanticDiagnostics).singleElement().satisfies(summary -> {
+			assertThat(summary.classifierAccepted()).isFalse();
+			assertThat(summary.attempts()).isEqualTo(1);
+			assertThat(summary.retryExhausted()).isFalse();
+			assertThat(summary.toString()).doesNotContain("SECRET");
+		});
+	}
+
+	private OpenAiEmbeddingClient clientThatFails(
+		RuntimeException failure,
+		java.util.function.Consumer<OpenAiRequestBodyTransportRetry.FailureSummary> diagnosticRecorder
+	) {
+		return new OpenAiEmbeddingClient(
+			properties(),
+			(apiKey, model, inputs) -> {
+				throw failure;
+			},
+			new OpenAiRequestBodyTransportRetry(delay -> { }, metadata -> { }),
+			diagnosticRecorder
+		);
+	}
+
+	private ResourceAccessException requestBodyWriteFailure() {
+		return new ResourceAccessException(
+			"Could not write JSON: Error writing request body to server",
+			new IOException("Error writing request body to server")
+		);
 	}
 
 	private LawAiProperties properties() {

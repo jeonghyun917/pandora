@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
@@ -32,12 +33,22 @@ final class OpenAiRequestBodyTransportRetry {
 	}
 
 	<T> T execute(String operation, RetryOperation<T> request) throws InterruptedException {
+		return execute(operation, request, ignored -> { });
+	}
+
+	<T> T execute(
+		String operation,
+		RetryOperation<T> request,
+		Consumer<FailureSummary> failureRecorder
+	) throws InterruptedException {
 		int retries = 0;
 		while (true) {
 			try {
 				return request.execute();
 			} catch (RuntimeException exception) {
-				if (retries >= MAX_RETRIES || !isRequestBodyWriteFailure(exception)) {
+				boolean classifierAccepted = isRequestBodyWriteFailure(exception);
+				if (retries >= MAX_RETRIES || !classifierAccepted) {
+					failureRecorder.accept(failureSummary(exception, classifierAccepted, retries + 1));
 					throw exception;
 				}
 				retries++;
@@ -56,6 +67,30 @@ final class OpenAiRequestBodyTransportRetry {
 				}
 			}
 		}
+	}
+
+	FailureSummary failureSummary(RuntimeException exception, boolean classifierAccepted, int attempts) {
+		List<String> causeChainClasses = new java.util.ArrayList<>();
+		boolean requestBodyTransportMarkerExact = false;
+		for (Throwable cause : causeChain(exception)) {
+			if (causeChainClasses.size() < 8) {
+				causeChainClasses.add(cause.getClass().getName());
+			}
+			if (cause instanceof IOException ioException && isRequestBodyWriteTransportException(ioException)) {
+				requestBodyTransportMarkerExact = true;
+			}
+		}
+		boolean springOuterMarkerExact = exception instanceof HttpMessageNotWritableException
+			&& describesSpringRequestBodyWrite(exception.getMessage());
+		return new FailureSummary(
+			exception.getClass().getName(),
+			List.copyOf(causeChainClasses),
+			springOuterMarkerExact,
+			requestBodyTransportMarkerExact,
+			classifierAccepted,
+			attempts,
+			classifierAccepted && attempts > MAX_RETRIES
+		);
 	}
 
 	private boolean isRequestBodyWriteFailure(RuntimeException exception) {
@@ -129,6 +164,17 @@ final class OpenAiRequestBodyTransportRetry {
 		int maxRetries,
 		String outerExceptionClass,
 		String rootCauseClass
+	) {
+	}
+
+	record FailureSummary(
+		String outerExceptionClass,
+		List<String> causeChainClasses,
+		boolean springOuterMarkerExact,
+		boolean requestBodyTransportMarkerExact,
+		boolean classifierAccepted,
+		int attempts,
+		boolean retryExhausted
 	) {
 	}
 }

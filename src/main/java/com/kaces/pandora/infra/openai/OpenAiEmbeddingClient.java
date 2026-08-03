@@ -6,6 +6,9 @@ import java.util.ArrayList;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -13,15 +16,17 @@ import org.springframework.web.client.RestClient;
 
 @Component
 public class OpenAiEmbeddingClient {
+	private static final Logger log = LoggerFactory.getLogger(OpenAiEmbeddingClient.class);
 
 	private final LawAiProperties properties;
 	private final EmbeddingRequestExecutor requestExecutor;
 	private final OpenAiRequestBodyTransportRetry requestBodyTransportRetry;
+	private final Consumer<OpenAiRequestBodyTransportRetry.FailureSummary> transportFailureRecorder;
 
 	// 메소드 설명: OpenAiEmbeddingClient 처리 흐름을 수행합니다.
 	@Autowired
 	public OpenAiEmbeddingClient(LawAiProperties properties) {
-		this(properties, defaultRequestExecutor(), new OpenAiRequestBodyTransportRetry());
+		this(properties, defaultRequestExecutor(), new OpenAiRequestBodyTransportRetry(), OpenAiEmbeddingClient::logEscapedTransportFailure);
 	}
 
 	OpenAiEmbeddingClient(
@@ -29,9 +34,19 @@ public class OpenAiEmbeddingClient {
 		EmbeddingRequestExecutor requestExecutor,
 		OpenAiRequestBodyTransportRetry requestBodyTransportRetry
 	) {
+		this(properties, requestExecutor, requestBodyTransportRetry, OpenAiEmbeddingClient::logEscapedTransportFailure);
+	}
+
+	OpenAiEmbeddingClient(
+		LawAiProperties properties,
+		EmbeddingRequestExecutor requestExecutor,
+		OpenAiRequestBodyTransportRetry requestBodyTransportRetry,
+		Consumer<OpenAiRequestBodyTransportRetry.FailureSummary> transportFailureRecorder
+	) {
 		this.properties = properties;
 		this.requestExecutor = requestExecutor;
 		this.requestBodyTransportRetry = requestBodyTransportRetry;
+		this.transportFailureRecorder = transportFailureRecorder;
 	}
 
 	private static EmbeddingRequestExecutor defaultRequestExecutor() {
@@ -68,7 +83,8 @@ public class OpenAiEmbeddingClient {
 		try {
 			response = requestBodyTransportRetry.execute(
 				"openai-embeddings",
-				() -> requestExecutor.execute(apiKey, properties.openai().embeddingModel(), inputs)
+				() -> requestExecutor.execute(apiKey, properties.openai().embeddingModel(), inputs),
+				transportFailureRecorder
 			);
 		} catch (InterruptedException interrupted) {
 			Thread.currentThread().interrupt();
@@ -84,6 +100,19 @@ public class OpenAiEmbeddingClient {
 			embeddings.add(vector.stream().map(value -> ((Number) value).doubleValue()).toList());
 		}
 		return embeddings;
+	}
+
+	private static void logEscapedTransportFailure(OpenAiRequestBodyTransportRetry.FailureSummary summary) {
+		log.warn(
+			"OpenAI transport failure escaped. operationStage=embedding outerExceptionClass={} causeChainClasses={} springOuterMarkerExact={} requestBodyTransportMarkerExact={} classifierAccepted={} attempts={} retryExhausted={}",
+			summary.outerExceptionClass(),
+			summary.causeChainClasses(),
+			summary.springOuterMarkerExact(),
+			summary.requestBodyTransportMarkerExact(),
+			summary.classifierAccepted(),
+			summary.attempts(),
+			summary.retryExhausted()
+		);
 	}
 
 	@FunctionalInterface
