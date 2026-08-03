@@ -326,3 +326,46 @@ suite, was run.
 ### Commit (prior runtime-fencing work)
 
 `fix: fence document activation runtime` — SHA recorded in handoff.
+
+## MyBatis mapper scan startup regression (fix5)
+
+### Root cause and correction
+
+`@MapperScan(basePackages = "com.kaces.pandora")` registered every interface in
+the package as a MyBatis mapper. That created a mapper proxy for the
+non-mapper `LawActivationTransactionExecutor` alongside its Spring component
+implementation. The scan now requires `@Mapper`, which every production mapper
+interface already declares.
+
+### TDD evidence
+
+- RED: the lightweight annotation test observed `annotationClass()` as its
+  default `Annotation.class`, rather than MyBatis `Mapper.class`.
+- GREEN: the test now verifies `Mapper.class`, confirms
+  `LawActivationTransactionExecutor` is not a mapper, and confirms all eleven
+  current production mapper interfaces are annotated.
+
+### Focused verification
+
+```text
+./mvnw.cmd -Dtest=PandoraApplicationMapperScanTests test
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
+
+./mvnw.cmd -Dtest=LawDocumentWriterTests,LawOpenApiSyncServiceChunkPreviewTests,LawApiSchemaMaintenanceTests,QdrantClientTests,LawSemanticIndexServiceTests,LawChunkMapperXmlTests,LawChunkActivationSagaTests,RuntimeConfigurationIdentityTests test
+Tests run: 45, Failures: 0, Errors: 0, Skipped: 0
+
+node --test scripts/law-parent-child-rechunk-wave.test.js
+pass 2, fail 0
+
+node --check scripts/law-parent-child-rechunk-wave.js
+node --check scripts/law-parent-child-rechunk-bulk.js
+git diff --check
+```
+
+No live MariaDB, Qdrant, 8080, or 18080 action was performed. The broad
+Spring-context suite remains deferred because it can execute configured
+infrastructure hooks; `output/` remains untouched.
+
+### Commit
+
+`fix: restrict MyBatis mapper scanning` SHA recorded in handoff.
