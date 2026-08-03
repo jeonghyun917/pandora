@@ -2,11 +2,17 @@ package com.kaces.pandora.lawdata.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import java.io.InputStream;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.apache.ibatis.builder.xml.XMLMapperBuilder;
 import org.apache.ibatis.io.Resources;
+import org.apache.ibatis.mapping.MappedStatement;
 import org.apache.ibatis.session.Configuration;
 import org.junit.jupiter.api.Test;
 
@@ -16,6 +22,15 @@ class LawChunkMapperXmlTests {
 		"com.kaces.pandora.lawdata.persistence.LawChunkMapper.findSemanticChunksByHeadingOrDocumentTitle";
 	private static final String INTEGRITY_AUDIT_STATEMENT =
 		"com.kaces.pandora.lawdata.persistence.LawChunkMapper.findLawIndexIntegrityRows";
+	private static final List<String> SEMANTIC_CHUNK_COMPONENTS = List.of(
+		"chunkId", "documentId", "target", "externalId", "title", "agencyName", "categoryName",
+		"sourceDate", "effectiveStatus", "chunkNo", "chunkTitle", "chunkText", "pageNo", "sourcePath",
+		"sourceUrl", "sortOrder", "contentHash", "parentSectionTitle", "sectionType", "qualityStatus",
+		"embeddingText", "parentKey", "chunkVersion"
+	);
+	private static final Pattern PROJECTION_ALIAS = Pattern.compile(
+		"(?i)\\bAS\\s+([A-Za-z][A-Za-z0-9]*)\\s*(?=,|$)"
+	);
 
 	@Test
 	void integrityAuditFiltersTargetAndEnforcesTenThousandRowBound() throws Exception {
@@ -103,6 +118,84 @@ class LawChunkMapperXmlTests {
 		assertThat(sql)
 			.contains("o.owner_token=?", "o.phase='DB_ACTIVE_CLEANUP_PENDING'")
 			.doesNotContain("v.activation_owner=?");
+	}
+
+	@Test
+	void everySemanticChunkSelectMatchesTheCanonicalRecordProjection() throws Exception {
+		Configuration configuration = parseMapper();
+		List<MappedStatement> statements = configuration.getMappedStatements().stream()
+			.filter(MappedStatement.class::isInstance)
+			.map(MappedStatement.class::cast)
+			.distinct()
+			.filter(statement -> statement.getResultMaps().stream()
+				.anyMatch(resultMap -> resultMap.getType().equals(LawSemanticChunkRow.class)))
+			.sorted(Comparator.comparing(MappedStatement::getId))
+			.toList();
+
+		assertThat(statements).isNotEmpty();
+		for (MappedStatement statement : statements) {
+			String sql = boundSql(statement);
+			assertThat(projectionAliases(sql))
+				.as("canonical LawSemanticChunkRow projection for %s", statement.getId())
+				.containsExactlyElementsOf(SEMANTIC_CHUNK_COMPONENTS);
+			assertThat(sql)
+				.as("stable Integer pageNo constructor type for %s", statement.getId())
+				.contains("CAST(NULL AS SIGNED) AS pageNo")
+				.doesNotContain("NULL AS pageNo");
+			assertThat(sql)
+				.as("stable String embeddingText constructor type for %s", statement.getId())
+				.doesNotContain("NULL AS embeddingText");
+		}
+	}
+
+	@Test
+	void findSemanticChunksByIdsUsesExactCanonicalAliasesAndTypedNulls() throws Exception {
+		Configuration configuration = parseMapper();
+		MappedStatement statement = configuration.getMappedStatement(
+			"com.kaces.pandora.lawdata.persistence.LawChunkMapper.findSemanticChunksByIds"
+		);
+		String sql = boundSql(statement);
+
+		assertThat(projectionAliases(sql))
+			.containsExactlyElementsOf(SEMANTIC_CHUNK_COMPONENTS);
+		assertThat(sql)
+			.contains("CAST(NULL AS SIGNED) AS pageNo", "CAST(NULL AS CHAR) AS embeddingText")
+			.doesNotContain("NULL AS pageNo", "NULL AS embeddingText");
+	}
+
+	private String boundSql(MappedStatement statement) {
+		Map<String, Object> parameters = new HashMap<>();
+		parameters.put("target", "law");
+		parameters.put("query", "");
+		parameters.put("model", "text-embedding-3-small");
+		parameters.put("vectorStore", "law_chunks");
+		parameters.put("limit", 20);
+		parameters.put("documentIds", List.of(1L));
+		parameters.put("documentId", 1L);
+		parameters.put("chunkVersion", 1);
+		parameters.put("chunkIds", List.of(1L));
+		parameters.put("includeFuture", true);
+		parameters.put("sortOrder", 1);
+		parameters.put("radius", 1);
+		parameters.put("targets", List.of("law"));
+		parameters.put("keywords", List.of("keyword"));
+		parameters.put("titleKeywords", List.of("title"));
+		parameters.put("textKeywords", List.of("text"));
+		return statement.getBoundSql(parameters).getSql().replaceAll("\\s+", " ").trim();
+	}
+
+	private List<String> projectionAliases(String sql) {
+		int selectStart = sql.toUpperCase().indexOf("SELECT ") + "SELECT ".length();
+		assertThat(selectStart).as("SELECT boundary in %s", sql).isGreaterThan("SELECT ".length() - 1);
+		int fromStart = sql.toUpperCase().indexOf(" FROM ", selectStart);
+		assertThat(fromStart).as("outer FROM boundary in %s", sql).isGreaterThan(selectStart);
+		String projection = sql.substring(selectStart, fromStart);
+		Matcher matcher = PROJECTION_ALIAS.matcher(projection);
+		List<String> aliases = new java.util.ArrayList<>();
+		while (matcher.find()) {
+			aliases.add(matcher.group(1));
+		}
+		return aliases;
 	}
 
 	private Configuration parseMapper() throws Exception {
