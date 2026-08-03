@@ -361,7 +361,7 @@ final class LawSemanticChunkPlanner {
 			String embeddingText = embeddingText(context.documentTitle(), parentNumber, parentTitle, chunk);
 			versioned.add(new PlannedLawChunk(
 				chunk.type(), chunk.no(), chunk.title(), chunk.text(), chunk.sourcePath(),
-				2, parentKey, parentTitle, childOrder, embeddingText, "PASS", null
+				2, parentKey, parentTitle, parentPath, childOrder, embeddingText, "PASS", null
 			));
 		}
 		return versioned;
@@ -979,19 +979,16 @@ final class LawSemanticChunkPlanner {
 	}
 
 	private String parentKey(SyncDetailSection section) {
+		String no = baseNo(section.no());
+		String sourcePath = parentSourcePath(section);
+		if (StringUtils.hasText(sourcePath) || StringUtils.hasText(no)) {
+			return "parent:" + sourcePath + "\n" + no;
+		}
 		String title = parentTitle(section);
 		if (StringUtils.hasText(title)) {
 			return "title:" + title;
 		}
-		String no = baseNo(section.no());
-		if (StringUtils.hasText(no)) {
-			return "no:" + no;
-		}
-		String sourcePath = parentSourcePath(section);
-		if (StringUtils.hasText(sourcePath)) {
-			return "path:" + sourcePath;
-		}
-		return "fallback";
+		return "fallback:" + section.type() + "\n" + section.body();
 	}
 
 	private String parentTitle(SyncDetailSection section) {
@@ -1050,6 +1047,10 @@ final class LawSemanticChunkPlanner {
 		var appendix = LAW_APPENDIX_SOURCE_PATH.matcher(sourcePath);
 		if (appendix.matches()) {
 			return appendix.group(1);
+		}
+		String unitPath = sourcePath.replaceFirst("(\\[[0-9]+\\])(?:\\..*)$", "$1");
+		if (!unitPath.equals(sourcePath)) {
+			return unitPath;
 		}
 		return sourcePath.replaceFirst("\\[[0-9]+]$", "");
 	}

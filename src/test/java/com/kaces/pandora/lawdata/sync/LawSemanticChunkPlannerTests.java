@@ -1,6 +1,7 @@
 package com.kaces.pandora.lawdata.sync;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static com.kaces.pandora.common.text.LawHashUtils.sha256;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -55,6 +56,34 @@ class LawSemanticChunkPlannerTests {
 
 		assertThat(chunks).hasSize(2);
 		assertThat(chunks).extracting(PlannedLawChunk::parentKey).doesNotHaveDuplicates();
+	}
+
+	@Test
+	void planSeparatesAdjacentArticlesWithTheSameTitleByCanonicalPathAndNumber() {
+		List<PlannedLawChunk> chunks = planner.plan(planningContext, List.of(
+			new SyncDetailSection("article", "Article 1", "Article (General)", "First provision ".repeat(80), "$.law.articles[0].body", 1, 1),
+			new SyncDetailSection("article", "Article 2", "Article (General)", "Second provision ".repeat(80), "$.law.articles[1].body", 2, 1)
+		));
+
+		assertThat(chunks).hasSize(2);
+		assertThat(chunks).extracting(PlannedLawChunk::parentKey).doesNotHaveDuplicates();
+		assertThat(chunks.get(0).parentKey()).isEqualTo(sha256("law\n41\n$.law.articles\nArticle 1"));
+		assertThat(chunks.get(0).parentSourcePath()).isEqualTo("$.law.articles");
+	}
+
+	@Test
+	void planKeepsMeaningfulShortExceptionWithVersionedMetadata() {
+		List<PlannedLawChunk> chunks = planner.plan(planningContext, List.of(
+			new SyncDetailSection("article", "Article 12", "Article 12 (Exception)",
+				"Exception: retention remains permitted when an applicable statute requires it.",
+				"$.law.articles[11].body", 12, 1)
+		));
+
+		assertThat(chunks).singleElement().satisfies(chunk -> {
+			assertThat(chunk.text()).contains("Exception:");
+			assertThat(chunk.chunkSchemaVersion()).isEqualTo(2);
+			assertThat(chunk.qualityStatus()).isEqualTo("PASS");
+		});
 	}
 
 	@Test

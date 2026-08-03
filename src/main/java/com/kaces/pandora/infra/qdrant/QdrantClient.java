@@ -412,6 +412,9 @@ public class QdrantClient {
 	}
 
 	private int chunkVersion(LawSemanticChunkRow chunk) {
+		if (chunk.chunkVersion() != null && chunk.chunkVersion() > 0) {
+			return chunk.chunkVersion();
+		}
 		String sourcePath = chunk.sourcePath() == null ? "" : chunk.sourcePath();
 		if (sourcePath.contains("$.v4.")) {
 			return 4;

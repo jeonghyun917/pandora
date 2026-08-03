@@ -158,7 +158,8 @@
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
       <include refid="sectionTypeExpression"/> AS sectionType,
       c.embedding_text AS embeddingText,
-      c.parent_key AS parentKey
+      c.parent_key AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     LEFT JOIN law_api_chunk_embeddings e
@@ -226,7 +227,8 @@
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
       <include refid="sectionTypeExpression"/> AS sectionType,
       c.embedding_text AS embeddingText,
-      c.parent_key AS parentKey
+      c.parent_key AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     LEFT JOIN law_api_chunk_embeddings e
@@ -271,7 +273,8 @@
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
       <include refid="sectionTypeExpression"/> AS sectionType,
       NULL AS embeddingText,
-      c.parent_key AS parentKey
+      c.parent_key AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
@@ -305,7 +308,8 @@
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
       <include refid="sectionTypeExpression"/> AS sectionType,
       c.embedding_text AS embeddingText,
-      c.parent_key AS parentKey
+      c.parent_key AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
@@ -338,7 +342,8 @@
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
       <include refid="sectionTypeExpression"/> AS sectionType,
       NULL AS embeddingText,
-      c.parent_key AS parentKey
+      c.parent_key AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
@@ -370,7 +375,8 @@
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
       <include refid="sectionTypeExpression"/> AS sectionType,
       NULL AS embeddingText,
-      c.parent_key AS parentKey
+      c.parent_key AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
@@ -441,7 +447,8 @@
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
       <include refid="sectionTypeExpression"/> AS sectionType,
       c.embedding_text AS embeddingText,
-      c.parent_key AS parentKey
+      c.parent_key AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
@@ -504,7 +511,8 @@
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
       <include refid="sectionTypeExpression"/> AS sectionType,
       NULL AS embeddingText,
-      c.parent_key AS parentKey
+      c.parent_key AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM (
       SELECT
         doc.document_id,
@@ -595,7 +603,8 @@
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
       <include refid="sectionTypeExpression"/> AS sectionType,
       NULL AS embeddingText,
-      c.parent_key AS parentKey
+      c.parent_key AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM (
       SELECT
         doc.document_id,

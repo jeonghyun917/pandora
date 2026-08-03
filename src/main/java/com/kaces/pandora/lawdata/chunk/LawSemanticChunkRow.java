@@ -22,7 +22,8 @@ public record LawSemanticChunkRow(
 	String sectionType,
 	String qualityStatus,
 	String embeddingText,
-	String parentKey
+	String parentKey,
+	Integer chunkVersion
 ) {
 	public LawSemanticChunkRow {
 		qualityStatus = qualityStatus == null || qualityStatus.isBlank() ? "PASS" : qualityStatus;
@@ -54,7 +55,7 @@ public record LawSemanticChunkRow(
 			chunkId, documentId, target, externalId, title, agencyName, categoryName,
 			sourceDate, effectiveStatus, chunkNo, chunkTitle, chunkText, pageNo,
 			sourcePath, sourceUrl, sortOrder, contentHash, parentSectionTitle, sectionType,
-			qualityStatus, null, null
+			qualityStatus, null, null, null
 		);
 	}
 
@@ -82,7 +83,7 @@ public record LawSemanticChunkRow(
 		this(
 			chunkId, documentId, target, externalId, title, agencyName, categoryName,
 			sourceDate, effectiveStatus, chunkNo, chunkTitle, chunkText, pageNo,
-			sourcePath, sourceUrl, sortOrder, contentHash, parentSectionTitle, sectionType, "PASS", null, null
+			sourcePath, sourceUrl, sortOrder, contentHash, parentSectionTitle, sectionType, "PASS", null, null, null
 		);
 	}
 

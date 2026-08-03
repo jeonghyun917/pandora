@@ -74,7 +74,7 @@ class LawChunkMapperXmlTests {
 
 		assertThat(indexingSql)
 			.contains("c.chunk_text AS chunkText", "c.embedding_text AS embeddingText")
-			.contains("c.parent_key AS parentKey", "NULLIF(c.parent_title");
+			.contains("c.parent_key AS parentKey", "c.chunk_version AS chunkVersion", "NULLIF(c.parent_title");
 		assertThat(retrievalSql)
 			.contains("c.chunk_text AS chunkText")
 			.doesNotContain("c.embedding_text AS chunkText");

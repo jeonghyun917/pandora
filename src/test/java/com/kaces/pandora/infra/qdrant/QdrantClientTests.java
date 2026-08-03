@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.kaces.pandora.semantic.config.LawAiProperties;
+import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -218,6 +219,26 @@ class QdrantClientTests {
 		server.createContext("/collections/law", exchange -> respond(exchange, 200, readyCollection(1536, 10)));
 		server.createContext("/collections/rag", exchange -> respond(exchange, ragStatus, ragBody));
 		server.start();
+	}
+
+	@Test
+	void upsertUsesExplicitStoredChunkVersionForVersionTwoLawPayload() throws IOException {
+		java.util.concurrent.atomic.AtomicReference<String> body = new java.util.concurrent.atomic.AtomicReference<>();
+		server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		server.createContext("/collections/law_chunks/points", exchange -> {
+			body.set(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+			respond(exchange, 200, "{}");
+		});
+		server.start();
+		client = client("law_chunks", "rag");
+
+		client.upsert(java.util.List.of(new LawSemanticChunkRow(
+			7L, 41L, "law", "x", "Title", null, null, null, null,
+			"Article 1", "Article 1", "child", null, "$.law.articles[0].body", null,
+			0, "hash", "Article 1", "provision", "PASS", "embedding", "parent", 2
+		)), java.util.List.of(java.util.List.of(0.25d)));
+
+		assertThat(body.get()).contains("\"chunkVersion\":2");
 	}
 
 	private void startPointLookupServer(String body) throws IOException {

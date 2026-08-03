@@ -151,7 +151,7 @@ public class LawDocumentWriter {
 				"ACTIVE",
 				chunk.parentKey(),
 				chunk.parentTitle(),
-				emptyToNull(chunk.sourcePath()),
+				chunk.parentSourcePath(),
 				chunk.childOrder(),
 				chunk.embeddingText(),
 				chunk.qualityStatus(),
