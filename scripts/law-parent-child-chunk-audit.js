@@ -1,4 +1,5 @@
 const { execFileSync } = require("node:child_process");
+const { runtimeComparableIndexedQuery } = require("./lib/law-runtime-comparable-index");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -39,10 +40,6 @@ function table(sql, columns) {
 function number(value) {
   const parsed = Number(String(value ?? "0").replace(/,/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function sql(value) {
-  return String(value ?? "").replace(/'/g, "''");
 }
 
 function fmt(value) {
@@ -224,24 +221,7 @@ ORDER BY doc.target, vector_store, status;
 const runtimeComparableIndexed = {
   embeddingModel,
   vectorStore,
-  rows: table(`
-SELECT
-  doc.target,
-  COUNT(*) AS chunks
-FROM law_api_chunk_embeddings e
-JOIN law_api_document_chunks c ON c.chunk_id = e.chunk_id
-JOIN law_api_documents doc ON doc.document_id = c.document_id
-WHERE doc.use_yn='Y'
-  AND c.use_yn='Y'
-  AND e.embedding_model='${sql(embeddingModel)}'
-  AND e.vector_store='${sql(vectorStore)}'
-  AND e.status='INDEXED'
-  AND e.content_hash = c.content_hash
-  AND c.content_hash REGEXP '^[0-9A-Fa-f]{64}$'
-  AND c.activation_status='ACTIVE'
-GROUP BY doc.target
-ORDER BY doc.target;
-`, ["target", "chunks"]),
+  rows: table(runtimeComparableIndexedQuery({ embeddingModel, vectorStore }), ["target", "chunks"]),
 };
 
 const projectionRows = parentProjection.map((row) => ({
