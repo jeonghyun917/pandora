@@ -964,7 +964,7 @@
       AND e.vector_store = #{vectorStore}
     WHERE (#{target} = '' OR doc.target = #{target})
     ORDER BY c.chunk_id
-    LIMIT LEAST(#{limit}, 10000)
+    LIMIT #{limit}
   </select>
 
   <insert id="upsertEmbeddingStatus">

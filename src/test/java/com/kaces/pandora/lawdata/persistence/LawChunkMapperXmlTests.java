@@ -40,7 +40,7 @@ class LawChunkMapperXmlTests {
 	);
 
 	@Test
-	void integrityAuditFiltersTargetAndEnforcesTenThousandRowBound() throws Exception {
+	void integrityAuditFiltersTargetAndUsesMariaDbCompatibleBoundParameter() throws Exception {
 		Configuration configuration = parseMapper();
 		String sql = configuration.getMappedStatement(INTEGRITY_AUDIT_STATEMENT)
 			.getBoundSql(Map.of(
@@ -54,7 +54,8 @@ class LawChunkMapperXmlTests {
 			.trim();
 
 		assertThat(sql)
-			.contains("doc.use_yn = 'Y'", "(? = '' OR doc.target = ?)", "LIMIT LEAST(?, 10000)")
+			.contains("doc.use_yn = 'Y'", "(? = '' OR doc.target = ?)", "LIMIT ?")
+			.doesNotContain("LIMIT LEAST")
 			.contains("e.embedding_model = ?", "e.vector_store = ?");
 	}
 
