@@ -2,24 +2,37 @@ package com.kaces.pandora.infra.qdrant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
-import com.kaces.pandora.semantic.config.LawAiProperties;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
+import com.kaces.pandora.semantic.config.LawAiProperties;
+import com.kaces.pandora.semantic.search.QdrantSearchHit;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
-import java.util.Set;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.converter.HttpMessageNotWritableException;
+import org.springframework.web.client.RestClient;
+import tools.jackson.core.JsonGenerator;
+import tools.jackson.databind.DatabindException;
 import tools.jackson.databind.ObjectMapper;
 
 class QdrantClientTests {
 
 	private HttpServer server;
 	private QdrantClient client;
+	private AtomicInteger searchBodyAttempts;
 
 	@AfterEach
 	void tearDown() {
@@ -240,6 +253,40 @@ class QdrantClientTests {
 		assertThat(client.searchFailureCount()).isZero();
 	}
 
+	@Test
+	void searchRetriesExactSpringRequestBodyTransportFailureAndReturnsSecondResponse() throws Exception {
+		client = clientWithSearchBodyFailures(1);
+		AtomicReference<java.util.List<QdrantSearchHit>> result = new AtomicReference<>();
+
+		assertThat(catchThrowable(() -> result.set(client.search(java.util.List.of(0.25d), "law", 1)))).isNull();
+		assertThat(result.get())
+			.containsExactly(new QdrantSearchHit("law", 42L, 0.9d));
+		assertThat(searchBodyAttempts).hasValue(2);
+		assertThat(client.searchFailureCount()).isZero();
+	}
+
+	@Test
+	void searchCountsExactSpringRequestBodyTransportFailureOnceAfterBothAttempts() throws Exception {
+		client = clientWithSearchBodyFailures(2);
+		AtomicReference<java.util.List<QdrantSearchHit>> result = new AtomicReference<>();
+
+		assertThat(catchThrowable(() -> result.set(client.search(java.util.List.of(0.25d), "law", 1)))).isNull();
+		assertThat(result.get()).isEmpty();
+		assertThat(searchBodyAttempts).hasValue(2);
+		assertThat(client.searchFailureCount()).isEqualTo(1L);
+	}
+
+	@Test
+	void searchDoesNotRetryNonTransportSpringJsonMappingFailure() throws Exception {
+		AtomicInteger attempts = new AtomicInteger();
+		HttpMessageNotWritableException mappingFailure = new HttpMessageNotWritableException("Could not write JSON: invalid mapping");
+		client = clientWithSearchBodyFailure(attempts, mappingFailure);
+
+		assertThatThrownBy(() -> client.search(java.util.List.of(0.25d), "law", 1)).isSameAs(mappingFailure);
+		assertThat(attempts).hasValue(1);
+		assertThat(client.searchFailureCount()).isZero();
+	}
+
 	private void startServer(int ragStatus, String ragBody) throws IOException {
 		server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 		server.createContext("/collections/law", exchange -> respond(exchange, 200, readyCollection(1536, 10)));
@@ -325,6 +372,61 @@ class QdrantClientTests {
 		server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 		server.createContext("/collections/law/points/search", exchange -> respond(exchange, status, body));
 		server.start();
+	}
+
+	private QdrantClient clientWithSearchBodyFailures(int failuresBeforeSuccess) throws Exception {
+		searchBodyAttempts = new AtomicInteger();
+		return clientWithSearchBodyFailure(searchBodyAttempts, exactSpringRequestBodyTransportFailure(), failuresBeforeSuccess);
+	}
+
+	private QdrantClient clientWithSearchBodyFailure(AtomicInteger attempts, RuntimeException failure) throws Exception {
+		return clientWithSearchBodyFailure(attempts, failure, Integer.MAX_VALUE);
+	}
+
+	private QdrantClient clientWithSearchBodyFailure(
+		AtomicInteger attempts,
+		RuntimeException failure,
+		int failuresBeforeSuccess
+	) throws Exception {
+		server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		server.start();
+		QdrantClient qdrant = client();
+		RestClient restClient = mock(RestClient.class);
+		RestClient.RequestBodyUriSpec uriSpec = mock(RestClient.RequestBodyUriSpec.class);
+		RestClient.RequestBodySpec bodySpec = mock(RestClient.RequestBodySpec.class);
+		RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+		when(restClient.post()).thenReturn(uriSpec);
+		when(uriSpec.uri(anyString(), any(Object[].class))).thenReturn(bodySpec);
+		when(bodySpec.body(org.mockito.ArgumentMatchers.<Object>any())).thenAnswer(invocation -> {
+			if (attempts.incrementAndGet() <= failuresBeforeSuccess) {
+				throw failure;
+			}
+			return bodySpec;
+		});
+		when(bodySpec.retrieve()).thenReturn(responseSpec);
+		when(responseSpec.body(byte[].class)).thenReturn(
+			"{\"result\":[{\"id\":7,\"score\":0.9,\"payload\":{\"target\":\"law\",\"chunkId\":42}}]}"
+				.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+		);
+		replaceRestClient(qdrant, restClient);
+		return qdrant;
+	}
+
+	private HttpMessageNotWritableException exactSpringRequestBodyTransportFailure() {
+		return new HttpMessageNotWritableException(
+			"Could not write JSON: Error writing request body to server",
+			DatabindException.from(
+				(JsonGenerator) null,
+				"Error writing request body to server",
+				new IOException("Error writing request body to server")
+			)
+		);
+	}
+
+	private void replaceRestClient(QdrantClient qdrant, RestClient restClient) throws Exception {
+		Field field = QdrantClient.class.getDeclaredField("restClient");
+		field.setAccessible(true);
+		field.set(qdrant, restClient);
 	}
 
 	private void startIndexSnapshotServer(

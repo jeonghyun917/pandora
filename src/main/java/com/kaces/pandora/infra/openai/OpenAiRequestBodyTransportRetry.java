@@ -1,5 +1,6 @@
 package com.kaces.pandora.infra.openai;
 
+import com.kaces.pandora.infra.transport.RequestBodyTransportFailureClassifier;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Collections;
@@ -9,8 +10,6 @@ import java.util.Set;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.converter.HttpMessageNotWritableException;
-import org.springframework.web.client.ResourceAccessException;
 
 final class OpenAiRequestBodyTransportRetry {
 
@@ -18,8 +17,6 @@ final class OpenAiRequestBodyTransportRetry {
 	private static final int MAX_RETRIES = 1;
 	private static final int MAX_DIAGNOSTIC_CAUSE_CHAIN_CLASSES = 8;
 	private static final Duration RETRY_DELAY = Duration.ofMillis(200);
-	private static final String REQUEST_BODY_WRITE_FAILURE = "Error writing request body to server";
-	private static final String SPRING_REQUEST_BODY_WRITE_FAILURE = "Could not write JSON: " + REQUEST_BODY_WRITE_FAILURE;
 
 	private final RetryDelay retryDelay;
 	private final Consumer<RetryMetadata> retryRecorder;
@@ -87,7 +84,7 @@ final class OpenAiRequestBodyTransportRetry {
 		Throwable cause = exception;
 		while (cause != null && seen.add(cause) && causeChainClasses.size() < MAX_DIAGNOSTIC_CAUSE_CHAIN_CLASSES) {
 			causeChainClasses.add(cause.getClass().getName());
-			if (cause instanceof IOException ioException && isRequestBodyWriteTransportException(ioException)) {
+			if (cause instanceof IOException ioException && RequestBodyTransportFailureClassifier.isExactRequestBodyTransportIOException(ioException)) {
 				requestBodyTransportMarkerExact = true;
 			}
 			if (causeChainClasses.size() == MAX_DIAGNOSTIC_CAUSE_CHAIN_CLASSES) {
@@ -95,8 +92,7 @@ final class OpenAiRequestBodyTransportRetry {
 			}
 			cause = cause.getCause();
 		}
-		boolean springOuterMarkerExact = exception instanceof HttpMessageNotWritableException
-			&& describesSpringRequestBodyWrite(exception.getMessage());
+		boolean springOuterMarkerExact = RequestBodyTransportFailureClassifier.isExactSpringRequestBodyTransportWrapper(exception);
 		return new FailureSummary(
 			exception.getClass().getName(),
 			List.copyOf(causeChainClasses),
@@ -110,30 +106,7 @@ final class OpenAiRequestBodyTransportRetry {
 	}
 
 	private boolean isRequestBodyWriteFailure(RuntimeException exception) {
-		if (exception instanceof ResourceAccessException resourceAccessException) {
-			return resourceAccessException.getCause() instanceof IOException ioException
-				&& isRequestBodyWriteTransportException(ioException);
-		}
-		return exception instanceof HttpMessageNotWritableException messageNotWritableException
-			&& describesSpringRequestBodyWrite(messageNotWritableException.getMessage())
-			&& causeChainContainsRequestBodyWriteTransportException(messageNotWritableException);
-	}
-
-	private boolean causeChainContainsRequestBodyWriteTransportException(Throwable exception) {
-		for (Throwable cause : causeChain(exception)) {
-			if (cause instanceof IOException ioException && isRequestBodyWriteTransportException(ioException)) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	private boolean isRequestBodyWriteTransportException(IOException exception) {
-		return REQUEST_BODY_WRITE_FAILURE.equalsIgnoreCase(exception.getMessage());
-	}
-
-	private boolean describesSpringRequestBodyWrite(String message) {
-		return SPRING_REQUEST_BODY_WRITE_FAILURE.equalsIgnoreCase(message);
+		return RequestBodyTransportFailureClassifier.isExactTransientFailure(exception);
 	}
 
 	private Throwable rootCause(Throwable exception) {

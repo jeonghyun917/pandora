@@ -1,6 +1,7 @@
 package com.kaces.pandora.infra.qdrant;
 
 
+import com.kaces.pandora.infra.transport.RequestBodyTransportFailureClassifier;
 import com.kaces.pandora.semantic.config.LawAiProperties;
 import com.kaces.pandora.semantic.search.QdrantSearchHit;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
@@ -25,6 +26,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -729,12 +731,30 @@ public class QdrantClient {
 					exception.getMessage()
 				);
 				sleepBeforeRetry(attempt);
+			} catch (HttpMessageNotWritableException exception) {
+				if (!RequestBodyTransportFailureClassifier.isExactTransientFailure(exception)) {
+					throw exception;
+				}
+				lastException = exception;
+				log.warn("Qdrant search request failed. attempt={} collection={} failureType={}",
+					attempt,
+					collection,
+					exception.getClass().getSimpleName()
+				);
+				sleepBeforeRetry(attempt);
 			}
 		}
-		log.warn("Qdrant search request abandoned after retry. collection={} message={}",
-			collection,
-			lastException == null ? "" : lastException.getMessage()
-		);
+		if (lastException != null && RequestBodyTransportFailureClassifier.isExactTransientFailure(lastException)) {
+			log.warn("Qdrant search request abandoned after retry. collection={} failureType={}",
+				collection,
+				lastException.getClass().getSimpleName()
+			);
+		} else {
+			log.warn("Qdrant search request abandoned after retry. collection={} message={}",
+				collection,
+				lastException == null ? "" : lastException.getMessage()
+			);
+		}
 		searchFailureCount.incrementAndGet();
 		return Map.of();
 	}
