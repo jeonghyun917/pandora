@@ -110,8 +110,9 @@ function assertPostWaveInvariants({ beforeAudit, result, integrityAudit, parentC
   }
   const quality = targetRow(parentChildAudit?.qualitySummary, "law");
   const metadata = targetRow(parentChildAudit?.metadataGaps, "law");
-  const embeddingRows = Array.isArray(parentChildAudit?.embeddingStatus)
-    ? parentChildAudit.embeddingStatus.filter((row) => row?.target === "law") : [];
+  const lawCollection = nonBlank(runtimeInfo?.lawCollection) ? runtimeInfo.lawCollection : null;
+  const allEmbeddingRows = Array.isArray(parentChildAudit?.embeddingStatus) ? parentChildAudit.embeddingStatus : [];
+  const embeddingRows = allEmbeddingRows.filter((row) => row?.target === "law");
   const currentChunks = integer(quality?.currentChunks);
   if (currentChunks == null || currentChunks !== integrityAudit.scannedRows || integer(metadata?.chunks) !== currentChunks
     || integer(metadata?.missingTitle) !== 0 || integer(metadata?.missingHash) !== 0
@@ -124,7 +125,7 @@ function assertPostWaveInvariants({ beforeAudit, result, integrityAudit, parentC
   }
   const embeddingTotal = embeddingCounts.reduce((sum, count) => sum + count, 0);
   const noEmbed = embeddingRows.reduce((sum, row, index) => row?.status === "NO_EMBED" ? sum + embeddingCounts[index] : sum, 0);
-  const indexed = embeddingRows.reduce((sum, row, index) => row?.status === "INDEXED" ? sum + embeddingCounts[index] : sum, 0);
+  const indexed = embeddingRows.reduce((sum, row, index) => row?.vectorStore === lawCollection && row?.status === "INDEXED" ? sum + embeddingCounts[index] : sum, 0);
   if (embeddingTotal !== currentChunks || noEmbed !== postBacklog || indexed !== currentChunks - postBacklog) {
     throw new Error("Post-wave embedding coverage did not reconcile with the full integrity audit.");
   }
@@ -140,11 +141,17 @@ function assertPostWaveInvariants({ beforeAudit, result, integrityAudit, parentC
   const lawDatabaseCount = integer(runtimeInfo?.lawDatabaseIndexedCount);
   const ragQdrantCount = integer(runtimeInfo?.ragQdrantExactPointCount);
   const ragDatabaseCount = integer(runtimeInfo?.ragDatabaseIndexedCount);
-  if (runtimeInfo?.qdrantReady !== true || qdrantFailureCount !== 0
+  const collectionEmbeddingCounts = allEmbeddingRows.map((row) => integer(row?.chunks));
+  const collectionIndexed = collectionEmbeddingCounts.some((count) => count == null) ? null
+    : allEmbeddingRows.reduce((sum, row, index) => row?.vectorStore === lawCollection && row?.status === "INDEXED"
+      ? sum + collectionEmbeddingCounts[index] : sum, 0);
+  if (runtimeInfo?.qdrantReady !== true || qdrantFailureCount !== 0 || lawCollection == null
     || lawQdrantCount == null || lawDatabaseCount == null || ragQdrantCount == null || ragDatabaseCount == null
-    || lawQdrantCount !== lawDatabaseCount || ragQdrantCount !== ragDatabaseCount
-    || lawDatabaseCount !== currentChunks - postBacklog) {
+    || lawQdrantCount !== lawDatabaseCount || ragQdrantCount !== ragDatabaseCount) {
     throw new Error("Post-wave DB-Qdrant invariants did not reconcile.");
+  }
+  if (collectionIndexed == null || collectionIndexed !== lawDatabaseCount) {
+    throw new Error("Post-wave law collection coverage did not reconcile.");
   }
   return { integrityAudit, parentChildAudit, shortChunkAudit, runtimeInfo };
 }

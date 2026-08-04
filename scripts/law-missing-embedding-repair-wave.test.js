@@ -103,6 +103,38 @@ test("post-wave validation requires reconciled full audits, coverage, and DB-Qdr
   }), /causeCounts/);
 });
 
+test("post-wave validation separates target-law coverage from mixed-target law collection totals", () => {
+  const parentAudit = parentChildAudit(10, 0);
+  parentAudit.embeddingStatus.push({ target: "admrul", vectorStore: "law_chunks", status: "INDEXED", chunks: 100 });
+
+  assert.doesNotThrow(() => assertPostWaveInvariants({
+    beforeAudit: audit([issue(101, 11), issue(102, 11)]),
+    result: successfulResult(101, 102),
+    integrityAudit: fullIntegrityAudit(0),
+    parentChildAudit: parentAudit,
+    shortChunkAudit: { total: 3, summary: [], applyRequested: false, applyCompleted: false },
+    runtimeInfo: runtimeInfo(110),
+  }));
+  assert.throws(() => assertPostWaveInvariants({
+    beforeAudit: audit([issue(101, 11), issue(102, 11)]),
+    result: successfulResult(101, 102),
+    integrityAudit: fullIntegrityAudit(0),
+    parentChildAudit: parentAudit,
+    shortChunkAudit: { total: 3, summary: [], applyRequested: false, applyCompleted: false },
+    runtimeInfo: runtimeInfo(111),
+  }), /collection coverage/);
+  const malformedParentAudit = parentChildAudit(10, 0);
+  malformedParentAudit.embeddingStatus.push({ target: "admrul", vectorStore: "law_chunks", status: "INDEXED", chunks: null });
+  assert.throws(() => assertPostWaveInvariants({
+    beforeAudit: audit([issue(101, 11), issue(102, 11)]),
+    result: successfulResult(101, 102),
+    integrityAudit: fullIntegrityAudit(0),
+    parentChildAudit: malformedParentAudit,
+    shortChunkAudit: { total: 3, summary: [], applyRequested: false, applyCompleted: false },
+    runtimeInfo: runtimeInfo(10),
+  }), /collection coverage/);
+});
+
 test("post-wave runner invokes every required audit before returning success", async () => {
   const calls = [];
   const result = successfulResult(101);
@@ -186,6 +218,7 @@ function runtimeInfo(lawIndexedCount) {
     indexRevision: "revision-after-write",
     qdrantReady: true,
     qdrantSearchFailureCount: 0,
+    lawCollection: "law_chunks",
     lawQdrantExactPointCount: lawIndexedCount,
     lawDatabaseIndexedCount: lawIndexedCount,
     ragQdrantExactPointCount: 9,
