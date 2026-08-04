@@ -104,6 +104,13 @@ public class LawSemanticIndexService {
 		return indexCandidateChunks(chunks, model, vectorStore, chunks.size());
 	}
 
+	public LawSemanticIndexResult indexExactChunks(List<LawSemanticChunkRow> chunks) {
+		List<LawSemanticChunkRow> safeChunks = chunks == null ? List.of() : List.copyOf(chunks);
+		String model = properties.openai().embeddingModel();
+		String vectorStore = properties.qdrant().collection();
+		return indexChunks(safeChunks, model, vectorStore, safeChunks.size());
+	}
+
 	private LawSemanticIndexResult indexCandidateChunks(
 		List<LawSemanticChunkRow> chunks, String model, String vectorStore, int requested
 	) {

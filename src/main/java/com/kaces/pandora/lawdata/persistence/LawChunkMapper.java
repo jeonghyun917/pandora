@@ -213,6 +213,13 @@ public interface LawChunkMapper {
 		@Param("afterChunkId") long afterChunkId
 	);
 
+	List<LawIndexIntegrityRow> findLawIndexIntegrityRowsByIds(
+		@Param("target") String target,
+		@Param("model") String model,
+		@Param("vectorStore") String vectorStore,
+		@Param("chunkIds") List<Long> chunkIds
+	);
+
 	void upsertEmbeddingStatus(
 		@Param("chunkId") long chunkId,
 		@Param("model") String model,

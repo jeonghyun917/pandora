@@ -10,6 +10,8 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class LawIndexIntegrityControllerTests {
 
@@ -37,6 +39,28 @@ class LawIndexIntegrityControllerTests {
 		assertThatThrownBy(() -> controller.audit("law", 10, 0L))
 			.isInstanceOf(IllegalStateException.class)
 			.hasMessageContaining("drifted");
+	}
+
+	@Test
+	void missingEmbeddingRepairEndpointReturnsTheFencedPerIdPreview() {
+		LawMissingEmbeddingRepairService repairService = mock(LawMissingEmbeddingRepairService.class);
+		LawIndexIntegrityController controller = new LawIndexIntegrityController(
+			service(), new SequencedRuntimeInfoProvider("instance-a", "revision-a", "instance-a", "revision-a"), repairService
+		);
+		LawMissingEmbeddingRepairService.RepairRequest request = new LawMissingEmbeddingRepairService.RepairRequest(
+			"law", "instance-a", "revision-a", List.of(11L),
+			List.of(new LawMissingEmbeddingRepairService.RepairCandidate(101L, "a".repeat(64))), false
+		);
+		LawMissingEmbeddingRepairService.RepairResult expected = new LawMissingEmbeddingRepairService.RepairResult(
+			false, false, new LawIndexIntegrityRuntimeInfo("instance-a", "revision-a"),
+			List.of(new LawMissingEmbeddingRepairService.RepairOutcome(101L, 11L,
+				LawMissingEmbeddingRepairService.RepairState.READY, "Current active chunk is classified MISSING_EMBEDDING_ROW."))
+		);
+		when(repairService.repair(request)).thenReturn(expected);
+
+		ResponseEntity<LawMissingEmbeddingRepairService.RepairResult> response = controller.repairMissingEmbedding(request);
+
+		assertThat(response.getBody()).isEqualTo(expected);
 	}
 
 	private LawIndexIntegrityService service() {

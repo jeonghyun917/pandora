@@ -9,19 +9,41 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @RestController
 @RequestMapping("/api/admin/law-index-integrity")
 public class LawIndexIntegrityController {
 	private final LawIndexIntegrityService integrityService;
 	private final LawIndexIntegrityRuntimeInfoProvider runtimeInfoProvider;
+	private final LawMissingEmbeddingRepairService missingEmbeddingRepairService;
+
+	@Autowired
+	public LawIndexIntegrityController(
+		LawIndexIntegrityService integrityService,
+		LawIndexIntegrityRuntimeInfoProvider runtimeInfoProvider,
+		LawMissingEmbeddingRepairService missingEmbeddingRepairService
+	) {
+		this.integrityService = integrityService;
+		this.runtimeInfoProvider = runtimeInfoProvider;
+		this.missingEmbeddingRepairService = missingEmbeddingRepairService;
+	}
 
 	public LawIndexIntegrityController(
 		LawIndexIntegrityService integrityService,
 		LawIndexIntegrityRuntimeInfoProvider runtimeInfoProvider
 	) {
-		this.integrityService = integrityService;
-		this.runtimeInfoProvider = runtimeInfoProvider;
+		this(integrityService, runtimeInfoProvider, null);
+	}
+
+	@PostMapping("/missing-embedding-repair")
+	public ResponseEntity<LawMissingEmbeddingRepairService.RepairResult> repairMissingEmbedding(
+		@RequestBody LawMissingEmbeddingRepairService.RepairRequest request
+	) {
+		if (missingEmbeddingRepairService == null) {
+			throw new IllegalStateException("Law missing-embedding repair service is unavailable.");
+		}
+		return ResponseEntity.ok(missingEmbeddingRepairService.repair(request));
 	}
 
 	@GetMapping("/audit")

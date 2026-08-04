@@ -69,6 +69,27 @@ public class LawIndexIntegrityService {
 		return new LawIndexIntegrityReport(normalizeTarget(target), safeLimit, rows.size(), lastScannedChunkId, issues);
 	}
 
+	public LawIndexIntegrityReport auditByChunkIds(String target, List<Long> chunkIds) {
+		String normalizedTarget = normalizeTarget(target);
+		List<Long> safeChunkIds = chunkIds == null ? List.of() : chunkIds.stream()
+			.filter(chunkId -> chunkId != null && chunkId > 0)
+			.distinct()
+			.toList();
+		if (safeChunkIds.isEmpty()) {
+			return new LawIndexIntegrityReport(normalizedTarget, 0, 0, 0L, List.of());
+		}
+		List<LawIndexIntegrityRow> rows = lawChunkMapper.findLawIndexIntegrityRowsByIds(
+			normalizedTarget, model, vectorStore, safeChunkIds
+		);
+		Set<Long> existingPointIds = findExistingPointIds(rows);
+		List<LawIndexIntegrityIssue> issues = new ArrayList<>();
+		for (LawIndexIntegrityRow row : rows) {
+			classify(row, existingPointIds).ifPresent(issues::add);
+		}
+		long lastScannedChunkId = rows.stream().mapToLong(LawIndexIntegrityRow::chunkId).max().orElse(0L);
+		return new LawIndexIntegrityReport(normalizedTarget, safeChunkIds.size(), rows.size(), lastScannedChunkId, issues);
+	}
+
 	public RepairPreview previewRepair(String target, LawIndexIntegrityIssue.Cause cause, List<RepairCandidate> candidates) {
 		if (cause == null) {
 			throw new IllegalArgumentException("A repair cause is required.");
@@ -125,7 +146,7 @@ public class LawIndexIntegrityService {
 			cause = LawIndexIntegrityIssue.Cause.INACTIVE_CHUNK_COUNTED;
 		}
 		return cause == null ? java.util.Optional.empty() : java.util.Optional.of(new LawIndexIntegrityIssue(
-			row.chunkId(), cause, row.chunkContentHash(), row.embeddingContentHash(), row.embeddingStatus(), row.vectorPointId()
+			row.chunkId(), row.documentId(), cause, row.chunkContentHash(), row.embeddingContentHash(), row.embeddingStatus(), row.vectorPointId()
 		));
 	}
 

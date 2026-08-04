@@ -76,6 +76,9 @@ function validatedIssues(report) {
     if (!Number.isSafeInteger(issue.chunkId) || issue.chunkId <= 0) {
       throw new Error("Integrity audit response contained an invalid issue chunkId.");
     }
+		if (!Number.isSafeInteger(issue.documentId) || issue.documentId <= 0) {
+			throw new Error("Integrity audit response contained an invalid issue documentId.");
+		}
     for (const hashName of ["chunkContentHash", "embeddingContentHash"]) {
       if (issue[hashName] !== null && typeof issue[hashName] !== "string") {
         throw new Error(`Integrity audit response contained an invalid ${hashName}.`);
@@ -202,6 +205,7 @@ async function runAndWriteAudit({ requestedTarget = target, requestedLimit = lim
     issues: issues.map((issue) => ({
       cause: issue.cause,
       chunkId: issue.chunkId,
+			documentId: issue.documentId,
       chunkContentHash: issue.chunkContentHash || "",
       embeddingContentHash: issue.embeddingContentHash || "",
     })),

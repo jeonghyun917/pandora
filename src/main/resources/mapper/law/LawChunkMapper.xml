@@ -715,6 +715,30 @@
     LIMIT #{limit}
   </select>
 
+	<select id="findLawIndexIntegrityRowsByIds"
+					resultType="com.kaces.pandora.semantic.integrity.LawIndexIntegrityRow"
+					timeout="10">
+		SELECT
+			c.chunk_id AS chunkId,
+			c.document_id AS documentId,
+			CASE WHEN doc.use_yn = 'Y' AND c.use_yn = 'Y' AND c.activation_status = 'ACTIVE' THEN 1 ELSE 0 END AS active,
+			c.content_hash AS chunkContentHash,
+			e.content_hash AS embeddingContentHash,
+			e.status AS embeddingStatus,
+			e.vector_point_id AS vectorPointId
+		FROM law_api_document_chunks c
+		JOIN law_api_documents doc ON doc.document_id = c.document_id
+		LEFT JOIN law_api_chunk_embeddings e
+			ON e.chunk_id = c.chunk_id
+			AND e.embedding_model = #{model}
+			AND e.vector_store = #{vectorStore}
+		WHERE doc.target = #{target}
+			AND c.chunk_id IN
+		<foreach collection="chunkIds" item="chunkId" open="(" separator="," close=")">
+			#{chunkId}
+		</foreach>
+	</select>
+
   <select id="findSemanticChunksByDocumentTitle" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
     SELECT
       c.chunk_id AS chunkId,
@@ -951,6 +975,7 @@
           timeout="10">
     SELECT
       c.chunk_id AS chunkId,
+      c.document_id AS documentId,
       CASE WHEN doc.use_yn = 'Y' AND c.use_yn = 'Y' THEN 1 ELSE 0 END AS active,
       c.content_hash AS chunkContentHash,
       e.content_hash AS embeddingContentHash,

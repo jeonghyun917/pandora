@@ -52,7 +52,7 @@ test("full audit pages require a strictly advancing cursor", () => {
 
 test("full audit aggregates multiple bounded pages before writing one artifact", async () => {
   const { artifact, writes } = await executePages([
-    report({ scannedRows: 2, lastScannedChunkId: 2, issues: [issue("QDRANT_POINT_MISSING", 1)] }),
+    report({ scannedRows: 2, lastScannedChunkId: 2, issues: [issue("QDRANT_POINT_MISSING", 1, 11)] }),
     report({ scannedRows: 1, lastScannedChunkId: 3, issues: [issue("MISSING_EMBEDDING_ROW", 3)] }),
   ]);
 
@@ -64,6 +64,7 @@ test("full audit aggregates multiple bounded pages before writing one artifact",
     MISSING_EMBEDDING_ROW: 1,
   });
   assert.deepEqual(artifact.issues.map((value) => value.chunkId), [1, 3]);
+	assert.equal(artifact.issues[0].documentId, 11);
 });
 
 test("full audit requests an empty terminal page after an exact-limit page", async () => {
@@ -106,8 +107,8 @@ test("full audit rejects malformed or mismatched pages without writing an artifa
   }
 });
 
-function issue(cause, chunkId) {
-  return { cause, chunkId, chunkContentHash: null, embeddingContentHash: null };
+function issue(cause, chunkId, documentId = 1) {
+  return { cause, chunkId, documentId, chunkContentHash: null, embeddingContentHash: null };
 }
 
 function report({
