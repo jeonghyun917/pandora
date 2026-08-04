@@ -6,6 +6,14 @@ const workspace = path.resolve(__dirname, "..");
 const integrityAuditPath = path.resolve(workspace, "logs", "law-index-integrity-audit-latest.json");
 const parentChildAuditPath = path.resolve(workspace, "logs", "law-parent-child-chunk-audit-latest.json");
 const shortChunkAuditPath = path.resolve(workspace, "logs", "rag-short-chunk-audit-latest.json");
+const INTEGRITY_CAUSES = new Set([
+  "MISSING_EMBEDDING_ROW",
+  "RETRYABLE_EMBEDDING_FAILURE",
+  "CONTENT_HASH_MISMATCH",
+  "QDRANT_POINT_MISSING",
+  "STALE_DATABASE_STATUS",
+  "INACTIVE_CHUNK_COUNTED",
+]);
 const args = Object.fromEntries(process.argv.slice(2).map((arg) => {
   const [key, ...rest] = arg.replace(/^--/, "").split("=");
   return [key, rest.join("=") || "true"];
@@ -88,10 +96,13 @@ function assertPostWaveInvariants({ beforeAudit, result, integrityAudit, parentC
     throw new Error("Post-wave full integrity audit was incomplete or malformed.");
   }
   const postBacklog = causeCount(integrityAudit, "MISSING_EMBEDDING_ROW");
+  if (postBacklog == null) {
+    throw new Error("Post-wave full integrity audit causeCounts were malformed.");
+  }
   if (postBacklog !== beforeBacklog - repairedCount) {
     throw new Error("Post-wave missing-embedding backlog did not decrease by the verified repaired count.");
   }
-  if (Object.entries(integrityAudit.causeCounts || {}).some(([cause, count]) => cause !== "MISSING_EMBEDDING_ROW" && integer(count) !== 0)) {
+  if (Object.entries(integrityAudit.causeCounts).some(([cause, count]) => cause !== "MISSING_EMBEDDING_ROW" && count !== 0)) {
     throw new Error("Post-wave full integrity audit reported a non-missing integrity defect.");
   }
   if (!Array.isArray(integrityAudit.issues) || integrityAudit.issues.length !== postBacklog) {
@@ -153,8 +164,15 @@ function integer(value) {
 }
 
 function causeCount(audit, cause) {
-  const count = audit?.causeCounts?.[cause];
-  return Number.isSafeInteger(count) && count >= 0 ? count : -1;
+  const causeCounts = audit?.causeCounts;
+  if (!validCauseCounts(causeCounts)) return null;
+  return Object.hasOwn(causeCounts, cause) ? causeCounts[cause] : 0;
+}
+
+function validCauseCounts(causeCounts) {
+  return causeCounts != null && typeof causeCounts === "object" && !Array.isArray(causeCounts)
+    && Object.entries(causeCounts).every(([cause, count]) => INTEGRITY_CAUSES.has(cause)
+      && Number.isSafeInteger(count) && count >= 0);
 }
 
 function targetRow(rows, target) {

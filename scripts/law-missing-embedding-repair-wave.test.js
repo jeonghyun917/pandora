@@ -75,6 +75,32 @@ test("post-wave validation requires reconciled full audits, coverage, and DB-Qdr
     shortChunkAudit: { total: 3, summary: [], applyRequested: false, applyCompleted: false },
     runtimeInfo: { ...runtimeInfo(10), lawQdrantExactPointCount: null },
   }), /DB-Qdrant/);
+  assert.throws(() => assertPostWaveInvariants({
+    beforeAudit: audit([issue(101, 11)]),
+    result: successfulResult(101),
+    integrityAudit: { ...fullIntegrityAudit(0), causeCounts: null },
+    parentChildAudit: parentChildAudit(10, 0),
+    shortChunkAudit: { total: 3, summary: [], applyRequested: false, applyCompleted: false },
+    runtimeInfo: runtimeInfo(10),
+  }), /causeCounts/);
+  const auditWithoutCauseCounts = fullIntegrityAudit(0);
+  delete auditWithoutCauseCounts.causeCounts;
+  assert.throws(() => assertPostWaveInvariants({
+    beforeAudit: audit([issue(101, 11)]),
+    result: successfulResult(101),
+    integrityAudit: auditWithoutCauseCounts,
+    parentChildAudit: parentChildAudit(10, 0),
+    shortChunkAudit: { total: 3, summary: [], applyRequested: false, applyCompleted: false },
+    runtimeInfo: runtimeInfo(10),
+  }), /causeCounts/);
+  assert.throws(() => assertPostWaveInvariants({
+    beforeAudit: audit([issue(101, 11)]),
+    result: successfulResult(101),
+    integrityAudit: { ...fullIntegrityAudit(0), causeCounts: { MISSING_EMBEDDING_ROW: "0" } },
+    parentChildAudit: parentChildAudit(10, 0),
+    shortChunkAudit: { total: 3, summary: [], applyRequested: false, applyCompleted: false },
+    runtimeInfo: runtimeInfo(10),
+  }), /causeCounts/);
 });
 
 test("post-wave runner invokes every required audit before returning success", async () => {
@@ -102,7 +128,7 @@ test("post-wave runner invokes every required audit before returning success", a
   });
 
   assert.deepEqual(calls, ["integrity", "parent-child", "short", "runtime"]);
-  assert.equal(output.integrityAudit.causeCounts.MISSING_EMBEDDING_ROW, 0);
+  assert.equal(output.integrityAudit.causeCounts.MISSING_EMBEDDING_ROW, undefined);
 });
 
 function audit(issues) {
@@ -138,7 +164,7 @@ function fullIntegrityAudit(missingEmbeddingRows) {
     scannedRows: 10,
     runtimeInstanceId: "instance-a",
     indexRevision: "revision-after-write",
-    causeCounts: { MISSING_EMBEDDING_ROW: missingEmbeddingRows },
+    causeCounts: missingEmbeddingRows ? { MISSING_EMBEDDING_ROW: missingEmbeddingRows } : {},
     issues: Array.from({ length: missingEmbeddingRows }, (_, index) => issue(300 + index, 30 + index)),
   };
 }
