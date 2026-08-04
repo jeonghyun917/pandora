@@ -106,6 +106,7 @@ test("post-wave validation requires reconciled full audits, coverage, and DB-Qdr
 test("post-wave validation separates target-law coverage from mixed-target law collection totals", () => {
   const parentAudit = parentChildAudit(10, 0);
   parentAudit.embeddingStatus.push({ target: "admrul", vectorStore: "law_chunks", status: "INDEXED", chunks: 100 });
+  parentAudit.runtimeComparableIndexed.rows.push({ target: "admrul", chunks: 100 });
 
   assert.doesNotThrow(() => assertPostWaveInvariants({
     beforeAudit: audit([issue(101, 11), issue(102, 11)]),
@@ -124,7 +125,7 @@ test("post-wave validation separates target-law coverage from mixed-target law c
     runtimeInfo: runtimeInfo(111),
   }), /collection coverage/);
   const malformedParentAudit = parentChildAudit(10, 0);
-  malformedParentAudit.embeddingStatus.push({ target: "admrul", vectorStore: "law_chunks", status: "INDEXED", chunks: null });
+  malformedParentAudit.runtimeComparableIndexed.rows.push({ target: "admrul", chunks: null });
   assert.throws(() => assertPostWaveInvariants({
     beforeAudit: audit([issue(101, 11), issue(102, 11)]),
     result: successfulResult(101, 102),
@@ -132,7 +133,35 @@ test("post-wave validation separates target-law coverage from mixed-target law c
     parentChildAudit: malformedParentAudit,
     shortChunkAudit: { total: 3, summary: [], applyRequested: false, applyCompleted: false },
     runtimeInfo: runtimeInfo(10),
-  }), /collection coverage/);
+  }), /comparable/);
+});
+
+test("post-wave validation uses the runtime-comparable metric instead of raw stale or alternate embedding rows", () => {
+  const parentAudit = parentChildAudit(10, 0);
+  parentAudit.embeddingStatus.push(
+    { target: "law", vectorStore: "law_chunks", status: "INDEXED", chunks: 2, reason: "stale-hash" },
+    { target: "law", vectorStore: "law_chunks", status: "INDEXED", chunks: 3, reason: "inactive" },
+    { target: "law", vectorStore: "law_chunks", status: "INDEXED", chunks: 5, reason: "alternate-model" },
+    { target: "admrul", vectorStore: "law_chunks", status: "INDEXED", chunks: 100 }
+  );
+  parentAudit.runtimeComparableIndexed.rows.push({ target: "admrul", chunks: 100 });
+
+  assert.doesNotThrow(() => assertPostWaveInvariants({
+    beforeAudit: audit([issue(101, 11), issue(102, 11)]),
+    result: successfulResult(101, 102),
+    integrityAudit: fullIntegrityAudit(0),
+    parentChildAudit: parentAudit,
+    shortChunkAudit: { total: 3, summary: [], applyRequested: false, applyCompleted: false },
+    runtimeInfo: runtimeInfo(110),
+  }));
+  assert.throws(() => assertPostWaveInvariants({
+    beforeAudit: audit([issue(101, 11), issue(102, 11)]),
+    result: successfulResult(101, 102),
+    integrityAudit: fullIntegrityAudit(0),
+    parentChildAudit: { ...parentAudit, runtimeComparableIndexed: null },
+    shortChunkAudit: { total: 3, summary: [], applyRequested: false, applyCompleted: false },
+    runtimeInfo: runtimeInfo(110),
+  }), /comparable/);
 });
 
 test("post-wave runner invokes every required audit before returning success", async () => {
@@ -209,6 +238,11 @@ function parentChildAudit(chunkCount, missingEmbeddingRows) {
       { target: "law", vectorStore: "(none)", status: "NO_EMBED", chunks: missingEmbeddingRows },
       { target: "law", vectorStore: "law_chunks", status: "INDEXED", chunks: chunkCount - missingEmbeddingRows },
     ],
+    runtimeComparableIndexed: {
+      embeddingModel: "text-embedding-3-small",
+      vectorStore: "law_chunks",
+      rows: [{ target: "law", chunks: chunkCount - missingEmbeddingRows }],
+    },
   };
 }
 
@@ -219,6 +253,7 @@ function runtimeInfo(lawIndexedCount) {
     qdrantReady: true,
     qdrantSearchFailureCount: 0,
     lawCollection: "law_chunks",
+    embeddingModel: "text-embedding-3-small",
     lawQdrantExactPointCount: lawIndexedCount,
     lawDatabaseIndexedCount: lawIndexedCount,
     ragQdrantExactPointCount: 9,

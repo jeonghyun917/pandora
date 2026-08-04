@@ -111,23 +111,26 @@ function assertPostWaveInvariants({ beforeAudit, result, integrityAudit, parentC
   const quality = targetRow(parentChildAudit?.qualitySummary, "law");
   const metadata = targetRow(parentChildAudit?.metadataGaps, "law");
   const lawCollection = nonBlank(runtimeInfo?.lawCollection) ? runtimeInfo.lawCollection : null;
-  const allEmbeddingRows = Array.isArray(parentChildAudit?.embeddingStatus) ? parentChildAudit.embeddingStatus : [];
-  const embeddingRows = allEmbeddingRows.filter((row) => row?.target === "law");
+  const embeddingModel = nonBlank(runtimeInfo?.embeddingModel) ? runtimeInfo.embeddingModel : null;
+  const comparableMetric = parentChildAudit?.runtimeComparableIndexed;
+  const comparableRows = comparableMetric?.embeddingModel === embeddingModel
+    && comparableMetric?.vectorStore === lawCollection && Array.isArray(comparableMetric?.rows)
+    ? comparableMetric.rows : null;
   const currentChunks = integer(quality?.currentChunks);
   if (currentChunks == null || currentChunks !== integrityAudit.scannedRows || integer(metadata?.chunks) !== currentChunks
     || integer(metadata?.missingTitle) !== 0 || integer(metadata?.missingHash) !== 0
     || integer(metadata?.notIndexed) !== postBacklog) {
     throw new Error("Post-wave parent/child coverage or metadata invariants did not reconcile.");
   }
-  const embeddingCounts = embeddingRows.map((row) => integer(row?.chunks));
-  if (embeddingCounts.some((count) => count == null)) {
-    throw new Error("Post-wave embedding coverage was malformed.");
+  const comparableTargets = comparableRows == null ? null : new Set(comparableRows.map((row) => row?.target));
+  if (comparableRows == null || comparableRows.some((row) => !nonBlank(row?.target) || integer(row?.chunks) == null)
+    || comparableTargets.size !== comparableRows.length) {
+    throw new Error("Post-wave runtime-comparable indexed metric was malformed or mismatched the runtime.");
   }
-  const embeddingTotal = embeddingCounts.reduce((sum, count) => sum + count, 0);
-  const noEmbed = embeddingRows.reduce((sum, row, index) => row?.status === "NO_EMBED" ? sum + embeddingCounts[index] : sum, 0);
-  const indexed = embeddingRows.reduce((sum, row, index) => row?.vectorStore === lawCollection && row?.status === "INDEXED" ? sum + embeddingCounts[index] : sum, 0);
-  if (embeddingTotal !== currentChunks || noEmbed !== postBacklog || indexed !== currentChunks - postBacklog) {
-    throw new Error("Post-wave embedding coverage did not reconcile with the full integrity audit.");
+  const targetComparableIndexed = comparableRows.filter((row) => row.target === "law")
+    .reduce((sum, row) => sum + integer(row.chunks), 0);
+  if (targetComparableIndexed !== currentChunks - postBacklog) {
+    throw new Error("Post-wave runtime-comparable target coverage did not reconcile with the full integrity audit.");
   }
   if (!shortChunkAudit || shortChunkAudit.applyRequested !== false || shortChunkAudit.applyCompleted !== false
     || !Number.isSafeInteger(shortChunkAudit.total) || shortChunkAudit.total < 0 || !Array.isArray(shortChunkAudit.summary)) {
@@ -141,16 +144,13 @@ function assertPostWaveInvariants({ beforeAudit, result, integrityAudit, parentC
   const lawDatabaseCount = integer(runtimeInfo?.lawDatabaseIndexedCount);
   const ragQdrantCount = integer(runtimeInfo?.ragQdrantExactPointCount);
   const ragDatabaseCount = integer(runtimeInfo?.ragDatabaseIndexedCount);
-  const collectionEmbeddingCounts = allEmbeddingRows.map((row) => integer(row?.chunks));
-  const collectionIndexed = collectionEmbeddingCounts.some((count) => count == null) ? null
-    : allEmbeddingRows.reduce((sum, row, index) => row?.vectorStore === lawCollection && row?.status === "INDEXED"
-      ? sum + collectionEmbeddingCounts[index] : sum, 0);
-  if (runtimeInfo?.qdrantReady !== true || qdrantFailureCount !== 0 || lawCollection == null
+  const collectionComparableIndexed = comparableRows.reduce((sum, row) => sum + integer(row.chunks), 0);
+  if (runtimeInfo?.qdrantReady !== true || qdrantFailureCount !== 0 || lawCollection == null || embeddingModel == null
     || lawQdrantCount == null || lawDatabaseCount == null || ragQdrantCount == null || ragDatabaseCount == null
     || lawQdrantCount !== lawDatabaseCount || ragQdrantCount !== ragDatabaseCount) {
     throw new Error("Post-wave DB-Qdrant invariants did not reconcile.");
   }
-  if (collectionIndexed == null || collectionIndexed !== lawDatabaseCount) {
+  if (collectionComparableIndexed !== lawDatabaseCount) {
     throw new Error("Post-wave law collection coverage did not reconcile.");
   }
   return { integrityAudit, parentChildAudit, shortChunkAudit, runtimeInfo };
