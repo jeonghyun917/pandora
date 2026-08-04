@@ -209,7 +209,8 @@ public interface LawChunkMapper {
 		@Param("target") String target,
 		@Param("model") String model,
 		@Param("vectorStore") String vectorStore,
-		@Param("limit") int limit
+		@Param("limit") int limit,
+		@Param("afterChunkId") long afterChunkId
 	);
 
 	void upsertEmbeddingStatus(

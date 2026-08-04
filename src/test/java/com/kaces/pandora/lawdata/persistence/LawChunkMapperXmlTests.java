@@ -47,14 +47,15 @@ class LawChunkMapperXmlTests {
 				"target", "law",
 				"model", "text-embedding-3-small",
 				"vectorStore", "law_chunks",
-				"limit", 99_999
+				"limit", 99_999,
+				"afterChunkId", 123L
 			))
 			.getSql()
 			.replaceAll("\\s+", " ")
 			.trim();
 
 		assertThat(sql)
-			.contains("doc.use_yn = 'Y'", "(? = '' OR doc.target = ?)", "LIMIT ?")
+			.contains("doc.use_yn = 'Y'", "(? = '' OR doc.target = ?)", "c.chunk_id > ?", "LIMIT ?")
 			.doesNotContain("LIMIT LEAST")
 			.contains("e.embedding_model = ?", "e.vector_store = ?");
 	}

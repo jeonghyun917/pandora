@@ -20,10 +20,10 @@ class LawIndexIntegrityControllerTests {
 			new SequencedRuntimeInfoProvider("instance-a", "revision-a", "instance-a", "revision-a")
 		);
 
-		ResponseEntity<LawIndexIntegrityAuditResponse> response = controller.audit("law", 10);
+		ResponseEntity<LawIndexIntegrityAuditResponse> response = controller.audit("law", 10, 0L);
 
 		assertThat(response.getBody()).isEqualTo(new LawIndexIntegrityAuditResponse(
-			"law", 10, List.of(), java.util.Map.of(), "instance-a", "revision-a"
+			"law", 10, 0, 0L, List.of(), java.util.Map.of(), "instance-a", "revision-a"
 		));
 	}
 
@@ -34,7 +34,7 @@ class LawIndexIntegrityControllerTests {
 			new SequencedRuntimeInfoProvider("instance-a", "revision-a", "instance-b", "revision-a")
 		);
 
-		assertThatThrownBy(() -> controller.audit("law", 10))
+		assertThatThrownBy(() -> controller.audit("law", 10, 0L))
 			.isInstanceOf(IllegalStateException.class)
 			.hasMessageContaining("drifted");
 	}

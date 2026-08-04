@@ -963,6 +963,7 @@
       AND e.embedding_model = #{model}
       AND e.vector_store = #{vectorStore}
     WHERE (#{target} = '' OR doc.target = #{target})
+      AND c.chunk_id > #{afterChunkId}
     ORDER BY c.chunk_id
     LIMIT #{limit}
   </select>

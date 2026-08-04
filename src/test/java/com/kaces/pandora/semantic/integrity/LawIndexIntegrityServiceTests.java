@@ -49,6 +49,32 @@ class LawIndexIntegrityServiceTests {
 	}
 
 	@Test
+	void auditForwardsCursorAndReturnsScannedPageProgress() {
+		AtomicReference<Object[]> mapperArguments = new AtomicReference<>();
+		LawChunkMapper mapper = (LawChunkMapper) Proxy.newProxyInstance(
+			getClass().getClassLoader(),
+			new Class<?>[] { LawChunkMapper.class },
+			(proxy, method, args) -> {
+				if ("findLawIndexIntegrityRows".equals(method.getName())) {
+					mapperArguments.set(args);
+					return List.of(
+						row(11, true, "current", "current", "INDEXED"),
+						row(12, true, "current", "current", "INDEXED")
+					);
+				}
+				return null;
+			}
+		);
+		LawIndexIntegrityService service = new LawIndexIntegrityService(mapper, ids -> Set.of(11L, 12L));
+
+		LawIndexIntegrityReport report = service.audit("law", 10_000, 10L);
+
+		assertThat(mapperArguments).hasValueSatisfying(args -> assertThat(args[4]).isEqualTo(10L));
+		assertThat(report.scannedRows()).isEqualTo(2);
+		assertThat(report.lastScannedChunkId()).isEqualTo(12L);
+	}
+
+	@Test
 	void auditMarksMissingAndNonNumericStoredPointIdsAsMissingPoints() {
 		LawIndexIntegrityService service = new LawIndexIntegrityService(
 			mapper(

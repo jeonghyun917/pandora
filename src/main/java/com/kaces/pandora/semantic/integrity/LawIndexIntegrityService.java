@@ -51,16 +51,22 @@ public class LawIndexIntegrityService {
 	}
 
 	public LawIndexIntegrityReport audit(String target, int limit) {
+		return audit(target, limit, 0L);
+	}
+
+	public LawIndexIntegrityReport audit(String target, int limit, long afterChunkId) {
 		int safeLimit = Math.max(1, Math.min(limit, MAX_AUDIT_LIMIT));
+		long safeAfterChunkId = Math.max(0L, afterChunkId);
 		List<LawIndexIntegrityRow> rows = lawChunkMapper.findLawIndexIntegrityRows(
-			normalizeTarget(target), model, vectorStore, safeLimit
+			normalizeTarget(target), model, vectorStore, safeLimit, safeAfterChunkId
 		);
 		Set<Long> existingPointIds = findExistingPointIds(rows);
 		List<LawIndexIntegrityIssue> issues = new ArrayList<>();
 		for (LawIndexIntegrityRow row : rows) {
 			classify(row, existingPointIds).ifPresent(issues::add);
 		}
-		return new LawIndexIntegrityReport(normalizeTarget(target), safeLimit, issues);
+		long lastScannedChunkId = rows.isEmpty() ? safeAfterChunkId : rows.get(rows.size() - 1).chunkId();
+		return new LawIndexIntegrityReport(normalizeTarget(target), safeLimit, rows.size(), lastScannedChunkId, issues);
 	}
 
 	public RepairPreview previewRepair(String target, LawIndexIntegrityIssue.Cause cause, List<RepairCandidate> candidates) {

@@ -27,16 +27,18 @@ public class LawIndexIntegrityController {
 	@GetMapping("/audit")
 	public ResponseEntity<LawIndexIntegrityAuditResponse> audit(
 		@RequestParam(defaultValue = "") String target,
-		@RequestParam(defaultValue = "1000") int limit
+		@RequestParam(defaultValue = "1000") int limit,
+		@RequestParam(defaultValue = "0") long afterChunkId
 	) {
 		LawIndexIntegrityRuntimeInfo before = currentRuntimeInfo();
-		LawIndexIntegrityReport report = integrityService.audit(target, limit);
+		LawIndexIntegrityReport report = integrityService.audit(target, limit, afterChunkId);
 		LawIndexIntegrityRuntimeInfo after = currentRuntimeInfo();
 		if (!before.equals(after)) {
 			throw new IllegalStateException("Law index integrity runtime identity drifted during the audit request.");
 		}
 		return ResponseEntity.ok(new LawIndexIntegrityAuditResponse(
-			report.target(), report.limit(), report.issues(), report.causeCounts(),
+			report.target(), report.limit(), report.scannedRows(), report.lastScannedChunkId(),
+			report.issues(), report.causeCounts(),
 			before.runtimeInstanceId(), before.indexRevision()
 		));
 	}

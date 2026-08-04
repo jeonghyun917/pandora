@@ -36,6 +36,21 @@ function sameRuntime(...runtimeInfos) {
   );
 }
 
+function pageProgress(report, afterChunkId, pageLimit) {
+  const scannedRows = Number(report?.scannedRows);
+  const lastScannedChunkId = Number(report?.lastScannedChunkId);
+  if (!Number.isInteger(scannedRows) || scannedRows < 0 || scannedRows > pageLimit) {
+    throw new Error("Integrity audit page returned an invalid scannedRows value.");
+  }
+  if (scannedRows === 0) {
+    return { complete: true, afterChunkId };
+  }
+  if (!Number.isSafeInteger(lastScannedChunkId) || lastScannedChunkId <= afterChunkId) {
+    throw new Error("Integrity audit page did not advance its chunk cursor.");
+  }
+  return { complete: scannedRows < pageLimit, afterChunkId: lastScannedChunkId };
+}
+
 async function fetchJson(pathname) {
   const response = await fetch(`${apiBaseUrl}${pathname}`, requestOptions());
   if (!response.ok) {
@@ -59,6 +74,8 @@ function markdown(artifact) {
     `- Index revision: ${artifact.indexRevision}`,
     `- Target: ${artifact.target || "all"}`,
     `- Limit: ${artifact.limit}`,
+    `- Pages: ${artifact.pages}`,
+    `- Scanned rows: ${artifact.scannedRows}`,
     "",
     "## Cause counts",
     "",
@@ -75,24 +92,49 @@ function markdown(artifact) {
 
 async function main() {
   const runtimeBefore = runtimeMetadata(await fetchJson("/api/law-data/ai/debug/runtime-info"));
-  const report = await fetchJson(
-    `/api/admin/law-index-integrity/audit?target=${encodeURIComponent(target)}&limit=${limit}`
-  );
-  const runtimeDuringAudit = runtimeMetadata(report);
+  const issues = [];
+  const causeCounts = {};
+  let afterChunkId = 0;
+  let pages = 0;
+  let scannedRows = 0;
+  let runtimeDuringAudit = null;
+  let reportedTarget = target;
+  while (true) {
+    const report = await fetchJson(
+      `/api/admin/law-index-integrity/audit?target=${encodeURIComponent(target)}&limit=${limit}&afterChunkId=${afterChunkId}`
+    );
+    const pageRuntime = runtimeMetadata(report);
+    if (!sameRuntime(runtimeBefore, pageRuntime)) {
+      throw new Error("Runtime metadata drifted while the integrity audit was running.");
+    }
+    if (!Array.isArray(report.issues) || typeof report.causeCounts !== "object" || report.causeCounts === null) {
+      throw new Error("Integrity audit response was malformed.");
+    }
+    const progress = pageProgress(report, afterChunkId, limit);
+    pages += 1;
+    scannedRows += Number(report.scannedRows);
+    runtimeDuringAudit = pageRuntime;
+    reportedTarget = report.target || "";
+    for (const issue of report.issues) {
+      issues.push(issue);
+      causeCounts[issue.cause] = (causeCounts[issue.cause] || 0) + 1;
+    }
+    afterChunkId = progress.afterChunkId;
+    if (progress.complete) break;
+  }
   const runtimeAfter = runtimeMetadata(await fetchJson("/api/law-data/ai/debug/runtime-info"));
   if (!sameRuntime(runtimeBefore, runtimeDuringAudit, runtimeAfter)) {
     throw new Error("Runtime metadata drifted while the integrity audit was running.");
   }
-  if (!Array.isArray(report.issues) || typeof report.causeCounts !== "object" || report.causeCounts === null) {
-    throw new Error("Integrity audit response was malformed.");
-  }
   const artifact = {
     generatedAt: new Date().toISOString(),
     ...runtimeDuringAudit,
-    target: report.target || "",
-    limit: report.limit,
-    causeCounts: report.causeCounts,
-    issues: report.issues.map((issue) => ({
+    target: reportedTarget,
+    limit,
+    pages,
+    scannedRows,
+    causeCounts,
+    issues: issues.map((issue) => ({
       cause: issue.cause,
       chunkId: issue.chunkId,
       chunkContentHash: issue.chunkContentHash || "",
@@ -112,4 +154,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { runtimeMetadata, sameRuntime };
+module.exports = { runtimeMetadata, sameRuntime, pageProgress };

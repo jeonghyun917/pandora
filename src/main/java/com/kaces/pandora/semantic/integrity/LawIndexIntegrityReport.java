@@ -5,9 +5,19 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-public record LawIndexIntegrityReport(String target, int limit, List<LawIndexIntegrityIssue> issues) {
+public record LawIndexIntegrityReport(
+	String target,
+	int limit,
+	int scannedRows,
+	long lastScannedChunkId,
+	List<LawIndexIntegrityIssue> issues
+) {
 	public LawIndexIntegrityReport {
 		issues = List.copyOf(issues);
+	}
+
+	public LawIndexIntegrityReport(String target, int limit, List<LawIndexIntegrityIssue> issues) {
+		this(target, limit, issues.size(), 0L, issues);
 	}
 
 	public Map<LawIndexIntegrityIssue.Cause, Long> causeCounts() {
