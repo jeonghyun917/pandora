@@ -154,6 +154,62 @@ class LawMissingEmbeddingRepairServiceTests {
 		verify(indexer, never()).indexExactChunks(List.of(second));
 	}
 
+	@Test
+	void doesNotTreatAnEmptyExactPostIndexAuditAsSuccessfulVerification() {
+		LawChunkMapper mapper = mock(LawChunkMapper.class);
+		LawIndexIntegrityService integrity = mock(LawIndexIntegrityService.class);
+		LawSemanticIndexService indexer = mock(LawSemanticIndexService.class);
+		LawSemanticChunkRow chunk = chunk(101L, 11L, "a".repeat(64));
+		when(mapper.findSemanticChunksByIdsForIndexing(List.of(101L))).thenReturn(List.of(chunk));
+		when(integrity.auditByChunkIds("law", List.of(101L))).thenReturn(
+			report(issue(101L, 11L, "a".repeat(64))),
+			new LawIndexIntegrityReport("law", 1, 0, 0L, List.of())
+		);
+		when(indexer.indexExactChunks(List.of(chunk))).thenReturn(new LawSemanticIndexResult("law_chunks", "text-embedding-3-small", 1, 1));
+		LawMissingEmbeddingRepairService service = service(mapper, integrity, indexer, runtime("instance-a", "revision-a"));
+
+		LawMissingEmbeddingRepairService.RepairResult result = service.repair(request(true, List.of(11L), candidate(101L, "a".repeat(64))));
+
+		assertThat(result.complete()).isFalse();
+		assertThat(result.outcomes()).extracting(LawMissingEmbeddingRepairService.RepairOutcome::state)
+			.containsExactly(LawMissingEmbeddingRepairService.RepairState.VERIFICATION_FAILED);
+	}
+
+	@Test
+	void rejectsTheNextCandidateWhenTheIndexRevisionDriftsAfterAnEarlierVerifiedWrite() {
+		LawChunkMapper mapper = mock(LawChunkMapper.class);
+		LawIndexIntegrityService integrity = mock(LawIndexIntegrityService.class);
+		LawSemanticIndexService indexer = mock(LawSemanticIndexService.class);
+		LawSemanticChunkRow first = chunk(101L, 11L, "a".repeat(64));
+		LawSemanticChunkRow second = chunk(102L, 11L, "b".repeat(64));
+		when(mapper.findSemanticChunksByIdsForIndexing(List.of(101L, 102L))).thenReturn(List.of(first, second));
+		when(integrity.auditByChunkIds("law", List.of(101L, 102L))).thenReturn(report(
+			issue(101L, 11L, "a".repeat(64)), issue(102L, 11L, "b".repeat(64))
+		));
+		when(integrity.auditByChunkIds("law", List.of(101L))).thenReturn(new LawIndexIntegrityReport("law", 1, 1, 101L, List.of()));
+		when(indexer.indexExactChunks(List.of(first))).thenReturn(new LawSemanticIndexResult("law_chunks", "text-embedding-3-small", 1, 1));
+		LawMissingEmbeddingRepairService service = service(mapper, integrity, indexer,
+			new SequencedRuntimeInfoProvider(
+				new LawIndexIntegrityRuntimeInfo("instance-a", "revision-a"),
+				new LawIndexIntegrityRuntimeInfo("instance-a", "revision-a"),
+				new LawIndexIntegrityRuntimeInfo("instance-a", "revision-a"),
+				new LawIndexIntegrityRuntimeInfo("instance-a", "revision-own-write"),
+				new LawIndexIntegrityRuntimeInfo("instance-a", "revision-external-drift")
+			)
+		);
+		LawMissingEmbeddingRepairService.RepairRequest request = new LawMissingEmbeddingRepairService.RepairRequest(
+			"law", "instance-a", "revision-a", List.of(11L),
+			List.of(candidate(101L, "a".repeat(64)), candidate(102L, "b".repeat(64))), true
+		);
+
+		LawMissingEmbeddingRepairService.RepairResult result = service.repair(request);
+
+		assertThat(result.complete()).isFalse();
+		assertThat(result.outcomes()).extracting(LawMissingEmbeddingRepairService.RepairOutcome::state)
+			.containsExactly(LawMissingEmbeddingRepairService.RepairState.INDEXED, LawMissingEmbeddingRepairService.RepairState.REJECTED_RUNTIME_FENCE);
+		verify(indexer, never()).indexExactChunks(List.of(second));
+	}
+
 	private LawMissingEmbeddingRepairService service(
 		LawChunkMapper mapper,
 		LawIndexIntegrityService integrity,
@@ -194,10 +250,14 @@ class LawMissingEmbeddingRepairServiceTests {
 		private int index;
 
 		private SequencedRuntimeInfoProvider(String firstInstance, String firstRevision, String secondInstance, String secondRevision) {
-			values = List.of(
+			this(
 				new LawIndexIntegrityRuntimeInfo(firstInstance, firstRevision),
 				new LawIndexIntegrityRuntimeInfo(secondInstance, secondRevision)
 			);
+		}
+
+		private SequencedRuntimeInfoProvider(LawIndexIntegrityRuntimeInfo... values) {
+			this.values = List.of(values);
 		}
 
 		@Override

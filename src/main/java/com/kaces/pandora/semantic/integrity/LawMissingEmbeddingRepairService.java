@@ -35,7 +35,8 @@ public class LawMissingEmbeddingRepairService {
 
 	public RepairResult repair(RepairRequest request) {
 		List<RepairCandidate> candidates = request == null || request.candidates() == null ? List.of() : request.candidates();
-		if (!matchesExpectedRuntime(request, currentRuntime())) {
+		LawIndexIntegrityRuntimeInfo initialRuntime = currentRuntime();
+		if (!matchesExpectedRuntime(request, initialRuntime)) {
 			return rejected(request, candidates, RepairState.REJECTED_RUNTIME_FENCE, "Runtime instance or index revision changed.");
 		}
 		if (!isValidRequest(request, candidates)) {
@@ -64,7 +65,8 @@ public class LawMissingEmbeddingRepairService {
 		if (!actualDocumentIds.equals(new LinkedHashSet<>(request.expectedDocumentIds())) || actualDocumentIds.size() > MAX_DOCUMENTS) {
 			return rejected(request, candidates, RepairState.REJECTED_DOCUMENT_WAVE, "The candidate document set did not match the bounded wave.");
 		}
-		if (!matchesExpectedRuntime(request, currentRuntime())) {
+		LawIndexIntegrityRuntimeInfo trustedRuntime = currentRuntime();
+		if (!matchesExpectedRuntime(request, trustedRuntime)) {
 			return rejected(request, candidates, RepairState.REJECTED_RUNTIME_FENCE, "Runtime instance or index revision changed during preflight.");
 		}
 		if (outcomes.stream().anyMatch(outcome -> outcome.state() != RepairState.READY)) {
@@ -79,8 +81,8 @@ public class LawMissingEmbeddingRepairService {
 			RepairCandidate candidate = candidates.get(index);
 			LawSemanticChunkRow chunk = chunksById.get(candidate.chunkId());
 			LawIndexIntegrityRuntimeInfo runtime = currentRuntime();
-			if (!sameInstance(request.expectedRuntimeInstanceId(), runtime)) {
-				applied.add(new RepairOutcome(candidate.chunkId(), chunk.documentId(), RepairState.REJECTED_RUNTIME_FENCE, "Runtime instance changed during repair."));
+			if (!sameRuntime(trustedRuntime, runtime)) {
+				applied.add(new RepairOutcome(candidate.chunkId(), chunk.documentId(), RepairState.REJECTED_RUNTIME_FENCE, "Runtime instance or index revision changed during repair."));
 				for (int remaining = index + 1; remaining < candidates.size(); remaining++) {
 					RepairCandidate pending = candidates.get(remaining);
 					applied.add(new RepairOutcome(pending.chunkId(), chunksById.get(pending.chunkId()).documentId(), RepairState.NOT_ATTEMPTED, "Not attempted after runtime drift."));
@@ -100,6 +102,15 @@ public class LawMissingEmbeddingRepairService {
 					}
 					return new RepairResult(true, false, currentRuntime(), List.copyOf(applied));
 				}
+				LawIndexIntegrityRuntimeInfo runtimeAfterVerifiedWrite = currentRuntime();
+				if (!sameInstance(trustedRuntime.runtimeInstanceId(), runtimeAfterVerifiedWrite)) {
+					for (int remaining = index + 1; remaining < candidates.size(); remaining++) {
+						RepairCandidate pending = candidates.get(remaining);
+						applied.add(new RepairOutcome(pending.chunkId(), chunksById.get(pending.chunkId()).documentId(), RepairState.NOT_ATTEMPTED, "Not attempted after runtime drift."));
+					}
+					return new RepairResult(true, false, runtimeAfterVerifiedWrite, List.copyOf(applied));
+				}
+				trustedRuntime = runtimeAfterVerifiedWrite;
 			} catch (RuntimeException exception) {
 				applied.add(new RepairOutcome(candidate.chunkId(), chunk.documentId(), RepairState.INDEX_FAILED, "Direct indexing failed."));
 				for (int remaining = index + 1; remaining < candidates.size(); remaining++) {
@@ -110,7 +121,7 @@ public class LawMissingEmbeddingRepairService {
 			}
 		}
 		LawIndexIntegrityRuntimeInfo runtimeAfter = currentRuntime();
-		return new RepairResult(true, sameInstance(request.expectedRuntimeInstanceId(), runtimeAfter), runtimeAfter, List.copyOf(applied));
+		return new RepairResult(true, sameRuntime(trustedRuntime, runtimeAfter), runtimeAfter, List.copyOf(applied));
 	}
 
 	private boolean isValidRequest(RepairRequest request, List<RepairCandidate> candidates) {
@@ -162,6 +173,12 @@ public class LawMissingEmbeddingRepairService {
 
 	private boolean sameInstance(String expectedInstanceId, LawIndexIntegrityRuntimeInfo runtime) {
 		return runtime != null && runtime.isComplete() && expectedInstanceId.equals(runtime.runtimeInstanceId());
+	}
+
+	private boolean sameRuntime(LawIndexIntegrityRuntimeInfo expected, LawIndexIntegrityRuntimeInfo actual) {
+		return expected != null && expected.isComplete() && actual != null && actual.isComplete()
+			&& expected.runtimeInstanceId().equals(actual.runtimeInstanceId())
+			&& expected.indexRevision().equals(actual.indexRevision());
 	}
 
 	private boolean isHash(String value) {

@@ -75,6 +75,21 @@ class LawIndexIntegrityServiceTests {
 	}
 
 	@Test
+	void exactIdAuditReportsNoScannedRowsWhenTheRequestedChunkIsNoLongerReturned() {
+		LawChunkMapper mapper = (LawChunkMapper) Proxy.newProxyInstance(
+			getClass().getClassLoader(),
+			new Class<?>[] { LawChunkMapper.class },
+			(proxy, method, args) -> "findLawIndexIntegrityRowsByIds".equals(method.getName()) ? List.of() : null
+		);
+		LawIndexIntegrityService service = new LawIndexIntegrityService(mapper, ids -> Set.of());
+
+		LawIndexIntegrityReport report = service.auditByChunkIds("law", List.of(101L));
+
+		assertThat(report.scannedRows()).isZero();
+		assertThat(report.issues()).isEmpty();
+	}
+
+	@Test
 	void auditMarksMissingAndNonNumericStoredPointIdsAsMissingPoints() {
 		LawIndexIntegrityService service = new LawIndexIntegrityService(
 			mapper(
