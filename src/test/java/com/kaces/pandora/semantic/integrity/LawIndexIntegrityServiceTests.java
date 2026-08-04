@@ -28,6 +28,27 @@ class LawIndexIntegrityServiceTests {
 	}
 
 	@Test
+	void auditCapsMapperLimitAtTenThousand() {
+		AtomicReference<Integer> mapperLimit = new AtomicReference<>();
+		LawChunkMapper mapper = (LawChunkMapper) Proxy.newProxyInstance(
+			getClass().getClassLoader(),
+			new Class<?>[] { LawChunkMapper.class },
+			(proxy, method, args) -> {
+				if ("findLawIndexIntegrityRows".equals(method.getName())) {
+					mapperLimit.set((Integer) args[3]);
+					return List.of();
+				}
+				return null;
+			}
+		);
+		LawIndexIntegrityService service = new LawIndexIntegrityService(mapper, ids -> Set.of());
+
+		service.audit("law", 99_999);
+
+		assertThat(mapperLimit).hasValue(10_000);
+	}
+
+	@Test
 	void auditMarksMissingAndNonNumericStoredPointIdsAsMissingPoints() {
 		LawIndexIntegrityService service = new LawIndexIntegrityService(
 			mapper(
