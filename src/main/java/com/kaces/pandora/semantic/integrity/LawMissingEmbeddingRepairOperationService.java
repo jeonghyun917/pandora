@@ -443,27 +443,35 @@ public class LawMissingEmbeddingRepairOperationService {
 
 		private void renew() {
 			synchronized (this) {
-				if (ownershipLost.get()) {
-					return;
-				}
 				try {
-					if (!persistenceService.renewItemLease(operationId, ordinal, owner, leasePolicy.leaseSeconds())) {
-						ownershipLost.set(true);
-					}
-				} catch (RuntimeException exception) {
-					ownershipLost.set(true);
+					assertOwned();
+				} catch (OwnershipLostException exception) {
+					// The next foreground checkpoint observes the durable ownership loss.
 				}
 			}
 		}
 
-		private void assertOwned() {
+		private synchronized void assertOwned() {
 			if (ownershipLost.get()) {
+				throw new OwnershipLostException();
+			}
+			try {
+				if (!persistenceService.renewItemLease(operationId, ordinal, owner, leasePolicy.leaseSeconds())) {
+					ownershipLost.set(true);
+					throw new OwnershipLostException();
+				}
+			} catch (OwnershipLostException exception) {
+				throw exception;
+			} catch (RuntimeException exception) {
+				ownershipLost.set(true);
 				throw new OwnershipLostException();
 			}
 		}
 
 		private synchronized boolean executeIfOwned(BooleanSupplier ownerCasMutation) {
-			if (ownershipLost.get()) {
+			try {
+				assertOwned();
+			} catch (OwnershipLostException exception) {
 				return false;
 			}
 			boolean applied = ownerCasMutation.getAsBoolean();

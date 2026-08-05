@@ -32,6 +32,32 @@ class LawMissingEmbeddingRepairOperationServiceTests {
 	private static final String OPERATION_ID = "00000000-0000-0000-0000-000000000010";
 
 	@Test
+	void reclaimedOwnerCannotReachRuntimeOrAnyMutationBeforeHeartbeatNotices() {
+		LawMissingEmbeddingRepairOperationMapper operations = mock(LawMissingEmbeddingRepairOperationMapper.class);
+		LawMissingEmbeddingRepairOperationPersistenceService persistence = mock(LawMissingEmbeddingRepairOperationPersistenceService.class);
+		LawMissingEmbeddingRepairService legacy = mock(LawMissingEmbeddingRepairService.class);
+		when(operations.findOperationById(OPERATION_ID)).thenReturn(
+			operationRow(LawMissingEmbeddingRepairOperation.Status.READY, "a", 0, null, null),
+			operationRow(LawMissingEmbeddingRepairOperation.Status.RUNNING, "a", 0, "new-owner", null));
+		when(operations.findItemsByOperationId(OPERATION_ID)).thenReturn(
+			List.of(stepItem(0, LawMissingEmbeddingRepairOperation.ItemState.READY, null, null)),
+			List.of(stepItem(0, LawMissingEmbeddingRepairOperation.ItemState.PROCESSING, NOW.plusSeconds(600), null)));
+		when(persistence.claimReadyItem(any(), anyInt(), any(), any(), any(), anyInt())).thenReturn(true);
+		when(persistence.renewItemLease(any(), anyInt(), any(), anyInt())).thenReturn(false);
+		LawMissingEmbeddingRepairOperationService service = new LawMissingEmbeddingRepairOperationService(
+			operations, legacy, persistence, Clock.fixed(NOW, ZoneOffset.UTC),
+			new LawMissingEmbeddingRepairOperationService.LeasePolicy(600, Duration.ofSeconds(30))
+		);
+
+		assertThat(service.step(UUID.fromString(OPERATION_ID))).isPresent();
+
+		verify(persistence).renewItemLease(any(), anyInt(), any(), org.mockito.ArgumentMatchers.eq(600));
+		verifyNoInteractions(legacy);
+		verify(persistence, never()).completeClaimedItem(any(), anyInt(), any(), any(), any(), any());
+		verify(persistence, never()).failClaimedItem(any(), anyInt(), any(), any());
+	}
+
+	@Test
 	void heartbeatOwnershipLossStopsAtCheckpointWithoutCompletingOrFailingAsTheStaleOwner() throws Exception {
 		LawMissingEmbeddingRepairOperationMapper operations = mock(LawMissingEmbeddingRepairOperationMapper.class);
 		LawMissingEmbeddingRepairOperationPersistenceService persistence = mock(LawMissingEmbeddingRepairOperationPersistenceService.class);
@@ -583,6 +609,7 @@ class LawMissingEmbeddingRepairOperationServiceTests {
 		LawMissingEmbeddingRepairService legacy,
 		LawMissingEmbeddingRepairOperationPersistenceService persistence
 	) {
+		when(persistence.renewItemLease(any(), anyInt(), any(), anyInt())).thenReturn(true);
 		return new LawMissingEmbeddingRepairOperationService(
 			operations, legacy, persistence, Clock.fixed(NOW, ZoneOffset.UTC)
 		);

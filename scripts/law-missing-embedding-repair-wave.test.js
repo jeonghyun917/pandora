@@ -333,6 +333,7 @@ test("lost step followed by durable terminal failure retains operation evidence"
 test("post-wave gate failure retains durable operation evidence", async () => {
   const request = durableRequest([{ chunkId: 101, expectedDocumentId: 11 }]);
   const complete = strictOperationView(request, "INDEXING_COMPLETE", [strictItem(0, 101, 11, "INDEXED")]);
+  let runtimeCalls = 0;
   await assert.rejects(() => runDurableRepairWithPostWaveAudits({
     request,
     beforeAudit: audit([issue(101, 11)]),
@@ -340,7 +341,7 @@ test("post-wave gate failure retains durable operation evidence", async () => {
     runIntegrityAudit: async () => ({ target: "law", pages: 0 }),
     runParentChildAudit: async () => ({}),
     runShortChunkAudit: async () => ({}),
-    loadRuntimeInfo: async () => ({}),
+    loadRuntimeInfo: async () => (++runtimeCalls === 1 ? baselineRuntimeInfo(9) : {}),
   }), (error) => {
     assert.ok(error instanceof DurableOperationError);
     assert.equal(error.evidence.operationId, "op-1");
@@ -349,9 +350,66 @@ test("post-wave gate failure retains durable operation evidence", async () => {
   });
 });
 
+test("apply captures the full runtime baseline before registration and preserves it on failure", async () => {
+  const calls = [];
+  const request = durableRequest([{ chunkId: 101, expectedDocumentId: 11 }]);
+  const baseline = baselineRuntimeInfo(9);
+  await assert.rejects(() => runDurableRepairWithPostWaveAudits({
+    request,
+    beforeAudit: audit([issue(101, 11)]),
+    runner: async () => {
+      calls.push("runner");
+      return successfulResult(101);
+    },
+    runIntegrityAudit: async () => ({ target: "law", pages: 0 }),
+    runParentChildAudit: async () => ({}),
+    runShortChunkAudit: async () => ({}),
+    loadRuntimeInfo: async () => {
+      calls.push("runtime");
+      return calls.length === 1 ? baseline : runtimeInfo(10);
+    },
+  }), (error) => {
+    assert.deepEqual(calls.slice(0, 2), ["runtime", "runner"]);
+    assert.deepEqual(error.evidence.baselineRuntimeInfo, baseline);
+    return true;
+  });
+});
+
+test("post-wave baseline requires exact law plus N, exact rag plus zero, and matching preflight identity", () => {
+  const request = durableRequest([{ chunkId: 101 }, { chunkId: 102 }]);
+  const base = {
+    request,
+    beforeAudit: audit([issue(101, 11), issue(102, 11)]),
+    baselineRuntimeInfo: baselineRuntimeInfo(8),
+    result: successfulResult(101, 102),
+    integrityAudit: fullIntegrityAudit(0),
+    parentChildAudit: parentChildAudit(10, 0),
+    shortChunkAudit: { total: 3, summary: [], applyRequested: false, applyCompleted: false },
+    runtimeInfo: runtimeInfo(10),
+  };
+
+  assert.doesNotThrow(() => assertPostWaveInvariants(base));
+  assert.throws(() => assertPostWaveInvariants({
+    ...base,
+    integrityAudit: { ...fullIntegrityAudit(0), scannedRows: 11 },
+    parentChildAudit: parentChildAudit(11, 0),
+    runtimeInfo: runtimeInfo(11),
+  }), /law.*exact|baseline.*delta/i);
+  assert.throws(() => assertPostWaveInvariants({
+    ...base,
+    runtimeInfo: { ...runtimeInfo(10), ragQdrantExactPointCount: 10, ragDatabaseIndexedCount: 10 },
+  }), /rag.*unchanged|baseline.*delta/i);
+  assert.throws(() => assertPostWaveInvariants({
+    ...base,
+    baselineRuntimeInfo: { ...baselineRuntimeInfo(8), indexRevision: "wrong-preflight-revision" },
+  }), /baseline.*identity/i);
+});
+
 test("post-wave validation requires reconciled full audits, coverage, and DB-Qdrant counts", () => {
   assert.doesNotThrow(() => assertPostWaveInvariants({
     beforeAudit: audit([issue(101, 11), issue(102, 11)]),
+    request: durableRequest([{ chunkId: 101 }, { chunkId: 102 }]),
+    baselineRuntimeInfo: baselineRuntimeInfo(8),
     result: successfulResult(101, 102),
     integrityAudit: fullIntegrityAudit(0),
     parentChildAudit: parentChildAudit(10, 0),
@@ -360,6 +418,8 @@ test("post-wave validation requires reconciled full audits, coverage, and DB-Qdr
   }));
   assert.throws(() => assertPostWaveInvariants({
     beforeAudit: audit([issue(101, 11), issue(102, 11)]),
+    request: durableRequest([{ chunkId: 101 }, { chunkId: 102 }]),
+    baselineRuntimeInfo: baselineRuntimeInfo(5),
     result: successfulResult(101, 102),
     integrityAudit: fullIntegrityAudit(3),
     parentChildAudit: parentChildAudit(10, 3),
@@ -368,6 +428,8 @@ test("post-wave validation requires reconciled full audits, coverage, and DB-Qdr
   }), /backlog/);
   assert.throws(() => assertPostWaveInvariants({
     beforeAudit: audit([issue(101, 11)]),
+    request: durableRequest([{ chunkId: 101 }]),
+    baselineRuntimeInfo: baselineRuntimeInfo(9),
     result: successfulResult(101),
     integrityAudit: fullIntegrityAudit(0),
     parentChildAudit: parentChildAudit(10, 0),
@@ -376,6 +438,8 @@ test("post-wave validation requires reconciled full audits, coverage, and DB-Qdr
   }), /DB-Qdrant/);
   assert.throws(() => assertPostWaveInvariants({
     beforeAudit: audit([issue(101, 11)]),
+    request: durableRequest([{ chunkId: 101 }]),
+    baselineRuntimeInfo: baselineRuntimeInfo(9),
     result: successfulResult(101),
     integrityAudit: { ...fullIntegrityAudit(0), causeCounts: null },
     parentChildAudit: parentChildAudit(10, 0),
@@ -386,6 +450,8 @@ test("post-wave validation requires reconciled full audits, coverage, and DB-Qdr
   delete auditWithoutCauseCounts.causeCounts;
   assert.throws(() => assertPostWaveInvariants({
     beforeAudit: audit([issue(101, 11)]),
+    request: durableRequest([{ chunkId: 101 }]),
+    baselineRuntimeInfo: baselineRuntimeInfo(9),
     result: successfulResult(101),
     integrityAudit: auditWithoutCauseCounts,
     parentChildAudit: parentChildAudit(10, 0),
@@ -394,6 +460,8 @@ test("post-wave validation requires reconciled full audits, coverage, and DB-Qdr
   }), /causeCounts/);
   assert.throws(() => assertPostWaveInvariants({
     beforeAudit: audit([issue(101, 11)]),
+    request: durableRequest([{ chunkId: 101 }]),
+    baselineRuntimeInfo: baselineRuntimeInfo(9),
     result: successfulResult(101),
     integrityAudit: { ...fullIntegrityAudit(0), causeCounts: { MISSING_EMBEDDING_ROW: "0" } },
     parentChildAudit: parentChildAudit(10, 0),
@@ -409,6 +477,8 @@ test("post-wave validation separates target-law coverage from mixed-target law c
 
   assert.doesNotThrow(() => assertPostWaveInvariants({
     beforeAudit: audit([issue(101, 11), issue(102, 11)]),
+    request: durableRequest([{ chunkId: 101 }, { chunkId: 102 }]),
+    baselineRuntimeInfo: baselineRuntimeInfo(108),
     result: successfulResult(101, 102),
     integrityAudit: fullIntegrityAudit(0),
     parentChildAudit: parentAudit,
@@ -417,6 +487,8 @@ test("post-wave validation separates target-law coverage from mixed-target law c
   }));
   assert.throws(() => assertPostWaveInvariants({
     beforeAudit: audit([issue(101, 11), issue(102, 11)]),
+    request: durableRequest([{ chunkId: 101 }, { chunkId: 102 }]),
+    baselineRuntimeInfo: baselineRuntimeInfo(109),
     result: successfulResult(101, 102),
     integrityAudit: fullIntegrityAudit(0),
     parentChildAudit: parentAudit,
@@ -427,6 +499,8 @@ test("post-wave validation separates target-law coverage from mixed-target law c
   malformedParentAudit.runtimeComparableIndexed.rows.push({ target: "admrul", chunks: null });
   assert.throws(() => assertPostWaveInvariants({
     beforeAudit: audit([issue(101, 11), issue(102, 11)]),
+    request: durableRequest([{ chunkId: 101 }, { chunkId: 102 }]),
+    baselineRuntimeInfo: baselineRuntimeInfo(8),
     result: successfulResult(101, 102),
     integrityAudit: fullIntegrityAudit(0),
     parentChildAudit: malformedParentAudit,
@@ -447,6 +521,8 @@ test("post-wave validation uses the runtime-comparable metric instead of raw sta
 
   assert.doesNotThrow(() => assertPostWaveInvariants({
     beforeAudit: audit([issue(101, 11), issue(102, 11)]),
+    request: durableRequest([{ chunkId: 101 }, { chunkId: 102 }]),
+    baselineRuntimeInfo: baselineRuntimeInfo(108),
     result: successfulResult(101, 102),
     integrityAudit: fullIntegrityAudit(0),
     parentChildAudit: parentAudit,
@@ -455,6 +531,8 @@ test("post-wave validation uses the runtime-comparable metric instead of raw sta
   }));
   assert.throws(() => assertPostWaveInvariants({
     beforeAudit: audit([issue(101, 11), issue(102, 11)]),
+    request: durableRequest([{ chunkId: 101 }, { chunkId: 102 }]),
+    baselineRuntimeInfo: baselineRuntimeInfo(108),
     result: successfulResult(101, 102),
     integrityAudit: fullIntegrityAudit(0),
     parentChildAudit: { ...parentAudit, runtimeComparableIndexed: null },
@@ -468,6 +546,8 @@ test("post-wave runner invokes every required audit before returning success", a
   const result = successfulResult(101);
   const output = await runPostWaveAudits({
     beforeAudit: audit([issue(101, 11)]),
+    request: durableRequest([{ chunkId: 101 }]),
+    baselineRuntimeInfo: baselineRuntimeInfo(9),
     result,
     runIntegrityAudit: async () => {
       calls.push("integrity");
@@ -558,6 +638,10 @@ function runtimeInfo(lawIndexedCount) {
     ragQdrantExactPointCount: 9,
     ragDatabaseIndexedCount: 9,
   };
+}
+
+function baselineRuntimeInfo(lawIndexedCount) {
+  return { ...runtimeInfo(lawIndexedCount), indexRevision: "revision-a" };
 }
 
 function operationView(status, items) {

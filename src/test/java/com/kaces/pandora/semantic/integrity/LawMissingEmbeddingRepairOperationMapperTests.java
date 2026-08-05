@@ -61,7 +61,8 @@ class LawMissingEmbeddingRepairOperationMapperTests {
 
 		assertThat(reclaim).contains("i.state = 'PROCESSING'", "i.lease_expires_at <= CURRENT_TIMESTAMP(6)", "o.lease_owner IS NULL OR o.lease_expires_at <= CURRENT_TIMESTAMP(6)", "o.runtime_instance_id = ?", "o.trusted_index_revision = ?");
 		assertThat(renew)
-			.contains("i.state = 'PROCESSING'", "i.lease_owner = ?", "i.lease_expires_at = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(6))")
+			.contains("i.state = 'PROCESSING'", "i.lease_owner = ?", "i.lease_expires_at = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(6))",
+				"i.lease_expires_at > CURRENT_TIMESTAMP(6)", "o.lease_expires_at > CURRENT_TIMESTAMP(6)")
 			.doesNotContain("lease_expires_at = ?", "OR i.lease_owner");
 	}
 

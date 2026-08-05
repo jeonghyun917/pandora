@@ -251,6 +251,7 @@ function durableEvidence(context, error = null) {
     operationId: context?.operationId || context?.lastView?.operation?.request?.operationId || null,
     transportAttempts: [...(context?.transportAttempts || [])],
     lastView: context?.lastView || null,
+    baselineRuntimeInfo: context?.baselineRuntimeInfo || null,
     reason: error?.message || null,
   };
 }
@@ -377,7 +378,10 @@ function positiveBoundedInteger(value, fallback, name, minimum, maximum) {
   return selected;
 }
 
-function assertPostWaveInvariants({ beforeAudit, result, integrityAudit, parentChildAudit, shortChunkAudit, runtimeInfo }) {
+function assertPostWaveInvariants({ beforeAudit, request, baselineRuntimeInfo, result, integrityAudit, parentChildAudit, shortChunkAudit, runtimeInfo }) {
+  assertRuntimeBaselineIdentity({ beforeAudit, request, baselineRuntimeInfo });
+  assertSuccessfulApply(result, request.candidates);
+  const plannedCount = request.candidates.length;
   const beforeBacklog = causeCount(beforeAudit, "MISSING_EMBEDDING_ROW");
   const repairedCount = result?.outcomes?.filter((outcome) => outcome?.state === "INDEXED").length;
   if (!Array.isArray(beforeAudit?.issues) || beforeAudit.issues.length !== beforeBacklog
@@ -437,11 +441,29 @@ function assertPostWaveInvariants({ beforeAudit, result, integrityAudit, parentC
   const lawDatabaseCount = integer(runtimeInfo?.lawDatabaseIndexedCount);
   const ragQdrantCount = integer(runtimeInfo?.ragQdrantExactPointCount);
   const ragDatabaseCount = integer(runtimeInfo?.ragDatabaseIndexedCount);
+  const baselineLawQdrantCount = integer(baselineRuntimeInfo?.lawQdrantExactPointCount);
+  const baselineLawDatabaseCount = integer(baselineRuntimeInfo?.lawDatabaseIndexedCount);
+  const baselineRagQdrantCount = integer(baselineRuntimeInfo?.ragQdrantExactPointCount);
+  const baselineRagDatabaseCount = integer(baselineRuntimeInfo?.ragDatabaseIndexedCount);
   const collectionComparableIndexed = comparableRows.reduce((sum, row) => sum + integer(row.chunks), 0);
   if (runtimeInfo?.qdrantReady !== true || qdrantFailureCount !== 0 || lawCollection == null || embeddingModel == null
     || lawQdrantCount == null || lawDatabaseCount == null || ragQdrantCount == null || ragDatabaseCount == null
     || lawQdrantCount !== lawDatabaseCount || ragQdrantCount !== ragDatabaseCount) {
     throw new Error("Post-wave DB-Qdrant invariants did not reconcile.");
+  }
+  if (baselineRuntimeInfo.qdrantReady !== true || integer(baselineRuntimeInfo.qdrantSearchFailureCount) !== 0
+    || baselineRuntimeInfo.lawCollection !== lawCollection || baselineRuntimeInfo.embeddingModel !== embeddingModel
+    || baselineLawQdrantCount == null || baselineLawDatabaseCount == null
+    || baselineRagQdrantCount == null || baselineRagDatabaseCount == null
+    || baselineLawQdrantCount !== baselineLawDatabaseCount || baselineRagQdrantCount !== baselineRagDatabaseCount) {
+    throw new Error("Post-wave runtime baseline counts or collection identity were malformed.");
+  }
+  if (lawQdrantCount !== baselineLawQdrantCount + plannedCount
+    || lawDatabaseCount !== baselineLawDatabaseCount + plannedCount) {
+    throw new Error("Post-wave law runtime baseline delta was not exactly the planned candidate count.");
+  }
+  if (ragQdrantCount !== baselineRagQdrantCount || ragDatabaseCount !== baselineRagDatabaseCount) {
+    throw new Error("Post-wave rag runtime baseline delta was not exactly unchanged.");
   }
   if (collectionComparableIndexed !== lawDatabaseCount) {
     throw new Error("Post-wave law collection coverage did not reconcile.");
@@ -449,31 +471,54 @@ function assertPostWaveInvariants({ beforeAudit, result, integrityAudit, parentC
   return { integrityAudit, parentChildAudit, shortChunkAudit, runtimeInfo };
 }
 
-async function runPostWaveAudits({ beforeAudit, result, runIntegrityAudit, runParentChildAudit, runShortChunkAudit, loadRuntimeInfo }) {
+function assertRuntimeBaselineIdentity({ beforeAudit, request, baselineRuntimeInfo }) {
+  const requestFence = {
+    runtimeInstanceId: request?.expectedRuntimeInstanceId,
+    indexRevision: request?.expectedIndexRevision,
+  };
+  if (request?.target !== "law" || !Array.isArray(request?.candidates) || request.candidates.length < 1
+    || !sameRuntime(beforeAudit, requestFence) || !sameRuntime(baselineRuntimeInfo, requestFence)) {
+    throw new Error("Pre-wave runtime baseline identity did not match the request and integrity audit.");
+  }
+}
+
+async function runPostWaveAudits({ beforeAudit, request, baselineRuntimeInfo, result, runIntegrityAudit, runParentChildAudit, runShortChunkAudit, loadRuntimeInfo }) {
   const integrityAudit = await runIntegrityAudit();
   const parentChildAudit = await runParentChildAudit();
   const shortChunkAudit = await runShortChunkAudit();
   const runtimeInfo = await loadRuntimeInfo();
-  return assertPostWaveInvariants({ beforeAudit, result, integrityAudit, parentChildAudit, shortChunkAudit, runtimeInfo });
+  return assertPostWaveInvariants({ beforeAudit, request, baselineRuntimeInfo, result, integrityAudit, parentChildAudit, shortChunkAudit, runtimeInfo });
 }
 
 async function runDurableRepairWithPostWaveAudits({
   request, beforeAudit, runner = runDurableRepairOperation, runIntegrityAudit, runParentChildAudit, runShortChunkAudit, loadRuntimeInfo, runnerOptions,
 }) {
+  let baselineRuntimeInfo = null;
+  try {
+    baselineRuntimeInfo = await loadRuntimeInfo();
+    assertRuntimeBaselineIdentity({ beforeAudit, request, baselineRuntimeInfo });
+  } catch (error) {
+    throw durableOperationError(new Error(`Durable repair pre-wave runtime baseline failed: ${error.message || error}`), {
+      baselineRuntimeInfo,
+    });
+  }
   let result;
   try {
     result = await runner(request, runnerOptions);
   } catch (error) {
-    throw durableOperationError(error, error?.evidence || {});
+    const durable = error instanceof DurableOperationError ? error : durableOperationError(error, error?.evidence || {});
+    throw new DurableOperationError(durable.message, { ...durable.evidence, baselineRuntimeInfo }, durable);
   }
   try {
-    await runPostWaveAudits({ beforeAudit, result, runIntegrityAudit, runParentChildAudit, runShortChunkAudit, loadRuntimeInfo });
+    await runPostWaveAudits({ beforeAudit, request, baselineRuntimeInfo, result,
+      runIntegrityAudit, runParentChildAudit, runShortChunkAudit, loadRuntimeInfo });
     return result;
   } catch (error) {
     const context = result ? {
       operationId: result.operationId,
       transportAttempts: result.transportAttempts,
       lastView: result.operation ? { operation: result.operation, items: result.items } : null,
+      baselineRuntimeInfo,
     } : error?.evidence || {};
     throw durableOperationError(new Error(`Durable repair post-wave verification failed: ${error.message || error}`), context);
   }

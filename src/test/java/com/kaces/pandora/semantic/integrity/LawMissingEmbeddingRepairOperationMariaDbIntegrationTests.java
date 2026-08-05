@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.kaces.pandora.lawdata.persistence.LawApiSchemaMaintenance;
+import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
+import com.kaces.pandora.semantic.indexing.LawSemanticIndexStatusPersistenceService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -212,6 +214,81 @@ class LawMissingEmbeddingRepairOperationMariaDbIntegrationTests {
 			jdbc.update("UPDATE law_missing_embedding_repair_items SET lease_expires_at=CURRENT_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE operation_id=? AND ordinal=0", operationId);
 			assertThat(mapper.claimExpiredItem(operationId, 0, UUID.randomUUID().toString(), runtimeId, "c".repeat(64), 30)).isPositive();
 		}
+	}
+
+	@Test
+	void expiredOwnerCannotRenewItsItemOrOperationLease() {
+		String operationId = UUID.randomUUID().toString();
+		String runtimeId = UUID.randomUUID().toString();
+		String owner = UUID.randomUUID().toString();
+		insertOperationAndItems(operation(operationId, "a".repeat(64), "{}", "b".repeat(64), 1, runtimeId),
+			List.of(item(operationId, 0, 11)));
+
+		try (SqlSession session = factory.openSession(true)) {
+			LawMissingEmbeddingRepairOperationMapper mapper = session.getMapper(LawMissingEmbeddingRepairOperationMapper.class);
+			assertThat(mapper.claimReadyItem(operationId, 0, owner, runtimeId, "c".repeat(64), 30)).isPositive();
+			jdbc.update("UPDATE law_missing_embedding_repair_operations SET lease_expires_at=CURRENT_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE operation_id=?", operationId);
+			jdbc.update("UPDATE law_missing_embedding_repair_items SET lease_expires_at=CURRENT_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE operation_id=? AND ordinal=0", operationId);
+
+			assertThat(mapper.renewItemLease(operationId, 0, owner, 600)).isZero();
+		}
+	}
+
+	@Test
+	void productionSemanticStatusTransactionRollsBackEmbeddingWhenChunkStatusWriteFails() throws Exception {
+		jdbc.execute("""
+			ALTER TABLE law_api_document_chunks
+			  ADD COLUMN index_status VARCHAR(30) NULL,
+			  ADD COLUMN indexed_at DATETIME NULL,
+			  ADD COLUMN last_error_message TEXT NULL,
+			  ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+			""");
+		jdbc.update("INSERT INTO law_api_documents (document_id) VALUES (1)");
+		jdbc.update("INSERT INTO law_api_document_chunks (chunk_id, document_id) VALUES (101, 1)");
+		jdbc.execute("""
+			CREATE TABLE law_api_chunk_embeddings (
+			  chunk_id BIGINT NOT NULL,
+			  embedding_model VARCHAR(100) NOT NULL,
+			  vector_store VARCHAR(100) NOT NULL,
+			  vector_point_id VARCHAR(100) NOT NULL,
+			  content_hash CHAR(64) NULL,
+			  status VARCHAR(30) NOT NULL DEFAULT 'PENDING',
+			  embedded_at DATETIME NULL,
+			  last_error_message TEXT NULL,
+			  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			  PRIMARY KEY (chunk_id, embedding_model, vector_store),
+			  CONSTRAINT fk_test_embedding_chunk FOREIGN KEY (chunk_id)
+			    REFERENCES law_api_document_chunks (chunk_id) ON DELETE CASCADE
+			) ENGINE=InnoDB
+			""");
+		jdbc.execute("""
+			CREATE TRIGGER fail_chunk_status BEFORE UPDATE ON law_api_document_chunks
+			FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='forced chunk status failure'
+			""");
+		SqlSessionTemplate sessions = new SqlSessionTemplate(springLawChunkMapperFactory(dataSource));
+		LawChunkMapper mapper = sessions.getMapper(LawChunkMapper.class);
+		try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+			context.register(ProductionTransactionConfiguration.class);
+			context.registerBean(DataSource.class, () -> dataSource);
+			context.registerBean("transactionManager", PlatformTransactionManager.class,
+				() -> new DataSourceTransactionManager(dataSource));
+			context.registerBean(LawChunkMapper.class, () -> mapper);
+			context.registerBean(LawSemanticIndexStatusPersistenceService.class);
+			context.refresh();
+
+			LawSemanticIndexStatusPersistenceService persistence =
+				context.getBean(LawSemanticIndexStatusPersistenceService.class);
+			assertThat(AopUtils.isAopProxy(persistence)).isTrue();
+			assertThatThrownBy(() -> persistence.markIndexed(
+				101L, "text-embedding-3-small", "law_chunks", "a".repeat(64)))
+				.isInstanceOf(RuntimeException.class);
+		}
+
+		assertThat(jdbc.queryForObject(
+			"SELECT COUNT(*) FROM law_api_chunk_embeddings WHERE chunk_id=101", Integer.class)).isZero();
+		assertThat(jdbc.queryForObject(
+			"SELECT index_status FROM law_api_document_chunks WHERE chunk_id=101", String.class)).isNull();
 	}
 
 	@Test
@@ -585,6 +662,14 @@ class LawMissingEmbeddingRepairOperationMariaDbIntegrationTests {
 	private SqlSessionFactory springMapperFactory(DataSource source) throws Exception {
 		Configuration configuration = new Configuration(new Environment("spring-it", new SpringManagedTransactionFactory(), source));
 		return mapperFactory(configuration);
+	}
+
+	private SqlSessionFactory springLawChunkMapperFactory(DataSource source) throws Exception {
+		Configuration configuration = new Configuration(new Environment("spring-law-index-it", new SpringManagedTransactionFactory(), source));
+		try (var input = Resources.getResourceAsStream("mapper/law/LawChunkMapper.xml")) {
+			new XMLMapperBuilder(input, configuration, "mapper/law/LawChunkMapper.xml", configuration.getSqlFragments()).parse();
+		}
+		return new SqlSessionFactoryBuilder().build(configuration);
 	}
 
 	private SqlSessionFactory mapperFactory(Configuration configuration) throws Exception {

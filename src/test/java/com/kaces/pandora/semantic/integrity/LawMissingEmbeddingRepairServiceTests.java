@@ -16,6 +16,7 @@ import com.kaces.pandora.semantic.config.LawAiProperties;
 import com.kaces.pandora.semantic.indexing.LawSemanticIndexResult;
 import com.kaces.pandora.semantic.indexing.LawSemanticIndexService;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class LawMissingEmbeddingRepairServiceTests {
@@ -42,7 +43,7 @@ class LawMissingEmbeddingRepairServiceTests {
 					? LawMissingEmbeddingRepairService.RepairState.READY
 					: LawMissingEmbeddingRepairService.RepairState.REJECTED_CLASSIFICATION_DRIFT;
 			assertThat(inspected.state()).isEqualTo(expected);
-			verify(indexer, never()).indexExactChunks(org.mockito.ArgumentMatchers.anyList(), any());
+			verify(indexer, never()).indexExactChunks(org.mockito.ArgumentMatchers.anyList(), any(), any());
 		}
 	}
 
@@ -62,7 +63,7 @@ class LawMissingEmbeddingRepairServiceTests {
 		assertThat(result.complete()).isFalse();
 		assertThat(result.outcomes()).extracting(LawMissingEmbeddingRepairService.RepairOutcome::state)
 			.containsExactly(LawMissingEmbeddingRepairService.RepairState.READY);
-		verify(indexer, never()).indexExactChunks(org.mockito.ArgumentMatchers.eq(List.of(chunk)), any());
+		verify(indexer, never()).indexExactChunks(org.mockito.ArgumentMatchers.eq(List.of(chunk)), any(), any());
 	}
 
 	@Test
@@ -74,7 +75,7 @@ class LawMissingEmbeddingRepairServiceTests {
 		when(mapper.findSemanticChunksByIdsForIndexing(List.of(101L))).thenReturn(List.of(chunk));
 		when(integrity.auditByChunkIds("law", List.of(101L)))
 			.thenReturn(report(issue(101L, 11L, "a".repeat(64))), new LawIndexIntegrityReport("law", 1, 1, 101L, List.of()));
-		when(indexer.indexExactChunks(org.mockito.ArgumentMatchers.eq(List.of(chunk)), any())).thenReturn(new LawSemanticIndexResult("law_chunks", "text-embedding-3-small", 1, 1));
+		when(indexer.indexExactChunks(org.mockito.ArgumentMatchers.eq(List.of(chunk)), any(), any())).thenReturn(new LawSemanticIndexResult("law_chunks", "text-embedding-3-small", 1, 1));
 		LawMissingEmbeddingRepairService service = service(mapper, integrity, indexer, runtime("instance-a", "revision-a"));
 
 		LawMissingEmbeddingRepairService.RepairResult result = service.repair(request(true, List.of(11L), candidate(101L, "a".repeat(64))));
@@ -83,7 +84,7 @@ class LawMissingEmbeddingRepairServiceTests {
 		assertThat(result.complete()).isTrue();
 		assertThat(result.outcomes()).extracting(LawMissingEmbeddingRepairService.RepairOutcome::state)
 			.containsExactly(LawMissingEmbeddingRepairService.RepairState.INDEXED);
-		verify(indexer).indexExactChunks(org.mockito.ArgumentMatchers.eq(List.of(chunk)), any());
+		verify(indexer).indexExactChunks(org.mockito.ArgumentMatchers.eq(List.of(chunk)), any(), any());
 	}
 
 	@Test
@@ -103,7 +104,7 @@ class LawMissingEmbeddingRepairServiceTests {
 		assertThat(result.applied()).isFalse();
 		assertThat(result.outcomes()).extracting(LawMissingEmbeddingRepairService.RepairOutcome::state)
 			.containsExactly(LawMissingEmbeddingRepairService.RepairState.REJECTED_CLASSIFICATION_DRIFT);
-		verify(indexer, never()).indexExactChunks(org.mockito.ArgumentMatchers.eq(List.of(chunk)), any());
+		verify(indexer, never()).indexExactChunks(org.mockito.ArgumentMatchers.eq(List.of(chunk)), any(), any());
 	}
 
 	@Test
@@ -117,7 +118,7 @@ class LawMissingEmbeddingRepairServiceTests {
 		assertThat(result.applied()).isFalse();
 		assertThat(result.outcomes()).extracting(LawMissingEmbeddingRepairService.RepairOutcome::state)
 			.containsExactly(LawMissingEmbeddingRepairService.RepairState.REJECTED_RUNTIME_FENCE);
-		verify(indexer, never()).indexExactChunks(org.mockito.ArgumentMatchers.anyList(), any());
+		verify(indexer, never()).indexExactChunks(org.mockito.ArgumentMatchers.anyList(), any(), any());
 	}
 
 	@Test
@@ -135,7 +136,7 @@ class LawMissingEmbeddingRepairServiceTests {
 
 		assertThat(result.outcomes()).extracting(LawMissingEmbeddingRepairService.RepairOutcome::state)
 			.containsExactly(LawMissingEmbeddingRepairService.RepairState.REJECTED_RUNTIME_FENCE);
-		verify(indexer, never()).indexExactChunks(org.mockito.ArgumentMatchers.anyList(), any());
+		verify(indexer, never()).indexExactChunks(org.mockito.ArgumentMatchers.anyList(), any(), any());
 	}
 
 	@Test
@@ -149,7 +150,7 @@ class LawMissingEmbeddingRepairServiceTests {
 
 		assertThat(result.outcomes()).extracting(LawMissingEmbeddingRepairService.RepairOutcome::state)
 			.containsExactly(LawMissingEmbeddingRepairService.RepairState.REJECTED_REQUEST);
-		verify(indexer, never()).indexExactChunks(org.mockito.ArgumentMatchers.anyList(), any());
+		verify(indexer, never()).indexExactChunks(org.mockito.ArgumentMatchers.anyList(), any(), any());
 	}
 
 	@Test
@@ -164,7 +165,7 @@ class LawMissingEmbeddingRepairServiceTests {
 			issue(101L, 11L, "a".repeat(64)), issue(102L, 11L, "b".repeat(64))
 		));
 		when(integrity.auditByChunkIds("law", List.of(101L))).thenReturn(report(issue(101L, 11L, "a".repeat(64))));
-		when(indexer.indexExactChunks(org.mockito.ArgumentMatchers.eq(List.of(first)), any())).thenReturn(new LawSemanticIndexResult("law_chunks", "text-embedding-3-small", 1, 1));
+		when(indexer.indexExactChunks(org.mockito.ArgumentMatchers.eq(List.of(first)), any(), any())).thenReturn(new LawSemanticIndexResult("law_chunks", "text-embedding-3-small", 1, 1));
 		LawMissingEmbeddingRepairService service = service(mapper, integrity, indexer, runtime("instance-a", "revision-a"));
 		LawMissingEmbeddingRepairService.RepairRequest request = new LawMissingEmbeddingRepairService.RepairRequest(
 			"law", "instance-a", "revision-a", List.of(11L),
@@ -178,7 +179,37 @@ class LawMissingEmbeddingRepairServiceTests {
 				LawMissingEmbeddingRepairService.RepairState.VERIFICATION_FAILED,
 				LawMissingEmbeddingRepairService.RepairState.NOT_ATTEMPTED
 			);
-		verify(indexer, never()).indexExactChunks(org.mockito.ArgumentMatchers.eq(List.of(second)), any());
+		verify(indexer, never()).indexExactChunks(org.mockito.ArgumentMatchers.eq(List.of(second)), any(), any());
+	}
+
+	@Test
+	void unrelatedRevisionAfterEmbeddingPreventsQdrantAndDatabaseMutation() {
+		LawChunkMapper mapper = mock(LawChunkMapper.class);
+		LawIndexIntegrityService integrity = mock(LawIndexIntegrityService.class);
+		QdrantClient qdrant = mock(QdrantClient.class);
+		OpenAiEmbeddingClient embeddings = mock(OpenAiEmbeddingClient.class);
+		LawSemanticChunkRow chunk = chunk(101L, 11L, "a".repeat(64));
+		AtomicReference<LawIndexIntegrityRuntimeInfo> runtime = new AtomicReference<>(runtimeInfo("revision-a"));
+		when(mapper.findSemanticChunksByIdsForIndexing(List.of(101L))).thenReturn(List.of(chunk));
+		when(integrity.auditByChunkIds("law", List.of(101L))).thenReturn(report(issue(101L, 11L, "a".repeat(64))));
+		when(embeddings.embed(List.of(chunk.embeddingInput()))).thenAnswer(invocation -> {
+			runtime.set(runtimeInfo("revision-unrelated"));
+			return List.of(List.of(0.1d));
+		});
+		LawSemanticIndexService indexer = new LawSemanticIndexService(
+			mapper, new LawAiProperties(null, null, null, null), embeddings, qdrant, mock(LawJsonWriter.class),
+			new com.kaces.pandora.semantic.indexing.LawSemanticIndexStatusPersistenceService(mapper)
+		);
+		LawMissingEmbeddingRepairService service = service(mapper, integrity, indexer, runtime::get);
+
+		LawMissingEmbeddingRepairService.RepairResult result = service.repair(
+			request(true, List.of(11L), candidate(101L, "a".repeat(64))));
+
+		assertThat(result.outcomes()).extracting(LawMissingEmbeddingRepairService.RepairOutcome::state)
+			.containsExactly(LawMissingEmbeddingRepairService.RepairState.REJECTED_RUNTIME_FENCE);
+		verify(qdrant, never()).upsert(org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.anyList());
+		verify(mapper, never()).upsertEmbeddingStatus(org.mockito.ArgumentMatchers.anyLong(), any(), any(), any(), any(), any(), any());
+		verify(mapper, never()).updateChunkIndexStatus(org.mockito.ArgumentMatchers.anyLong(), any(), any());
 	}
 
 	@Test
@@ -192,7 +223,7 @@ class LawMissingEmbeddingRepairServiceTests {
 			report(issue(101L, 11L, "a".repeat(64))),
 			new LawIndexIntegrityReport("law", 1, 0, 0L, List.of())
 		);
-		when(indexer.indexExactChunks(org.mockito.ArgumentMatchers.eq(List.of(chunk)), any())).thenReturn(new LawSemanticIndexResult("law_chunks", "text-embedding-3-small", 1, 1));
+		when(indexer.indexExactChunks(org.mockito.ArgumentMatchers.eq(List.of(chunk)), any(), any())).thenReturn(new LawSemanticIndexResult("law_chunks", "text-embedding-3-small", 1, 1));
 		LawMissingEmbeddingRepairService service = service(mapper, integrity, indexer, runtime("instance-a", "revision-a"));
 
 		LawMissingEmbeddingRepairService.RepairResult result = service.repair(request(true, List.of(11L), candidate(101L, "a".repeat(64))));
@@ -214,7 +245,7 @@ class LawMissingEmbeddingRepairServiceTests {
 			issue(101L, 11L, "a".repeat(64)), issue(102L, 11L, "b".repeat(64))
 		));
 		when(integrity.auditByChunkIds("law", List.of(101L))).thenReturn(new LawIndexIntegrityReport("law", 1, 1, 101L, List.of()));
-		when(indexer.indexExactChunks(org.mockito.ArgumentMatchers.eq(List.of(first)), any())).thenReturn(new LawSemanticIndexResult("law_chunks", "text-embedding-3-small", 1, 1));
+		when(indexer.indexExactChunks(org.mockito.ArgumentMatchers.eq(List.of(first)), any(), any())).thenReturn(new LawSemanticIndexResult("law_chunks", "text-embedding-3-small", 1, 1));
 		LawMissingEmbeddingRepairService service = service(mapper, integrity, indexer,
 			new SequencedRuntimeInfoProvider(
 				new LawIndexIntegrityRuntimeInfo("instance-a", "revision-a"),
@@ -234,7 +265,7 @@ class LawMissingEmbeddingRepairServiceTests {
 		assertThat(result.complete()).isFalse();
 		assertThat(result.outcomes()).extracting(LawMissingEmbeddingRepairService.RepairOutcome::state)
 			.containsExactly(LawMissingEmbeddingRepairService.RepairState.INDEXED, LawMissingEmbeddingRepairService.RepairState.REJECTED_RUNTIME_FENCE);
-		verify(indexer, never()).indexExactChunks(org.mockito.ArgumentMatchers.eq(List.of(second)), any());
+		verify(indexer, never()).indexExactChunks(org.mockito.ArgumentMatchers.eq(List.of(second)), any(), any());
 	}
 
 	private LawMissingEmbeddingRepairService service(
@@ -270,6 +301,10 @@ class LawMissingEmbeddingRepairServiceTests {
 
 	private LawIndexIntegrityRuntimeInfoProvider runtime(String instance, String revision) {
 		return () -> new LawIndexIntegrityRuntimeInfo(instance, revision);
+	}
+
+	private LawIndexIntegrityRuntimeInfo runtimeInfo(String revision) {
+		return new LawIndexIntegrityRuntimeInfo("instance-a", revision);
 	}
 
 	private static final class SequencedRuntimeInfoProvider implements LawIndexIntegrityRuntimeInfoProvider {

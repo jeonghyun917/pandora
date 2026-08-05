@@ -112,7 +112,9 @@
         o.lease_expires_at = TIMESTAMPADD(SECOND, #{leaseSeconds}, CURRENT_TIMESTAMP(6)), o.updated_at = CURRENT_TIMESTAMP(6)
     WHERE i.operation_id = #{operationId} AND i.ordinal = #{ordinal}
       AND i.state = 'PROCESSING' AND i.lease_owner = #{owner}
+      AND i.lease_expires_at &gt; CURRENT_TIMESTAMP(6)
       AND o.status = 'RUNNING' AND o.lease_owner = #{owner}
+      AND o.lease_expires_at &gt; CURRENT_TIMESTAMP(6)
   </update>
 
   <update id="completeClaimedItemAndAdvanceRevision">

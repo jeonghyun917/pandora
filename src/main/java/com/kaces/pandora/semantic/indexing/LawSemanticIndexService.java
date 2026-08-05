@@ -29,19 +29,22 @@ public class LawSemanticIndexService {
 	private final OpenAiEmbeddingClient embeddingClient;
 	private final QdrantClient qdrantClient;
 	private final LawJsonWriter jsonWriter;
+	private final LawSemanticIndexStatusPersistenceService statusPersistence;
 
 	public LawSemanticIndexService(
 		LawChunkMapper lawChunkMapper,
 		LawAiProperties properties,
 		OpenAiEmbeddingClient embeddingClient,
 		QdrantClient qdrantClient,
-		LawJsonWriter jsonWriter
+		LawJsonWriter jsonWriter,
+		LawSemanticIndexStatusPersistenceService statusPersistence
 	) {
 		this.lawChunkMapper = lawChunkMapper;
 		this.properties = properties;
 		this.embeddingClient = embeddingClient;
 		this.qdrantClient = qdrantClient;
 		this.jsonWriter = jsonWriter;
+		this.statusPersistence = statusPersistence;
 	}
 
 	// 메소드 설명: ensureCollection 처리 흐름을 수행합니다.
@@ -110,10 +113,17 @@ public class LawSemanticIndexService {
 
 	/** Exact repair hook used to fence every remote or durable mutation phase. */
 	public LawSemanticIndexResult indexExactChunks(List<LawSemanticChunkRow> chunks, Runnable ownershipCheckpoint) {
+		return indexExactChunks(chunks, ownershipCheckpoint, ownershipCheckpoint);
+	}
+
+	/** The pre-Qdrant checkpoint is distinct because it also proves the live revision after embedding. */
+	public LawSemanticIndexResult indexExactChunks(
+		List<LawSemanticChunkRow> chunks, Runnable ownershipCheckpoint, Runnable preQdrantCheckpoint
+	) {
 		List<LawSemanticChunkRow> safeChunks = chunks == null ? List.of() : List.copyOf(chunks);
 		String model = properties.openai().embeddingModel();
 		String vectorStore = properties.qdrant().collection();
-		return indexChunks(safeChunks, model, vectorStore, safeChunks.size(), ownershipCheckpoint);
+		return indexChunks(safeChunks, model, vectorStore, safeChunks.size(), ownershipCheckpoint, preQdrantCheckpoint);
 	}
 
 	private LawSemanticIndexResult indexCandidateChunks(
@@ -139,7 +149,7 @@ public class LawSemanticIndexService {
 		String vectorStore,
 		int requested
 	) {
-		return indexChunks(chunks, model, vectorStore, requested, () -> { });
+		return indexChunks(chunks, model, vectorStore, requested, () -> { }, () -> { });
 	}
 
 	private LawSemanticIndexResult indexChunks(
@@ -147,9 +157,11 @@ public class LawSemanticIndexService {
 		String model,
 		String vectorStore,
 		int requested,
-		Runnable ownershipCheckpoint
+		Runnable ownershipCheckpoint,
+		Runnable preQdrantCheckpoint
 	) {
 		Runnable checkpoint = ownershipCheckpoint == null ? () -> { } : ownershipCheckpoint;
+		Runnable finalPreQdrantCheckpoint = preQdrantCheckpoint == null ? checkpoint : preQdrantCheckpoint;
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		checkpoint.run();
 		qdrantClient.ensureCollection();
@@ -161,7 +173,7 @@ public class LawSemanticIndexService {
 			checkpoint.run();
 			List<List<Double>> vectors = embeddingClient.embed(batch.stream().map(LawSemanticChunkRow::embeddingInput).toList());
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-			checkpoint.run();
+			finalPreQdrantCheckpoint.run();
 			qdrantClient.upsert(batch, vectors);
 			for (LawSemanticChunkRow chunk : batch) {
 				// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
@@ -185,17 +197,7 @@ public class LawSemanticIndexService {
 		for (int attempt = 1; attempt <= STATUS_UPDATE_ATTEMPTS; attempt++) {
 			try {
 				ownershipCheckpoint.run();
-				lawChunkMapper.upsertEmbeddingStatus(
-					chunk.chunkId(),
-					model,
-					vectorStore,
-					String.valueOf(chunk.chunkId()),
-					chunk.contentHash(),
-					"INDEXED",
-					null
-				);
-				ownershipCheckpoint.run();
-				lawChunkMapper.updateChunkIndexStatus(chunk.chunkId(), "INDEXED", null);
+				statusPersistence.markIndexed(chunk.chunkId(), model, vectorStore, chunk.contentHash());
 				return;
 			} catch (RuntimeException exception) {
 				lastException = exception;

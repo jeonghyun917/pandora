@@ -23,7 +23,8 @@ class LawSemanticIndexServiceTests {
 	void indexCandidateRejectsNonPositiveDocumentOrVersionWithoutIndexing() {
 		LawSemanticIndexService service = new LawSemanticIndexService(
 			mock(LawChunkMapper.class), new LawAiProperties(null, null, null, null),
-			mock(OpenAiEmbeddingClient.class), mock(QdrantClient.class), mock(LawJsonWriter.class)
+			mock(OpenAiEmbeddingClient.class), mock(QdrantClient.class), mock(LawJsonWriter.class),
+			mock(LawSemanticIndexStatusPersistenceService.class)
 		);
 
 		assertThat(service.indexCandidate("law", 0L, 2, 10).indexed()).isZero();
@@ -36,10 +37,12 @@ class LawSemanticIndexServiceTests {
 		QdrantClient qdrantClient = mock(QdrantClient.class);
 		when(mapper.findSemanticIndexCandidatesByDocumentIdAndVersion("law", 42L, 2,
 			"text-embedding-3-small", "law_chunks", 10)).thenReturn(List.of(candidateChunk()));
+		when(mapper.updateChunkIndexStatus(101L, "INDEXED", null)).thenReturn(1);
 		OpenAiEmbeddingClient embeddingClient = mock(OpenAiEmbeddingClient.class);
 		when(embeddingClient.embed(List.of(candidateChunk().embeddingInput()))).thenReturn(List.of(List.of(0.1d)));
 		LawSemanticIndexService service = new LawSemanticIndexService(
-			mapper, new LawAiProperties(null, null, null, null), embeddingClient, qdrantClient, mock(LawJsonWriter.class)
+			mapper, new LawAiProperties(null, null, null, null), embeddingClient, qdrantClient, mock(LawJsonWriter.class),
+			new LawSemanticIndexStatusPersistenceService(mapper)
 		);
 
 		service.indexCandidate("law", 42L, 2, 10);
@@ -55,7 +58,8 @@ class LawSemanticIndexServiceTests {
 		OpenAiEmbeddingClient embeddingClient = mock(OpenAiEmbeddingClient.class);
 		when(embeddingClient.embed(List.of(candidateChunk().embeddingInput()))).thenReturn(List.of(List.of(0.1d)));
 		LawSemanticIndexService service = new LawSemanticIndexService(
-			mapper, new LawAiProperties(null, null, null, null), embeddingClient, qdrantClient, mock(LawJsonWriter.class)
+			mapper, new LawAiProperties(null, null, null, null), embeddingClient, qdrantClient, mock(LawJsonWriter.class),
+			new LawSemanticIndexStatusPersistenceService(mapper)
 		);
 		AtomicInteger checkpoints = new AtomicInteger();
 

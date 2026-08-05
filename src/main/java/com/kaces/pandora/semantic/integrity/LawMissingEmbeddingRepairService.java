@@ -100,7 +100,13 @@ public class LawMissingEmbeddingRepairService {
 				return new RepairResult(true, false, runtime, List.copyOf(applied));
 			}
 			try {
-				indexService.indexExactChunks(List.of(chunk), checkpoint::verifyOwnership);
+				LawIndexIntegrityRuntimeInfo trustedBeforeWrite = trustedRuntime;
+				indexService.indexExactChunks(List.of(chunk), checkpoint::verifyOwnership, () -> {
+					checkpoint.verifyOwnership();
+					if (!sameRuntime(trustedBeforeWrite, currentRuntime())) {
+						throw new RuntimeFenceChangedException();
+					}
+				});
 				checkpoint.verifyOwnership();
 				LawIndexIntegrityReport verified = integrityService.auditByChunkIds("law", List.of(candidate.chunkId()));
 				RepairState state = verified.scannedRows() == 1 && verified.issues().isEmpty()
@@ -123,6 +129,15 @@ public class LawMissingEmbeddingRepairService {
 					return new RepairResult(true, false, runtimeAfterVerifiedWrite, List.copyOf(applied));
 				}
 				trustedRuntime = runtimeAfterVerifiedWrite;
+			} catch (RuntimeFenceChangedException exception) {
+				applied.add(new RepairOutcome(candidate.chunkId(), chunk.documentId(), RepairState.REJECTED_RUNTIME_FENCE,
+					"Runtime instance or index revision changed before exact index mutation."));
+				for (int remaining = index + 1; remaining < candidates.size(); remaining++) {
+					RepairCandidate pending = candidates.get(remaining);
+					applied.add(new RepairOutcome(pending.chunkId(), chunksById.get(pending.chunkId()).documentId(),
+						RepairState.NOT_ATTEMPTED, "Not attempted after runtime drift."));
+				}
+				return new RepairResult(true, false, currentRuntime(), List.copyOf(applied));
 			} catch (RuntimeException exception) {
 				applied.add(new RepairOutcome(candidate.chunkId(), chunk.documentId(), RepairState.INDEX_FAILED, "Direct indexing failed."));
 				for (int remaining = index + 1; remaining < candidates.size(); remaining++) {
@@ -305,5 +320,11 @@ public class LawMissingEmbeddingRepairService {
 		INDEX_FAILED,
 		VERIFICATION_FAILED,
 		NOT_ATTEMPTED
+	}
+
+	private static final class RuntimeFenceChangedException extends IllegalStateException {
+		private RuntimeFenceChangedException() {
+			super("Runtime fence changed.");
+		}
 	}
 }
