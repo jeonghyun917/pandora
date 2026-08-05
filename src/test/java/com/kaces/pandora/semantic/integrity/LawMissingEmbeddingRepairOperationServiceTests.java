@@ -180,7 +180,7 @@ class LawMissingEmbeddingRepairOperationServiceTests {
 	void rejectsEachInvalidRequestBeforePreflightOrPersistence(String ignored, LawMissingEmbeddingRepairOperationService.RepairRequest request) {
 		LawMissingEmbeddingRepairOperationMapper operations = mock(LawMissingEmbeddingRepairOperationMapper.class);
 		LawMissingEmbeddingRepairService legacy = mock(LawMissingEmbeddingRepairService.class);
-		LawMissingEmbeddingRepairOperationService service = new LawMissingEmbeddingRepairOperationService(operations, legacy);
+		LawMissingEmbeddingRepairOperationService service = service(operations, legacy);
 
 		assertThatThrownBy(() -> service.register(request))
 			.isInstanceOf(LawMissingEmbeddingRepairOperationService.RegistrationRejectedException.class)
@@ -213,7 +213,7 @@ class LawMissingEmbeddingRepairOperationServiceTests {
 		LawMissingEmbeddingRepairOperationMapper operations = mock(LawMissingEmbeddingRepairOperationMapper.class);
 		LawMissingEmbeddingRepairService legacy = mock(LawMissingEmbeddingRepairService.class);
 		when(legacy.preflight(any())).thenReturn(drift);
-		LawMissingEmbeddingRepairOperationService service = new LawMissingEmbeddingRepairOperationService(operations, legacy);
+		LawMissingEmbeddingRepairOperationService service = service(operations, legacy);
 
 		assertThatThrownBy(() -> service.register(request(List.of(11L), List.of(candidate(101L, "a")))))
 			.isInstanceOf(LawMissingEmbeddingRepairOperationService.RegistrationRejectedException.class)
@@ -302,7 +302,7 @@ class LawMissingEmbeddingRepairOperationServiceTests {
 			return new LawMissingEmbeddingRepairService.RepairResult(false, false, new LawIndexIntegrityRuntimeInfo(validRuntime(), validRevision()), request.candidates().stream()
 				.map(candidate -> outcome(candidate.chunkId(), candidate.chunkId() == 101L ? 11L : Math.min(50L, candidate.chunkId()), LawMissingEmbeddingRepairService.RepairState.READY)).toList());
 		});
-		return new LawMissingEmbeddingRepairOperationService(operations, legacy);
+		return service(operations, legacy);
 	}
 
 	private LawMissingEmbeddingRepairOperationService service(
@@ -319,7 +319,15 @@ class LawMissingEmbeddingRepairOperationServiceTests {
 		LawMissingEmbeddingRepairService legacy = new LawMissingEmbeddingRepairService(
 			chunks, integrity, indexer, () -> new LawIndexIntegrityRuntimeInfo("00000000-0000-0000-0000-000000000001", "a".repeat(64))
 		);
-		return new LawMissingEmbeddingRepairOperationService(operations, legacy);
+		return service(operations, legacy);
+	}
+
+	private LawMissingEmbeddingRepairOperationService service(
+		LawMissingEmbeddingRepairOperationMapper operations, LawMissingEmbeddingRepairService legacy
+	) {
+		return new LawMissingEmbeddingRepairOperationService(
+			operations, legacy, new LawMissingEmbeddingRepairOperationPersistenceService(operations)
+		);
 	}
 
 	private LawMissingEmbeddingRepairOperationService.RepairRequest request(

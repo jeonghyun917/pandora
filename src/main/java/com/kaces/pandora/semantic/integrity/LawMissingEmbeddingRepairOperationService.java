@@ -27,13 +27,6 @@ public class LawMissingEmbeddingRepairOperationService {
 	@Autowired
 	public LawMissingEmbeddingRepairOperationService(
 		LawMissingEmbeddingRepairOperationMapper operationMapper,
-		LawMissingEmbeddingRepairService legacyRepairService
-	) {
-		this(operationMapper, legacyRepairService, new LawMissingEmbeddingRepairOperationPersistenceService(operationMapper), Clock.systemUTC());
-	}
-
-	public LawMissingEmbeddingRepairOperationService(
-		LawMissingEmbeddingRepairOperationMapper operationMapper,
 		LawMissingEmbeddingRepairService legacyRepairService,
 		LawMissingEmbeddingRepairOperationPersistenceService persistenceService
 	) {
