@@ -13,8 +13,8 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class LawMissingEmbeddingRepairService {
-	private static final int MAX_CANDIDATES = 1_000;
-	private static final int MAX_DOCUMENTS = 50;
+	static final int MAX_CANDIDATES = 1_000;
+	static final int MAX_DOCUMENTS = 50;
 
 	private final LawChunkMapper lawChunkMapper;
 	private final LawIndexIntegrityService integrityService;
@@ -124,7 +124,22 @@ public class LawMissingEmbeddingRepairService {
 		return new RepairResult(true, sameRuntime(trustedRuntime, runtimeAfter), runtimeAfter, List.copyOf(applied));
 	}
 
-	private boolean isValidRequest(RepairRequest request, List<RepairCandidate> candidates) {
+	/**
+	 * Performs the exact bounded repair preflight without indexing. Durable operation registration
+	 * uses this method so its active-chunk, hash, document-wave, and classifier checks cannot drift
+	 * from the legacy synchronous endpoint.
+	 */
+	RepairResult preflight(RepairRequest request) {
+		if (request == null) {
+			return repair(null);
+		}
+		return repair(new RepairRequest(
+			request.target(), request.expectedRuntimeInstanceId(), request.expectedIndexRevision(),
+			request.expectedDocumentIds(), request.candidates(), false
+		));
+	}
+
+	static boolean isValidRequest(RepairRequest request, List<RepairCandidate> candidates) {
 		if (request == null || !"law".equals(request.target()) || candidates.isEmpty() || candidates.size() > MAX_CANDIDATES
 			|| request.expectedDocumentIds() == null || request.expectedDocumentIds().isEmpty() || request.expectedDocumentIds().size() > MAX_DOCUMENTS) {
 			return false;
@@ -181,7 +196,7 @@ public class LawMissingEmbeddingRepairService {
 			&& expected.indexRevision().equals(actual.indexRevision());
 	}
 
-	private boolean isHash(String value) {
+	static boolean isHash(String value) {
 		return value != null && value.matches("[0-9a-fA-F]{64}");
 	}
 
