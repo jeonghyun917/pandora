@@ -618,8 +618,8 @@ function runtimeInfoError(error, runtimeInfoAttempts) {
 }
 
 function runtimeInfoAttemptsFor(...runtimeInfos) {
-  return runtimeInfos.flatMap((runtimeInfo) => Array.isArray(runtimeInfo?.runtimeInfoAttempts)
-    ? runtimeInfo.runtimeInfoAttempts : []);
+  return runtimeInfos.flatMap((runtimeInfo) => Array.isArray(runtimeInfo)
+    ? runtimeInfo : Array.isArray(runtimeInfo?.runtimeInfoAttempts) ? runtimeInfo.runtimeInfoAttempts : []);
 }
 
 async function main() {

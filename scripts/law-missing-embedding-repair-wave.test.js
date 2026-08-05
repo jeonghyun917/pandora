@@ -9,6 +9,7 @@ const {
   runDurableRepairOperation,
   runDurableRepairWithPostWaveAudits,
   DurableOperationError,
+  durableFailureArtifact,
   loadRuntimeInfo,
 } = require("./law-missing-embedding-repair-wave");
 
@@ -605,6 +606,70 @@ test("runtime-info never retries an HTTP response and retains its status", async
     return true;
   });
   assert.equal(calls, 1);
+});
+
+test("runtime-info stops after two rejected fetch attempts and retains both failures", async () => {
+  let calls = 0;
+  await assert.rejects(() => loadRuntimeInfo({
+    phase: "post-wave-runtime-info",
+    fetch: async () => {
+      calls += 1;
+      throw new TypeError("fetch failed");
+    },
+  }), (error) => {
+    assert.deepEqual(error.runtimeInfoAttempts, [
+      { phase: "post-wave-runtime-info", attempt: 1, outcome: "transport-error" },
+      { phase: "post-wave-runtime-info", attempt: 2, outcome: "transport-error" },
+    ]);
+    return true;
+  });
+  assert.equal(calls, 2);
+});
+
+test("runtime-info never retries malformed JSON and retains the HTTP status", async () => {
+  let calls = 0;
+  await assert.rejects(() => loadRuntimeInfo({
+    phase: "pre-wave-runtime-info",
+    fetch: async () => {
+      calls += 1;
+      return { ok: true, status: 200, text: async () => "{" };
+    },
+  }), (error) => {
+    assert.deepEqual(error.runtimeInfoAttempts, [
+      { phase: "pre-wave-runtime-info", attempt: 1, outcome: "malformed-json", status: 200 },
+    ]);
+    return true;
+  });
+  assert.equal(calls, 1);
+});
+
+test("post-wave failure artifact retains accumulated pre and post runtime-info attempts", async () => {
+  const preAttempts = [{ phase: "pre-wave-runtime-info", attempt: 1, outcome: "response", status: 200 }];
+  const postAttempts = [{ phase: "post-wave-runtime-info", attempt: 1, outcome: "transport-error" }];
+  let runtimeCalls = 0;
+  let failure;
+  try {
+    await runDurableRepairWithPostWaveAudits({
+      request: durableRequest([{ chunkId: 101 }]),
+      beforeAudit: audit([issue(101, 11)]),
+      runner: async () => successfulResult(101),
+      runIntegrityAudit: async () => fullIntegrityAudit(0),
+      runParentChildAudit: async () => parentChildAudit(10, 0),
+      runShortChunkAudit: async () => ({ total: 3, summary: [], applyRequested: false, applyCompleted: false }),
+      loadRuntimeInfo: async () => {
+        runtimeCalls += 1;
+        if (runtimeCalls === 1) return { ...baselineRuntimeInfo(9), runtimeInfoAttempts: preAttempts };
+        const error = new TypeError("fetch failed");
+        error.runtimeInfoAttempts = postAttempts;
+        throw error;
+      },
+    });
+  } catch (error) {
+    failure = error;
+  }
+
+  assert.ok(failure instanceof DurableOperationError);
+  assert.deepEqual(durableFailureArtifact(failure).evidence.runtimeInfoAttempts, [...preAttempts, ...postAttempts]);
 });
 
 function audit(issues) {
