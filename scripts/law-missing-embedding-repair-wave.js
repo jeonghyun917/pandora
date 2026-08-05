@@ -252,6 +252,8 @@ function durableEvidence(context, error = null) {
     transportAttempts: [...(context?.transportAttempts || [])],
     lastView: context?.lastView || null,
     baselineRuntimeInfo: context?.baselineRuntimeInfo || null,
+    runtimeInfoAttempts: Array.isArray(context?.runtimeInfoAttempts) ? [...context.runtimeInfoAttempts]
+      : runtimeInfoAttemptsFor(context?.baselineRuntimeInfo, error?.runtimeInfoAttempts),
     reason: error?.message || null,
   };
 }
@@ -486,8 +488,13 @@ async function runPostWaveAudits({ beforeAudit, request, baselineRuntimeInfo, re
   const integrityAudit = await runIntegrityAudit();
   const parentChildAudit = await runParentChildAudit();
   const shortChunkAudit = await runShortChunkAudit();
-  const runtimeInfo = await loadRuntimeInfo();
-  return assertPostWaveInvariants({ beforeAudit, request, baselineRuntimeInfo, result, integrityAudit, parentChildAudit, shortChunkAudit, runtimeInfo });
+  const runtimeInfo = await loadRuntimeInfo({ phase: "post-wave-runtime-info" });
+  try {
+    return assertPostWaveInvariants({ beforeAudit, request, baselineRuntimeInfo, result, integrityAudit, parentChildAudit, shortChunkAudit, runtimeInfo });
+  } catch (error) {
+    error.runtimeInfoAttempts = runtimeInfoAttemptsFor(baselineRuntimeInfo, runtimeInfo.runtimeInfoAttempts);
+    throw error;
+  }
 }
 
 async function runDurableRepairWithPostWaveAudits({
@@ -495,11 +502,12 @@ async function runDurableRepairWithPostWaveAudits({
 }) {
   let baselineRuntimeInfo = null;
   try {
-    baselineRuntimeInfo = await loadRuntimeInfo();
+    baselineRuntimeInfo = await loadRuntimeInfo({ phase: "pre-wave-runtime-info" });
     assertRuntimeBaselineIdentity({ beforeAudit, request, baselineRuntimeInfo });
   } catch (error) {
     throw durableOperationError(new Error(`Durable repair pre-wave runtime baseline failed: ${error.message || error}`), {
       baselineRuntimeInfo,
+      runtimeInfoAttempts: runtimeInfoAttemptsFor(baselineRuntimeInfo, error?.runtimeInfoAttempts),
     });
   }
   let result;
@@ -510,15 +518,16 @@ async function runDurableRepairWithPostWaveAudits({
     throw new DurableOperationError(durable.message, { ...durable.evidence, baselineRuntimeInfo }, durable);
   }
   try {
-    await runPostWaveAudits({ beforeAudit, request, baselineRuntimeInfo, result,
+    const postWaveAudits = await runPostWaveAudits({ beforeAudit, request, baselineRuntimeInfo, result,
       runIntegrityAudit, runParentChildAudit, runShortChunkAudit, loadRuntimeInfo });
-    return result;
+    return { ...result, runtimeInfoAttempts: runtimeInfoAttemptsFor(baselineRuntimeInfo, postWaveAudits.runtimeInfo) };
   } catch (error) {
     const context = result ? {
       operationId: result.operationId,
       transportAttempts: result.transportAttempts,
       lastView: result.operation ? { operation: result.operation, items: result.items } : null,
       baselineRuntimeInfo,
+      runtimeInfoAttempts: runtimeInfoAttemptsFor(baselineRuntimeInfo, error?.runtimeInfoAttempts),
     } : error?.evidence || {};
     throw durableOperationError(new Error(`Durable repair post-wave verification failed: ${error.message || error}`), context);
   }
@@ -574,14 +583,43 @@ function readJson(artifactPath) {
   return JSON.parse(fs.readFileSync(artifactPath, "utf8"));
 }
 
-async function loadRuntimeInfo() {
-  const response = await fetch("http://127.0.0.1:8080/api/law-data/ai/debug/runtime-info", {
-    signal: AbortSignal.timeout(30000),
-  });
-  if (!response.ok) {
-    throw new Error(`Post-wave runtime info HTTP ${response.status}.`);
+async function loadRuntimeInfo({ phase = "runtime-info", fetch: fetchImpl = global.fetch } = {}) {
+  const runtimeInfoAttempts = [];
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    let response;
+    try {
+      response = await fetchImpl("http://127.0.0.1:8080/api/law-data/ai/debug/runtime-info", {
+        signal: AbortSignal.timeout(30000),
+      });
+    } catch (error) {
+      runtimeInfoAttempts.push({ phase, attempt, outcome: "transport-error" });
+      if (attempt === 2) throw runtimeInfoError(error, runtimeInfoAttempts);
+      continue;
+    }
+    if (!response.ok) {
+      runtimeInfoAttempts.push({ phase, attempt, outcome: "http-error", status: response.status });
+      throw runtimeInfoError(new Error(`Runtime info HTTP ${response.status}.`), runtimeInfoAttempts);
+    }
+    try {
+      const runtimeInfo = JSON.parse(await response.text());
+      runtimeInfoAttempts.push({ phase, attempt, outcome: "response", status: response.status });
+      return { ...runtimeInfo, runtimeInfoAttempts };
+    } catch (error) {
+      runtimeInfoAttempts.push({ phase, attempt, outcome: "malformed-json", status: response.status });
+      throw runtimeInfoError(error, runtimeInfoAttempts);
+    }
   }
-  return response.json();
+  throw runtimeInfoError(new Error("Runtime info did not return a response."), runtimeInfoAttempts);
+}
+
+function runtimeInfoError(error, runtimeInfoAttempts) {
+  error.runtimeInfoAttempts = [...runtimeInfoAttempts];
+  return error;
+}
+
+function runtimeInfoAttemptsFor(...runtimeInfos) {
+  return runtimeInfos.flatMap((runtimeInfo) => Array.isArray(runtimeInfo?.runtimeInfoAttempts)
+    ? runtimeInfo.runtimeInfoAttempts : []);
 }
 
 async function main() {
@@ -650,4 +688,5 @@ module.exports = {
   runDurableRepairWithPostWaveAudits,
   DurableOperationError,
   durableFailureArtifact,
+  loadRuntimeInfo,
 };

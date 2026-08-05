@@ -9,6 +9,7 @@ const {
   runDurableRepairOperation,
   runDurableRepairWithPostWaveAudits,
   DurableOperationError,
+  loadRuntimeInfo,
 } = require("./law-missing-embedding-repair-wave");
 
 test("planner binds a bounded document wave to the full audit runtime fence", () => {
@@ -569,6 +570,41 @@ test("post-wave runner invokes every required audit before returning success", a
 
   assert.deepEqual(calls, ["integrity", "parent-child", "short", "runtime"]);
   assert.equal(output.integrityAudit.causeCounts.MISSING_EMBEDDING_ROW, undefined);
+});
+
+test("runtime-info retries one transport failure and retains both read-only attempts", async () => {
+  let calls = 0;
+  const info = await loadRuntimeInfo({
+    phase: "post-wave-runtime-info",
+    fetch: async () => {
+      calls += 1;
+      if (calls === 1) throw new TypeError("fetch failed");
+      return jsonResponse(200, runtimeInfo(10));
+    },
+  });
+
+  assert.equal(calls, 2);
+  assert.deepEqual(info.runtimeInfoAttempts, [
+    { phase: "post-wave-runtime-info", attempt: 1, outcome: "transport-error" },
+    { phase: "post-wave-runtime-info", attempt: 2, outcome: "response", status: 200 },
+  ]);
+});
+
+test("runtime-info never retries an HTTP response and retains its status", async () => {
+  let calls = 0;
+  await assert.rejects(() => loadRuntimeInfo({
+    phase: "pre-wave-runtime-info",
+    fetch: async () => {
+      calls += 1;
+      return jsonResponse(503, { error: "unavailable" });
+    },
+  }), (error) => {
+    assert.deepEqual(error.runtimeInfoAttempts, [
+      { phase: "pre-wave-runtime-info", attempt: 1, outcome: "http-error", status: 503 },
+    ]);
+    return true;
+  });
+  assert.equal(calls, 1);
 });
 
 function audit(issues) {
