@@ -20,7 +20,7 @@ class LawApiSchemaMaintenanceTests {
 	@Test
 	void runAddsMissingVersionedChunkColumnsAndIndexesWithoutTouchingExistingRows() {
 		JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-		when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class))).thenReturn(1);
+		when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class))).thenAnswer(i -> i.getArgument(0, String.class).startsWith("SELECT COUNT(*) FROM law_missing") ? 0 : 1);
 		when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), any(Object[].class)))
 			.thenAnswer(invocation -> invocation.getArgument(0, String.class).contains("information_schema.TABLES") ? 1 : 0);
 		when(jdbcTemplate.queryForList(anyString(), eq(String.class), any(Object[].class))).thenReturn(List.of());
@@ -94,7 +94,7 @@ class LawApiSchemaMaintenanceTests {
 		JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
 		when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class))).thenAnswer(invocation -> {
 			String sql = invocation.getArgument(0, String.class);
-			return sql.contains("MAX(NON_UNIQUE)") ? 1 : 1;
+			return sql.startsWith("SELECT COUNT(*) FROM law_missing") ? 0 : 1;
 		});
 		when(jdbcTemplate.queryForList(anyString(), eq(String.class), any(Object[].class))).thenAnswer(invocation -> {
 			return java.util.Arrays.stream(invocation.getArguments())
@@ -115,7 +115,7 @@ class LawApiSchemaMaintenanceTests {
 	@Test
 	void runSkipsExistingVersionedChunkColumnsAndIndexes() {
 		JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-		when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class))).thenReturn(1);
+		when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class))).thenAnswer(i -> i.getArgument(0, String.class).startsWith("SELECT COUNT(*) FROM law_missing") ? 0 : 1);
 		when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), any(Object[].class))).thenReturn(1);
 		when(jdbcTemplate.queryForList(anyString(), eq(String.class), any(Object[].class))).thenReturn(List.of("existing"));
 
@@ -132,7 +132,7 @@ class LawApiSchemaMaintenanceTests {
 	@Test
 	void runDoesNotReplaceAnAlreadyCanonicalActivationStatusCheck() {
 		JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-		when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class))).thenReturn(1);
+		when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class))).thenAnswer(i -> i.getArgument(0, String.class).startsWith("SELECT COUNT(*) FROM law_missing") ? 0 : 1);
 		when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), any(Object[].class))).thenReturn(1);
 		when(jdbcTemplate.queryForList(anyString(), eq(String.class), any(Object[].class))).thenReturn(List.of("chk_law_chunk_versions_activation_status"));
 		when(jdbcTemplate.queryForList(anyString())).thenAnswer(invocation -> {

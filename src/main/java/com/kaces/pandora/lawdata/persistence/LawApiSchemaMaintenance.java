@@ -98,6 +98,7 @@ public class LawApiSchemaMaintenance implements ApplicationRunner {
 		ensureRepairColumns(REPAIR_OPERATIONS_TABLE, operationColumns());
 		ensureRepairColumns(REPAIR_ITEMS_TABLE, itemColumns());
 		ensurePrimaryKey(REPAIR_OPERATIONS_TABLE, "operation_id");
+		ensurePrimaryKey(REPAIR_ITEMS_TABLE, "operation_id,ordinal");
 		ensureTableIndex(REPAIR_OPERATIONS_TABLE, "idx_law_missing_embedding_repair_operation_lease", "status, lease_expires_at");
 		ensureTableIndex(REPAIR_OPERATIONS_TABLE, "uq_law_missing_embedding_repair_operation_idempotency", "idempotency_key", true);
 		ensureTableIndex(REPAIR_ITEMS_TABLE, "idx_law_missing_embedding_repair_item_lease", "operation_id, state, lease_expires_at");
@@ -115,66 +116,92 @@ public class LawApiSchemaMaintenance implements ApplicationRunner {
 
 	private LinkedHashMap<String, String[]> operationColumns() {
 		LinkedHashMap<String, String[]> columns = new LinkedHashMap<>();
-		columns.put("operation_id", new String[] { "CHAR(36) NOT NULL", "char(36)", "NO" });
-		columns.put("idempotency_key", new String[] { "CHAR(64) NOT NULL", "char(64)", "NO" });
-		columns.put("normalized_request", new String[] { "LONGTEXT NOT NULL", "longtext", "NO" });
-		columns.put("request_hash", new String[] { "CHAR(64) NOT NULL", "char(64)", "NO" });
-		columns.put("target", new String[] { "VARCHAR(20) NOT NULL", "varchar(20)", "NO" });
-		columns.put("runtime_instance_id", new String[] { "CHAR(36) NOT NULL", "char(36)", "NO" });
-		columns.put("trusted_index_revision", new String[] { "CHAR(64) NOT NULL", "char(64)", "NO" });
-		columns.put("status", new String[] { "VARCHAR(32) NOT NULL", "varchar(32)", "NO" });
-		columns.put("candidate_count", new String[] { "INT NOT NULL", "int", "NO" });
-		columns.put("document_count", new String[] { "INT NOT NULL", "int", "NO" });
-		columns.put("indexed_count", new String[] { "INT NOT NULL DEFAULT 0", "int", "NO" });
-		columns.put("failed_count", new String[] { "INT NOT NULL DEFAULT 0", "int", "NO" });
-		columns.put("lease_owner", new String[] { "CHAR(36) NULL", "char(36)", "YES" });
-		columns.put("lease_expires_at", new String[] { "DATETIME(6) NULL", "datetime(6)", "YES" });
-		columns.put("last_error", new String[] { "TEXT NULL", "text", "YES" });
-		columns.put("created_at", new String[] { "DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)", "datetime(6)", "NO" });
-		columns.put("updated_at", new String[] { "DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)", "datetime(6)", "NO" });
+		columns.put("operation_id", column("CHAR(36) NOT NULL", "char(36)", "NO", null, ""));
+		columns.put("idempotency_key", column("CHAR(64) NOT NULL", "char(64)", "NO", null, ""));
+		columns.put("normalized_request", column("LONGTEXT NOT NULL", "longtext", "NO", null, ""));
+		columns.put("request_hash", column("CHAR(64) NOT NULL", "char(64)", "NO", null, ""));
+		columns.put("target", column("VARCHAR(20) NOT NULL", "varchar(20)", "NO", null, ""));
+		columns.put("runtime_instance_id", column("CHAR(36) NOT NULL", "char(36)", "NO", null, ""));
+		columns.put("trusted_index_revision", column("CHAR(64) NOT NULL", "char(64)", "NO", null, ""));
+		columns.put("status", column("VARCHAR(32) NOT NULL", "varchar(32)", "NO", null, ""));
+		columns.put("candidate_count", column("INT NOT NULL", "int", "NO", null, ""));
+		columns.put("document_count", column("INT NOT NULL", "int", "NO", null, ""));
+		columns.put("indexed_count", column("INT NOT NULL DEFAULT 0", "int", "NO", "0", ""));
+		columns.put("failed_count", column("INT NOT NULL DEFAULT 0", "int", "NO", "0", ""));
+		columns.put("lease_owner", column("CHAR(36) NULL", "char(36)", "YES", null, ""));
+		columns.put("lease_expires_at", column("DATETIME(6) NULL", "datetime(6)", "YES", null, ""));
+		columns.put("last_error", column("TEXT NULL", "text", "YES", null, ""));
+		columns.put("created_at", column("DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)", "datetime(6)", "NO", "current_timestamp(6)", ""));
+		columns.put("updated_at", column("DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)", "datetime(6)", "NO", "current_timestamp(6)", "on update current_timestamp(6)"));
 		return columns;
 	}
 
 	private LinkedHashMap<String, String[]> itemColumns() {
 		LinkedHashMap<String, String[]> columns = new LinkedHashMap<>();
-		columns.put("operation_id", new String[] { "CHAR(36) NOT NULL", "char(36)", "NO" });
-		columns.put("ordinal", new String[] { "INT NOT NULL", "int", "NO" });
-		columns.put("chunk_id", new String[] { "BIGINT NOT NULL", "bigint", "NO" });
-		columns.put("document_id", new String[] { "BIGINT NOT NULL", "bigint", "NO" });
-		columns.put("expected_content_hash", new String[] { "CHAR(64) NOT NULL", "char(64)", "NO" });
-		columns.put("state", new String[] { "VARCHAR(32) NOT NULL", "varchar(32)", "NO" });
-		columns.put("lease_owner", new String[] { "CHAR(36) NULL", "char(36)", "YES" });
-		columns.put("lease_expires_at", new String[] { "DATETIME(6) NULL", "datetime(6)", "YES" });
-		columns.put("before_index_revision", new String[] { "CHAR(64) NULL", "char(64)", "YES" });
-		columns.put("after_index_revision", new String[] { "CHAR(64) NULL", "char(64)", "YES" });
-		columns.put("detail", new String[] { "TEXT NULL", "text", "YES" });
-		columns.put("created_at", new String[] { "DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)", "datetime(6)", "NO" });
-		columns.put("updated_at", new String[] { "DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)", "datetime(6)", "NO" });
+		columns.put("operation_id", column("CHAR(36) NOT NULL", "char(36)", "NO", null, ""));
+		columns.put("ordinal", column("INT NOT NULL", "int", "NO", null, ""));
+		columns.put("chunk_id", column("BIGINT NOT NULL", "bigint", "NO", null, ""));
+		columns.put("document_id", column("BIGINT NOT NULL", "bigint", "NO", null, ""));
+		columns.put("expected_content_hash", column("CHAR(64) NOT NULL", "char(64)", "NO", null, ""));
+		columns.put("state", column("VARCHAR(32) NOT NULL", "varchar(32)", "NO", null, ""));
+		columns.put("lease_owner", column("CHAR(36) NULL", "char(36)", "YES", null, ""));
+		columns.put("lease_expires_at", column("DATETIME(6) NULL", "datetime(6)", "YES", null, ""));
+		columns.put("before_index_revision", column("CHAR(64) NULL", "char(64)", "YES", null, ""));
+		columns.put("after_index_revision", column("CHAR(64) NULL", "char(64)", "YES", null, ""));
+		columns.put("detail", column("TEXT NULL", "text", "YES", null, ""));
+		columns.put("created_at", column("DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)", "datetime(6)", "NO", "current_timestamp(6)", ""));
+		columns.put("updated_at", column("DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)", "datetime(6)", "NO", "current_timestamp(6)", "on update current_timestamp(6)"));
 		return columns;
+	}
+
+	private String[] column(String ddl, String type, String nullable, String defaultValue, String extra) {
+		return new String[] { ddl, type, nullable, defaultValue, extra };
 	}
 
 	private void ensureRepairColumns(String tableName, LinkedHashMap<String, String[]> columns) {
 		for (Map.Entry<String, String[]> column : columns.entrySet()) {
 			List<Map<String, Object>> actual = jdbcTemplate.queryForList("""
-				SELECT COLUMN_TYPE, IS_NULLABLE FROM information_schema.COLUMNS
+				SELECT COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA FROM information_schema.COLUMNS
 				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
 				""", tableName, column.getKey());
 			if (actual.isEmpty()) {
+				Integer rows = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + tableName, Integer.class);
+				if (rows != null && rows > 0 && "NO".equals(column.getValue()[2])) {
+					throw new IllegalStateException("Refusing to backfill immutable durable repair column " + tableName + "." + column.getKey());
+				}
 				jdbcTemplate.execute("ALTER TABLE " + tableName + " ADD COLUMN " + column.getKey() + " " + column.getValue()[0]);
 				continue;
 			}
 			Map<String, Object> shape = actual.get(0);
 			if (!matchesColumnType(column.getValue()[1], String.valueOf(shape.get("COLUMN_TYPE")))
-				|| !column.getValue()[2].equalsIgnoreCase(String.valueOf(shape.get("IS_NULLABLE")))) {
+				|| !column.getValue()[2].equalsIgnoreCase(String.valueOf(shape.get("IS_NULLABLE")))
+				|| !matchesColumnDefault(column.getValue()[3], shape.get("COLUMN_DEFAULT"))
+				|| !normalizeMetadata(column.getValue()[4]).equals(normalizeMetadata(shape.get("EXTRA")))) {
 				throw new IllegalStateException("Refusing durable repair operation schema with incompatible " + tableName + "." + column.getKey());
 			}
 		}
 	}
 
 	private boolean matchesColumnType(String expected, String actual) {
-		return expected.equalsIgnoreCase(actual)
-			|| ("int".equalsIgnoreCase(expected) && actual.toLowerCase(Locale.ROOT).startsWith("int("))
-			|| ("bigint".equalsIgnoreCase(expected) && actual.toLowerCase(Locale.ROOT).startsWith("bigint("));
+		String normalized = actual.toLowerCase(Locale.ROOT).trim();
+		if ("int".equalsIgnoreCase(expected)) {
+			return normalized.matches("int(?:\\(\\d+\\))?");
+		}
+		if ("bigint".equalsIgnoreCase(expected)) {
+			return normalized.matches("bigint(?:\\(\\d+\\))?");
+		}
+		return expected.equalsIgnoreCase(normalized);
+	}
+
+	private boolean matchesColumnDefault(String expected, Object actual) {
+		if (expected == null) {
+			return actual == null || "null".equals(normalizeMetadata(actual));
+		}
+		return normalizeMetadata(expected).equals(normalizeMetadata(actual));
+	}
+
+	private String normalizeMetadata(Object value) {
+		return value == null ? "" : String.valueOf(value).trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
 	}
 
 	private void ensureTableIndex(String tableName, String indexName, String columns) {
@@ -206,19 +233,19 @@ public class LawApiSchemaMaintenance implements ApplicationRunner {
 		jdbcTemplate.execute("ALTER TABLE " + tableName + " ADD " + (unique ? "UNIQUE " : "") + "INDEX " + indexName + " (" + columns + ")");
 	}
 
-	private void ensurePrimaryKey(String tableName, String column) {
+	private void ensurePrimaryKey(String tableName, String columns) {
 		List<String> existingColumns = jdbcTemplate.queryForList("""
 			SELECT COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE
 			WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = 'PRIMARY'
 			ORDER BY ORDINAL_POSITION
 			""", String.class, tableName);
-		if (existingColumns.equals(List.of(column))) {
+		if (existingColumns.equals(List.of(columns.split(",")))) {
 			return;
 		}
 		if (!existingColumns.isEmpty()) {
 			jdbcTemplate.execute("ALTER TABLE " + tableName + " DROP PRIMARY KEY");
 		}
-		jdbcTemplate.execute("ALTER TABLE " + tableName + " ADD PRIMARY KEY (" + column + ")");
+		jdbcTemplate.execute("ALTER TABLE " + tableName + " ADD PRIMARY KEY (" + columns + ")");
 	}
 
 	private void ensureCheckConstraint(String tableName, String constraintName, String checkClause) {
