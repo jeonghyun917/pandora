@@ -20,6 +20,32 @@ import org.junit.jupiter.api.Test;
 class LawMissingEmbeddingRepairServiceTests {
 
 	@Test
+	void recoveryInspectionDistinguishesCleanMissingAndAmbiguousWithoutIndexing() {
+		for (LawIndexIntegrityReport report : List.of(
+			new LawIndexIntegrityReport("law", 1, 1, 101L, List.of()),
+			report(issue(101L, 11L, "a".repeat(64))),
+			report(new LawIndexIntegrityIssue(101L, 11L, LawIndexIntegrityIssue.Cause.QDRANT_POINT_MISSING,
+				"a".repeat(64), "a".repeat(64), "INDEXED", null)))) {
+			LawChunkMapper mapper = mock(LawChunkMapper.class);
+			LawIndexIntegrityService integrity = mock(LawIndexIntegrityService.class);
+			LawSemanticIndexService indexer = mock(LawSemanticIndexService.class);
+			when(mapper.findSemanticChunksByIdsForIndexing(List.of(101L))).thenReturn(List.of(chunk(101L, 11L, "a".repeat(64))));
+			when(integrity.auditByChunkIds("law", List.of(101L))).thenReturn(report);
+			LawMissingEmbeddingRepairService service = service(mapper, integrity, indexer, runtime("instance-a", "revision-a"));
+
+			var inspected = service.inspectExactCandidate(candidate(101L, "a".repeat(64)), 11L);
+
+			LawMissingEmbeddingRepairService.RepairState expected = report.issues().isEmpty()
+				? LawMissingEmbeddingRepairService.RepairState.INDEXED
+				: report.issues().get(0).cause() == LawIndexIntegrityIssue.Cause.MISSING_EMBEDDING_ROW
+					? LawMissingEmbeddingRepairService.RepairState.READY
+					: LawMissingEmbeddingRepairService.RepairState.REJECTED_CLASSIFICATION_DRIFT;
+			assertThat(inspected.state()).isEqualTo(expected);
+			verify(indexer, never()).indexExactChunks(org.mockito.ArgumentMatchers.anyList());
+		}
+	}
+
+	@Test
 	void previewAcceptsOnlyExactCurrentMissingEmbeddingRowsWithoutIndexing() {
 		LawChunkMapper mapper = mock(LawChunkMapper.class);
 		LawIndexIntegrityService integrity = mock(LawIndexIntegrityService.class);

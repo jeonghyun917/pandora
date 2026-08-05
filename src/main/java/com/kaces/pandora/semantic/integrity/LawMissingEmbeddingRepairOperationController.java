@@ -37,4 +37,9 @@ public class LawMissingEmbeddingRepairOperationController {
 	public ResponseEntity<LawMissingEmbeddingRepairOperationService.OperationView> getOperation(@PathVariable UUID operationId) {
 		return operationService.find(operationId).map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
 	}
+
+	@PostMapping("/missing-embedding-repair-operations/{operationId}/step")
+	public ResponseEntity<LawMissingEmbeddingRepairOperationService.OperationView> stepOperation(@PathVariable UUID operationId) {
+		return operationService.step(operationId).map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
+	}
 }

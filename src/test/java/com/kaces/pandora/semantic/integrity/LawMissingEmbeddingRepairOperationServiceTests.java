@@ -3,16 +3,20 @@ package com.kaces.pandora.semantic.integrity;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
 
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
 import com.kaces.pandora.semantic.indexing.LawSemanticIndexService;
 import java.time.Instant;
+import java.time.Clock;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -21,6 +25,208 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 class LawMissingEmbeddingRepairOperationServiceTests {
+	private static final Instant NOW = Instant.parse("2026-08-05T00:00:00Z");
+	private static final String OPERATION_ID = "00000000-0000-0000-0000-000000000010";
+
+	@Test
+	void stepClaimsAndIndexesExactlyOneReadyItemThenAdvancesTheDurableRevision() {
+		LawMissingEmbeddingRepairOperationMapper operations = mock(LawMissingEmbeddingRepairOperationMapper.class);
+		LawMissingEmbeddingRepairOperationPersistenceService persistence = mock(LawMissingEmbeddingRepairOperationPersistenceService.class);
+		LawMissingEmbeddingRepairService legacy = mock(LawMissingEmbeddingRepairService.class);
+		LawMissingEmbeddingRepairOperation.OperationRow before = operationRow(LawMissingEmbeddingRepairOperation.Status.READY, "a", 0, null, null);
+		LawMissingEmbeddingRepairOperation.OperationRow after = operationRow(LawMissingEmbeddingRepairOperation.Status.RUNNING, "b", 1, null, null);
+		when(operations.findOperationById(OPERATION_ID)).thenReturn(before, after);
+		when(operations.findItemsByOperationId(OPERATION_ID)).thenReturn(
+			List.of(stepItem(0, LawMissingEmbeddingRepairOperation.ItemState.READY, null, null), stepItem(1, LawMissingEmbeddingRepairOperation.ItemState.READY, null, null)),
+			List.of(stepItem(0, LawMissingEmbeddingRepairOperation.ItemState.INDEXED, null, null), stepItem(1, LawMissingEmbeddingRepairOperation.ItemState.READY, null, null))
+		);
+		when(persistence.claimReadyItem(any(), anyInt(), any(), any(), any(), any())).thenReturn(true);
+		when(persistence.completeClaimedItem(any(), anyInt(), any(), any(), any(), any())).thenReturn(true);
+		when(legacy.currentRuntimeSnapshot()).thenReturn(runtime("a"));
+		when(legacy.repairExact(any())).thenReturn(indexedResult("b"));
+		LawMissingEmbeddingRepairOperationService service = stepService(operations, legacy, persistence);
+
+		var result = service.step(UUID.fromString(OPERATION_ID)).orElseThrow();
+
+		assertThat(result.operation().progress().trustedIndexRevision()).isEqualTo("b".repeat(64));
+		assertThat(result.items()).extracting(LawMissingEmbeddingRepairOperation.Item::state)
+			.containsExactly(LawMissingEmbeddingRepairOperation.ItemState.INDEXED, LawMissingEmbeddingRepairOperation.ItemState.READY);
+		verify(legacy, times(1)).repairExact(any());
+		verify(persistence).claimReadyItem(org.mockito.ArgumentMatchers.eq(OPERATION_ID), org.mockito.ArgumentMatchers.eq(0), any(),
+			org.mockito.ArgumentMatchers.eq(validRuntime()), org.mockito.ArgumentMatchers.eq("a".repeat(64)), any());
+		verify(persistence).completeClaimedItem(org.mockito.ArgumentMatchers.eq(OPERATION_ID), org.mockito.ArgumentMatchers.eq(0), any(),
+			org.mockito.ArgumentMatchers.eq(validRuntime()), org.mockito.ArgumentMatchers.eq("a".repeat(64)), org.mockito.ArgumentMatchers.eq("b".repeat(64)));
+	}
+
+	@Test
+	void lastSuccessfulStepBecomesIndexingCompleteAndReplayDoesNotReindex() {
+		LawMissingEmbeddingRepairOperationMapper operations = mock(LawMissingEmbeddingRepairOperationMapper.class);
+		LawMissingEmbeddingRepairOperationPersistenceService persistence = mock(LawMissingEmbeddingRepairOperationPersistenceService.class);
+		LawMissingEmbeddingRepairService legacy = mock(LawMissingEmbeddingRepairService.class);
+		when(operations.findOperationById(OPERATION_ID)).thenReturn(
+			operationRow(LawMissingEmbeddingRepairOperation.Status.READY, "a", 0, null, null),
+			operationRow(LawMissingEmbeddingRepairOperation.Status.INDEXING_COMPLETE, "b", 1, null, null),
+			operationRow(LawMissingEmbeddingRepairOperation.Status.INDEXING_COMPLETE, "b", 1, null, null));
+		when(operations.findItemsByOperationId(OPERATION_ID)).thenReturn(
+			List.of(stepItem(0, LawMissingEmbeddingRepairOperation.ItemState.READY, null, null)),
+			List.of(stepItem(0, LawMissingEmbeddingRepairOperation.ItemState.INDEXED, null, null)),
+			List.of(stepItem(0, LawMissingEmbeddingRepairOperation.ItemState.INDEXED, null, null)));
+		when(persistence.claimReadyItem(any(), anyInt(), any(), any(), any(), any())).thenReturn(true);
+		when(persistence.completeClaimedItem(any(), anyInt(), any(), any(), any(), any())).thenReturn(true);
+		when(legacy.currentRuntimeSnapshot()).thenReturn(runtime("a"));
+		when(legacy.repairExact(any())).thenReturn(indexedResult("b"));
+		LawMissingEmbeddingRepairOperationService service = stepService(operations, legacy, persistence);
+
+		assertThat(service.step(UUID.fromString(OPERATION_ID)).orElseThrow().operation().progress().status())
+			.isEqualTo(LawMissingEmbeddingRepairOperation.Status.INDEXING_COMPLETE);
+		assertThat(service.step(UUID.fromString(OPERATION_ID)).orElseThrow().operation().progress().status())
+			.isEqualTo(LawMissingEmbeddingRepairOperation.Status.INDEXING_COMPLETE);
+		verify(legacy, times(1)).repairExact(any());
+	}
+
+	@Test
+	void driftOrIndexFailureFailsClosedWithSanitizedReasonAndLeavesRemainingNotAttempted() {
+		for (boolean exception : List.of(false, true)) {
+			LawMissingEmbeddingRepairOperationMapper operations = mock(LawMissingEmbeddingRepairOperationMapper.class);
+			LawMissingEmbeddingRepairOperationPersistenceService persistence = mock(LawMissingEmbeddingRepairOperationPersistenceService.class);
+			LawMissingEmbeddingRepairService legacy = mock(LawMissingEmbeddingRepairService.class);
+			when(operations.findOperationById(OPERATION_ID)).thenReturn(
+				operationRow(LawMissingEmbeddingRepairOperation.Status.READY, "a", 0, null, null),
+				operationRow(LawMissingEmbeddingRepairOperation.Status.FAILED, "a", 0, null, "EXACT_INDEX_FAILED"));
+			when(operations.findItemsByOperationId(OPERATION_ID)).thenReturn(
+				List.of(stepItem(0, LawMissingEmbeddingRepairOperation.ItemState.READY, null, null), stepItem(1, LawMissingEmbeddingRepairOperation.ItemState.READY, null, null)),
+				List.of(stepItem(0, LawMissingEmbeddingRepairOperation.ItemState.FAILED, null, "EXACT_INDEX_FAILED"), stepItem(1, LawMissingEmbeddingRepairOperation.ItemState.NOT_ATTEMPTED, null, null)));
+			when(persistence.claimReadyItem(any(), anyInt(), any(), any(), any(), any())).thenReturn(true);
+			when(persistence.failClaimedItem(any(), anyInt(), any(), any())).thenReturn(true);
+			when(legacy.currentRuntimeSnapshot()).thenReturn(runtime("a"));
+			if (exception) {
+				when(legacy.repairExact(any())).thenThrow(new IllegalStateException("secret host and credential"));
+			} else {
+				when(legacy.repairExact(any())).thenReturn(new LawMissingEmbeddingRepairService.RepairResult(true, false, runtime("a"), List.of(
+					new LawMissingEmbeddingRepairService.RepairOutcome(101L, 11L, LawMissingEmbeddingRepairService.RepairState.REJECTED_CHUNK_DRIFT, "private detail"))));
+			}
+			LawMissingEmbeddingRepairOperationService service = stepService(operations, legacy, persistence);
+
+			var result = service.step(UUID.fromString(OPERATION_ID)).orElseThrow();
+
+			assertThat(result.operation().progress().status()).isEqualTo(LawMissingEmbeddingRepairOperation.Status.FAILED);
+			assertThat(result.items()).extracting(LawMissingEmbeddingRepairOperation.Item::state)
+				.containsExactly(LawMissingEmbeddingRepairOperation.ItemState.FAILED, LawMissingEmbeddingRepairOperation.ItemState.NOT_ATTEMPTED);
+			verify(persistence).failClaimedItem(org.mockito.ArgumentMatchers.eq(OPERATION_ID), org.mockito.ArgumentMatchers.eq(0), any(),
+				org.mockito.ArgumentMatchers.eq(exception ? "EXACT_INDEX_FAILED" : "CANDIDATE_DRIFT"));
+		}
+	}
+
+	@Test
+	void liveLeasePreventsSecondWorkerAndRuntimeRestartNeverRebinds() {
+		LawMissingEmbeddingRepairOperationMapper operations = mock(LawMissingEmbeddingRepairOperationMapper.class);
+		LawMissingEmbeddingRepairOperationPersistenceService persistence = mock(LawMissingEmbeddingRepairOperationPersistenceService.class);
+		LawMissingEmbeddingRepairService legacy = mock(LawMissingEmbeddingRepairService.class);
+		when(operations.findOperationById(OPERATION_ID)).thenReturn(operationRow(LawMissingEmbeddingRepairOperation.Status.RUNNING, "a", 0, "owner", null));
+		when(operations.findItemsByOperationId(OPERATION_ID)).thenReturn(List.of(
+			stepItem(0, LawMissingEmbeddingRepairOperation.ItemState.PROCESSING, NOW.plusSeconds(30), null)));
+		LawMissingEmbeddingRepairOperationService service = stepService(operations, legacy, persistence);
+
+		service.step(UUID.fromString(OPERATION_ID));
+
+		verifyNoInteractions(legacy, persistence);
+	}
+
+	@Test
+	void restartedRuntimeFailsTheClaimedItemWithoutRebindingOrIndexing() {
+		LawMissingEmbeddingRepairOperationMapper operations = mock(LawMissingEmbeddingRepairOperationMapper.class);
+		LawMissingEmbeddingRepairOperationPersistenceService persistence = mock(LawMissingEmbeddingRepairOperationPersistenceService.class);
+		LawMissingEmbeddingRepairService legacy = mock(LawMissingEmbeddingRepairService.class);
+		when(operations.findOperationById(OPERATION_ID)).thenReturn(
+			operationRow(LawMissingEmbeddingRepairOperation.Status.READY, "a", 0, null, null),
+			operationRow(LawMissingEmbeddingRepairOperation.Status.FAILED, "a", 0, null, "RUNTIME_FENCE_DRIFT"));
+		when(operations.findItemsByOperationId(OPERATION_ID)).thenReturn(
+			List.of(stepItem(0, LawMissingEmbeddingRepairOperation.ItemState.READY, null, null)),
+			List.of(stepItem(0, LawMissingEmbeddingRepairOperation.ItemState.FAILED, null, "RUNTIME_FENCE_DRIFT")));
+		when(persistence.claimReadyItem(any(), anyInt(), any(), any(), any(), any())).thenReturn(true);
+		when(persistence.failClaimedItem(any(), anyInt(), any(), any())).thenReturn(true);
+		when(legacy.currentRuntimeSnapshot()).thenReturn(new LawIndexIntegrityRuntimeInfo(
+			"00000000-0000-0000-0000-000000000099", "a".repeat(64)));
+		LawMissingEmbeddingRepairOperationService service = stepService(operations, legacy, persistence);
+
+		var result = service.step(UUID.fromString(OPERATION_ID)).orElseThrow();
+
+		assertThat(result.operation().request().runtimeInstanceId()).isEqualTo(validRuntime());
+		assertThat(result.operation().progress().status()).isEqualTo(LawMissingEmbeddingRepairOperation.Status.FAILED);
+		verify(legacy, never()).repairExact(any());
+	}
+
+	@Test
+	void runtimeRestartObservedAfterExactWriteFailsInsteadOfAdvancingTheStoredFence() {
+		LawMissingEmbeddingRepairOperationMapper operations = mock(LawMissingEmbeddingRepairOperationMapper.class);
+		LawMissingEmbeddingRepairOperationPersistenceService persistence = mock(LawMissingEmbeddingRepairOperationPersistenceService.class);
+		LawMissingEmbeddingRepairService legacy = mock(LawMissingEmbeddingRepairService.class);
+		when(operations.findOperationById(OPERATION_ID)).thenReturn(
+			operationRow(LawMissingEmbeddingRepairOperation.Status.READY, "a", 0, null, null),
+			operationRow(LawMissingEmbeddingRepairOperation.Status.FAILED, "a", 0, null, "RUNTIME_FENCE_DRIFT"));
+		when(operations.findItemsByOperationId(OPERATION_ID)).thenReturn(
+			List.of(stepItem(0, LawMissingEmbeddingRepairOperation.ItemState.READY, null, null)),
+			List.of(stepItem(0, LawMissingEmbeddingRepairOperation.ItemState.FAILED, null, "RUNTIME_FENCE_DRIFT")));
+		when(persistence.claimReadyItem(any(), anyInt(), any(), any(), any(), any())).thenReturn(true);
+		when(persistence.failClaimedItem(any(), anyInt(), any(), any())).thenReturn(true);
+		when(legacy.currentRuntimeSnapshot()).thenReturn(runtime("a"));
+		when(legacy.repairExact(any())).thenReturn(new LawMissingEmbeddingRepairService.RepairResult(true, false,
+			new LawIndexIntegrityRuntimeInfo("00000000-0000-0000-0000-000000000099", "b".repeat(64)), List.of(
+			new LawMissingEmbeddingRepairService.RepairOutcome(101L, 11L, LawMissingEmbeddingRepairService.RepairState.INDEXED, "indexed"))));
+		LawMissingEmbeddingRepairOperationService service = stepService(operations, legacy, persistence);
+
+		service.step(UUID.fromString(OPERATION_ID));
+
+		verify(persistence, never()).completeClaimedItem(any(), anyInt(), any(), any(), any(), any());
+		verify(persistence).failClaimedItem(any(), anyInt(), any(), org.mockito.ArgumentMatchers.eq("RUNTIME_FENCE_DRIFT"));
+	}
+
+	@Test
+	void expiredProcessingReconcilesCleanWithoutReindexAndMissingByOneDeterministicRepair() {
+		for (LawMissingEmbeddingRepairService.RepairState inspected : List.of(
+			LawMissingEmbeddingRepairService.RepairState.INDEXED, LawMissingEmbeddingRepairService.RepairState.READY)) {
+			LawMissingEmbeddingRepairOperationMapper operations = mock(LawMissingEmbeddingRepairOperationMapper.class);
+			LawMissingEmbeddingRepairOperationPersistenceService persistence = mock(LawMissingEmbeddingRepairOperationPersistenceService.class);
+			LawMissingEmbeddingRepairService legacy = mock(LawMissingEmbeddingRepairService.class);
+			when(operations.findOperationById(OPERATION_ID)).thenReturn(
+				operationRow(LawMissingEmbeddingRepairOperation.Status.RUNNING, "a", 0, "old", null),
+				operationRow(LawMissingEmbeddingRepairOperation.Status.INDEXING_COMPLETE, inspected == LawMissingEmbeddingRepairService.RepairState.INDEXED ? "b" : "c", 1, null, null));
+			when(operations.findItemsByOperationId(OPERATION_ID)).thenReturn(
+				List.of(stepItem(0, LawMissingEmbeddingRepairOperation.ItemState.PROCESSING, NOW.minusSeconds(1), null)),
+				List.of(stepItem(0, LawMissingEmbeddingRepairOperation.ItemState.INDEXED, null, null)));
+			when(persistence.claimExpiredItem(any(), anyInt(), any(), any(), any(), any())).thenReturn(true);
+			when(persistence.completeClaimedItem(any(), anyInt(), any(), any(), any(), any())).thenReturn(true);
+			when(legacy.inspectExactCandidate(any(), any())).thenReturn(new LawMissingEmbeddingRepairService.ExactInspection(runtime(inspected == LawMissingEmbeddingRepairService.RepairState.INDEXED ? "b" : "a"), inspected, 11L));
+			when(legacy.repairExact(any())).thenReturn(indexedResult("c"));
+			LawMissingEmbeddingRepairOperationService service = stepService(operations, legacy, persistence);
+
+			assertThat(service.step(UUID.fromString(OPERATION_ID))).isPresent();
+			verify(legacy, times(inspected == LawMissingEmbeddingRepairService.RepairState.READY ? 1 : 0)).repairExact(any());
+		}
+	}
+
+	@Test
+	void expiredProcessingAmbiguityFailsInsteadOfRetrying() {
+		LawMissingEmbeddingRepairOperationMapper operations = mock(LawMissingEmbeddingRepairOperationMapper.class);
+		LawMissingEmbeddingRepairOperationPersistenceService persistence = mock(LawMissingEmbeddingRepairOperationPersistenceService.class);
+		LawMissingEmbeddingRepairService legacy = mock(LawMissingEmbeddingRepairService.class);
+		when(operations.findOperationById(OPERATION_ID)).thenReturn(
+			operationRow(LawMissingEmbeddingRepairOperation.Status.RUNNING, "a", 0, "old", null),
+			operationRow(LawMissingEmbeddingRepairOperation.Status.FAILED, "a", 0, null, "RECOVERY_AMBIGUOUS"));
+		when(operations.findItemsByOperationId(OPERATION_ID)).thenReturn(
+			List.of(stepItem(0, LawMissingEmbeddingRepairOperation.ItemState.PROCESSING, NOW.minusSeconds(1), null)),
+			List.of(stepItem(0, LawMissingEmbeddingRepairOperation.ItemState.FAILED, null, "RECOVERY_AMBIGUOUS")));
+		when(persistence.claimExpiredItem(any(), anyInt(), any(), any(), any(), any())).thenReturn(true);
+		when(persistence.failClaimedItem(any(), anyInt(), any(), any())).thenReturn(true);
+		when(legacy.inspectExactCandidate(any(), any())).thenReturn(new LawMissingEmbeddingRepairService.ExactInspection(
+			runtime("a"), LawMissingEmbeddingRepairService.RepairState.REJECTED_CLASSIFICATION_DRIFT, 11L));
+		LawMissingEmbeddingRepairOperationService service = stepService(operations, legacy, persistence);
+
+		service.step(UUID.fromString(OPERATION_ID));
+
+		verify(legacy, never()).repairExact(any());
+		verify(persistence).failClaimedItem(any(), anyInt(), any(), org.mockito.ArgumentMatchers.eq("RECOVERY_AMBIGUOUS"));
+	}
 
 	@Test
 	void registersAReadyOperationWithCanonicalHashAndOrderedItemsWithoutIndexing() {
@@ -327,6 +533,45 @@ class LawMissingEmbeddingRepairOperationServiceTests {
 	) {
 		return new LawMissingEmbeddingRepairOperationService(
 			operations, legacy, new LawMissingEmbeddingRepairOperationPersistenceService(operations)
+		);
+	}
+
+	private LawMissingEmbeddingRepairOperationService stepService(
+		LawMissingEmbeddingRepairOperationMapper operations,
+		LawMissingEmbeddingRepairService legacy,
+		LawMissingEmbeddingRepairOperationPersistenceService persistence
+	) {
+		return new LawMissingEmbeddingRepairOperationService(
+			operations, legacy, persistence, Clock.fixed(NOW, ZoneOffset.UTC)
+		);
+	}
+
+	private LawIndexIntegrityRuntimeInfo runtime(String revisionMarker) {
+		return new LawIndexIntegrityRuntimeInfo(validRuntime(), revisionMarker.repeat(64));
+	}
+
+	private LawMissingEmbeddingRepairService.RepairResult indexedResult(String revisionMarker) {
+		return new LawMissingEmbeddingRepairService.RepairResult(true, true, runtime(revisionMarker), List.of(
+			new LawMissingEmbeddingRepairService.RepairOutcome(101L, 11L, LawMissingEmbeddingRepairService.RepairState.INDEXED, "indexed")
+		));
+	}
+
+	private LawMissingEmbeddingRepairOperation.OperationRow operationRow(
+		LawMissingEmbeddingRepairOperation.Status status, String revisionMarker, int indexedCount, String owner, String error
+	) {
+		return new LawMissingEmbeddingRepairOperation.OperationRow(
+			OPERATION_ID, "c".repeat(64), "normalized", "c".repeat(64), "law", validRuntime(),
+			revisionMarker.repeat(64), status, 2, 1, indexedCount, status == LawMissingEmbeddingRepairOperation.Status.FAILED ? 1 : 0,
+			owner, owner == null ? null : NOW.plusSeconds(30), error, NOW, NOW
+		);
+	}
+
+	private LawMissingEmbeddingRepairOperation.Item stepItem(
+		int ordinal, LawMissingEmbeddingRepairOperation.ItemState state, Instant leaseExpiresAt, String detail
+	) {
+		return new LawMissingEmbeddingRepairOperation.Item(
+			OPERATION_ID, ordinal, 101L + ordinal, 11L, (ordinal == 0 ? "a" : "b").repeat(64), state,
+			leaseExpiresAt == null ? null : "old", leaseExpiresAt, null, null, detail, NOW, NOW
 		);
 	}
 

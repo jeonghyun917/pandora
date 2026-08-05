@@ -139,6 +139,47 @@ public class LawMissingEmbeddingRepairService {
 		));
 	}
 
+	/** Executes the existing repair and post-write exact audit for one durable item only. */
+	RepairResult repairExact(RepairRequest request) {
+		List<RepairCandidate> candidates = request == null || request.candidates() == null ? List.of() : request.candidates();
+		if (request == null || candidates.size() != 1 || request.expectedDocumentIds() == null
+			|| request.expectedDocumentIds().size() != 1) {
+			return rejected(request, candidates, RepairState.REJECTED_REQUEST, "Exact repair requires one chunk and one document.");
+		}
+		return repair(request);
+	}
+
+	/**
+	 * Reclassifies one exact candidate without mutation. Recovery uses this before deciding whether
+	 * an expired PROCESSING item was already committed, is still safely retryable, or is ambiguous.
+	 */
+	ExactInspection inspectExactCandidate(RepairCandidate candidate, Long expectedDocumentId) {
+		LawIndexIntegrityRuntimeInfo runtime = currentRuntime();
+		if (candidate == null || expectedDocumentId == null || expectedDocumentId <= 0
+			|| candidate.chunkId() <= 0 || !isHash(candidate.expectedChunkContentHash())) {
+			return new ExactInspection(runtime, RepairState.REJECTED_REQUEST, 0L);
+		}
+		List<LawSemanticChunkRow> chunks = lawChunkMapper.findSemanticChunksByIdsForIndexing(List.of(candidate.chunkId()));
+		LawSemanticChunkRow chunk = chunks.size() == 1 ? chunks.get(0) : null;
+		if (chunk == null || chunk.chunkId() != candidate.chunkId() || chunk.documentId() != expectedDocumentId
+			|| !"law".equals(chunk.target()) || !candidate.expectedChunkContentHash().equals(chunk.contentHash())) {
+			return new ExactInspection(runtime, RepairState.REJECTED_CHUNK_DRIFT, chunk == null ? 0L : chunk.documentId());
+		}
+		LawIndexIntegrityReport report = integrityService.auditByChunkIds("law", List.of(candidate.chunkId()));
+		if (report.scannedRows() == 1 && report.issues().isEmpty()) {
+			return new ExactInspection(currentRuntime(), RepairState.INDEXED, chunk.documentId());
+		}
+		if (report.scannedRows() == 1 && report.issues().size() == 1
+			&& stateBeforeIndex(candidate, chunk, report.issues().get(0)) == RepairState.READY) {
+			return new ExactInspection(currentRuntime(), RepairState.READY, chunk.documentId());
+		}
+		return new ExactInspection(currentRuntime(), RepairState.REJECTED_CLASSIFICATION_DRIFT, chunk.documentId());
+	}
+
+	LawIndexIntegrityRuntimeInfo currentRuntimeSnapshot() {
+		return currentRuntime();
+	}
+
 	static boolean isValidRequest(RepairRequest request, List<RepairCandidate> candidates) {
 		if (request == null || !"law".equals(request.target()) || candidates.isEmpty() || candidates.size() > MAX_CANDIDATES
 			|| request.expectedDocumentIds() == null || request.expectedDocumentIds().isEmpty() || request.expectedDocumentIds().size() > MAX_DOCUMENTS) {
@@ -226,6 +267,9 @@ public class LawMissingEmbeddingRepairService {
 	}
 
 	public record RepairResult(boolean applied, boolean complete, LawIndexIntegrityRuntimeInfo runtime, List<RepairOutcome> outcomes) {
+	}
+
+	record ExactInspection(LawIndexIntegrityRuntimeInfo runtime, RepairState state, long documentId) {
 	}
 
 	public enum RepairState {

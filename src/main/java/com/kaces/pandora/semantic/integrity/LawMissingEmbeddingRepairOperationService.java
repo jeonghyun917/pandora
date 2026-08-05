@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -19,6 +20,8 @@ import org.springframework.stereotype.Service;
 /** Registers immutable, bounded repair work without starting a repair. */
 @Service
 public class LawMissingEmbeddingRepairOperationService {
+	// One embedding request may retry once (2 x 3 minutes) before a 2-minute Qdrant write timeout.
+	private static final Duration STEP_LEASE = Duration.ofMinutes(15);
 	private final LawMissingEmbeddingRepairOperationMapper operationMapper;
 	private final LawMissingEmbeddingRepairService legacyRepairService;
 	private final LawMissingEmbeddingRepairOperationPersistenceService persistenceService;
@@ -75,6 +78,176 @@ public class LawMissingEmbeddingRepairOperationService {
 		}
 		LawMissingEmbeddingRepairOperation.OperationRow operation = operationMapper.findOperationById(operationId.toString());
 		return operation == null ? Optional.empty() : Optional.of(view(operation, operationMapper.findItemsByOperationId(operation.operationId())));
+	}
+
+	/** Claims and resolves at most one durable item. Remote indexing never runs inside a DB transaction. */
+	public Optional<OperationView> step(UUID operationId) {
+		Optional<OperationView> found = find(operationId);
+		if (found.isEmpty()) {
+			return Optional.empty();
+		}
+		OperationView currentView = found.orElseThrow();
+		LawMissingEmbeddingRepairOperation operation = currentView.operation();
+		if (operation.progress().status() == LawMissingEmbeddingRepairOperation.Status.INDEXING_COMPLETE
+			|| operation.progress().status() == LawMissingEmbeddingRepairOperation.Status.FAILED) {
+			return found;
+		}
+
+		LawMissingEmbeddingRepairOperation.Item processing = currentView.items().stream()
+			.filter(item -> item.state() == LawMissingEmbeddingRepairOperation.ItemState.PROCESSING)
+			.findFirst().orElse(null);
+		boolean recovery = processing != null;
+		LawMissingEmbeddingRepairOperation.Item item = processing != null ? processing : currentView.items().stream()
+			.filter(candidate -> candidate.state() == LawMissingEmbeddingRepairOperation.ItemState.READY)
+			.findFirst().orElse(null);
+		if (item == null) {
+			return found;
+		}
+		Instant now = clock.instant();
+		if (recovery && item.leaseExpiresAt() != null && item.leaseExpiresAt().isAfter(now)) {
+			return found;
+		}
+
+		String owner = UUID.randomUUID().toString();
+		Instant leaseExpiresAt = now.plus(STEP_LEASE);
+		boolean claimed = recovery
+			? persistenceService.claimExpiredItem(operation.request().operationId(), item.ordinal(), owner,
+				operation.request().runtimeInstanceId(), operation.progress().trustedIndexRevision(), leaseExpiresAt)
+			: persistenceService.claimReadyItem(operation.request().operationId(), item.ordinal(), owner,
+				operation.request().runtimeInstanceId(), operation.progress().trustedIndexRevision(), leaseExpiresAt);
+		if (!claimed) {
+			return find(operationId);
+		}
+
+		if (recovery) {
+			return reconcileExpired(operationId, operation, item, owner);
+		}
+		LawIndexIntegrityRuntimeInfo runtimeBefore;
+		try {
+			runtimeBefore = legacyRepairService.currentRuntimeSnapshot();
+		} catch (RuntimeException exception) {
+			return fail(operationId, item, owner, "RUNTIME_IDENTITY_UNAVAILABLE");
+		}
+		return repairClaimed(operationId, operation, item, owner, runtimeBefore);
+	}
+
+	private Optional<OperationView> reconcileExpired(
+		UUID operationId,
+		LawMissingEmbeddingRepairOperation operation,
+		LawMissingEmbeddingRepairOperation.Item item,
+		String owner
+	) {
+		LawMissingEmbeddingRepairService.ExactInspection inspection;
+		try {
+			inspection = legacyRepairService.inspectExactCandidate(
+				new LawMissingEmbeddingRepairService.RepairCandidate(item.chunkId(), item.expectedContentHash()), item.documentId()
+			);
+		} catch (RuntimeException exception) {
+			return fail(operationId, item, owner, "RECOVERY_AUDIT_FAILED");
+		}
+		if (inspection == null) {
+			return fail(operationId, item, owner, "RECOVERY_AMBIGUOUS");
+		}
+		if (!sameInstance(operation.request().runtimeInstanceId(), inspection.runtime())) {
+			return fail(operationId, item, owner, "RUNTIME_FENCE_DRIFT");
+		}
+		if (inspection.state() == LawMissingEmbeddingRepairService.RepairState.INDEXED) {
+			return complete(operationId, operation, item, owner, inspection.runtime().indexRevision());
+		}
+		if (inspection.state() != LawMissingEmbeddingRepairService.RepairState.READY) {
+			return fail(operationId, item, owner, "RECOVERY_AMBIGUOUS");
+		}
+		if (!sameRuntime(operation, inspection.runtime())) {
+			return fail(operationId, item, owner, "RUNTIME_FENCE_DRIFT");
+		}
+		return repairClaimed(operationId, operation, item, owner, inspection.runtime());
+	}
+
+	private Optional<OperationView> repairClaimed(
+		UUID operationId,
+		LawMissingEmbeddingRepairOperation operation,
+		LawMissingEmbeddingRepairOperation.Item item,
+		String owner,
+		LawIndexIntegrityRuntimeInfo runtimeBefore
+	) {
+		if (!sameRuntime(operation, runtimeBefore)) {
+			return fail(operationId, item, owner, "RUNTIME_FENCE_DRIFT");
+		}
+		LawMissingEmbeddingRepairService.RepairResult result;
+		try {
+			result = legacyRepairService.repairExact(new LawMissingEmbeddingRepairService.RepairRequest(
+				"law", operation.request().runtimeInstanceId(), operation.progress().trustedIndexRevision(),
+				List.of(item.documentId()), List.of(new LawMissingEmbeddingRepairService.RepairCandidate(
+					item.chunkId(), item.expectedContentHash())), true
+			));
+		} catch (RuntimeException exception) {
+			return fail(operationId, item, owner, "EXACT_INDEX_FAILED");
+		}
+		if (result == null || !sameInstance(operation.request().runtimeInstanceId(), result.runtime())) {
+			return fail(operationId, item, owner, "RUNTIME_FENCE_DRIFT");
+		}
+		if (!isVerifiedExactSuccess(operation, item, result)) {
+			return fail(operationId, item, owner, failureReason(result));
+		}
+		return complete(operationId, operation, item, owner, result.runtime().indexRevision());
+	}
+
+	private boolean isVerifiedExactSuccess(
+		LawMissingEmbeddingRepairOperation operation,
+		LawMissingEmbeddingRepairOperation.Item item,
+		LawMissingEmbeddingRepairService.RepairResult result
+	) {
+		return result != null && result.applied() && result.complete() && sameInstance(operation.request().runtimeInstanceId(), result.runtime())
+			&& result.outcomes() != null && result.outcomes().size() == 1
+			&& result.outcomes().get(0).chunkId() == item.chunkId()
+			&& result.outcomes().get(0).documentId() == item.documentId()
+			&& result.outcomes().get(0).state() == LawMissingEmbeddingRepairService.RepairState.INDEXED;
+	}
+
+	private String failureReason(LawMissingEmbeddingRepairService.RepairResult result) {
+		if (result == null || result.outcomes() == null || result.outcomes().size() != 1) {
+			return "EXACT_REPAIR_INVALID_RESULT";
+		}
+		return switch (result.outcomes().get(0).state()) {
+			case REJECTED_RUNTIME_FENCE -> "RUNTIME_FENCE_DRIFT";
+			case REJECTED_CHUNK_DRIFT, REJECTED_CLASSIFICATION_DRIFT, REJECTED_DOCUMENT_WAVE -> "CANDIDATE_DRIFT";
+			case INDEX_FAILED -> "EXACT_INDEX_FAILED";
+			case VERIFICATION_FAILED -> "POST_INDEX_VERIFICATION_FAILED";
+			default -> "EXACT_REPAIR_INVALID_RESULT";
+		};
+	}
+
+	private Optional<OperationView> complete(
+		UUID operationId,
+		LawMissingEmbeddingRepairOperation operation,
+		LawMissingEmbeddingRepairOperation.Item item,
+		String owner,
+		String afterIndexRevision
+	) {
+		if (!LawMissingEmbeddingRepairService.isHash(afterIndexRevision)) {
+			return fail(operationId, item, owner, "POST_INDEX_RUNTIME_INVALID");
+		}
+		persistenceService.completeClaimedItem(
+			operation.request().operationId(), item.ordinal(), owner, operation.request().runtimeInstanceId(),
+			operation.progress().trustedIndexRevision(), afterIndexRevision
+		);
+		return find(operationId);
+	}
+
+	private Optional<OperationView> fail(
+		UUID operationId, LawMissingEmbeddingRepairOperation.Item item, String owner, String reason
+	) {
+		persistenceService.failClaimedItem(operationId.toString(), item.ordinal(), owner, reason);
+		return find(operationId);
+	}
+
+	private boolean sameRuntime(LawMissingEmbeddingRepairOperation operation, LawIndexIntegrityRuntimeInfo runtime) {
+		return sameInstance(operation.request().runtimeInstanceId(), runtime)
+			&& operation.progress().trustedIndexRevision().equals(runtime.indexRevision());
+	}
+
+	private boolean sameInstance(String expected, LawIndexIntegrityRuntimeInfo runtime) {
+		return runtime != null && runtime.isComplete() && expected.equals(runtime.runtimeInstanceId());
 	}
 
 	String canonicalNormalizedRequest(RepairRequest request) {
