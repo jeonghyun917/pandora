@@ -5,9 +5,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.kaces.pandora.lawdata.persistence.LawApiSchemaMaintenance;
 import java.time.Instant;
+import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.apache.ibatis.builder.xml.XMLMapperBuilder;
 import org.apache.ibatis.io.Resources;
@@ -17,13 +21,22 @@ import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.session.SqlSessionFactoryBuilder;
 import org.apache.ibatis.transaction.jdbc.JdbcTransactionFactory;
+import org.mybatis.spring.transaction.SpringManagedTransactionFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.mybatis.spring.SqlSessionTemplate;
 import org.springframework.boot.DefaultApplicationArguments;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.transaction.interceptor.TransactionInterceptor;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /** Explicitly gated; creates and drops its own UUID database, never the Pandora schema. */
 @EnabledIfSystemProperty(named = "pandora.mariadb.it", matches = "true")
@@ -64,6 +77,61 @@ class LawMissingEmbeddingRepairOperationMariaDbIntegrationTests {
 		assertThat(jdbc.queryForObject(
 			"SELECT COUNT(*) FROM law_missing_embedding_repair_operations WHERE operation_id=?",
 			Integer.class, operationId)).isZero();
+	}
+
+	@Test
+	void twoConcurrentServiceTransactionsReuseOneCommittedWinnerAndOneOrderedItemSet() throws Exception {
+		SqlSessionTemplate sessions = new SqlSessionTemplate(springMapperFactory(dataSource));
+		LawMissingEmbeddingRepairOperationMapper delegate = sessions.getMapper(LawMissingEmbeddingRepairOperationMapper.class);
+		CyclicBarrier initialMisses = new CyclicBarrier(2);
+		LawMissingEmbeddingRepairOperationMapper barrierMapper = (LawMissingEmbeddingRepairOperationMapper) Proxy.newProxyInstance(
+			getClass().getClassLoader(), new Class<?>[] { LawMissingEmbeddingRepairOperationMapper.class }, (proxy, method, args) -> {
+				Object result = invoke(delegate, method, args);
+				if ("findOperationByIdempotencyKey".equals(method.getName()) && result == null) {
+					initialMisses.await(10, TimeUnit.SECONDS);
+				}
+				return result;
+			}
+		);
+		LawMissingEmbeddingRepairOperationService service = new LawMissingEmbeddingRepairOperationService(
+			barrierMapper, readyLegacy(), transactionalPersistence(barrierMapper)
+		);
+		LawMissingEmbeddingRepairOperationService.RepairRequest request = request();
+		var executor = Executors.newFixedThreadPool(2);
+		try {
+			var first = executor.submit(() -> service.register(request));
+			var second = executor.submit(() -> service.register(request));
+			String firstId = first.get(30, TimeUnit.SECONDS).operation().request().operationId();
+			String secondId = second.get(30, TimeUnit.SECONDS).operation().request().operationId();
+			assertThat(firstId).isEqualTo(secondId);
+		} finally {
+			executor.shutdownNow();
+		}
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM law_missing_embedding_repair_operations", Integer.class)).isEqualTo(1);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM law_missing_embedding_repair_items", Integer.class)).isEqualTo(1);
+		assertThat(jdbc.queryForList("SELECT ordinal FROM law_missing_embedding_repair_items ORDER BY ordinal", Integer.class)).containsExactly(0);
+	}
+
+	@Test
+	void serviceTransactionRollsBackOperationWhenItemPersistenceFails() throws Exception {
+		SqlSessionTemplate sessions = new SqlSessionTemplate(springMapperFactory(dataSource));
+		LawMissingEmbeddingRepairOperationMapper delegate = sessions.getMapper(LawMissingEmbeddingRepairOperationMapper.class);
+		LawMissingEmbeddingRepairOperationMapper failingItems = (LawMissingEmbeddingRepairOperationMapper) Proxy.newProxyInstance(
+			getClass().getClassLoader(), new Class<?>[] { LawMissingEmbeddingRepairOperationMapper.class }, (proxy, method, args) -> {
+				if ("insertItems".equals(method.getName())) {
+					throw new org.springframework.dao.DataIntegrityViolationException("forced item failure");
+				}
+				return invoke(delegate, method, args);
+			}
+		);
+		LawMissingEmbeddingRepairOperationService service = new LawMissingEmbeddingRepairOperationService(
+			failingItems, readyLegacy(), transactionalPersistence(failingItems)
+		);
+
+		assertThatThrownBy(() -> service.register(request()))
+			.isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM law_missing_embedding_repair_operations", Integer.class)).isZero();
+		assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM law_missing_embedding_repair_items", Integer.class)).isZero();
 	}
 
 	@Test
@@ -301,9 +369,53 @@ class LawMissingEmbeddingRepairOperationMariaDbIntegrationTests {
 
 	private SqlSessionFactory mapperFactory(DataSource source) throws Exception {
 		Configuration configuration = new Configuration(new Environment("it", new JdbcTransactionFactory(), source));
+		return mapperFactory(configuration);
+	}
+
+	private SqlSessionFactory springMapperFactory(DataSource source) throws Exception {
+		Configuration configuration = new Configuration(new Environment("spring-it", new SpringManagedTransactionFactory(), source));
+		return mapperFactory(configuration);
+	}
+
+	private SqlSessionFactory mapperFactory(Configuration configuration) throws Exception {
 		try (var input = Resources.getResourceAsStream("mapper/law/LawMissingEmbeddingRepairOperationMapper.xml")) {
 			new XMLMapperBuilder(input, configuration, "mapper/law/LawMissingEmbeddingRepairOperationMapper.xml", configuration.getSqlFragments()).parse();
 		}
 		return new SqlSessionFactoryBuilder().build(configuration);
+	}
+
+	private static Object invoke(Object delegate, java.lang.reflect.Method method, Object[] args) throws Throwable {
+		try {
+			return method.invoke(delegate, args);
+		} catch (java.lang.reflect.InvocationTargetException exception) {
+			throw exception.getCause();
+		}
+	}
+
+	private LawMissingEmbeddingRepairOperationService.RepairRequest request() {
+		return new LawMissingEmbeddingRepairOperationService.RepairRequest(
+			"law", "00000000-0000-0000-0000-000000000001", "a".repeat(64), true,
+			List.of(11L), List.of(new LawMissingEmbeddingRepairOperationService.RepairCandidate(101L, "b".repeat(64)))
+		);
+	}
+
+	private LawMissingEmbeddingRepairService readyLegacy() {
+		LawMissingEmbeddingRepairService legacy = mock(LawMissingEmbeddingRepairService.class);
+		when(legacy.preflight(any())).thenReturn(new LawMissingEmbeddingRepairService.RepairResult(false, false,
+			new LawIndexIntegrityRuntimeInfo("00000000-0000-0000-0000-000000000001", "a".repeat(64)),
+			List.of(new LawMissingEmbeddingRepairService.RepairOutcome(101L, 11L, LawMissingEmbeddingRepairService.RepairState.READY, "ready"))));
+		return legacy;
+	}
+
+	private LawMissingEmbeddingRepairOperationPersistenceService transactionalPersistence(
+		LawMissingEmbeddingRepairOperationMapper mapper
+	) {
+		LawMissingEmbeddingRepairOperationPersistenceService target = new LawMissingEmbeddingRepairOperationPersistenceService(mapper);
+		TransactionInterceptor interceptor = new TransactionInterceptor(
+			new DataSourceTransactionManager(dataSource), new AnnotationTransactionAttributeSource()
+		);
+		ProxyFactory proxyFactory = new ProxyFactory(target);
+		proxyFactory.addAdvice(interceptor);
+		return (LawMissingEmbeddingRepairOperationPersistenceService) proxyFactory.getProxy();
 	}
 }

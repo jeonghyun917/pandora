@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
@@ -14,7 +15,10 @@ import com.kaces.pandora.semantic.indexing.LawSemanticIndexService;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class LawMissingEmbeddingRepairOperationServiceTests {
 
@@ -149,6 +153,156 @@ class LawMissingEmbeddingRepairOperationServiceTests {
 		assertThat(found).isPresent();
 		assertThat(found.orElseThrow().items()).extracting(LawMissingEmbeddingRepairOperation.Item::ordinal).containsExactly(0, 1);
 		assertThat(service.find(java.util.UUID.fromString("00000000-0000-0000-0000-000000000011"))).isEmpty();
+	}
+
+	@Test
+	void duplicateInsertReadsTheCommittedWinnerWithTheCurrentReadMapper() {
+		LawMissingEmbeddingRepairOperationMapper operations = mock(LawMissingEmbeddingRepairOperationMapper.class);
+		LawSemanticIndexService indexer = mock(LawSemanticIndexService.class);
+		when(operations.insertOperation(any())).thenThrow(new org.springframework.dao.DuplicateKeyException("duplicate"));
+		LawMissingEmbeddingRepairOperationService service = service(operations, indexer);
+		LawMissingEmbeddingRepairOperationService.RepairRequest request = request(List.of(11L), List.of(candidate(101L, "a")));
+		String normalized = service.canonicalNormalizedRequest(request);
+		String hash = service.sha256(normalized);
+		LawMissingEmbeddingRepairOperation.OperationRow winner = row("00000000-0000-0000-0000-000000000021", hash, normalized, 1, 1);
+		when(operations.findOperationByIdempotencyKey(hash)).thenReturn(null);
+		when(operations.findOperationByIdempotencyKeyForUpdate(hash)).thenReturn(winner);
+		when(operations.findItemsByOperationId(winner.operationId())).thenReturn(List.of(item(winner.operationId(), 0, 101L, 11L, "a")));
+
+		LawMissingEmbeddingRepairOperationService.OperationView view = service.register(request);
+
+		assertThat(view.operation().request().operationId()).isEqualTo(winner.operationId());
+		verify(operations).findOperationByIdempotencyKeyForUpdate(hash);
+	}
+
+	@ParameterizedTest(name = "rejects independently fenced request {0}")
+	@MethodSource("invalidRequests")
+	void rejectsEachInvalidRequestBeforePreflightOrPersistence(String ignored, LawMissingEmbeddingRepairOperationService.RepairRequest request) {
+		LawMissingEmbeddingRepairOperationMapper operations = mock(LawMissingEmbeddingRepairOperationMapper.class);
+		LawMissingEmbeddingRepairService legacy = mock(LawMissingEmbeddingRepairService.class);
+		LawMissingEmbeddingRepairOperationService service = new LawMissingEmbeddingRepairOperationService(operations, legacy);
+
+		assertThatThrownBy(() -> service.register(request))
+			.isInstanceOf(LawMissingEmbeddingRepairOperationService.RegistrationRejectedException.class)
+			.extracting(exception -> ((LawMissingEmbeddingRepairOperationService.RegistrationRejectedException) exception).rejection())
+			.isEqualTo(LawMissingEmbeddingRepairOperationService.Rejection.BAD_REQUEST);
+		verifyNoInteractions(legacy);
+		verify(operations, never()).insertOperation(any());
+		verify(operations, never()).insertItems(any(), any());
+	}
+
+	@ParameterizedTest(name = "accepts bounded request {0}")
+	@MethodSource("validBoundedRequests")
+	void acceptsOneAndMaximumBoundedCandidateAndDocumentWaves(String ignored, LawMissingEmbeddingRepairOperationService.RepairRequest request) {
+		LawMissingEmbeddingRepairOperationMapper operations = mock(LawMissingEmbeddingRepairOperationMapper.class);
+		when(operations.insertOperation(any())).thenReturn(1);
+		when(operations.insertItems(any(), any())).thenAnswer(invocation -> ((List<?>) invocation.getArgument(1)).size());
+		LawMissingEmbeddingRepairOperationService service = readyService(operations);
+
+		LawMissingEmbeddingRepairOperationService.OperationView view = service.register(request);
+
+		assertThat(view.items()).hasSize(request.candidates().size());
+		verify(operations).insertOperation(any());
+	}
+
+	@ParameterizedTest(name = "rejects drift {0} without persistence")
+	@MethodSource("driftResults")
+	void rejectsRuntimeChunkClassificationAndDocumentSetDriftWithoutPersisting(
+		String ignored, LawMissingEmbeddingRepairService.RepairResult drift
+	) {
+		LawMissingEmbeddingRepairOperationMapper operations = mock(LawMissingEmbeddingRepairOperationMapper.class);
+		LawMissingEmbeddingRepairService legacy = mock(LawMissingEmbeddingRepairService.class);
+		when(legacy.preflight(any())).thenReturn(drift);
+		LawMissingEmbeddingRepairOperationService service = new LawMissingEmbeddingRepairOperationService(operations, legacy);
+
+		assertThatThrownBy(() -> service.register(request(List.of(11L), List.of(candidate(101L, "a")))))
+			.isInstanceOf(LawMissingEmbeddingRepairOperationService.RegistrationRejectedException.class)
+			.extracting(exception -> ((LawMissingEmbeddingRepairOperationService.RegistrationRejectedException) exception).rejection())
+			.isEqualTo(LawMissingEmbeddingRepairOperationService.Rejection.CONFLICT);
+		verify(operations, never()).insertOperation(any());
+		verify(operations, never()).insertItems(any(), any());
+	}
+
+	@Test
+	void incompleteItemPersistenceFailsInsteadOfReturningARunnableOperation() {
+		LawMissingEmbeddingRepairOperationMapper operations = mock(LawMissingEmbeddingRepairOperationMapper.class);
+		when(operations.insertOperation(any())).thenReturn(1);
+		when(operations.insertItems(any(), any())).thenReturn(0);
+		LawMissingEmbeddingRepairOperationService service = readyService(operations);
+
+		assertThatThrownBy(() -> service.register(request(List.of(11L), List.of(candidate(101L, "a")))))
+			.isInstanceOf(IllegalStateException.class)
+			.hasMessageContaining("complete repair operation");
+	}
+
+	private static java.util.stream.Stream<org.junit.jupiter.params.provider.Arguments> invalidRequests() {
+		LawMissingEmbeddingRepairOperationService.RepairCandidate candidate = new LawMissingEmbeddingRepairOperationService.RepairCandidate(101L, "a".repeat(64));
+		return java.util.stream.Stream.of(
+			org.junit.jupiter.params.provider.Arguments.of("wrong target", raw("admrul", true, validRuntime(), validRevision(), List.of(11L), List.of(candidate))),
+			org.junit.jupiter.params.provider.Arguments.of("apply false", raw("law", false, validRuntime(), validRevision(), List.of(11L), List.of(candidate))),
+			org.junit.jupiter.params.provider.Arguments.of("zero candidates", raw("law", true, validRuntime(), validRevision(), List.of(11L), List.of())),
+			org.junit.jupiter.params.provider.Arguments.of("1001 candidates", raw("law", true, validRuntime(), validRevision(), List.of(11L), candidates(1001))),
+			org.junit.jupiter.params.provider.Arguments.of("duplicate candidates", raw("law", true, validRuntime(), validRevision(), List.of(11L), List.of(candidate, candidate))),
+			org.junit.jupiter.params.provider.Arguments.of("nonpositive candidate", raw("law", true, validRuntime(), validRevision(), List.of(11L), List.of(new LawMissingEmbeddingRepairOperationService.RepairCandidate(0L, "a".repeat(64))))),
+			org.junit.jupiter.params.provider.Arguments.of("bad candidate hash", raw("law", true, validRuntime(), validRevision(), List.of(11L), List.of(new LawMissingEmbeddingRepairOperationService.RepairCandidate(101L, "bad")))),
+			org.junit.jupiter.params.provider.Arguments.of("zero documents", raw("law", true, validRuntime(), validRevision(), List.of(), List.of(candidate))),
+			org.junit.jupiter.params.provider.Arguments.of("51 documents", raw("law", true, validRuntime(), validRevision(), documents(51), List.of(candidate))),
+			org.junit.jupiter.params.provider.Arguments.of("duplicate documents", raw("law", true, validRuntime(), validRevision(), List.of(11L, 11L), List.of(candidate))),
+			org.junit.jupiter.params.provider.Arguments.of("nonpositive document", raw("law", true, validRuntime(), validRevision(), List.of(0L), List.of(candidate))),
+			org.junit.jupiter.params.provider.Arguments.of("invalid runtime", raw("law", true, "invalid", validRevision(), List.of(11L), List.of(candidate))),
+			org.junit.jupiter.params.provider.Arguments.of("invalid revision", raw("law", true, validRuntime(), "a".repeat(63), List.of(11L), List.of(candidate)))
+		);
+	}
+
+	private static java.util.stream.Stream<org.junit.jupiter.params.provider.Arguments> validBoundedRequests() {
+		return java.util.stream.Stream.of(
+			org.junit.jupiter.params.provider.Arguments.of("one", raw("law", true, validRuntime(), validRevision(), List.of(1L), candidates(1))),
+			org.junit.jupiter.params.provider.Arguments.of("1000 candidates and 50 documents", raw("law", true, validRuntime(), validRevision(), documents(50), candidates(1000)))
+		);
+	}
+
+	private static java.util.stream.Stream<org.junit.jupiter.params.provider.Arguments> driftResults() {
+		LawIndexIntegrityRuntimeInfo runtime = new LawIndexIntegrityRuntimeInfo(validRuntime(), validRevision());
+		return java.util.stream.Stream.of(
+			org.junit.jupiter.params.provider.Arguments.of("runtime", new LawMissingEmbeddingRepairService.RepairResult(false, false, new LawIndexIntegrityRuntimeInfo(UUID.randomUUID().toString(), validRevision()), List.of())),
+			org.junit.jupiter.params.provider.Arguments.of("chunk hash", new LawMissingEmbeddingRepairService.RepairResult(false, false, runtime, List.of(outcome(101L, 11L, LawMissingEmbeddingRepairService.RepairState.REJECTED_CHUNK_DRIFT)))),
+			org.junit.jupiter.params.provider.Arguments.of("classification", new LawMissingEmbeddingRepairService.RepairResult(false, false, runtime, List.of(outcome(101L, 11L, LawMissingEmbeddingRepairService.RepairState.REJECTED_CLASSIFICATION_DRIFT)))),
+			org.junit.jupiter.params.provider.Arguments.of("document set", new LawMissingEmbeddingRepairService.RepairResult(false, false, runtime, List.of(outcome(101L, 12L, LawMissingEmbeddingRepairService.RepairState.READY))))
+		);
+	}
+
+	private static LawMissingEmbeddingRepairOperationService.RepairRequest raw(String target, boolean apply, String runtime, String revision, List<Long> documents, List<LawMissingEmbeddingRepairOperationService.RepairCandidate> candidates) {
+		return new LawMissingEmbeddingRepairOperationService.RepairRequest(target, runtime, revision, apply, documents, candidates);
+	}
+
+	private static String validRuntime() {
+		return "00000000-0000-0000-0000-000000000001";
+	}
+
+	private static String validRevision() {
+		return "a".repeat(64);
+	}
+
+	private static List<LawMissingEmbeddingRepairOperationService.RepairCandidate> candidates(int count) {
+		return java.util.stream.LongStream.rangeClosed(1L, count).mapToObj(id -> new LawMissingEmbeddingRepairOperationService.RepairCandidate(id, (id % 2 == 0 ? "b" : "a").repeat(64))).toList();
+	}
+
+	private static List<Long> documents(int count) {
+		return java.util.stream.LongStream.rangeClosed(1L, count).boxed().toList();
+	}
+
+	private static LawMissingEmbeddingRepairService.RepairOutcome outcome(long chunkId, long documentId, LawMissingEmbeddingRepairService.RepairState state) {
+		return new LawMissingEmbeddingRepairService.RepairOutcome(chunkId, documentId, state, state.name());
+	}
+
+	private LawMissingEmbeddingRepairOperationService readyService(LawMissingEmbeddingRepairOperationMapper operations) {
+		LawMissingEmbeddingRepairService legacy = mock(LawMissingEmbeddingRepairService.class);
+		when(legacy.preflight(any())).thenAnswer(invocation -> {
+			LawMissingEmbeddingRepairService.RepairRequest request = invocation.getArgument(0);
+			return new LawMissingEmbeddingRepairService.RepairResult(false, false, new LawIndexIntegrityRuntimeInfo(validRuntime(), validRevision()), request.candidates().stream()
+				.map(candidate -> outcome(candidate.chunkId(), candidate.chunkId() == 101L ? 11L : Math.min(50L, candidate.chunkId()), LawMissingEmbeddingRepairService.RepairState.READY)).toList());
+		});
+		return new LawMissingEmbeddingRepairOperationService(operations, legacy);
 	}
 
 	private LawMissingEmbeddingRepairOperationService service(

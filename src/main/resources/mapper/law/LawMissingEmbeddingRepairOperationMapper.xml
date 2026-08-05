@@ -59,6 +59,13 @@
     WHERE idempotency_key = #{idempotencyKey}
   </select>
 
+  <select id="findOperationByIdempotencyKeyForUpdate" resultType="com.kaces.pandora.semantic.integrity.LawMissingEmbeddingRepairOperation$OperationRow">
+    SELECT <include refid="operationColumns" />
+    FROM law_missing_embedding_repair_operations
+    WHERE idempotency_key = #{idempotencyKey}
+    FOR UPDATE
+  </select>
+
   <select id="findItemsByOperationId" resultType="com.kaces.pandora.semantic.integrity.LawMissingEmbeddingRepairOperation$Item">
     SELECT <include refid="itemColumns" />
     FROM law_missing_embedding_repair_items

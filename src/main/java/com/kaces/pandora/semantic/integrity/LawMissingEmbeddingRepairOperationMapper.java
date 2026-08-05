@@ -20,6 +20,9 @@ public interface LawMissingEmbeddingRepairOperationMapper {
 
 	LawMissingEmbeddingRepairOperation.OperationRow findOperationByIdempotencyKey(@Param("idempotencyKey") String idempotencyKey);
 
+	/** InnoDB current read used only after the unique-key loser detects a concurrent winner. */
+	LawMissingEmbeddingRepairOperation.OperationRow findOperationByIdempotencyKeyForUpdate(@Param("idempotencyKey") String idempotencyKey);
+
 	List<LawMissingEmbeddingRepairOperation.Item> findItemsByOperationId(@Param("operationId") String operationId);
 
 	LawMissingEmbeddingRepairOperation.Item findItemByOrdinal(

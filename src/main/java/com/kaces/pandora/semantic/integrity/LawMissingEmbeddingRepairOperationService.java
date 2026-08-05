@@ -13,34 +13,45 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /** Registers immutable, bounded repair work without starting a repair. */
 @Service
 public class LawMissingEmbeddingRepairOperationService {
 	private final LawMissingEmbeddingRepairOperationMapper operationMapper;
 	private final LawMissingEmbeddingRepairService legacyRepairService;
+	private final LawMissingEmbeddingRepairOperationPersistenceService persistenceService;
 	private final Clock clock;
 
+	@Autowired
 	public LawMissingEmbeddingRepairOperationService(
 		LawMissingEmbeddingRepairOperationMapper operationMapper,
 		LawMissingEmbeddingRepairService legacyRepairService
 	) {
-		this(operationMapper, legacyRepairService, Clock.systemUTC());
+		this(operationMapper, legacyRepairService, new LawMissingEmbeddingRepairOperationPersistenceService(operationMapper), Clock.systemUTC());
+	}
+
+	public LawMissingEmbeddingRepairOperationService(
+		LawMissingEmbeddingRepairOperationMapper operationMapper,
+		LawMissingEmbeddingRepairService legacyRepairService,
+		LawMissingEmbeddingRepairOperationPersistenceService persistenceService
+	) {
+		this(operationMapper, legacyRepairService, persistenceService, Clock.systemUTC());
 	}
 
 	LawMissingEmbeddingRepairOperationService(
 		LawMissingEmbeddingRepairOperationMapper operationMapper,
 		LawMissingEmbeddingRepairService legacyRepairService,
+		LawMissingEmbeddingRepairOperationPersistenceService persistenceService,
 		Clock clock
 	) {
 		this.operationMapper = Objects.requireNonNull(operationMapper, "operationMapper");
 		this.legacyRepairService = Objects.requireNonNull(legacyRepairService, "legacyRepairService");
+		this.persistenceService = Objects.requireNonNull(persistenceService, "persistenceService");
 		this.clock = Objects.requireNonNull(clock, "clock");
 	}
 
-	@Transactional
 	public OperationView register(RepairRequest request) {
 		validateRegistrationShape(request);
 		String normalized = canonicalNormalizedRequest(request);
@@ -54,11 +65,9 @@ public class LawMissingEmbeddingRepairOperationService {
 		LawMissingEmbeddingRepairOperation.OperationRow operation = newOperation(request, normalized, requestHash, preflight);
 		List<LawMissingEmbeddingRepairOperation.Item> items = newItems(operation.operationId(), request, preflight);
 		try {
-			if (operationMapper.insertOperation(operation) != 1 || operationMapper.insertItems(operation.operationId(), items) != items.size()) {
-				throw new IllegalStateException("Unable to persist complete repair operation.");
-			}
+			persistenceService.persist(operation, items);
 		} catch (DuplicateKeyException exception) {
-			LawMissingEmbeddingRepairOperation.OperationRow concurrent = operationMapper.findOperationByIdempotencyKey(requestHash);
+			LawMissingEmbeddingRepairOperation.OperationRow concurrent = persistenceService.findCommittedWinner(requestHash);
 			if (concurrent == null) {
 				throw exception;
 			}
