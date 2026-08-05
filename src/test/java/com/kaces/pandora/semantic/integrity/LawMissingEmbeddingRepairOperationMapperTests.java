@@ -45,7 +45,8 @@ class LawMissingEmbeddingRepairOperationMapperTests {
 
 		assertThat(sql)
 			.contains("i.state = 'READY'", "o.status IN ('READY','RUNNING')", "o.lease_owner IS NULL OR o.lease_expires_at <= CURRENT_TIMESTAMP(6)", "o.runtime_instance_id = ?", "o.trusted_index_revision = ?")
-			.contains("i.lease_owner = ?", "i.lease_expires_at = ?")
+			.contains("i.lease_owner = ?", "i.lease_expires_at = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(6))")
+			.doesNotContain("lease_expires_at = ?")
 			.doesNotContain("OR i.state");
 	}
 
@@ -55,11 +56,13 @@ class LawMissingEmbeddingRepairOperationMapperTests {
 		String reclaim = sql(configuration, "claimExpiredItem", claimParameters());
 		String renew = sql(configuration, "renewItemLease", Map.of(
 			"operationId", "00000000-0000-0000-0000-000000000001", "ordinal", 0,
-			"owner", "00000000-0000-0000-0000-000000000002", "leaseExpiresAt", java.time.Instant.parse("2026-08-05T00:00:00Z")
+			"owner", "00000000-0000-0000-0000-000000000002", "leaseSeconds", 600
 		));
 
 		assertThat(reclaim).contains("i.state = 'PROCESSING'", "i.lease_expires_at <= CURRENT_TIMESTAMP(6)", "o.lease_owner IS NULL OR o.lease_expires_at <= CURRENT_TIMESTAMP(6)", "o.runtime_instance_id = ?", "o.trusted_index_revision = ?");
-		assertThat(renew).contains("i.state = 'PROCESSING'", "i.lease_owner = ?").doesNotContain("OR i.lease_owner");
+		assertThat(renew)
+			.contains("i.state = 'PROCESSING'", "i.lease_owner = ?", "i.lease_expires_at = TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP(6))")
+			.doesNotContain("lease_expires_at = ?", "OR i.lease_owner");
 	}
 
 	@Test
@@ -75,8 +78,8 @@ class LawMissingEmbeddingRepairOperationMapperTests {
 		));
 		String remaining = sql(configuration, "markReadyItemsNotAttempted", Map.of("operationId", "00000000-0000-0000-0000-000000000001"));
 
-		assertThat(complete).contains("i.state = 'INDEXED'", "o.trusted_index_revision = ?", "o.indexed_count = o.indexed_count + 1", "i.before_index_revision = o.trusted_index_revision", "i.after_index_revision = ?", "i.state = 'PROCESSING'", "i.lease_owner = ?", "o.lease_owner = ?");
-		assertThat(fail).contains("i.state = 'FAILED'", "o.status = 'FAILED'", "o.failed_count = o.failed_count + 1", "i.state = 'PROCESSING'", "i.lease_owner = ?", "o.lease_owner = ?");
+		assertThat(complete).contains("i.state = 'INDEXED'", "o.trusted_index_revision = ?", "o.indexed_count = o.indexed_count + 1", "i.before_index_revision = o.trusted_index_revision", "i.after_index_revision = ?", "i.state = 'PROCESSING'", "i.lease_owner = ?", "o.lease_owner = ?", "i.lease_expires_at > CURRENT_TIMESTAMP(6)", "o.lease_expires_at > CURRENT_TIMESTAMP(6)");
+		assertThat(fail).contains("i.state = 'FAILED'", "o.status = 'FAILED'", "o.failed_count = o.failed_count + 1", "i.state = 'PROCESSING'", "i.lease_owner = ?", "o.lease_owner = ?", "i.lease_expires_at > CURRENT_TIMESTAMP(6)", "o.lease_expires_at > CURRENT_TIMESTAMP(6)");
 		assertThat(remaining).contains("state = 'NOT_ATTEMPTED'", "state = 'READY'", "JOIN law_missing_embedding_repair_operations", "o.status = 'FAILED'");
 	}
 
@@ -91,7 +94,7 @@ class LawMissingEmbeddingRepairOperationMapperTests {
 		return Map.of(
 			"operationId", "00000000-0000-0000-0000-000000000001", "ordinal", 0,
 			"owner", "00000000-0000-0000-0000-000000000002", "runtimeInstanceId", "00000000-0000-0000-0000-000000000003",
-			"trustedIndexRevision", "a".repeat(64), "leaseExpiresAt", java.time.Instant.parse("2026-08-05T00:00:00Z")
+			"trustedIndexRevision", "a".repeat(64), "leaseSeconds", 600
 		);
 	}
 

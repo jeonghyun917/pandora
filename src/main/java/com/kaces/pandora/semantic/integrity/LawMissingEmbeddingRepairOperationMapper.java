@@ -1,6 +1,5 @@
 package com.kaces.pandora.semantic.integrity;
 
-import java.time.Instant;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -36,7 +35,7 @@ public interface LawMissingEmbeddingRepairOperationMapper {
 		@Param("owner") String owner,
 		@Param("runtimeInstanceId") String runtimeInstanceId,
 		@Param("trustedIndexRevision") String trustedIndexRevision,
-		@Param("leaseExpiresAt") Instant leaseExpiresAt
+		@Param("leaseSeconds") int leaseSeconds
 	);
 
 	int claimExpiredItem(
@@ -45,14 +44,14 @@ public interface LawMissingEmbeddingRepairOperationMapper {
 		@Param("owner") String owner,
 		@Param("runtimeInstanceId") String runtimeInstanceId,
 		@Param("trustedIndexRevision") String trustedIndexRevision,
-		@Param("leaseExpiresAt") Instant leaseExpiresAt
+		@Param("leaseSeconds") int leaseSeconds
 	);
 
 	int renewItemLease(
 		@Param("operationId") String operationId,
 		@Param("ordinal") int ordinal,
 		@Param("owner") String owner,
-		@Param("leaseExpiresAt") Instant leaseExpiresAt
+		@Param("leaseSeconds") int leaseSeconds
 	);
 
 	int completeClaimedItemAndAdvanceRevision(

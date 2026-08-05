@@ -13,6 +13,12 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -20,12 +26,18 @@ import org.springframework.stereotype.Service;
 /** Registers immutable, bounded repair work without starting a repair. */
 @Service
 public class LawMissingEmbeddingRepairOperationService {
-	// One embedding request may retry once (2 x 3 minutes) before a 2-minute Qdrant write timeout.
-	private static final Duration STEP_LEASE = Duration.ofMinutes(15);
+	/**
+	 * OpenAI worst case is 2 x (10s connect + 180s read) + 200ms retry delay = 380.2s.
+	 * Qdrant is bounded by 5s connect + 120s read; Hikari connection acquisition defaults
+	 * to 30s and MariaDB lock wait to 50s. A 600s DB-clock lease leaves 219.8s over
+	 * the longest single blocking call and is renewed every 30s while sequential audit phases run.
+	 */
+	private static final LeasePolicy PRODUCTION_LEASE = new LeasePolicy(600, Duration.ofSeconds(30));
 	private final LawMissingEmbeddingRepairOperationMapper operationMapper;
 	private final LawMissingEmbeddingRepairService legacyRepairService;
 	private final LawMissingEmbeddingRepairOperationPersistenceService persistenceService;
 	private final Clock clock;
+	private final LeasePolicy leasePolicy;
 
 	@Autowired
 	public LawMissingEmbeddingRepairOperationService(
@@ -33,7 +45,7 @@ public class LawMissingEmbeddingRepairOperationService {
 		LawMissingEmbeddingRepairService legacyRepairService,
 		LawMissingEmbeddingRepairOperationPersistenceService persistenceService
 	) {
-		this(operationMapper, legacyRepairService, persistenceService, Clock.systemUTC());
+		this(operationMapper, legacyRepairService, persistenceService, Clock.systemUTC(), PRODUCTION_LEASE);
 	}
 
 	LawMissingEmbeddingRepairOperationService(
@@ -42,10 +54,21 @@ public class LawMissingEmbeddingRepairOperationService {
 		LawMissingEmbeddingRepairOperationPersistenceService persistenceService,
 		Clock clock
 	) {
+		this(operationMapper, legacyRepairService, persistenceService, clock, PRODUCTION_LEASE);
+	}
+
+	LawMissingEmbeddingRepairOperationService(
+		LawMissingEmbeddingRepairOperationMapper operationMapper,
+		LawMissingEmbeddingRepairService legacyRepairService,
+		LawMissingEmbeddingRepairOperationPersistenceService persistenceService,
+		Clock clock,
+		LeasePolicy leasePolicy
+	) {
 		this.operationMapper = Objects.requireNonNull(operationMapper, "operationMapper");
 		this.legacyRepairService = Objects.requireNonNull(legacyRepairService, "legacyRepairService");
 		this.persistenceService = Objects.requireNonNull(persistenceService, "persistenceService");
 		this.clock = Objects.requireNonNull(clock, "clock");
+		this.leasePolicy = Objects.requireNonNull(leasePolicy, "leasePolicy");
 	}
 
 	public OperationView register(RepairRequest request) {
@@ -103,64 +126,65 @@ public class LawMissingEmbeddingRepairOperationService {
 		if (item == null) {
 			return found;
 		}
-		Instant now = clock.instant();
-		if (recovery && item.leaseExpiresAt() != null && item.leaseExpiresAt().isAfter(now)) {
-			return found;
-		}
-
 		String owner = UUID.randomUUID().toString();
-		Instant leaseExpiresAt = now.plus(STEP_LEASE);
 		boolean claimed = recovery
 			? persistenceService.claimExpiredItem(operation.request().operationId(), item.ordinal(), owner,
-				operation.request().runtimeInstanceId(), operation.progress().trustedIndexRevision(), leaseExpiresAt)
+				operation.request().runtimeInstanceId(), operation.progress().trustedIndexRevision(), leasePolicy.leaseSeconds())
 			: persistenceService.claimReadyItem(operation.request().operationId(), item.ordinal(), owner,
-				operation.request().runtimeInstanceId(), operation.progress().trustedIndexRevision(), leaseExpiresAt);
+				operation.request().runtimeInstanceId(), operation.progress().trustedIndexRevision(), leasePolicy.leaseSeconds());
 		if (!claimed) {
 			return find(operationId);
 		}
 
-		if (recovery) {
-			return reconcileExpired(operationId, operation, item, owner);
+		try (StepLease lease = new StepLease(operation.request().operationId(), item.ordinal(), owner)) {
+			if (recovery) {
+				return reconcileExpired(operationId, operation, item, owner, lease);
+			}
+			LawIndexIntegrityRuntimeInfo runtimeBefore;
+			try {
+				lease.assertOwned();
+				runtimeBefore = legacyRepairService.currentRuntimeSnapshot();
+				lease.assertOwned();
+			} catch (RuntimeException exception) {
+				return fail(operationId, item, owner, "RUNTIME_IDENTITY_UNAVAILABLE", lease);
+			}
+			return repairClaimed(operationId, operation, item, owner, runtimeBefore, lease);
 		}
-		LawIndexIntegrityRuntimeInfo runtimeBefore;
-		try {
-			runtimeBefore = legacyRepairService.currentRuntimeSnapshot();
-		} catch (RuntimeException exception) {
-			return fail(operationId, item, owner, "RUNTIME_IDENTITY_UNAVAILABLE");
-		}
-		return repairClaimed(operationId, operation, item, owner, runtimeBefore);
 	}
 
 	private Optional<OperationView> reconcileExpired(
 		UUID operationId,
 		LawMissingEmbeddingRepairOperation operation,
 		LawMissingEmbeddingRepairOperation.Item item,
-		String owner
+		String owner,
+		StepLease lease
 	) {
 		LawMissingEmbeddingRepairService.ExactInspection inspection;
 		try {
+			lease.assertOwned();
 			inspection = legacyRepairService.inspectExactCandidate(
 				new LawMissingEmbeddingRepairService.RepairCandidate(item.chunkId(), item.expectedContentHash()), item.documentId()
 			);
+			lease.assertOwned();
 		} catch (RuntimeException exception) {
-			return fail(operationId, item, owner, "RECOVERY_AUDIT_FAILED");
+			return fail(operationId, item, owner, "RECOVERY_AUDIT_FAILED", lease);
 		}
 		if (inspection == null) {
-			return fail(operationId, item, owner, "RECOVERY_AMBIGUOUS");
+			return fail(operationId, item, owner, "RECOVERY_AMBIGUOUS", lease);
 		}
 		if (!sameInstance(operation.request().runtimeInstanceId(), inspection.runtime())) {
-			return fail(operationId, item, owner, "RUNTIME_FENCE_DRIFT");
+			return fail(operationId, item, owner, "RUNTIME_FENCE_DRIFT", lease);
 		}
 		if (inspection.state() == LawMissingEmbeddingRepairService.RepairState.INDEXED) {
-			return complete(operationId, operation, item, owner, inspection.runtime().indexRevision());
+			return complete(operationId, operation, item, owner, inspection.runtime().indexRevision(), lease);
 		}
 		if (inspection.state() != LawMissingEmbeddingRepairService.RepairState.READY) {
-			return fail(operationId, item, owner, "RECOVERY_AMBIGUOUS");
+			return fail(operationId, item, owner, "RECOVERY_AMBIGUOUS", lease);
 		}
 		if (!sameRuntime(operation, inspection.runtime())) {
-			return fail(operationId, item, owner, "RUNTIME_FENCE_DRIFT");
+			return fail(operationId, item, owner, "RUNTIME_FENCE_DRIFT", lease);
 		}
-		return repairClaimed(operationId, operation, item, owner, inspection.runtime());
+		return repairClaimed(operationId, operation, item, owner, inspection.runtime(), lease);
 	}
 
 	private Optional<OperationView> repairClaimed(
@@ -168,28 +192,31 @@ public class LawMissingEmbeddingRepairOperationService {
 		LawMissingEmbeddingRepairOperation operation,
 		LawMissingEmbeddingRepairOperation.Item item,
 		String owner,
-		LawIndexIntegrityRuntimeInfo runtimeBefore
+		LawIndexIntegrityRuntimeInfo runtimeBefore,
+		StepLease lease
 	) {
 		if (!sameRuntime(operation, runtimeBefore)) {
-			return fail(operationId, item, owner, "RUNTIME_FENCE_DRIFT");
+			return fail(operationId, item, owner, "RUNTIME_FENCE_DRIFT", lease);
 		}
 		LawMissingEmbeddingRepairService.RepairResult result;
 		try {
+			lease.assertOwned();
 			result = legacyRepairService.repairExact(new LawMissingEmbeddingRepairService.RepairRequest(
 				"law", operation.request().runtimeInstanceId(), operation.progress().trustedIndexRevision(),
 				List.of(item.documentId()), List.of(new LawMissingEmbeddingRepairService.RepairCandidate(
 					item.chunkId(), item.expectedContentHash())), true
-			));
+			), lease::assertOwned);
+			lease.assertOwned();
 		} catch (RuntimeException exception) {
-			return fail(operationId, item, owner, "EXACT_INDEX_FAILED");
+			return fail(operationId, item, owner, "EXACT_INDEX_FAILED", lease);
 		}
 		if (result == null || !sameInstance(operation.request().runtimeInstanceId(), result.runtime())) {
-			return fail(operationId, item, owner, "RUNTIME_FENCE_DRIFT");
+			return fail(operationId, item, owner, "RUNTIME_FENCE_DRIFT", lease);
 		}
 		if (!isVerifiedExactSuccess(operation, item, result)) {
-			return fail(operationId, item, owner, failureReason(result));
+			return fail(operationId, item, owner, failureReason(result), lease);
 		}
-		return complete(operationId, operation, item, owner, result.runtime().indexRevision());
+		return complete(operationId, operation, item, owner, result.runtime().indexRevision(), lease);
 	}
 
 	private boolean isVerifiedExactSuccess(
@@ -222,22 +249,28 @@ public class LawMissingEmbeddingRepairOperationService {
 		LawMissingEmbeddingRepairOperation operation,
 		LawMissingEmbeddingRepairOperation.Item item,
 		String owner,
-		String afterIndexRevision
+		String afterIndexRevision,
+		StepLease lease
 	) {
 		if (!LawMissingEmbeddingRepairService.isHash(afterIndexRevision)) {
-			return fail(operationId, item, owner, "POST_INDEX_RUNTIME_INVALID");
+			return fail(operationId, item, owner, "POST_INDEX_RUNTIME_INVALID", lease);
 		}
-		persistenceService.completeClaimedItem(
+		if (!lease.executeIfOwned(() -> persistenceService.completeClaimedItem(
 			operation.request().operationId(), item.ordinal(), owner, operation.request().runtimeInstanceId(),
 			operation.progress().trustedIndexRevision(), afterIndexRevision
-		);
+		))) {
+			return find(operationId);
+		}
 		return find(operationId);
 	}
 
 	private Optional<OperationView> fail(
-		UUID operationId, LawMissingEmbeddingRepairOperation.Item item, String owner, String reason
+		UUID operationId, LawMissingEmbeddingRepairOperation.Item item, String owner, String reason, StepLease lease
 	) {
-		persistenceService.failClaimedItem(operationId.toString(), item.ordinal(), owner, reason);
+		if (!lease.executeIfOwned(() -> persistenceService.failClaimedItem(
+			operationId.toString(), item.ordinal(), owner, reason))) {
+			return find(operationId);
+		}
 		return find(operationId);
 	}
 
@@ -382,6 +415,89 @@ public class LawMissingEmbeddingRepairOperationService {
 			request.target(), request.expectedRuntimeInstanceId(), request.expectedIndexRevision(), documentIds, legacyCandidates, false
 		), legacyCandidates)) {
 			throw new RegistrationRejectedException(Rejection.BAD_REQUEST);
+		}
+	}
+
+	private final class StepLease implements AutoCloseable {
+		private final String operationId;
+		private final int ordinal;
+		private final String owner;
+		private final AtomicBoolean ownershipLost = new AtomicBoolean();
+		private final ScheduledExecutorService scheduler;
+		private final ScheduledFuture<?> heartbeat;
+
+		private StepLease(String operationId, int ordinal, String owner) {
+			this.operationId = operationId;
+			this.ordinal = ordinal;
+			this.owner = owner;
+			this.scheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
+				Thread thread = new Thread(runnable, "law-repair-lease-" + operationId + "-" + ordinal);
+				thread.setDaemon(true);
+				return thread;
+			});
+			long heartbeatMillis = leasePolicy.heartbeatInterval().toMillis();
+			this.heartbeat = scheduler.scheduleWithFixedDelay(
+				this::renew, heartbeatMillis, heartbeatMillis, TimeUnit.MILLISECONDS
+			);
+		}
+
+		private void renew() {
+			synchronized (this) {
+				if (ownershipLost.get()) {
+					return;
+				}
+				try {
+					if (!persistenceService.renewItemLease(operationId, ordinal, owner, leasePolicy.leaseSeconds())) {
+						ownershipLost.set(true);
+					}
+				} catch (RuntimeException exception) {
+					ownershipLost.set(true);
+				}
+			}
+		}
+
+		private void assertOwned() {
+			if (ownershipLost.get()) {
+				throw new OwnershipLostException();
+			}
+		}
+
+		private synchronized boolean executeIfOwned(BooleanSupplier ownerCasMutation) {
+			if (ownershipLost.get()) {
+				return false;
+			}
+			boolean applied = ownerCasMutation.getAsBoolean();
+			if (!applied) {
+				ownershipLost.set(true);
+			}
+			return applied;
+		}
+
+		@Override
+		public void close() {
+			heartbeat.cancel(true);
+			scheduler.shutdownNow();
+			try {
+				scheduler.awaitTermination(
+					Math.max(1L, Math.min(1_000L, leasePolicy.heartbeatInterval().toMillis())), TimeUnit.MILLISECONDS);
+			} catch (InterruptedException exception) {
+				Thread.currentThread().interrupt();
+			}
+		}
+	}
+
+	static record LeasePolicy(int leaseSeconds, Duration heartbeatInterval) {
+		LeasePolicy {
+			if (leaseSeconds <= 0 || heartbeatInterval == null || heartbeatInterval.isZero()
+				|| heartbeatInterval.isNegative() || heartbeatInterval.compareTo(Duration.ofSeconds(leaseSeconds)) >= 0) {
+				throw new IllegalArgumentException("Lease policy must renew before a positive lease expires.");
+			}
+		}
+	}
+
+	private static final class OwnershipLostException extends IllegalStateException {
+		private OwnershipLostException() {
+			super("Durable repair step ownership was lost.");
 		}
 	}
 

@@ -1,6 +1,7 @@
 package com.kaces.pandora.semantic.indexing;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -13,6 +14,7 @@ import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
 import com.kaces.pandora.semantic.config.LawAiProperties;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class LawSemanticIndexServiceTests {
@@ -44,6 +46,31 @@ class LawSemanticIndexServiceTests {
 
 		verify(qdrantClient).upsertLawCandidates(List.of(candidateChunk()), List.of(List.of(0.1d)));
 		verify(qdrantClient, never()).upsert(List.of(candidateChunk()), List.of(List.of(0.1d)));
+	}
+
+	@Test
+	void exactIndexChecksOwnershipAfterEmbeddingBeforeAnyQdrantOrDatabaseMutation() {
+		LawChunkMapper mapper = mock(LawChunkMapper.class);
+		QdrantClient qdrantClient = mock(QdrantClient.class);
+		OpenAiEmbeddingClient embeddingClient = mock(OpenAiEmbeddingClient.class);
+		when(embeddingClient.embed(List.of(candidateChunk().embeddingInput()))).thenReturn(List.of(List.of(0.1d)));
+		LawSemanticIndexService service = new LawSemanticIndexService(
+			mapper, new LawAiProperties(null, null, null, null), embeddingClient, qdrantClient, mock(LawJsonWriter.class)
+		);
+		AtomicInteger checkpoints = new AtomicInteger();
+
+		assertThatThrownBy(() -> service.indexExactChunks(List.of(candidateChunk()), () -> {
+			if (checkpoints.incrementAndGet() == 3) {
+				throw new IllegalStateException("lost");
+			}
+		})).isInstanceOf(IllegalStateException.class).hasMessage("lost");
+
+		verify(qdrantClient).ensureCollection();
+		verify(embeddingClient).embed(List.of(candidateChunk().embeddingInput()));
+		verify(qdrantClient, never()).upsert(org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.anyList());
+		verify(mapper, never()).upsertEmbeddingStatus(org.mockito.ArgumentMatchers.anyLong(),
+			org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+			org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
 	}
 
 	private LawSemanticChunkRow candidateChunk() {

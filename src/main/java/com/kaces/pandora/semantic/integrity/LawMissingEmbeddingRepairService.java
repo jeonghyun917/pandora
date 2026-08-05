@@ -34,7 +34,13 @@ public class LawMissingEmbeddingRepairService {
 	}
 
 	public RepairResult repair(RepairRequest request) {
+		return repair(request, () -> { });
+	}
+
+	private RepairResult repair(RepairRequest request, RepairCheckpoint repairCheckpoint) {
+		RepairCheckpoint checkpoint = repairCheckpoint == null ? () -> { } : repairCheckpoint;
 		List<RepairCandidate> candidates = request == null || request.candidates() == null ? List.of() : request.candidates();
+		checkpoint.verifyOwnership();
 		LawIndexIntegrityRuntimeInfo initialRuntime = currentRuntime();
 		if (!matchesExpectedRuntime(request, initialRuntime)) {
 			return rejected(request, candidates, RepairState.REJECTED_RUNTIME_FENCE, "Runtime instance or index revision changed.");
@@ -44,10 +50,12 @@ public class LawMissingEmbeddingRepairService {
 		}
 		List<Long> chunkIds = candidates.stream().map(RepairCandidate::chunkId).toList();
 		Map<Long, LawSemanticChunkRow> chunksById = new LinkedHashMap<>();
+		checkpoint.verifyOwnership();
 		for (LawSemanticChunkRow chunk : lawChunkMapper.findSemanticChunksByIdsForIndexing(chunkIds)) {
 			chunksById.put(chunk.chunkId(), chunk);
 		}
 		Map<Long, LawIndexIntegrityIssue> issuesById = new LinkedHashMap<>();
+		checkpoint.verifyOwnership();
 		for (LawIndexIntegrityIssue issue : integrityService.auditByChunkIds("law", chunkIds).issues()) {
 			issuesById.put(issue.chunkId(), issue);
 		}
@@ -65,6 +73,7 @@ public class LawMissingEmbeddingRepairService {
 		if (!actualDocumentIds.equals(new LinkedHashSet<>(request.expectedDocumentIds())) || actualDocumentIds.size() > MAX_DOCUMENTS) {
 			return rejected(request, candidates, RepairState.REJECTED_DOCUMENT_WAVE, "The candidate document set did not match the bounded wave.");
 		}
+		checkpoint.verifyOwnership();
 		LawIndexIntegrityRuntimeInfo trustedRuntime = currentRuntime();
 		if (!matchesExpectedRuntime(request, trustedRuntime)) {
 			return rejected(request, candidates, RepairState.REJECTED_RUNTIME_FENCE, "Runtime instance or index revision changed during preflight.");
@@ -80,6 +89,7 @@ public class LawMissingEmbeddingRepairService {
 		for (int index = 0; index < candidates.size(); index++) {
 			RepairCandidate candidate = candidates.get(index);
 			LawSemanticChunkRow chunk = chunksById.get(candidate.chunkId());
+			checkpoint.verifyOwnership();
 			LawIndexIntegrityRuntimeInfo runtime = currentRuntime();
 			if (!sameRuntime(trustedRuntime, runtime)) {
 				applied.add(new RepairOutcome(candidate.chunkId(), chunk.documentId(), RepairState.REJECTED_RUNTIME_FENCE, "Runtime instance or index revision changed during repair."));
@@ -90,7 +100,8 @@ public class LawMissingEmbeddingRepairService {
 				return new RepairResult(true, false, runtime, List.copyOf(applied));
 			}
 			try {
-				indexService.indexExactChunks(List.of(chunk));
+				indexService.indexExactChunks(List.of(chunk), checkpoint::verifyOwnership);
+				checkpoint.verifyOwnership();
 				LawIndexIntegrityReport verified = integrityService.auditByChunkIds("law", List.of(candidate.chunkId()));
 				RepairState state = verified.scannedRows() == 1 && verified.issues().isEmpty()
 					? RepairState.INDEXED : RepairState.VERIFICATION_FAILED;
@@ -102,6 +113,7 @@ public class LawMissingEmbeddingRepairService {
 					}
 					return new RepairResult(true, false, currentRuntime(), List.copyOf(applied));
 				}
+				checkpoint.verifyOwnership();
 				LawIndexIntegrityRuntimeInfo runtimeAfterVerifiedWrite = currentRuntime();
 				if (!sameInstance(trustedRuntime.runtimeInstanceId(), runtimeAfterVerifiedWrite)) {
 					for (int remaining = index + 1; remaining < candidates.size(); remaining++) {
@@ -120,6 +132,7 @@ public class LawMissingEmbeddingRepairService {
 				return new RepairResult(true, false, currentRuntime(), List.copyOf(applied));
 			}
 		}
+		checkpoint.verifyOwnership();
 		LawIndexIntegrityRuntimeInfo runtimeAfter = currentRuntime();
 		return new RepairResult(true, sameRuntime(trustedRuntime, runtimeAfter), runtimeAfter, List.copyOf(applied));
 	}
@@ -141,12 +154,21 @@ public class LawMissingEmbeddingRepairService {
 
 	/** Executes the existing repair and post-write exact audit for one durable item only. */
 	RepairResult repairExact(RepairRequest request) {
+		return repairExact(request, () -> { });
+	}
+
+	RepairResult repairExact(RepairRequest request, RepairCheckpoint checkpoint) {
 		List<RepairCandidate> candidates = request == null || request.candidates() == null ? List.of() : request.candidates();
 		if (request == null || candidates.size() != 1 || request.expectedDocumentIds() == null
 			|| request.expectedDocumentIds().size() != 1) {
 			return rejected(request, candidates, RepairState.REJECTED_REQUEST, "Exact repair requires one chunk and one document.");
 		}
-		return repair(request);
+		return repair(request, checkpoint);
+	}
+
+	@FunctionalInterface
+	interface RepairCheckpoint {
+		void verifyOwnership();
 	}
 
 	/**

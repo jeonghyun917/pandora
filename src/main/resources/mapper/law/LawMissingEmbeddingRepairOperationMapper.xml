@@ -82,9 +82,9 @@
   <update id="claimReadyItem">
     UPDATE law_missing_embedding_repair_items i
     JOIN law_missing_embedding_repair_operations o ON o.operation_id = i.operation_id
-    SET i.state = 'PROCESSING', i.lease_owner = #{owner}, i.lease_expires_at = #{leaseExpiresAt},
+    SET i.state = 'PROCESSING', i.lease_owner = #{owner}, i.lease_expires_at = TIMESTAMPADD(SECOND, #{leaseSeconds}, CURRENT_TIMESTAMP(6)),
         i.updated_at = CURRENT_TIMESTAMP(6), o.status = 'RUNNING', o.lease_owner = #{owner},
-        o.lease_expires_at = #{leaseExpiresAt}, o.updated_at = CURRENT_TIMESTAMP(6)
+        o.lease_expires_at = TIMESTAMPADD(SECOND, #{leaseSeconds}, CURRENT_TIMESTAMP(6)), o.updated_at = CURRENT_TIMESTAMP(6)
 	WHERE i.operation_id = #{operationId} AND i.ordinal = #{ordinal}
 	      AND i.state = 'READY' AND o.status IN ('READY','RUNNING')
       AND (o.lease_owner IS NULL OR o.lease_expires_at &lt;= CURRENT_TIMESTAMP(6))
@@ -95,8 +95,8 @@
   <update id="claimExpiredItem">
     UPDATE law_missing_embedding_repair_items i
     JOIN law_missing_embedding_repair_operations o ON o.operation_id = i.operation_id
-    SET i.lease_owner = #{owner}, i.lease_expires_at = #{leaseExpiresAt}, i.updated_at = CURRENT_TIMESTAMP(6),
-        o.status = 'RUNNING', o.lease_owner = #{owner}, o.lease_expires_at = #{leaseExpiresAt}, o.updated_at = CURRENT_TIMESTAMP(6)
+    SET i.lease_owner = #{owner}, i.lease_expires_at = TIMESTAMPADD(SECOND, #{leaseSeconds}, CURRENT_TIMESTAMP(6)), i.updated_at = CURRENT_TIMESTAMP(6),
+        o.status = 'RUNNING', o.lease_owner = #{owner}, o.lease_expires_at = TIMESTAMPADD(SECOND, #{leaseSeconds}, CURRENT_TIMESTAMP(6)), o.updated_at = CURRENT_TIMESTAMP(6)
 	WHERE i.operation_id = #{operationId} AND i.ordinal = #{ordinal}
       AND i.state = 'PROCESSING' AND i.lease_expires_at &lt;= CURRENT_TIMESTAMP(6)
 	      AND o.status IN ('READY','RUNNING')
@@ -108,8 +108,8 @@
   <update id="renewItemLease">
     UPDATE law_missing_embedding_repair_items i
     JOIN law_missing_embedding_repair_operations o ON o.operation_id = i.operation_id
-    SET i.lease_expires_at = #{leaseExpiresAt}, i.updated_at = CURRENT_TIMESTAMP(6),
-        o.lease_expires_at = #{leaseExpiresAt}, o.updated_at = CURRENT_TIMESTAMP(6)
+    SET i.lease_expires_at = TIMESTAMPADD(SECOND, #{leaseSeconds}, CURRENT_TIMESTAMP(6)), i.updated_at = CURRENT_TIMESTAMP(6),
+        o.lease_expires_at = TIMESTAMPADD(SECOND, #{leaseSeconds}, CURRENT_TIMESTAMP(6)), o.updated_at = CURRENT_TIMESTAMP(6)
     WHERE i.operation_id = #{operationId} AND i.ordinal = #{ordinal}
       AND i.state = 'PROCESSING' AND i.lease_owner = #{owner}
       AND o.status = 'RUNNING' AND o.lease_owner = #{owner}
@@ -125,7 +125,9 @@
         o.lease_owner = NULL, o.lease_expires_at = NULL, o.updated_at = CURRENT_TIMESTAMP(6)
     WHERE i.operation_id = #{operationId} AND i.ordinal = #{ordinal}
 	      AND i.state = 'PROCESSING' AND i.lease_owner = #{owner}
+	      AND i.lease_expires_at &gt; CURRENT_TIMESTAMP(6)
 	      AND o.status = 'RUNNING' AND o.lease_owner = #{owner}
+	      AND o.lease_expires_at &gt; CURRENT_TIMESTAMP(6)
 	      AND o.runtime_instance_id = #{runtimeInstanceId}
       AND o.trusted_index_revision = #{trustedIndexRevision}
   </update>
@@ -138,7 +140,9 @@
         o.lease_owner = NULL, o.lease_expires_at = NULL, o.last_error = #{lastError}, o.updated_at = CURRENT_TIMESTAMP(6)
 	WHERE i.operation_id = #{operationId} AND i.ordinal = #{ordinal}
 	      AND i.state = 'PROCESSING' AND i.lease_owner = #{owner}
+	      AND i.lease_expires_at &gt; CURRENT_TIMESTAMP(6)
 	      AND o.status IN ('READY','RUNNING') AND o.lease_owner = #{owner}
+	      AND o.lease_expires_at &gt; CURRENT_TIMESTAMP(6)
   </update>
 
   <update id="markReadyItemsNotAttempted">

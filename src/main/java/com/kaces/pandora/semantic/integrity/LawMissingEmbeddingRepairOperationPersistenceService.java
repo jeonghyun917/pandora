@@ -1,6 +1,5 @@
 package com.kaces.pandora.semantic.integrity;
 
-import java.time.Instant;
 import java.util.List;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -31,19 +30,24 @@ public class LawMissingEmbeddingRepairOperationPersistenceService {
 	@Transactional
 	public boolean claimReadyItem(
 		String operationId, int ordinal, String owner, String runtimeInstanceId,
-		String trustedIndexRevision, Instant leaseExpiresAt
+		String trustedIndexRevision, int leaseSeconds
 	) {
 		return operationMapper.claimReadyItem(operationId, ordinal, owner, runtimeInstanceId,
-			trustedIndexRevision, leaseExpiresAt) > 0;
+			trustedIndexRevision, leaseSeconds) > 0;
 	}
 
 	@Transactional
 	public boolean claimExpiredItem(
 		String operationId, int ordinal, String owner, String runtimeInstanceId,
-		String trustedIndexRevision, Instant leaseExpiresAt
+		String trustedIndexRevision, int leaseSeconds
 	) {
 		return operationMapper.claimExpiredItem(operationId, ordinal, owner, runtimeInstanceId,
-			trustedIndexRevision, leaseExpiresAt) > 0;
+			trustedIndexRevision, leaseSeconds) > 0;
+	}
+
+	@Transactional
+	public boolean renewItemLease(String operationId, int ordinal, String owner, int leaseSeconds) {
+		return operationMapper.renewItemLease(operationId, ordinal, owner, leaseSeconds) > 0;
 	}
 
 	@Transactional

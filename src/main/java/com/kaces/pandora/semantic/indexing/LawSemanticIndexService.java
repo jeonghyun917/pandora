@@ -105,10 +105,15 @@ public class LawSemanticIndexService {
 	}
 
 	public LawSemanticIndexResult indexExactChunks(List<LawSemanticChunkRow> chunks) {
+		return indexExactChunks(chunks, () -> { });
+	}
+
+	/** Exact repair hook used to fence every remote or durable mutation phase. */
+	public LawSemanticIndexResult indexExactChunks(List<LawSemanticChunkRow> chunks, Runnable ownershipCheckpoint) {
 		List<LawSemanticChunkRow> safeChunks = chunks == null ? List.of() : List.copyOf(chunks);
 		String model = properties.openai().embeddingModel();
 		String vectorStore = properties.qdrant().collection();
-		return indexChunks(safeChunks, model, vectorStore, safeChunks.size());
+		return indexChunks(safeChunks, model, vectorStore, safeChunks.size(), ownershipCheckpoint);
 	}
 
 	private LawSemanticIndexResult indexCandidateChunks(
@@ -134,19 +139,34 @@ public class LawSemanticIndexService {
 		String vectorStore,
 		int requested
 	) {
+		return indexChunks(chunks, model, vectorStore, requested, () -> { });
+	}
+
+	private LawSemanticIndexResult indexChunks(
+		List<LawSemanticChunkRow> chunks,
+		String model,
+		String vectorStore,
+		int requested,
+		Runnable ownershipCheckpoint
+	) {
+		Runnable checkpoint = ownershipCheckpoint == null ? () -> { } : ownershipCheckpoint;
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+		checkpoint.run();
 		qdrantClient.ensureCollection();
 		int indexed = 0;
 		for (int start = 0; start < chunks.size(); start += EMBEDDING_BATCH_SIZE) {
 			int end = Math.min(chunks.size(), start + EMBEDDING_BATCH_SIZE);
 			List<LawSemanticChunkRow> batch = chunks.subList(start, end);
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+			checkpoint.run();
 			List<List<Double>> vectors = embeddingClient.embed(batch.stream().map(LawSemanticChunkRow::embeddingInput).toList());
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
+			checkpoint.run();
 			qdrantClient.upsert(batch, vectors);
 			for (LawSemanticChunkRow chunk : batch) {
 				// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-				markChunkIndexed(chunk, model, vectorStore);
+				checkpoint.run();
+				markChunkIndexed(chunk, model, vectorStore, checkpoint);
 			}
 			indexed += batch.size();
 		}
@@ -155,9 +175,16 @@ public class LawSemanticIndexService {
 	}
 
 	private void markChunkIndexed(LawSemanticChunkRow chunk, String model, String vectorStore) {
+		markChunkIndexed(chunk, model, vectorStore, () -> { });
+	}
+
+	private void markChunkIndexed(
+		LawSemanticChunkRow chunk, String model, String vectorStore, Runnable ownershipCheckpoint
+	) {
 		RuntimeException lastException = null;
 		for (int attempt = 1; attempt <= STATUS_UPDATE_ATTEMPTS; attempt++) {
 			try {
+				ownershipCheckpoint.run();
 				lawChunkMapper.upsertEmbeddingStatus(
 					chunk.chunkId(),
 					model,
@@ -167,6 +194,7 @@ public class LawSemanticIndexService {
 					"INDEXED",
 					null
 				);
+				ownershipCheckpoint.run();
 				lawChunkMapper.updateChunkIndexStatus(chunk.chunkId(), "INDEXED", null);
 				return;
 			} catch (RuntimeException exception) {

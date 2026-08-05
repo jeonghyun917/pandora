@@ -4,15 +4,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.kaces.pandora.lawdata.persistence.LawApiSchemaMaintenance;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.sql.DataSource;
 import org.apache.ibatis.builder.xml.XMLMapperBuilder;
 import org.apache.ibatis.io.Resources;
@@ -39,6 +43,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /** Explicitly gated; creates and drops its own UUID database, never the Pandora schema. */
@@ -176,14 +182,20 @@ class LawMissingEmbeddingRepairOperationMariaDbIntegrationTests {
 				.containsExactly(0, 1);
 			assertThat(mapper.markReadyItemsNotAttempted(operationId)).isZero();
 			String owner = UUID.randomUUID().toString();
-			Instant expiresAt = Instant.now().plusSeconds(30);
-			assertThat(mapper.claimReadyItem(operationId, 0, owner, runtimeId, "c".repeat(64), expiresAt)).isPositive();
-			assertThat(mapper.claimReadyItem(operationId, 0, UUID.randomUUID().toString(), runtimeId, "c".repeat(64), expiresAt)).isZero();
+			assertThat(mapper.claimReadyItem(operationId, 0, owner, runtimeId, "c".repeat(64), 30)).isPositive();
+			assertThat(mapper.claimReadyItem(operationId, 0, UUID.randomUUID().toString(), runtimeId, "c".repeat(64), 30)).isZero();
 			Integer offsetSeconds = jdbc.queryForObject("""
 				SELECT TIMESTAMPDIFF(SECOND, CURRENT_TIMESTAMP(6), lease_expires_at)
 				FROM law_missing_embedding_repair_items WHERE operation_id=? AND ordinal=0
 				""", Integer.class, operationId);
 			assertThat(offsetSeconds).isBetween(20, 40);
+			Long expiryDeltaMicros = jdbc.queryForObject("""
+				SELECT TIMESTAMPDIFF(MICROSECOND, o.lease_expires_at, i.lease_expires_at)
+				FROM law_missing_embedding_repair_operations o
+				JOIN law_missing_embedding_repair_items i ON i.operation_id=o.operation_id
+				WHERE o.operation_id=? AND i.ordinal=0
+				""", Long.class, operationId);
+			assertThat(expiryDeltaMicros).isZero();
 		}
 	}
 
@@ -195,11 +207,134 @@ class LawMissingEmbeddingRepairOperationMariaDbIntegrationTests {
 			List.of(item(operationId, 0, 11)));
 		try (SqlSession session = factory.openSession(true)) {
 			LawMissingEmbeddingRepairOperationMapper mapper = session.getMapper(LawMissingEmbeddingRepairOperationMapper.class);
-			assertThat(mapper.claimReadyItem(operationId, 0, UUID.randomUUID().toString(), runtimeId, "c".repeat(64), Instant.now().plusSeconds(30))).isPositive();
+			assertThat(mapper.claimReadyItem(operationId, 0, UUID.randomUUID().toString(), runtimeId, "c".repeat(64), 30)).isPositive();
 			jdbc.update("UPDATE law_missing_embedding_repair_operations SET lease_expires_at=CURRENT_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE operation_id=?", operationId);
 			jdbc.update("UPDATE law_missing_embedding_repair_items SET lease_expires_at=CURRENT_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE operation_id=? AND ordinal=0", operationId);
-			assertThat(mapper.claimExpiredItem(operationId, 0, UUID.randomUUID().toString(), runtimeId, "c".repeat(64), Instant.now().plusSeconds(30))).isPositive();
+			assertThat(mapper.claimExpiredItem(operationId, 0, UUID.randomUUID().toString(), runtimeId, "c".repeat(64), 30)).isPositive();
 		}
+	}
+
+	@Test
+	void activeHeartbeatKeepsABlockedWorkerExclusivePastTheOriginalLease() throws Exception {
+		String operationId = UUID.randomUUID().toString();
+		String runtimeId = UUID.randomUUID().toString();
+		insertOperationAndItems(operation(operationId, "a".repeat(64), "{}", "b".repeat(64), 1, runtimeId),
+			List.of(item(operationId, 0, 11)));
+		SqlSessionTemplate sessions = new SqlSessionTemplate(springMapperFactory(dataSource));
+		LawMissingEmbeddingRepairOperationMapper delegate = sessions.getMapper(LawMissingEmbeddingRepairOperationMapper.class);
+		CountDownLatch renewed = new CountDownLatch(1);
+		LawMissingEmbeddingRepairOperationMapper observingMapper = (LawMissingEmbeddingRepairOperationMapper) Proxy.newProxyInstance(
+			getClass().getClassLoader(), new Class<?>[] { LawMissingEmbeddingRepairOperationMapper.class }, (proxy, method, args) -> {
+				Object result = invoke(delegate, method, args);
+				if ("renewItemLease".equals(method.getName()) && result instanceof Integer count && count > 0) {
+					renewed.countDown();
+				}
+				return result;
+			}
+		);
+		LawMissingEmbeddingRepairService legacy = mock(LawMissingEmbeddingRepairService.class);
+		when(legacy.currentRuntimeSnapshot()).thenReturn(new LawIndexIntegrityRuntimeInfo(runtimeId, "c".repeat(64)));
+		CountDownLatch repairEntered = new CountDownLatch(1);
+		CountDownLatch releaseRepair = new CountDownLatch(1);
+		AtomicInteger repairCalls = new AtomicInteger();
+		when(legacy.repairExact(any(), any())).thenAnswer(invocation -> {
+			repairCalls.incrementAndGet();
+			repairEntered.countDown();
+			assertThat(releaseRepair.await(10, TimeUnit.SECONDS)).isTrue();
+			((LawMissingEmbeddingRepairService.RepairCheckpoint) invocation.getArgument(1)).verifyOwnership();
+			return new LawMissingEmbeddingRepairService.RepairResult(true, true,
+				new LawIndexIntegrityRuntimeInfo(runtimeId, "e".repeat(64)), List.of(
+				new LawMissingEmbeddingRepairService.RepairOutcome(11L, 1L,
+					LawMissingEmbeddingRepairService.RepairState.INDEXED, "indexed")));
+		});
+
+		try (AnnotationConfigApplicationContext context = productionContext(
+			observingMapper, legacy, new LawMissingEmbeddingRepairOperationService.LeasePolicy(2, Duration.ofMillis(50)))) {
+			LawMissingEmbeddingRepairOperationService service = context.getBean(LawMissingEmbeddingRepairOperationService.class);
+			var executor = Executors.newFixedThreadPool(2);
+			try {
+				var first = executor.submit(() -> service.step(UUID.fromString(operationId)));
+				assertThat(repairEntered.await(5, TimeUnit.SECONDS)).isTrue();
+				assertThat(renewed.await(5, TimeUnit.SECONDS)).isTrue();
+				Thread.sleep(2_100L);
+				assertThat(service.step(UUID.fromString(operationId))).isPresent();
+				assertThat(repairCalls).hasValue(1);
+				releaseRepair.countDown();
+				assertThat(first.get(10, TimeUnit.SECONDS)).isPresent();
+			} finally {
+				releaseRepair.countDown();
+				executor.shutdownNow();
+			}
+		}
+
+		assertThat(repairCalls).hasValue(1);
+		assertThat(jdbc.queryForObject(
+			"SELECT status FROM law_missing_embedding_repair_operations WHERE operation_id=?", String.class, operationId))
+			.isEqualTo("INDEXING_COMPLETE");
+	}
+
+	@Test
+	void expiredRecoveryDistinguishesCleanMissingAndAmbiguousWithoutDuplicateRepair() throws Exception {
+		String runtimeId = UUID.randomUUID().toString();
+		String cleanId = UUID.randomUUID().toString();
+		String missingId = UUID.randomUUID().toString();
+		String ambiguousId = UUID.randomUUID().toString();
+		insertOperationAndItems(operation(cleanId, "1".repeat(64), "clean", "a".repeat(64), 1, runtimeId),
+			List.of(item(cleanId, 0, 21)));
+		insertOperationAndItems(operation(missingId, "2".repeat(64), "missing", "b".repeat(64), 1, runtimeId),
+			List.of(item(missingId, 0, 22)));
+		insertOperationAndItems(operation(ambiguousId, "3".repeat(64), "ambiguous", "e".repeat(64), 2, runtimeId),
+			List.of(item(ambiguousId, 0, 23), item(ambiguousId, 1, 24)));
+		SqlSessionTemplate sessions = new SqlSessionTemplate(springMapperFactory(dataSource));
+		LawMissingEmbeddingRepairOperationMapper mapper = sessions.getMapper(LawMissingEmbeddingRepairOperationMapper.class);
+		for (String operationId : List.of(cleanId, missingId, ambiguousId)) {
+			assertThat(mapper.claimReadyItem(operationId, 0, UUID.randomUUID().toString(), runtimeId, "c".repeat(64), 10)).isPositive();
+			jdbc.update("UPDATE law_missing_embedding_repair_operations SET lease_expires_at=CURRENT_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE operation_id=?", operationId);
+			jdbc.update("UPDATE law_missing_embedding_repair_items SET lease_expires_at=CURRENT_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE operation_id=? AND ordinal=0", operationId);
+		}
+		LawMissingEmbeddingRepairService legacy = mock(LawMissingEmbeddingRepairService.class);
+		when(legacy.inspectExactCandidate(any(), any())).thenAnswer(invocation -> {
+			LawMissingEmbeddingRepairService.RepairCandidate candidate = invocation.getArgument(0);
+			return switch ((int) candidate.chunkId()) {
+				case 21 -> new LawMissingEmbeddingRepairService.ExactInspection(
+					new LawIndexIntegrityRuntimeInfo(runtimeId, "f".repeat(64)),
+					LawMissingEmbeddingRepairService.RepairState.INDEXED, 1L);
+				case 22 -> new LawMissingEmbeddingRepairService.ExactInspection(
+					new LawIndexIntegrityRuntimeInfo(runtimeId, "c".repeat(64)),
+					LawMissingEmbeddingRepairService.RepairState.READY, 1L);
+				default -> new LawMissingEmbeddingRepairService.ExactInspection(
+					new LawIndexIntegrityRuntimeInfo(runtimeId, "c".repeat(64)),
+					LawMissingEmbeddingRepairService.RepairState.REJECTED_CLASSIFICATION_DRIFT, 1L);
+			};
+		});
+		when(legacy.repairExact(any(), any())).thenAnswer(invocation -> {
+			LawMissingEmbeddingRepairService.RepairRequest request = invocation.getArgument(0);
+			((LawMissingEmbeddingRepairService.RepairCheckpoint) invocation.getArgument(1)).verifyOwnership();
+			assertThat(request.candidates()).extracting(LawMissingEmbeddingRepairService.RepairCandidate::chunkId)
+				.containsExactly(22L);
+			return new LawMissingEmbeddingRepairService.RepairResult(true, true,
+				new LawIndexIntegrityRuntimeInfo(runtimeId, "9".repeat(64)), List.of(
+				new LawMissingEmbeddingRepairService.RepairOutcome(22L, 1L,
+					LawMissingEmbeddingRepairService.RepairState.INDEXED, "indexed")));
+		});
+
+		try (AnnotationConfigApplicationContext context = productionContext(mapper, legacy)) {
+			LawMissingEmbeddingRepairOperationService service = context.getBean(LawMissingEmbeddingRepairOperationService.class);
+			assertThat(service.step(UUID.fromString(cleanId))).isPresent();
+			assertThat(service.step(UUID.fromString(missingId))).isPresent();
+			assertThat(service.step(UUID.fromString(ambiguousId))).isPresent();
+		}
+
+		verify(legacy, times(1)).repairExact(any(), any());
+		assertThat(jdbc.queryForObject("SELECT status FROM law_missing_embedding_repair_operations WHERE operation_id=?", String.class, cleanId))
+			.isEqualTo("INDEXING_COMPLETE");
+		assertThat(jdbc.queryForObject("SELECT status FROM law_missing_embedding_repair_operations WHERE operation_id=?", String.class, missingId))
+			.isEqualTo("INDEXING_COMPLETE");
+		assertThat(jdbc.queryForObject("SELECT status FROM law_missing_embedding_repair_operations WHERE operation_id=?", String.class, ambiguousId))
+			.isEqualTo("FAILED");
+		assertThat(jdbc.queryForList(
+			"SELECT state FROM law_missing_embedding_repair_items WHERE operation_id=? ORDER BY ordinal", String.class, ambiguousId))
+			.containsExactly("FAILED", "NOT_ATTEMPTED");
 	}
 
 	@Test
@@ -213,7 +348,7 @@ class LawMissingEmbeddingRepairOperationMariaDbIntegrationTests {
 		LawMissingEmbeddingRepairService legacy = mock(LawMissingEmbeddingRepairService.class);
 		when(legacy.currentRuntimeSnapshot()).thenReturn(new LawIndexIntegrityRuntimeInfo(runtimeId, "c".repeat(64)));
 		AtomicBoolean remoteSawTransaction = new AtomicBoolean(true);
-		when(legacy.repairExact(any())).thenAnswer(invocation -> {
+		when(legacy.repairExact(any(), any())).thenAnswer(invocation -> {
 			remoteSawTransaction.set(TransactionSynchronizationManager.isActualTransactionActive());
 			return new LawMissingEmbeddingRepairService.RepairResult(true, true,
 				new LawIndexIntegrityRuntimeInfo(runtimeId, "e".repeat(64)), List.of(
@@ -256,7 +391,7 @@ class LawMissingEmbeddingRepairOperationMariaDbIntegrationTests {
 		LawMissingEmbeddingRepairOperationMapper mapper = sessions.getMapper(LawMissingEmbeddingRepairOperationMapper.class);
 		LawMissingEmbeddingRepairService legacy = mock(LawMissingEmbeddingRepairService.class);
 		when(legacy.currentRuntimeSnapshot()).thenReturn(new LawIndexIntegrityRuntimeInfo(runtimeId, "c".repeat(64)));
-		when(legacy.repairExact(any())).thenThrow(new IllegalStateException("secret credential at private host"));
+		when(legacy.repairExact(any(), any())).thenThrow(new IllegalStateException("secret credential at private host"));
 
 		try (AnnotationConfigApplicationContext context = productionContext(mapper, legacy)) {
 			assertThat(context.getBean(LawMissingEmbeddingRepairOperationService.class).step(UUID.fromString(operationId))).isPresent();
@@ -508,6 +643,14 @@ class LawMissingEmbeddingRepairOperationMariaDbIntegrationTests {
 	private AnnotationConfigApplicationContext productionContext(
 		LawMissingEmbeddingRepairOperationMapper mapper, LawMissingEmbeddingRepairService legacy
 	) {
+		return productionContext(mapper, legacy, null);
+	}
+
+	private AnnotationConfigApplicationContext productionContext(
+		LawMissingEmbeddingRepairOperationMapper mapper,
+		LawMissingEmbeddingRepairService legacy,
+		LawMissingEmbeddingRepairOperationService.LeasePolicy leasePolicy
+	) {
 		AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
 		context.register(ProductionTransactionConfiguration.class);
 		context.registerBean(DataSource.class, () -> dataSource);
@@ -515,7 +658,15 @@ class LawMissingEmbeddingRepairOperationMariaDbIntegrationTests {
 		context.registerBean(LawMissingEmbeddingRepairOperationMapper.class, () -> mapper);
 		context.registerBean(LawMissingEmbeddingRepairService.class, () -> legacy);
 		context.registerBean(LawMissingEmbeddingRepairOperationPersistenceService.class);
-		context.registerBean(LawMissingEmbeddingRepairOperationService.class);
+		if (leasePolicy == null) {
+			context.registerBean(LawMissingEmbeddingRepairOperationService.class);
+		} else {
+			context.registerBean(LawMissingEmbeddingRepairOperationService.class, () ->
+				new LawMissingEmbeddingRepairOperationService(
+					mapper, legacy, context.getBean(LawMissingEmbeddingRepairOperationPersistenceService.class),
+					Clock.systemUTC(), leasePolicy
+				));
+		}
 		context.refresh();
 		return context;
 	}
