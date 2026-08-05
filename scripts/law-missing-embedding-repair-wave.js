@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const crypto = require("node:crypto");
 const { execFileSync } = require("node:child_process");
 
 const workspace = path.resolve(__dirname, "..");
@@ -52,7 +53,7 @@ function planRepairWave(audit, { maxDocuments = 50, maxCandidates = 1000, apply 
       if (documentIds.length === maxDocuments) break;
       documentIds.push(issue.documentId);
     }
-    candidates.push({ chunkId: issue.chunkId, expectedChunkContentHash: issue.chunkContentHash });
+    candidates.push({ chunkId: issue.chunkId, expectedChunkContentHash: issue.chunkContentHash, expectedDocumentId: issue.documentId });
   }
   if (!candidates.length) {
     throw new Error("Repair planning selected no explicit candidates.");
@@ -112,6 +113,9 @@ function assertExactIndexedOutcomes(outcomes, expectedCandidates) {
 const OPERATION_ENDPOINT = "http://127.0.0.1:8080/api/admin/law-index-integrity/missing-embedding-repair-operations";
 const LIVE_ITEM_STATES = new Set(["READY", "PROCESSING", "INDEXED", "FAILED", "NOT_ATTEMPTED"]);
 const LIVE_OPERATION_STATES = new Set(["READY", "RUNNING", "INDEXING_COMPLETE", "FAILED"]);
+const DEFAULT_STEP_TIMEOUT_MS = 660000; // 600s lease plus a 60s transport margin.
+const DEFAULT_PROCESSING_BUDGET_MS = 1100000; // 380.2s max backend step + 600s lease + 119.8s safety margin.
+const DEFAULT_PROCESSING_POLL_MS = 1000;
 
 /**
  * Drives only one outstanding server mutation at a time. A post-step transport loss is always
@@ -122,47 +126,62 @@ async function runDurableRepairOperation(request, options = {}) {
   const fetchImpl = options.fetch || global.fetch;
   const sleep = options.sleep || ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
   const timeoutSignal = options.timeoutSignal || ((milliseconds) => AbortSignal.timeout(milliseconds));
-  const timeoutMs = positiveBoundedInteger(options.timeoutMs, 30000, "timeoutMs", 100, 600000);
-  const maxPolls = positiveBoundedInteger(options.maxPolls, 120, "maxPolls", 1, 1000);
+  const now = options.now || Date.now;
+  const timeoutMs = positiveBoundedInteger(options.timeoutMs, DEFAULT_STEP_TIMEOUT_MS, "timeoutMs", 100, 900000);
+  const processingBudgetMs = positiveBoundedInteger(options.processingBudgetMs, DEFAULT_PROCESSING_BUDGET_MS, "processingBudgetMs", 1000, 3600000);
+  const processingPollMs = positiveBoundedInteger(options.processingPollMs, DEFAULT_PROCESSING_POLL_MS, "processingPollMs", 1, 60000);
+  const maxPollsPerItem = positiveBoundedInteger(options.maxPollsPerItem ?? options.maxPolls,
+    Math.ceil(processingBudgetMs / processingPollMs), "maxPollsPerItem", 1, 10000);
   if (typeof fetchImpl !== "function") throw new Error("Durable repair requires fetch.");
   const transportAttempts = [];
-  let view = await registerDurableOperation(request, { fetchImpl, timeoutMs, timeoutSignal, transportAttempts });
-  let polls = 0;
-  const maxTransitions = Array.isArray(request?.candidates) ? request.candidates.length * 4 + maxPolls : maxPolls;
-
-  for (let transitions = 0; transitions < maxTransitions; transitions += 1) {
-    assertDurableOperationView(view, request);
-    const status = view.operation.progress.status;
-    if (status === "INDEXING_COMPLETE") {
-      const result = durableApplyResult(view, transportAttempts);
-      assertSuccessfulApply(result, request.candidates);
-      return result;
+  const identity = durableRequestIdentity(request);
+  const context = { operationId: null, transportAttempts, lastView: null };
+  const waits = new Map();
+  let view;
+  try {
+    view = observeDurableView(await registerDurableOperation(request, { fetchImpl, timeoutMs, timeoutSignal, transportAttempts }), request, identity, context);
+    const maxTransitions = request.candidates.length * (maxPollsPerItem + 4);
+    for (let transitions = 0; transitions < maxTransitions; transitions += 1) {
+      const status = view.operation.progress.status;
+      if (status === "INDEXING_COMPLETE") {
+        const result = durableApplyResult(view, transportAttempts);
+        assertSuccessfulApply(result, request.candidates);
+        return result;
+      }
+      if (status === "FAILED") throw new Error("Durable repair operation failed.");
+      const processing = processingItem(view);
+      if (processing) {
+        const currentTime = safeNow(now);
+        const leaseExpiry = parseLeaseExpiry(processing.leaseExpiresAt);
+        if (leaseExpiry > currentTime) {
+          const wait = waits.get(processing.ordinal) || { startedAt: currentTime, polls: 0 };
+          if (currentTime - wait.startedAt >= processingBudgetMs || wait.polls >= maxPollsPerItem) {
+            throw new Error("Durable repair operation exceeded its per-item healthy processing budget.");
+          }
+          waits.set(processing.ordinal, { ...wait, polls: wait.polls + 1 });
+          await sleep(Math.min(processingPollMs, leaseExpiry - currentTime));
+          view = observeDurableView(await getDurableOperation(context.operationId, { fetchImpl, timeoutMs, timeoutSignal, transportAttempts }), request, identity, context);
+          continue;
+        }
+      }
+      try {
+        view = observeDurableView(await postDurableStep(context.operationId, { fetchImpl, timeoutMs, timeoutSignal, transportAttempts }), request, identity, context);
+      } catch (error) {
+        if (!(error instanceof TransportError)) throw error;
+        view = observeDurableView(await getDurableOperation(context.operationId, { fetchImpl, timeoutMs, timeoutSignal, transportAttempts }), request, identity, context);
+      }
     }
-    if (status === "FAILED") {
-      throw new Error("Durable repair operation failed.");
-    }
-    if (view.items.some((item) => item.state === "PROCESSING")) {
-      if (polls >= maxPolls) throw new Error("Durable repair operation remained PROCESSING beyond the poll limit.");
-      polls += 1;
-      await sleep(Math.min(1000, timeoutMs));
-      view = await getDurableOperation(view.operation.request.operationId, { fetchImpl, timeoutMs, timeoutSignal, transportAttempts });
-      continue;
-    }
-    try {
-      view = await postDurableStep(view.operation.request.operationId, { fetchImpl, timeoutMs, timeoutSignal, transportAttempts });
-    } catch (error) {
-      if (!(error instanceof TransportError)) throw error;
-      view = await getDurableOperation(view.operation.request.operationId, { fetchImpl, timeoutMs, timeoutSignal, transportAttempts });
-    }
+    throw new Error("Durable repair operation exceeded its bounded transition limit.");
+  } catch (error) {
+    throw durableOperationError(error, context);
   }
-  throw new Error("Durable repair operation exceeded its bounded transition limit.");
 }
 
 async function registerDurableOperation(request, { fetchImpl, timeoutMs, timeoutSignal, transportAttempts }) {
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
       return await requestOperation("register", OPERATION_ENDPOINT, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...request, apply: true }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(operationRegistrationPayload(request)),
       }, { fetchImpl, timeoutMs, timeoutSignal, transportAttempts });
     } catch (error) {
       if (!(error instanceof TransportError) || attempt === 2) throw error;
@@ -213,23 +232,111 @@ class TransportError extends Error {
   }
 }
 
-function assertDurableOperationView(view, request) {
+class DurableOperationError extends Error {
+  constructor(message, evidence, cause = null) {
+    super(message);
+    this.name = "DurableOperationError";
+    this.evidence = evidence;
+    this.cause = cause;
+  }
+}
+
+function durableOperationError(error, context) {
+  if (error instanceof DurableOperationError) return error;
+  return new DurableOperationError(error?.message || String(error), durableEvidence(context, error), error);
+}
+
+function durableEvidence(context, error = null) {
+  return {
+    operationId: context?.operationId || context?.lastView?.operation?.request?.operationId || null,
+    transportAttempts: [...(context?.transportAttempts || [])],
+    lastView: context?.lastView || null,
+    reason: error?.message || null,
+  };
+}
+
+function observeDurableView(view, request, identity, context) {
+  context.lastView = view;
+  context.operationId = view?.operation?.request?.operationId || context.operationId;
+  assertDurableOperationView(view, request, identity);
+  return view;
+}
+
+function assertDurableOperationView(view, request, identity = durableRequestIdentity(request)) {
   const operation = view?.operation;
   const progress = operation?.progress;
   const operationRequest = operation?.request;
   if (!operationRequest || !progress || !LIVE_OPERATION_STATES.has(progress.status) || !Array.isArray(view?.items)
-    || !nonBlank(operationRequest.operationId) || operationRequest.runtimeInstanceId !== request?.expectedRuntimeInstanceId
+    || !nonBlank(operationRequest.operationId) || operationRequest.target !== "law"
+    || operationRequest.runtimeInstanceId !== request?.expectedRuntimeInstanceId
+    || operationRequest.candidateCount !== request.candidates.length || operationRequest.documentCount !== request.expectedDocumentIds.length
+    || operationRequest.requestHash !== identity.hash || operationRequest.idempotencyKey !== identity.hash
+    || operationRequest.normalizedRequest !== identity.normalized
     || view.items.some((item) => !Number.isSafeInteger(item?.chunkId) || !LIVE_ITEM_STATES.has(item?.state))) {
     throw new Error("Durable repair operation returned an unknown or malformed state.");
   }
   if (progress.status !== "FAILED" && view.items.some((item) => item.state === "FAILED" || item.state === "NOT_ATTEMPTED")) {
     throw new Error("Durable repair operation returned an item failure before a terminal operation state.");
   }
-  const expectedIds = new Set((request?.candidates || []).map((candidate) => candidate?.chunkId));
-  const actualIds = new Set(view.items.map((item) => item.chunkId));
-  if (expectedIds.size !== actualIds.size || [...expectedIds].some((chunkId) => !actualIds.has(chunkId))) {
-    throw new Error("Durable repair operation no longer matches the exact planned candidate set.");
+  if (view.items.length !== request.candidates.length || view.items.some((item, ordinal) => {
+    const candidate = request.candidates[ordinal];
+    return item.ordinal !== ordinal || item.chunkId !== candidate.chunkId
+      || item.documentId !== candidate.expectedDocumentId
+      || String(item.expectedContentHash || "").toLowerCase() !== candidate.expectedChunkContentHash.toLowerCase();
+  })) {
+    throw new Error("Durable repair operation no longer matches the immutable planned request identity.");
   }
+}
+
+function processingItem(view) {
+  const processing = view.items.filter((item) => item.state === "PROCESSING");
+  if (!processing.length) return null;
+  if (processing.length !== 1) throw new Error("Durable repair operation reported more than one PROCESSING item.");
+  parseLeaseExpiry(processing[0].leaseExpiresAt);
+  return processing[0];
+}
+
+function parseLeaseExpiry(value) {
+  if (!nonBlank(value) || !/^\d{4}-\d{2}-\d{2}T/.test(value)) {
+    throw new Error("Durable repair operation reported an invalid PROCESSING lease expiry.");
+  }
+  const parsed = Date.parse(value);
+  if (!Number.isSafeInteger(parsed)) throw new Error("Durable repair operation reported an invalid PROCESSING lease expiry.");
+  return parsed;
+}
+
+function safeNow(now) {
+  const value = now();
+  if (!Number.isSafeInteger(value)) throw new Error("Durable repair clock returned an invalid time.");
+  return value;
+}
+
+function operationRegistrationPayload(request) {
+  return {
+    target: request.target,
+    expectedRuntimeInstanceId: request.expectedRuntimeInstanceId,
+    expectedIndexRevision: request.expectedIndexRevision,
+    apply: true,
+    expectedDocumentIds: request.expectedDocumentIds,
+    candidates: request.candidates.map((candidate) => ({
+      chunkId: candidate.chunkId,
+      expectedChunkContentHash: candidate.expectedChunkContentHash,
+    })),
+  };
+}
+
+function durableRequestIdentity(request) {
+  if (!request || request.target !== "law" || !Array.isArray(request.candidates) || !Array.isArray(request.expectedDocumentIds)
+    || request.candidates.some((candidate) => !Number.isSafeInteger(candidate?.expectedDocumentId))) {
+    throw new Error("Durable repair requires immutable candidate document identity.");
+  }
+  let normalized = `target=law\nruntimeInstanceId=${String(request.expectedRuntimeInstanceId).toLowerCase()}\n`;
+  normalized += `indexRevision=${String(request.expectedIndexRevision).toLowerCase()}\napply=true\n`;
+  request.expectedDocumentIds.forEach((documentId, index) => { normalized += `expectedDocumentId[${index}]=${documentId}\n`; });
+  request.candidates.forEach((candidate, index) => {
+    normalized += `candidate[${index}]=${candidate.chunkId}:${String(candidate.expectedChunkContentHash).toLowerCase()}\n`;
+  });
+  return { normalized, hash: crypto.createHash("sha256").update(normalized, "utf8").digest("hex") };
 }
 
 function durableApplyResult(view, transportAttempts) {
@@ -350,6 +457,38 @@ async function runPostWaveAudits({ beforeAudit, result, runIntegrityAudit, runPa
   return assertPostWaveInvariants({ beforeAudit, result, integrityAudit, parentChildAudit, shortChunkAudit, runtimeInfo });
 }
 
+async function runDurableRepairWithPostWaveAudits({
+  request, beforeAudit, runner = runDurableRepairOperation, runIntegrityAudit, runParentChildAudit, runShortChunkAudit, loadRuntimeInfo, runnerOptions,
+}) {
+  let result;
+  try {
+    result = await runner(request, runnerOptions);
+  } catch (error) {
+    throw durableOperationError(error, error?.evidence || {});
+  }
+  try {
+    await runPostWaveAudits({ beforeAudit, result, runIntegrityAudit, runParentChildAudit, runShortChunkAudit, loadRuntimeInfo });
+    return result;
+  } catch (error) {
+    const context = result ? {
+      operationId: result.operationId,
+      transportAttempts: result.transportAttempts,
+      lastView: result.operation ? { operation: result.operation, items: result.items } : null,
+    } : error?.evidence || {};
+    throw durableOperationError(new Error(`Durable repair post-wave verification failed: ${error.message || error}`), context);
+  }
+}
+
+function durableFailureArtifact(error) {
+  const durable = error instanceof DurableOperationError ? error : durableOperationError(error, {});
+  return {
+    kind: "DURABLE_REPAIR_FAILURE",
+    qualityResult: false,
+    message: durable.message,
+    evidence: durable.evidence,
+  };
+}
+
 function integer(value) {
   const parsed = typeof value === "number" ? value
     : typeof value === "string" && /^\d+$/.test(value.trim()) ? Number(value) : NaN;
@@ -409,32 +548,35 @@ async function main() {
     apply: args.apply === "true",
   });
   if (request.apply) {
-    const result = await runDurableRepairOperation(request);
-		assertSuccessfulApply(result, request.candidates);
-		await runPostWaveAudits({
-			beforeAudit: audit,
-			result,
-			runIntegrityAudit: async () => {
-				runScript("scripts/law-index-integrity-audit.js", ["--target=law", "--limit=10000"]);
-				return readJson(integrityAuditPath);
-			},
-			runParentChildAudit: async () => {
-				runScript("scripts/law-parent-child-chunk-audit.js");
-				return readJson(parentChildAuditPath);
-			},
-			runShortChunkAudit: async () => {
-				runScript("scripts/rag-short-chunk-audit.js");
-				return readJson(shortChunkAuditPath);
-			},
-			loadRuntimeInfo,
-		});
-    process.stdout.write(`${JSON.stringify(result)}\n`);
-    return;
+    try {
+      const result = await runDurableRepairWithPostWaveAudits({
+        request,
+        beforeAudit: audit,
+        runIntegrityAudit: async () => {
+          runScript("scripts/law-index-integrity-audit.js", ["--target=law", "--limit=10000"]);
+          return readJson(integrityAuditPath);
+        },
+        runParentChildAudit: async () => {
+          runScript("scripts/law-parent-child-chunk-audit.js");
+          return readJson(parentChildAuditPath);
+        },
+        runShortChunkAudit: async () => {
+          runScript("scripts/rag-short-chunk-audit.js");
+          return readJson(shortChunkAuditPath);
+        },
+        loadRuntimeInfo,
+      });
+      process.stdout.write(`${JSON.stringify(result)}\n`);
+      return;
+    } catch (error) {
+      process.stdout.write(`${JSON.stringify(durableFailureArtifact(error))}\n`);
+      throw error;
+    }
   }
   const response = await fetch("http://127.0.0.1:8080/api/admin/law-index-integrity/missing-embedding-repair", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
+    body: JSON.stringify({ ...operationRegistrationPayload(request), apply: false }),
     signal: AbortSignal.timeout(600000),
   });
   const body = await response.text();
@@ -460,4 +602,7 @@ module.exports = {
   registerDurableOperation,
   getDurableOperation,
   postDurableStep,
+  runDurableRepairWithPostWaveAudits,
+  DurableOperationError,
+  durableFailureArtifact,
 };

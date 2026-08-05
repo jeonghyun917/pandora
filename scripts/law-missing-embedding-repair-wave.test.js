@@ -1,11 +1,14 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const crypto = require("node:crypto");
 const {
   planRepairWave,
   assertSuccessfulApply,
   assertPostWaveInvariants,
   runPostWaveAudits,
   runDurableRepairOperation,
+  runDurableRepairWithPostWaveAudits,
+  DurableOperationError,
 } = require("./law-missing-embedding-repair-wave");
 
 test("planner binds a bounded document wave to the full audit runtime fence", () => {
@@ -21,8 +24,8 @@ test("planner binds a bounded document wave to the full audit runtime fence", ()
     expectedIndexRevision: "revision-a",
     expectedDocumentIds: [11],
     candidates: [
-      { chunkId: 101, expectedChunkContentHash: "a".repeat(64) },
-      { chunkId: 102, expectedChunkContentHash: "a".repeat(64) },
+      { chunkId: 101, expectedChunkContentHash: "a".repeat(64), expectedDocumentId: 11 },
+      { chunkId: 102, expectedChunkContentHash: "a".repeat(64), expectedDocumentId: 11 },
     ],
     apply: false,
   });
@@ -171,7 +174,7 @@ test("durable runner repeats only identical registration after a lost register r
 
 test("durable runner polls a live processing item without issuing a second step", async () => {
   const calls = [];
-  const processing = operationView("RUNNING", [itemView(101, "PROCESSING")]);
+  const processing = operationView("RUNNING", [itemView(101, "PROCESSING", "2099-01-01T00:00:00.000Z")]);
   const complete = operationView("INDEXING_COMPLETE", [itemView(101, "INDEXED")]);
   const result = await runDurableRepairOperation(durableRequest([{ chunkId: 101 }]), {
     fetch: async (url, options = {}) => {
@@ -231,6 +234,119 @@ test("successful durable apply requires exact planned IDs and indexing completio
   assert.doesNotThrow(() => assertSuccessfulApply(complete, [{ chunkId: 101 }, { chunkId: 102 }]));
   assert.throws(() => assertSuccessfulApply(operationView("RUNNING", [itemView(101, "INDEXED"), itemView(102, "INDEXED")]), [{ chunkId: 101 }, { chunkId: 102 }]), /incomplete/);
   assert.throws(() => assertSuccessfulApply(operationView("INDEXING_COMPLETE", [itemView(101, "INDEXED"), itemView(103, "INDEXED")]), [{ chunkId: 101 }, { chunkId: 102 }]), /every requested/);
+});
+
+test("durable runner posts one reconciliation step after a processing lease expires", async () => {
+  const request = durableRequest([{ chunkId: 101, expectedDocumentId: 11 }]);
+  const calls = [];
+  const processing = strictOperationView(request, "RUNNING", [strictItem(0, 101, 11, "PROCESSING", "2026-08-05T00:00:05.000Z")]);
+  const recovered = strictOperationView(request, "INDEXING_COMPLETE", [strictItem(0, 101, 11, "INDEXED")]);
+  let now = Date.parse("2026-08-05T00:00:00.000Z");
+  const result = await runDurableRepairOperation(request, {
+    fetch: async (url, options = {}) => {
+      calls.push(`${options.method || "GET"} ${url}`);
+      if (url.endsWith("operations")) return jsonResponse(202, processing);
+      if (!options.method) return jsonResponse(200, processing);
+      return jsonResponse(200, recovered);
+    },
+    now: () => now,
+    sleep: async () => { now = Date.parse("2026-08-05T00:00:06.000Z"); },
+    timeoutMs: 100,
+  });
+
+  assert.equal(result.operation.progress.status, "INDEXING_COMPLETE");
+  assert.deepEqual(calls, [
+    "POST http://127.0.0.1:8080/api/admin/law-index-integrity/missing-embedding-repair-operations",
+    "GET http://127.0.0.1:8080/api/admin/law-index-integrity/missing-embedding-repair-operations/op-1",
+    "POST http://127.0.0.1:8080/api/admin/law-index-integrity/missing-embedding-repair-operations/op-1/step",
+  ]);
+});
+
+test("durable runner gives each processing item its own healthy polling budget", async () => {
+  const request = durableRequest([{ chunkId: 101, expectedDocumentId: 11 }, { chunkId: 102, expectedDocumentId: 22 }]);
+  let now = 0;
+  const firstProcessing = strictOperationView(request, "RUNNING", [strictItem(0, 101, 11, "PROCESSING", "1970-01-01T00:10:00.000Z"), strictItem(1, 102, 22, "READY")]);
+  const secondProcessing = strictOperationView(request, "RUNNING", [strictItem(0, 101, 11, "INDEXED"), strictItem(1, 102, 22, "PROCESSING", "1970-01-01T00:10:00.000Z")]);
+  const complete = strictOperationView(request, "INDEXING_COMPLETE", [strictItem(0, 101, 11, "INDEXED"), strictItem(1, 102, 22, "INDEXED")]);
+  const views = [firstProcessing, firstProcessing, secondProcessing, secondProcessing, complete];
+  let index = 0;
+  const result = await runDurableRepairOperation(request, {
+    fetch: async (url) => jsonResponse(url.endsWith("operations") ? 202 : 200, views[index++]),
+    now: () => now,
+    sleep: async () => { now += 1000; },
+    timeoutMs: 100,
+    maxPolls: 2,
+  });
+
+  assert.equal(result.stateCounts.INDEXED, 2);
+});
+
+test("durable runner accepts the documented 600-second healthy lease window", async () => {
+  const request = durableRequest([{ chunkId: 101, expectedDocumentId: 11 }]);
+  let now = 0;
+  const live = strictOperationView(request, "RUNNING", [strictItem(0, 101, 11, "PROCESSING", "1970-01-01T00:10:00.000Z")]);
+  const complete = strictOperationView(request, "INDEXING_COMPLETE", [strictItem(0, 101, 11, "INDEXED")]);
+  let getCount = 0;
+  const result = await runDurableRepairOperation(request, {
+    fetch: async (url) => {
+      if (url.endsWith("operations")) return jsonResponse(202, live);
+      getCount += 1;
+      return jsonResponse(200, getCount <= 601 ? live : complete);
+    },
+    now: () => now,
+    sleep: async () => { now += 1000; },
+    timeoutMs: 100,
+  });
+
+  assert.equal(result.complete, true);
+  assert.ok(getCount > 600);
+});
+
+test("durable runner rejects resumed item identity changes despite identical chunk IDs", async () => {
+  const request = durableRequest([{ chunkId: 101, expectedDocumentId: 11 }]);
+  const changed = strictOperationView(request, "INDEXING_COMPLETE", [strictItem(0, 101, 99, "INDEXED", null, "b".repeat(64))]);
+  await assert.rejects(() => runDurableRepairOperation(request, {
+    fetch: async () => jsonResponse(202, changed), sleep: async () => {}, timeoutMs: 100,
+  }), /immutable.*identity|exact planned/);
+});
+
+test("lost step followed by durable terminal failure retains operation evidence", async () => {
+  const request = durableRequest([{ chunkId: 101, expectedDocumentId: 11 }]);
+  const ready = strictOperationView(request, "READY", [strictItem(0, 101, 11, "READY")]);
+  const failed = strictOperationView(request, "FAILED", [strictItem(0, 101, 11, "FAILED")]);
+  let step = false;
+  await assert.rejects(() => runDurableRepairOperation(request, {
+    fetch: async (url, options = {}) => {
+      if (url.endsWith("operations")) return jsonResponse(202, ready);
+      if (options.method === "POST") { step = true; throw new TypeError("lost after commit"); }
+      return jsonResponse(200, failed);
+    }, sleep: async () => {}, timeoutMs: 100,
+  }), (error) => {
+    assert.ok(error instanceof DurableOperationError);
+    assert.equal(error.evidence.operationId, "op-1");
+    assert.equal(error.evidence.lastView.operation.progress.status, "FAILED");
+    assert.equal(error.evidence.transportAttempts.find((attempt) => attempt.kind === "step").outcome, "transport-error");
+    return step;
+  });
+});
+
+test("post-wave gate failure retains durable operation evidence", async () => {
+  const request = durableRequest([{ chunkId: 101, expectedDocumentId: 11 }]);
+  const complete = strictOperationView(request, "INDEXING_COMPLETE", [strictItem(0, 101, 11, "INDEXED")]);
+  await assert.rejects(() => runDurableRepairWithPostWaveAudits({
+    request,
+    beforeAudit: audit([issue(101, 11)]),
+    runner: async () => ({ ...durableResult(complete), transportAttempts: [{ kind: "step", outcome: "response", status: 200 }] }),
+    runIntegrityAudit: async () => ({ target: "law", pages: 0 }),
+    runParentChildAudit: async () => ({}),
+    runShortChunkAudit: async () => ({}),
+    loadRuntimeInfo: async () => ({}),
+  }), (error) => {
+    assert.ok(error instanceof DurableOperationError);
+    assert.equal(error.evidence.operationId, "op-1");
+    assert.equal(error.evidence.lastView.operation.progress.status, "INDEXING_COMPLETE");
+    return /post-wave/i.test(error.message);
+  });
 });
 
 test("post-wave validation requires reconciled full audits, coverage, and DB-Qdrant counts", () => {
@@ -445,21 +561,79 @@ function runtimeInfo(lawIndexedCount) {
 }
 
 function operationView(status, items) {
+  const request = durableRequest(items.map((item) => ({ chunkId: item.chunkId, expectedDocumentId: item.documentId })));
+  return strictOperationView(request, status, items.map((item, ordinal) => strictItem(
+    ordinal, item.chunkId, item.documentId, item.state, item.leaseExpiresAt, item.expectedContentHash
+  )));
+}
+
+function itemView(chunkId, state, leaseExpiresAt = null) {
+  return { chunkId, documentId: defaultDocumentId(chunkId), expectedContentHash: "a".repeat(64), state, leaseExpiresAt };
+}
+
+function durableRequest(candidates) {
+  return {
+    target: "law",
+    expectedRuntimeInstanceId: "instance-a",
+    expectedIndexRevision: "revision-a",
+    expectedDocumentIds: [...new Set(candidates.map((candidate) => candidate.expectedDocumentId ?? defaultDocumentId(candidate.chunkId)))],
+    candidates: candidates.map((candidate) => ({
+      chunkId: candidate.chunkId,
+      expectedChunkContentHash: candidate.expectedChunkContentHash || "a".repeat(64),
+      expectedDocumentId: candidate.expectedDocumentId ?? defaultDocumentId(candidate.chunkId),
+    })),
+  };
+}
+
+function strictOperationView(request, status, items) {
+  const identity = expectedOperationIdentity(request);
   return {
     operation: {
-      request: { operationId: "op-1", runtimeInstanceId: "instance-a" },
+      request: {
+        operationId: "op-1",
+        idempotencyKey: identity.hash,
+        requestHash: identity.hash,
+        normalizedRequest: identity.normalized,
+        target: request.target,
+        runtimeInstanceId: request.expectedRuntimeInstanceId,
+        candidateCount: request.candidates.length,
+        documentCount: request.expectedDocumentIds.length,
+      },
       progress: { status, trustedIndexRevision: "revision-a" },
     },
     items,
   };
 }
 
-function itemView(chunkId, state) {
-  return { chunkId, state };
+function strictItem(ordinal, chunkId, documentId, state, leaseExpiresAt = null, expectedContentHash = "a".repeat(64)) {
+  return { ordinal, chunkId, documentId, expectedContentHash, state, leaseExpiresAt };
 }
 
-function durableRequest(candidates) {
-  return { target: "law", expectedRuntimeInstanceId: "instance-a", expectedIndexRevision: "revision-a", candidates };
+function durableResult(view) {
+  return {
+    applied: true,
+    complete: view.operation.progress.status === "INDEXING_COMPLETE",
+    runtime: { runtimeInstanceId: "instance-a", indexRevision: "revision-a" },
+    outcomes: view.items.map((item) => ({ chunkId: item.chunkId, state: item.state, documentId: item.documentId })),
+    operationId: view.operation.request.operationId,
+    operationState: view.operation.progress.status,
+    operation: view.operation,
+    items: view.items,
+  };
+}
+
+function expectedOperationIdentity(request) {
+  let normalized = `target=law\nruntimeInstanceId=${request.expectedRuntimeInstanceId.toLowerCase()}\n`;
+  normalized += `indexRevision=${request.expectedIndexRevision.toLowerCase()}\napply=true\n`;
+  request.expectedDocumentIds.forEach((documentId, index) => { normalized += `expectedDocumentId[${index}]=${documentId}\n`; });
+  request.candidates.forEach((candidate, index) => {
+    normalized += `candidate[${index}]=${candidate.chunkId}:${candidate.expectedChunkContentHash.toLowerCase()}\n`;
+  });
+  return { normalized, hash: crypto.createHash("sha256").update(normalized, "utf8").digest("hex") };
+}
+
+function defaultDocumentId(chunkId) {
+  return chunkId >= 200 ? 22 : 11;
 }
 
 function jsonResponse(status, value) {
