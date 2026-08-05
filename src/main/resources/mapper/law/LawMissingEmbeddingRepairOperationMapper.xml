@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.kaces.pandora.semantic.integrity.LawMissingEmbeddingRepairOperationMapper">
+
+  <sql id="operationColumns">
+    operation_id AS operationId, idempotency_key AS idempotencyKey,
+    normalized_request AS normalizedRequest, request_hash AS requestHash,
+    target, runtime_instance_id AS runtimeInstanceId, trusted_index_revision AS trustedIndexRevision,
+    status, candidate_count AS candidateCount, document_count AS documentCount,
+    indexed_count AS indexedCount, failed_count AS failedCount,
+    lease_owner AS leaseOwner, lease_expires_at AS leaseExpiresAt,
+    last_error AS lastError, created_at AS createdAt, updated_at AS updatedAt
+  </sql>
+
+  <sql id="itemColumns">
+    operation_id AS operationId, ordinal, chunk_id AS chunkId, document_id AS documentId,
+    expected_content_hash AS expectedContentHash, state, lease_owner AS leaseOwner,
+    lease_expires_at AS leaseExpiresAt, before_index_revision AS beforeIndexRevision,
+    after_index_revision AS afterIndexRevision, detail, created_at AS createdAt, updated_at AS updatedAt
+  </sql>
+
+  <insert id="insertOperation">
+    INSERT INTO law_missing_embedding_repair_operations (
+      operation_id, idempotency_key, normalized_request, request_hash, target,
+      runtime_instance_id, trusted_index_revision, status, candidate_count, document_count,
+      indexed_count, failed_count, lease_owner, lease_expires_at, last_error, created_at, updated_at
+    ) VALUES (
+      #{operation.operationId}, #{operation.idempotencyKey}, #{operation.normalizedRequest}, #{operation.requestHash}, #{operation.target},
+      #{operation.runtimeInstanceId}, #{operation.trustedIndexRevision}, #{operation.status}, #{operation.candidateCount}, #{operation.documentCount},
+      #{operation.indexedCount}, #{operation.failedCount}, #{operation.leaseOwner}, #{operation.leaseExpiresAt}, #{operation.lastError},
+      #{operation.createdAt}, #{operation.updatedAt}
+    )
+  </insert>
+
+  <insert id="insertItems">
+    INSERT INTO law_missing_embedding_repair_items (
+      operation_id, ordinal, chunk_id, document_id, expected_content_hash, state,
+      lease_owner, lease_expires_at, before_index_revision, after_index_revision, detail, created_at, updated_at
+    ) VALUES
+    <foreach collection="items" item="item" separator=",">
+      (#{operationId}, #{item.ordinal}, #{item.chunkId}, #{item.documentId}, #{item.expectedContentHash}, #{item.state},
+       #{item.leaseOwner}, #{item.leaseExpiresAt}, #{item.beforeIndexRevision}, #{item.afterIndexRevision}, #{item.detail},
+       #{item.createdAt}, #{item.updatedAt})
+    </foreach>
+  </insert>
+
+  <select id="findOperationById" resultType="com.kaces.pandora.semantic.integrity.LawMissingEmbeddingRepairOperation$OperationRow">
+    SELECT <include refid="operationColumns" />
+    FROM law_missing_embedding_repair_operations
+    WHERE operation_id = #{operationId}
+  </select>
+
+  <select id="findOperationByIdempotencyKey" resultType="com.kaces.pandora.semantic.integrity.LawMissingEmbeddingRepairOperation$OperationRow">
+    SELECT <include refid="operationColumns" />
+    FROM law_missing_embedding_repair_operations
+    WHERE idempotency_key = #{idempotencyKey}
+  </select>
+
+  <select id="findItemsByOperationId" resultType="com.kaces.pandora.semantic.integrity.LawMissingEmbeddingRepairOperation$Item">
+    SELECT <include refid="itemColumns" />
+    FROM law_missing_embedding_repair_items
+    WHERE operation_id = #{operationId}
+    ORDER BY ordinal ASC
+  </select>
+
+  <select id="findItemByOrdinal" resultType="com.kaces.pandora.semantic.integrity.LawMissingEmbeddingRepairOperation$Item">
+    SELECT <include refid="itemColumns" />
+    FROM law_missing_embedding_repair_items
+    WHERE operation_id = #{operationId} AND ordinal = #{ordinal}
+  </select>
+
+  <update id="claimReadyItem">
+    UPDATE law_missing_embedding_repair_items i
+    JOIN law_missing_embedding_repair_operations o ON o.operation_id = i.operation_id
+    SET i.state = 'PROCESSING', i.lease_owner = #{owner}, i.lease_expires_at = #{leaseExpiresAt},
+        i.updated_at = UTC_TIMESTAMP(6), o.status = 'RUNNING', o.lease_owner = #{owner},
+        o.lease_expires_at = #{leaseExpiresAt}, o.updated_at = UTC_TIMESTAMP(6)
+	WHERE i.operation_id = #{operationId} AND i.ordinal = #{ordinal}
+	      AND i.state = 'READY' AND o.status IN ('READY','RUNNING')
+	      AND (o.lease_owner IS NULL OR o.lease_expires_at &lt;= UTC_TIMESTAMP(6))
+	      AND o.runtime_instance_id = #{runtimeInstanceId}
+      AND o.trusted_index_revision = #{trustedIndexRevision}
+  </update>
+
+  <update id="claimExpiredItem">
+    UPDATE law_missing_embedding_repair_items i
+    JOIN law_missing_embedding_repair_operations o ON o.operation_id = i.operation_id
+    SET i.lease_owner = #{owner}, i.lease_expires_at = #{leaseExpiresAt}, i.updated_at = UTC_TIMESTAMP(6),
+        o.status = 'RUNNING', o.lease_owner = #{owner}, o.lease_expires_at = #{leaseExpiresAt}, o.updated_at = UTC_TIMESTAMP(6)
+	WHERE i.operation_id = #{operationId} AND i.ordinal = #{ordinal}
+	      AND i.state = 'PROCESSING' AND i.lease_expires_at &lt;= UTC_TIMESTAMP(6)
+	      AND o.status IN ('READY','RUNNING')
+	      AND (o.lease_owner IS NULL OR o.lease_expires_at &lt;= UTC_TIMESTAMP(6))
+	      AND o.runtime_instance_id = #{runtimeInstanceId}
+      AND o.trusted_index_revision = #{trustedIndexRevision}
+  </update>
+
+  <update id="renewItemLease">
+    UPDATE law_missing_embedding_repair_items i
+    JOIN law_missing_embedding_repair_operations o ON o.operation_id = i.operation_id
+    SET i.lease_expires_at = #{leaseExpiresAt}, i.updated_at = UTC_TIMESTAMP(6),
+        o.lease_expires_at = #{leaseExpiresAt}, o.updated_at = UTC_TIMESTAMP(6)
+    WHERE i.operation_id = #{operationId} AND i.ordinal = #{ordinal}
+      AND i.state = 'PROCESSING' AND i.lease_owner = #{owner}
+      AND o.status = 'RUNNING' AND o.lease_owner = #{owner}
+  </update>
+
+  <update id="completeClaimedItemAndAdvanceRevision">
+    UPDATE law_missing_embedding_repair_items i
+    JOIN law_missing_embedding_repair_operations o ON o.operation_id = i.operation_id
+    SET i.state = 'INDEXED', i.before_index_revision = o.trusted_index_revision,
+        i.after_index_revision = #{afterIndexRevision}, i.detail = #{detail},
+        i.lease_owner = NULL, i.lease_expires_at = NULL, i.updated_at = UTC_TIMESTAMP(6),
+        o.trusted_index_revision = #{afterIndexRevision}, o.indexed_count = o.indexed_count + 1,
+        o.lease_owner = NULL, o.lease_expires_at = NULL, o.updated_at = UTC_TIMESTAMP(6)
+    WHERE i.operation_id = #{operationId} AND i.ordinal = #{ordinal}
+	      AND i.state = 'PROCESSING' AND i.lease_owner = #{owner}
+	      AND o.status = 'RUNNING' AND o.lease_owner = #{owner}
+	      AND o.runtime_instance_id = #{runtimeInstanceId}
+      AND o.trusted_index_revision = #{trustedIndexRevision}
+  </update>
+
+  <update id="failClaimedItemAndOperation">
+    UPDATE law_missing_embedding_repair_items i
+    JOIN law_missing_embedding_repair_operations o ON o.operation_id = i.operation_id
+    SET i.state = 'FAILED', i.detail = #{detail}, i.lease_owner = NULL, i.lease_expires_at = NULL,
+        i.updated_at = UTC_TIMESTAMP(6), o.status = 'FAILED', o.failed_count = o.failed_count + 1,
+        o.lease_owner = NULL, o.lease_expires_at = NULL, o.last_error = #{lastError}, o.updated_at = UTC_TIMESTAMP(6)
+	WHERE i.operation_id = #{operationId} AND i.ordinal = #{ordinal}
+	      AND i.state = 'PROCESSING' AND i.lease_owner = #{owner}
+	      AND o.status IN ('READY','RUNNING') AND o.lease_owner = #{owner}
+  </update>
+
+  <update id="markReadyItemsNotAttempted">
+    UPDATE law_missing_embedding_repair_items
+    SET state = 'NOT_ATTEMPTED', lease_owner = NULL, lease_expires_at = NULL, updated_at = UTC_TIMESTAMP(6)
+    WHERE operation_id = #{operationId} AND state = 'READY'
+  </update>
+
+  <update id="markOperationIndexingComplete">
+    UPDATE law_missing_embedding_repair_operations o
+    SET status = 'INDEXING_COMPLETE', lease_owner = NULL, lease_expires_at = NULL, updated_at = UTC_TIMESTAMP(6)
+    WHERE o.operation_id = #{operationId} AND o.status = 'RUNNING'
+      AND NOT EXISTS (
+        SELECT 1 FROM law_missing_embedding_repair_items i
+        WHERE i.operation_id = o.operation_id AND i.state &lt;&gt; 'INDEXED'
+      )
+  </update>
+</mapper>
