@@ -44,7 +44,7 @@ class LawMissingEmbeddingRepairOperationMapperTests {
 		String sql = sql(parseMapper(), "claimReadyItem", claimParameters());
 
 		assertThat(sql)
-			.contains("i.state = 'READY'", "o.status IN ('READY','RUNNING')", "o.lease_owner IS NULL OR o.lease_expires_at <= UTC_TIMESTAMP(6)", "o.runtime_instance_id = ?", "o.trusted_index_revision = ?")
+			.contains("i.state = 'READY'", "o.status IN ('READY','RUNNING')", "o.lease_owner IS NULL OR o.lease_expires_at <= CURRENT_TIMESTAMP(6)", "o.runtime_instance_id = ?", "o.trusted_index_revision = ?")
 			.contains("i.lease_owner = ?", "i.lease_expires_at = ?")
 			.doesNotContain("OR i.state");
 	}
@@ -58,7 +58,7 @@ class LawMissingEmbeddingRepairOperationMapperTests {
 			"owner", "00000000-0000-0000-0000-000000000002", "leaseExpiresAt", java.time.Instant.parse("2026-08-05T00:00:00Z")
 		));
 
-		assertThat(reclaim).contains("i.state = 'PROCESSING'", "i.lease_expires_at <= UTC_TIMESTAMP(6)", "o.lease_owner IS NULL OR o.lease_expires_at <= UTC_TIMESTAMP(6)", "o.runtime_instance_id = ?", "o.trusted_index_revision = ?");
+		assertThat(reclaim).contains("i.state = 'PROCESSING'", "i.lease_expires_at <= CURRENT_TIMESTAMP(6)", "o.lease_owner IS NULL OR o.lease_expires_at <= CURRENT_TIMESTAMP(6)", "o.runtime_instance_id = ?", "o.trusted_index_revision = ?");
 		assertThat(renew).contains("i.state = 'PROCESSING'", "i.lease_owner = ?").doesNotContain("OR i.lease_owner");
 	}
 
@@ -77,7 +77,7 @@ class LawMissingEmbeddingRepairOperationMapperTests {
 
 		assertThat(complete).contains("i.state = 'INDEXED'", "o.trusted_index_revision = ?", "o.indexed_count = o.indexed_count + 1", "i.before_index_revision = o.trusted_index_revision", "i.after_index_revision = ?", "i.state = 'PROCESSING'", "i.lease_owner = ?", "o.lease_owner = ?");
 		assertThat(fail).contains("i.state = 'FAILED'", "o.status = 'FAILED'", "o.failed_count = o.failed_count + 1", "i.state = 'PROCESSING'", "i.lease_owner = ?", "o.lease_owner = ?");
-		assertThat(remaining).contains("state = 'NOT_ATTEMPTED'", "state = 'READY'");
+		assertThat(remaining).contains("state = 'NOT_ATTEMPTED'", "state = 'READY'", "JOIN law_missing_embedding_repair_operations", "o.status = 'FAILED'");
 	}
 
 	@Test

@@ -9,6 +9,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
@@ -94,6 +95,8 @@ public class LawApiSchemaMaintenance implements ApplicationRunner {
 	}
 
 	private void ensureRepairOperationSchema() {
+		ensureRepairColumns(REPAIR_OPERATIONS_TABLE, operationColumns());
+		ensureRepairColumns(REPAIR_ITEMS_TABLE, itemColumns());
 		ensurePrimaryKey(REPAIR_OPERATIONS_TABLE, "operation_id");
 		ensureTableIndex(REPAIR_OPERATIONS_TABLE, "idx_law_missing_embedding_repair_operation_lease", "status, lease_expires_at");
 		ensureTableIndex(REPAIR_OPERATIONS_TABLE, "uq_law_missing_embedding_repair_operation_idempotency", "idempotency_key", true);
@@ -108,6 +111,70 @@ public class LawApiSchemaMaintenance implements ApplicationRunner {
 		ensureCheckConstraint(REPAIR_ITEMS_TABLE, "chk_law_missing_embedding_repair_item_hash", "expected_content_hash REGEXP '^[0-9A-Fa-f]{64}$'");
 		ensureForeignKey(REPAIR_ITEMS_TABLE, "fk_law_missing_embedding_repair_item_operation",
 			"FOREIGN KEY (operation_id) REFERENCES law_missing_embedding_repair_operations (operation_id) ON DELETE CASCADE");
+	}
+
+	private LinkedHashMap<String, String[]> operationColumns() {
+		LinkedHashMap<String, String[]> columns = new LinkedHashMap<>();
+		columns.put("operation_id", new String[] { "CHAR(36) NOT NULL", "char(36)", "NO" });
+		columns.put("idempotency_key", new String[] { "CHAR(64) NOT NULL", "char(64)", "NO" });
+		columns.put("normalized_request", new String[] { "LONGTEXT NOT NULL", "longtext", "NO" });
+		columns.put("request_hash", new String[] { "CHAR(64) NOT NULL", "char(64)", "NO" });
+		columns.put("target", new String[] { "VARCHAR(20) NOT NULL", "varchar(20)", "NO" });
+		columns.put("runtime_instance_id", new String[] { "CHAR(36) NOT NULL", "char(36)", "NO" });
+		columns.put("trusted_index_revision", new String[] { "CHAR(64) NOT NULL", "char(64)", "NO" });
+		columns.put("status", new String[] { "VARCHAR(32) NOT NULL", "varchar(32)", "NO" });
+		columns.put("candidate_count", new String[] { "INT NOT NULL", "int", "NO" });
+		columns.put("document_count", new String[] { "INT NOT NULL", "int", "NO" });
+		columns.put("indexed_count", new String[] { "INT NOT NULL DEFAULT 0", "int", "NO" });
+		columns.put("failed_count", new String[] { "INT NOT NULL DEFAULT 0", "int", "NO" });
+		columns.put("lease_owner", new String[] { "CHAR(36) NULL", "char(36)", "YES" });
+		columns.put("lease_expires_at", new String[] { "DATETIME(6) NULL", "datetime(6)", "YES" });
+		columns.put("last_error", new String[] { "TEXT NULL", "text", "YES" });
+		columns.put("created_at", new String[] { "DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)", "datetime(6)", "NO" });
+		columns.put("updated_at", new String[] { "DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)", "datetime(6)", "NO" });
+		return columns;
+	}
+
+	private LinkedHashMap<String, String[]> itemColumns() {
+		LinkedHashMap<String, String[]> columns = new LinkedHashMap<>();
+		columns.put("operation_id", new String[] { "CHAR(36) NOT NULL", "char(36)", "NO" });
+		columns.put("ordinal", new String[] { "INT NOT NULL", "int", "NO" });
+		columns.put("chunk_id", new String[] { "BIGINT NOT NULL", "bigint", "NO" });
+		columns.put("document_id", new String[] { "BIGINT NOT NULL", "bigint", "NO" });
+		columns.put("expected_content_hash", new String[] { "CHAR(64) NOT NULL", "char(64)", "NO" });
+		columns.put("state", new String[] { "VARCHAR(32) NOT NULL", "varchar(32)", "NO" });
+		columns.put("lease_owner", new String[] { "CHAR(36) NULL", "char(36)", "YES" });
+		columns.put("lease_expires_at", new String[] { "DATETIME(6) NULL", "datetime(6)", "YES" });
+		columns.put("before_index_revision", new String[] { "CHAR(64) NULL", "char(64)", "YES" });
+		columns.put("after_index_revision", new String[] { "CHAR(64) NULL", "char(64)", "YES" });
+		columns.put("detail", new String[] { "TEXT NULL", "text", "YES" });
+		columns.put("created_at", new String[] { "DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)", "datetime(6)", "NO" });
+		columns.put("updated_at", new String[] { "DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)", "datetime(6)", "NO" });
+		return columns;
+	}
+
+	private void ensureRepairColumns(String tableName, LinkedHashMap<String, String[]> columns) {
+		for (Map.Entry<String, String[]> column : columns.entrySet()) {
+			List<Map<String, Object>> actual = jdbcTemplate.queryForList("""
+				SELECT COLUMN_TYPE, IS_NULLABLE FROM information_schema.COLUMNS
+				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
+				""", tableName, column.getKey());
+			if (actual.isEmpty()) {
+				jdbcTemplate.execute("ALTER TABLE " + tableName + " ADD COLUMN " + column.getKey() + " " + column.getValue()[0]);
+				continue;
+			}
+			Map<String, Object> shape = actual.get(0);
+			if (!matchesColumnType(column.getValue()[1], String.valueOf(shape.get("COLUMN_TYPE")))
+				|| !column.getValue()[2].equalsIgnoreCase(String.valueOf(shape.get("IS_NULLABLE")))) {
+				throw new IllegalStateException("Refusing durable repair operation schema with incompatible " + tableName + "." + column.getKey());
+			}
+		}
+	}
+
+	private boolean matchesColumnType(String expected, String actual) {
+		return expected.equalsIgnoreCase(actual)
+			|| ("int".equalsIgnoreCase(expected) && actual.toLowerCase(Locale.ROOT).startsWith("int("))
+			|| ("bigint".equalsIgnoreCase(expected) && actual.toLowerCase(Locale.ROOT).startsWith("bigint("));
 	}
 
 	private void ensureTableIndex(String tableName, String indexName, String columns) {
@@ -173,13 +240,26 @@ public class LawApiSchemaMaintenance implements ApplicationRunner {
 	}
 
 	private void ensureForeignKey(String tableName, String constraintName, String definition) {
-		Integer count = jdbcTemplate.queryForObject("""
-			SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
-			WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ? AND CONSTRAINT_TYPE = 'FOREIGN KEY'
-			""", Integer.class, tableName, constraintName);
-		if (count == null || count == 0) {
-			jdbcTemplate.execute("ALTER TABLE " + tableName + " ADD CONSTRAINT " + constraintName + " " + definition);
+		List<Map<String, Object>> keys = jdbcTemplate.queryForList("""
+			SELECT k.COLUMN_NAME, k.REFERENCED_TABLE_NAME, k.REFERENCED_COLUMN_NAME, r.DELETE_RULE
+			FROM information_schema.KEY_COLUMN_USAGE k
+			JOIN information_schema.REFERENTIAL_CONSTRAINTS r
+			  ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME
+			WHERE k.CONSTRAINT_SCHEMA = DATABASE() AND k.TABLE_NAME = ? AND k.CONSTRAINT_NAME = ?
+			""", tableName, constraintName);
+		if (keys.size() == 1) {
+			Map<String, Object> key = keys.get(0);
+			if ("operation_id".equalsIgnoreCase(String.valueOf(key.get("COLUMN_NAME")))
+				&& REPAIR_OPERATIONS_TABLE.equalsIgnoreCase(String.valueOf(key.get("REFERENCED_TABLE_NAME")))
+				&& "operation_id".equalsIgnoreCase(String.valueOf(key.get("REFERENCED_COLUMN_NAME")))
+				&& "CASCADE".equalsIgnoreCase(String.valueOf(key.get("DELETE_RULE")))) {
+				return;
+			}
 		}
+		if (!keys.isEmpty()) {
+			jdbcTemplate.execute("ALTER TABLE " + tableName + " DROP FOREIGN KEY " + constraintName);
+		}
+		jdbcTemplate.execute("ALTER TABLE " + tableName + " ADD CONSTRAINT " + constraintName + " " + definition);
 	}
 
 	private void ensureVersionedChunkMetadata() {
