@@ -5,6 +5,7 @@ const {
   assertSuccessfulApply,
   assertPostWaveInvariants,
   runPostWaveAudits,
+  runDurableRepairOperation,
 } = require("./law-missing-embedding-repair-wave");
 
 test("planner binds a bounded document wave to the full audit runtime fence", () => {
@@ -48,6 +49,188 @@ test("runner rejects an incomplete or per-id failed apply result", () => {
   assert.throws(() => assertSuccessfulApply({ applied: true, complete: false, outcomes: [] }), /incomplete/);
   assert.throws(() => assertSuccessfulApply({ applied: true, complete: true, outcomes: [{ state: "VERIFICATION_FAILED" }] }), /failed/);
   assert.doesNotThrow(() => assertSuccessfulApply({ applied: true, complete: true, outcomes: [{ state: "INDEXED" }] }));
+});
+
+test("durable runner registers once and steps exact candidates sequentially", async () => {
+  const calls = [];
+  let mutationsInFlight = 0;
+  let peakMutationsInFlight = 0;
+  const first = operationView("READY", [itemView(101, "READY"), itemView(102, "READY")]);
+  const afterFirst = operationView("RUNNING", [itemView(101, "INDEXED"), itemView(102, "READY")]);
+  const complete = operationView("INDEXING_COMPLETE", [itemView(101, "INDEXED"), itemView(102, "INDEXED")]);
+  const views = [first, afterFirst, complete];
+  let viewIndex = 0;
+
+  const result = await runDurableRepairOperation(durableRequest([{ chunkId: 101 }, { chunkId: 102 }]), {
+    fetch: async (url, options = {}) => {
+      const mutating = options.method === "POST";
+      if (mutating) {
+        mutationsInFlight += 1;
+        peakMutationsInFlight = Math.max(peakMutationsInFlight, mutationsInFlight);
+      }
+      calls.push(`${options.method || "GET"} ${url}`);
+      try {
+        return jsonResponse(mutating && url.endsWith("operations") ? 202 : 200, views[viewIndex++]);
+      } finally {
+        if (mutating) mutationsInFlight -= 1;
+      }
+    },
+    sleep: async () => assert.fail("no poll expected"),
+    timeoutMs: 100,
+    maxPolls: 3,
+  });
+
+  assert.equal(peakMutationsInFlight, 1);
+  assert.deepEqual(calls, [
+    "POST http://127.0.0.1:8080/api/admin/law-index-integrity/missing-embedding-repair-operations",
+    "POST http://127.0.0.1:8080/api/admin/law-index-integrity/missing-embedding-repair-operations/op-1/step",
+    "POST http://127.0.0.1:8080/api/admin/law-index-integrity/missing-embedding-repair-operations/op-1/step",
+  ]);
+  assert.equal(result.operation.request.operationId, "op-1");
+  assert.equal(result.transportAttempts.filter((attempt) => attempt.kind === "step").length, 2);
+});
+
+test("durable runner reconciles lost step response before any further step", async () => {
+  const calls = [];
+  const registered = operationView("READY", [itemView(101, "READY")]);
+  const committed = operationView("INDEXING_COMPLETE", [itemView(101, "INDEXED")]);
+  let stepCalls = 0;
+
+  const result = await runDurableRepairOperation(durableRequest([{ chunkId: 101 }]), {
+    fetch: async (url, options = {}) => {
+      calls.push(`${options.method || "GET"} ${url}`);
+      if (url.endsWith("operations")) return jsonResponse(202, registered);
+      if (options.method === "POST") {
+        stepCalls += 1;
+        throw new TypeError("socket closed after commit");
+      }
+      return jsonResponse(200, committed);
+    },
+    sleep: async () => assert.fail("terminal GET needs no sleep"),
+    timeoutMs: 100,
+    maxPolls: 3,
+  });
+
+  assert.equal(stepCalls, 1);
+  assert.deepEqual(calls, [
+    "POST http://127.0.0.1:8080/api/admin/law-index-integrity/missing-embedding-repair-operations",
+    "POST http://127.0.0.1:8080/api/admin/law-index-integrity/missing-embedding-repair-operations/op-1/step",
+    "GET http://127.0.0.1:8080/api/admin/law-index-integrity/missing-embedding-repair-operations/op-1",
+  ]);
+  assert.equal(result.operation.progress.status, "INDEXING_COMPLETE");
+  assert.equal(result.transportAttempts.find((attempt) => attempt.kind === "step").outcome, "transport-error");
+});
+
+test("durable runner continues from a GET-confirmed indexed item without replaying its step", async () => {
+  const calls = [];
+  const registered = operationView("READY", [itemView(101, "READY"), itemView(102, "READY")]);
+  const firstIndexed = operationView("RUNNING", [itemView(101, "INDEXED"), itemView(102, "READY")]);
+  const complete = operationView("INDEXING_COMPLETE", [itemView(101, "INDEXED"), itemView(102, "INDEXED")]);
+  let stepCalls = 0;
+  const result = await runDurableRepairOperation(durableRequest([{ chunkId: 101 }, { chunkId: 102 }]), {
+    fetch: async (url, options = {}) => {
+      calls.push(`${options.method || "GET"} ${url}`);
+      if (url.endsWith("operations")) return jsonResponse(202, registered);
+      if (options.method === "POST") {
+        stepCalls += 1;
+        if (stepCalls === 1) throw new TypeError("first step response lost");
+        return jsonResponse(200, complete);
+      }
+      return jsonResponse(200, firstIndexed);
+    },
+    sleep: async () => assert.fail("indexed GET should advance directly"), timeoutMs: 100, maxPolls: 3,
+  });
+
+  assert.equal(stepCalls, 2);
+  assert.deepEqual(calls.slice(0, 4), [
+    "POST http://127.0.0.1:8080/api/admin/law-index-integrity/missing-embedding-repair-operations",
+    "POST http://127.0.0.1:8080/api/admin/law-index-integrity/missing-embedding-repair-operations/op-1/step",
+    "GET http://127.0.0.1:8080/api/admin/law-index-integrity/missing-embedding-repair-operations/op-1",
+    "POST http://127.0.0.1:8080/api/admin/law-index-integrity/missing-embedding-repair-operations/op-1/step",
+  ]);
+  assert.equal(result.outcomes.filter((outcome) => outcome.state === "INDEXED").length, 2);
+});
+
+test("durable runner repeats only identical registration after a lost register response", async () => {
+  const requests = [];
+  const registered = operationView("INDEXING_COMPLETE", [itemView(101, "INDEXED")]);
+  const result = await runDurableRepairOperation(durableRequest([{ chunkId: 101 }]), {
+    fetch: async (url, options = {}) => {
+      requests.push({ url, method: options.method, body: options.body });
+      if (requests.length === 1) throw new TypeError("register response lost");
+      return jsonResponse(202, registered);
+    },
+    sleep: async () => assert.fail("no poll expected"), timeoutMs: 100, maxPolls: 2,
+  });
+
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].body, requests[1].body);
+  assert.equal(result.transportAttempts.filter((attempt) => attempt.kind === "register").length, 2);
+  assert.equal(result.transportAttempts[0].outcome, "transport-error");
+});
+
+test("durable runner polls a live processing item without issuing a second step", async () => {
+  const calls = [];
+  const processing = operationView("RUNNING", [itemView(101, "PROCESSING")]);
+  const complete = operationView("INDEXING_COMPLETE", [itemView(101, "INDEXED")]);
+  const result = await runDurableRepairOperation(durableRequest([{ chunkId: 101 }]), {
+    fetch: async (url, options = {}) => {
+      calls.push(`${options.method || "GET"} ${url}`);
+      return jsonResponse(url.endsWith("operations") ? 202 : 200, calls.length === 1 ? processing : complete);
+    },
+    sleep: async () => {}, timeoutMs: 100, maxPolls: 2,
+  });
+
+  assert.equal(result.operation.progress.status, "INDEXING_COMPLETE");
+  assert.equal(calls.filter((call) => call.startsWith("POST") && call.endsWith("/step")).length, 0);
+  assert.equal(calls.filter((call) => call.startsWith("GET")).length, 1);
+});
+
+test("durable runner does not retry HTTP 4xx or runtime drift as transport failures", async () => {
+  let calls = 0;
+  await assert.rejects(() => runDurableRepairOperation(durableRequest([{ chunkId: 101 }]), {
+    fetch: async () => { calls += 1; return { ok: false, status: 409, text: async () => "fence" }; },
+    sleep: async () => {}, timeoutMs: 100, maxPolls: 2,
+  }), /HTTP 409/);
+  assert.equal(calls, 1);
+
+  await assert.rejects(() => runDurableRepairOperation(durableRequest([{ chunkId: 101 }]), {
+    fetch: async () => jsonResponse(202, {
+      operation: { request: { operationId: "op-1", runtimeInstanceId: "different-instance" }, progress: { status: "READY" } },
+      items: [itemView(101, "READY")],
+    }),
+    sleep: async () => {}, timeoutMs: 100, maxPolls: 2,
+  }), /unknown or malformed/);
+});
+
+test("durable runner injects timeout signals and records malformed responses without retrying them", async () => {
+  let timeoutCalls = 0;
+  await assert.rejects(() => runDurableRepairOperation(durableRequest([{ chunkId: 101 }]), {
+    fetch: async (_url, options) => {
+      assert.deepEqual(options.signal, { injected: 100 });
+      return { ok: true, status: 202, text: async () => "not-json" };
+    },
+    timeoutSignal: (milliseconds) => { timeoutCalls += 1; return { injected: milliseconds }; },
+    sleep: async () => {}, timeoutMs: 100, maxPolls: 2,
+  }), /malformed JSON/);
+  assert.equal(timeoutCalls, 1);
+});
+
+test("durable runner fails closed for failed or unknown durable state", async () => {
+  for (const state of ["FAILED", "ALIEN_STATE"]) {
+    await assert.rejects(() => runDurableRepairOperation(durableRequest([{ chunkId: 101 }]), {
+      fetch: async (url) => jsonResponse(url.endsWith("operations") ? 202 : 200,
+        operationView(state, [itemView(101, state === "FAILED" ? "FAILED" : "READY")])),
+      sleep: async () => {}, timeoutMs: 100, maxPolls: 2,
+    }), /failed|unknown/i);
+  }
+});
+
+test("successful durable apply requires exact planned IDs and indexing completion", () => {
+  const complete = operationView("INDEXING_COMPLETE", [itemView(101, "INDEXED"), itemView(102, "INDEXED")]);
+  assert.doesNotThrow(() => assertSuccessfulApply(complete, [{ chunkId: 101 }, { chunkId: 102 }]));
+  assert.throws(() => assertSuccessfulApply(operationView("RUNNING", [itemView(101, "INDEXED"), itemView(102, "INDEXED")]), [{ chunkId: 101 }, { chunkId: 102 }]), /incomplete/);
+  assert.throws(() => assertSuccessfulApply(operationView("INDEXING_COMPLETE", [itemView(101, "INDEXED"), itemView(103, "INDEXED")]), [{ chunkId: 101 }, { chunkId: 102 }]), /every requested/);
 });
 
 test("post-wave validation requires reconciled full audits, coverage, and DB-Qdrant counts", () => {
@@ -258,5 +441,31 @@ function runtimeInfo(lawIndexedCount) {
     lawDatabaseIndexedCount: lawIndexedCount,
     ragQdrantExactPointCount: 9,
     ragDatabaseIndexedCount: 9,
+  };
+}
+
+function operationView(status, items) {
+  return {
+    operation: {
+      request: { operationId: "op-1", runtimeInstanceId: "instance-a" },
+      progress: { status, trustedIndexRevision: "revision-a" },
+    },
+    items,
+  };
+}
+
+function itemView(chunkId, state) {
+  return { chunkId, state };
+}
+
+function durableRequest(candidates) {
+  return { target: "law", expectedRuntimeInstanceId: "instance-a", expectedIndexRevision: "revision-a", candidates };
+}
+
+function jsonResponse(status, value) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => JSON.stringify(value),
   };
 }

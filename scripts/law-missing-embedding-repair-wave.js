@@ -72,6 +72,15 @@ function nonBlank(value) {
 }
 
 function assertSuccessfulApply(result, expectedCandidates = null) {
+  if (result?.operation) {
+    const status = result.operation?.progress?.status;
+    if (status !== "INDEXING_COMPLETE") {
+      throw new Error("Repair apply was incomplete.");
+    }
+    const outcomes = Array.isArray(result.outcomes) ? result.outcomes : result.items;
+    assertExactIndexedOutcomes(outcomes, expectedCandidates);
+    return;
+  }
   if (!result || result.applied !== true || result.complete !== true) {
     throw new Error("Repair apply was incomplete.");
   }
@@ -82,6 +91,183 @@ function assertSuccessfulApply(result, expectedCandidates = null) {
     || result.outcomes.some((outcome, index) => outcome?.chunkId !== expectedCandidates[index]?.chunkId))) {
     throw new Error("Repair apply did not report one successful outcome for every requested chunk.");
   }
+}
+
+function assertExactIndexedOutcomes(outcomes, expectedCandidates) {
+  if (!Array.isArray(outcomes) || outcomes.some((outcome) => outcome?.state !== "INDEXED")) {
+    throw new Error("Repair apply reported a failed per-ID outcome.");
+  }
+  if (!expectedCandidates) return;
+  if (!Array.isArray(expectedCandidates) || outcomes.length !== expectedCandidates.length) {
+    throw new Error("Repair apply did not report one successful outcome for every requested chunk.");
+  }
+  const expectedIds = new Set(expectedCandidates.map((candidate) => candidate?.chunkId));
+  const actualIds = new Set(outcomes.map((outcome) => outcome?.chunkId));
+  if (expectedIds.size !== expectedCandidates.length || actualIds.size !== outcomes.length
+    || [...expectedIds].some((chunkId) => !actualIds.has(chunkId))) {
+    throw new Error("Repair apply did not report one successful outcome for every requested chunk.");
+  }
+}
+
+const OPERATION_ENDPOINT = "http://127.0.0.1:8080/api/admin/law-index-integrity/missing-embedding-repair-operations";
+const LIVE_ITEM_STATES = new Set(["READY", "PROCESSING", "INDEXED", "FAILED", "NOT_ATTEMPTED"]);
+const LIVE_OPERATION_STATES = new Set(["READY", "RUNNING", "INDEXING_COMPLETE", "FAILED"]);
+
+/**
+ * Drives only one outstanding server mutation at a time. A post-step transport loss is always
+ * reconciled by GET before another step can be issued, so the client never guesses whether an
+ * item was committed.
+ */
+async function runDurableRepairOperation(request, options = {}) {
+  const fetchImpl = options.fetch || global.fetch;
+  const sleep = options.sleep || ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+  const timeoutSignal = options.timeoutSignal || ((milliseconds) => AbortSignal.timeout(milliseconds));
+  const timeoutMs = positiveBoundedInteger(options.timeoutMs, 30000, "timeoutMs", 100, 600000);
+  const maxPolls = positiveBoundedInteger(options.maxPolls, 120, "maxPolls", 1, 1000);
+  if (typeof fetchImpl !== "function") throw new Error("Durable repair requires fetch.");
+  const transportAttempts = [];
+  let view = await registerDurableOperation(request, { fetchImpl, timeoutMs, timeoutSignal, transportAttempts });
+  let polls = 0;
+  const maxTransitions = Array.isArray(request?.candidates) ? request.candidates.length * 4 + maxPolls : maxPolls;
+
+  for (let transitions = 0; transitions < maxTransitions; transitions += 1) {
+    assertDurableOperationView(view, request);
+    const status = view.operation.progress.status;
+    if (status === "INDEXING_COMPLETE") {
+      const result = durableApplyResult(view, transportAttempts);
+      assertSuccessfulApply(result, request.candidates);
+      return result;
+    }
+    if (status === "FAILED") {
+      throw new Error("Durable repair operation failed.");
+    }
+    if (view.items.some((item) => item.state === "PROCESSING")) {
+      if (polls >= maxPolls) throw new Error("Durable repair operation remained PROCESSING beyond the poll limit.");
+      polls += 1;
+      await sleep(Math.min(1000, timeoutMs));
+      view = await getDurableOperation(view.operation.request.operationId, { fetchImpl, timeoutMs, timeoutSignal, transportAttempts });
+      continue;
+    }
+    try {
+      view = await postDurableStep(view.operation.request.operationId, { fetchImpl, timeoutMs, timeoutSignal, transportAttempts });
+    } catch (error) {
+      if (!(error instanceof TransportError)) throw error;
+      view = await getDurableOperation(view.operation.request.operationId, { fetchImpl, timeoutMs, timeoutSignal, transportAttempts });
+    }
+  }
+  throw new Error("Durable repair operation exceeded its bounded transition limit.");
+}
+
+async function registerDurableOperation(request, { fetchImpl, timeoutMs, timeoutSignal, transportAttempts }) {
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      return await requestOperation("register", OPERATION_ENDPOINT, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...request, apply: true }),
+      }, { fetchImpl, timeoutMs, timeoutSignal, transportAttempts });
+    } catch (error) {
+      if (!(error instanceof TransportError) || attempt === 2) throw error;
+    }
+  }
+  throw new Error("Durable repair registration did not return a durable operation.");
+}
+
+async function getDurableOperation(operationId, { fetchImpl, timeoutMs, timeoutSignal, transportAttempts }) {
+  return requestOperation("get", `${OPERATION_ENDPOINT}/${encodeURIComponent(requireOperationId(operationId))}`, {},
+    { fetchImpl, timeoutMs, timeoutSignal, transportAttempts });
+}
+
+async function postDurableStep(operationId, { fetchImpl, timeoutMs, timeoutSignal, transportAttempts }) {
+  return requestOperation("step", `${OPERATION_ENDPOINT}/${encodeURIComponent(requireOperationId(operationId))}/step`, { method: "POST" },
+    { fetchImpl, timeoutMs, timeoutSignal, transportAttempts });
+}
+
+async function requestOperation(kind, url, init, { fetchImpl, timeoutMs, timeoutSignal, transportAttempts }) {
+  try {
+    const response = await fetchImpl(url, { ...init, signal: timeoutSignal(timeoutMs) });
+    const body = await response.text();
+    if (!response.ok) {
+      transportAttempts.push({ kind, outcome: "http-error", status: response.status });
+      throw new Error(`Durable repair ${kind} HTTP ${response.status}: ${body}`);
+    }
+    let view;
+    try {
+      view = JSON.parse(body);
+    } catch {
+      transportAttempts.push({ kind, outcome: "malformed-response", status: response.status });
+      throw new Error(`Durable repair ${kind} returned malformed JSON.`);
+    }
+    transportAttempts.push({ kind, outcome: "response", status: response.status });
+    return view;
+  } catch (error) {
+    if (error instanceof TransportError || /^Durable repair .* (HTTP|returned malformed JSON)/.test(String(error?.message || ""))) throw error;
+    transportAttempts.push({ kind, outcome: "transport-error" });
+    throw new TransportError(kind, error);
+  }
+}
+
+class TransportError extends Error {
+  constructor(kind, cause) {
+    super(`Durable repair ${kind} transport failed.`);
+    this.name = "TransportError";
+    this.cause = cause;
+  }
+}
+
+function assertDurableOperationView(view, request) {
+  const operation = view?.operation;
+  const progress = operation?.progress;
+  const operationRequest = operation?.request;
+  if (!operationRequest || !progress || !LIVE_OPERATION_STATES.has(progress.status) || !Array.isArray(view?.items)
+    || !nonBlank(operationRequest.operationId) || operationRequest.runtimeInstanceId !== request?.expectedRuntimeInstanceId
+    || view.items.some((item) => !Number.isSafeInteger(item?.chunkId) || !LIVE_ITEM_STATES.has(item?.state))) {
+    throw new Error("Durable repair operation returned an unknown or malformed state.");
+  }
+  if (progress.status !== "FAILED" && view.items.some((item) => item.state === "FAILED" || item.state === "NOT_ATTEMPTED")) {
+    throw new Error("Durable repair operation returned an item failure before a terminal operation state.");
+  }
+  const expectedIds = new Set((request?.candidates || []).map((candidate) => candidate?.chunkId));
+  const actualIds = new Set(view.items.map((item) => item.chunkId));
+  if (expectedIds.size !== actualIds.size || [...expectedIds].some((chunkId) => !actualIds.has(chunkId))) {
+    throw new Error("Durable repair operation no longer matches the exact planned candidate set.");
+  }
+}
+
+function durableApplyResult(view, transportAttempts) {
+  return {
+    applied: true,
+    complete: view.operation.progress.status === "INDEXING_COMPLETE",
+    runtime: {
+      runtimeInstanceId: view.operation.request.runtimeInstanceId,
+      indexRevision: view.operation.progress.trustedIndexRevision,
+    },
+    outcomes: view.items.map((item) => ({ chunkId: item.chunkId, state: item.state, documentId: item.documentId })),
+    operationId: view.operation.request.operationId,
+    operationState: view.operation.progress.status,
+    stateCounts: stateCounts(view.items),
+    transportAttempts: [...transportAttempts],
+    operation: view.operation,
+    items: view.items,
+  };
+}
+
+function stateCounts(items) {
+  return items.reduce((counts, item) => {
+    counts[item.state] = (counts[item.state] || 0) + 1;
+    return counts;
+  }, {});
+}
+
+function requireOperationId(operationId) {
+  if (!nonBlank(operationId)) throw new Error("Durable repair operation ID was missing.");
+  return operationId;
+}
+
+function positiveBoundedInteger(value, fallback, name, minimum, maximum) {
+  const selected = value == null ? fallback : value;
+  if (!Number.isSafeInteger(selected) || selected < minimum || selected > maximum) {
+    throw new Error(`Durable repair ${name} must be between ${minimum} and ${maximum}.`);
+  }
+  return selected;
 }
 
 function assertPostWaveInvariants({ beforeAudit, result, integrityAudit, parentChildAudit, shortChunkAudit, runtimeInfo }) {
@@ -222,23 +408,8 @@ async function main() {
     maxCandidates: Number(args.maxCandidates || 1000),
     apply: args.apply === "true",
   });
-  const response = await fetch("http://127.0.0.1:8080/api/admin/law-index-integrity/missing-embedding-repair", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-    signal: AbortSignal.timeout(600000),
-  });
-  const body = await response.text();
-  if (!response.ok) {
-    throw new Error(`Missing-embedding repair HTTP ${response.status}: ${body}`);
-  }
-	if (request.apply) {
-		let result;
-		try {
-			result = JSON.parse(body);
-		} catch {
-			throw new Error("Missing-embedding repair returned malformed JSON.");
-		}
+  if (request.apply) {
+    const result = await runDurableRepairOperation(request);
 		assertSuccessfulApply(result, request.candidates);
 		await runPostWaveAudits({
 			beforeAudit: audit,
@@ -257,7 +428,19 @@ async function main() {
 			},
 			loadRuntimeInfo,
 		});
-	}
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+    return;
+  }
+  const response = await fetch("http://127.0.0.1:8080/api/admin/law-index-integrity/missing-embedding-repair", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+    signal: AbortSignal.timeout(600000),
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`Missing-embedding preview HTTP ${response.status}: ${body}`);
+  }
   process.stdout.write(`${body}\n`);
 }
 
@@ -268,4 +451,13 @@ if (require.main === module) {
   });
 }
 
-module.exports = { planRepairWave, assertSuccessfulApply, assertPostWaveInvariants, runPostWaveAudits };
+module.exports = {
+  planRepairWave,
+  assertSuccessfulApply,
+  assertPostWaveInvariants,
+  runPostWaveAudits,
+  runDurableRepairOperation,
+  registerDurableOperation,
+  getDurableOperation,
+  postDurableStep,
+};
