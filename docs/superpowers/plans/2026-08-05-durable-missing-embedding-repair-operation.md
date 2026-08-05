@@ -6,7 +6,7 @@
 
 **Architecture:** Registration performs the existing bounded-wave preflight once and atomically stores an immutable ordered candidate set. A short `step` request claims one item with a lease/CAS, revalidates its content/classification and the operation's trusted runtime fence, performs the existing exact one-chunk indexing, verifies it, and durably records the outcome plus the new index revision. The Node runner treats transport failures as unknown outcomes and resolves them through `GET`; it declares a wave successful only after the existing full integrity, parent/child, short-chunk, collection, and runtime gates pass.
 
-**Tech Stack:** Java 21, Spring Boot MVC/JDBC transactions, MyBatis/MariaDB, Node.js built-in test runner and fetch, Qdrant through the existing `LawSemanticIndexService`.
+**Tech Stack:** Java 17, Spring Boot MVC/JDBC transactions, MyBatis/MariaDB, Node.js built-in test runner and fetch, Qdrant through the existing `LawSemanticIndexService`.
 
 **Safety invariants:** Never use 18080. Never mutate `output/`. Preserve the existing fail-closed runtime, content-hash, classification, document-count, candidate-count, and post-wave audit fences. Do not retry an unresolved mutating request; reconcile it through durable operation state first.
 
