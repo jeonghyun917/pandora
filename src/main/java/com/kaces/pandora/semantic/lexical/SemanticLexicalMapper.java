@@ -12,6 +12,11 @@ public interface SemanticLexicalMapper {
 
 	String findReadyRevision();
 
+	List<TermStatisticRow> findTermStatistics(
+		@Param("revision") String revision,
+		@Param("terms") List<String> terms
+	);
+
 	List<Bm25TermMatchRow> findBm25TermMatches(
 		@Param("revision") String revision,
 		@Param("terms") List<String> terms,
@@ -84,6 +89,12 @@ public interface SemanticLexicalMapper {
 		int activeChunkCount,
 		double averageWeightedLength,
 		int weightedLength
+	) {
+	}
+
+	record TermStatisticRow(
+		String term,
+		int documentFrequency
 	) {
 	}
 

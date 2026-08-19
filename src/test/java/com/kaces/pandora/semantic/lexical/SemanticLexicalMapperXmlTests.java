@@ -65,19 +65,37 @@ class SemanticLexicalMapperXmlTests {
 	}
 
 	@Test
-	void bm25TermReadHasAOneSecondStatementTimeout() throws Exception {
+	void bm25TermReadStartsFromTheTermPostingIndexAndHasABoundedTimeout() throws Exception {
 		Configuration configuration = configuration();
 		MappedStatement statement = configuration.getMappedStatement(NAMESPACE + ".findBm25TermMatches");
 
-		assertThat(statement.getTimeout()).isEqualTo(1);
+		assertThat(statement.getTimeout()).isEqualTo(2);
 		assertThat(statement.getBoundSql(Map.of(
 			"revision", "revision-a",
 			"terms", List.of("검사"),
 			"targets", List.of("law")
 		)).getSql().replaceAll("\\s+", " "))
-			.contains("state.status = 'READY'")
-			.contains("state.content_fingerprint = ?")
+			.contains("FROM semantic_lexical_terms t FORCE INDEX (idx_semantic_lexical_terms_lookup)")
+			.contains("STRAIGHT_JOIN semantic_lexical_chunks c")
+			.contains("t.index_version = ( SELECT index_version FROM semantic_lexical_index_state")
+			.contains("status = 'READY' AND content_fingerprint = ?")
 			.contains("c.build_status = 'READY'");
+	}
+
+	@Test
+	void bm25TermStatisticsUseTheSmallPrimaryKeyLookupBeforePostingReads() throws Exception {
+		Configuration configuration = configuration();
+		MappedStatement statement = configuration.getMappedStatement(NAMESPACE + ".findTermStatistics");
+
+		assertThat(statement.getTimeout()).isEqualTo(1);
+		assertThat(statement.getBoundSql(Map.of(
+			"revision", "revision-a",
+			"terms", List.of("검사", "조치")
+		)).getSql().replaceAll("\\s+", " "))
+			.contains("FROM semantic_lexical_term_stats stats")
+			.contains("stats.index_version = ( SELECT index_version FROM semantic_lexical_index_state")
+			.contains("stats.term IN ( ? , ? )")
+			.contains("ORDER BY stats.document_frequency, stats.term");
 	}
 
 	private String sql(String id, Map<String, ?> parameters) throws Exception {

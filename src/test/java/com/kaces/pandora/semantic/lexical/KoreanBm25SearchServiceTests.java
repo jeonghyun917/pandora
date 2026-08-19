@@ -21,6 +21,8 @@ class KoreanBm25SearchServiceTests {
 	void ranksTheDirectProvisionAboveTitleOnlyAndCommonNoiseMatches() {
 		SemanticLexicalMapper mapper = mock(SemanticLexicalMapper.class);
 		when(mapper.findReadyRevision()).thenReturn("revision-a");
+		when(mapper.findTermStatistics(eq("revision-a"), anyList()))
+			.thenReturn(List.of(new SemanticLexicalMapper.TermStatisticRow("검사", 2)));
 		when(mapper.findBm25TermMatches(eq("revision-a"), anyList(), eq(List.of("law"))))
 			.thenReturn(List.of(
 				match("law", 10L, 110L, "검사", 5.0, 2, 100, 100.0, 100),
@@ -51,6 +53,10 @@ class KoreanBm25SearchServiceTests {
 	void boundsQueryTermsAndResultCountByConfiguration() {
 		SemanticLexicalMapper mapper = mock(SemanticLexicalMapper.class);
 		when(mapper.findReadyRevision()).thenReturn("revision-b");
+		when(mapper.findTermStatistics(eq("revision-b"), anyList()))
+			.thenAnswer(invocation -> ((List<String>) invocation.getArgument(1)).stream()
+				.map(term -> new SemanticLexicalMapper.TermStatisticRow(term, 1))
+				.toList());
 		List<SemanticLexicalMapper.Bm25TermMatchRow> matches = new ArrayList<>();
 		for (long chunkId = 1; chunkId <= 120; chunkId++) {
 			matches.add(match("law", chunkId, 1_000 + chunkId, "term1", 1.0, 2, 200, 50.0, 50));
@@ -66,8 +72,12 @@ class KoreanBm25SearchServiceTests {
 
 		@SuppressWarnings("unchecked")
 		ArgumentCaptor<List<String>> terms = ArgumentCaptor.forClass(List.class);
-		verify(mapper).findBm25TermMatches(eq("revision-b"), terms.capture(), eq(List.of("law")));
+		verify(mapper).findTermStatistics(eq("revision-b"), terms.capture());
 		assertThat(terms.getValue()).hasSize(24);
+		@SuppressWarnings("unchecked")
+		ArgumentCaptor<List<String>> postingTerms = ArgumentCaptor.forClass(List.class);
+		verify(mapper).findBm25TermMatches(eq("revision-b"), postingTerms.capture(), eq(List.of("law")));
+		assertThat(postingTerms.getValue()).hasSize(8);
 		assertThat(hits).hasSize(100);
 	}
 
@@ -75,10 +85,36 @@ class KoreanBm25SearchServiceTests {
 	void failsShadowSearchClosedWhenTheBoundedMapperReadFails() {
 		SemanticLexicalMapper mapper = mock(SemanticLexicalMapper.class);
 		when(mapper.findReadyRevision()).thenReturn("revision-c");
+		when(mapper.findTermStatistics(eq("revision-c"), anyList()))
+			.thenReturn(List.of(new SemanticLexicalMapper.TermStatisticRow("검사", 2)));
 		when(mapper.findBm25TermMatches(eq("revision-c"), anyList(), anyList()))
 			.thenThrow(new IllegalStateException("query timeout"));
 
 		assertThat(service(mapper).search("검사", List.of("law"), 10)).isEmpty();
+	}
+
+	@Test
+	void boundsPostingReadsToTheRarestTermsWithinTheWarmSearchBudget() {
+		SemanticLexicalMapper mapper = mock(SemanticLexicalMapper.class);
+		when(mapper.findReadyRevision()).thenReturn("revision-budget");
+		when(mapper.findTermStatistics(eq("revision-budget"), anyList()))
+			.thenReturn(List.of(
+				new SemanticLexicalMapper.TermStatisticRow("희소1", 80),
+				new SemanticLexicalMapper.TermStatisticRow("희소2", 90),
+				new SemanticLexicalMapper.TermStatisticRow("중간1", 3_000),
+				new SemanticLexicalMapper.TermStatisticRow("중간2", 8_000),
+				new SemanticLexicalMapper.TermStatisticRow("과다", 40_000)
+			));
+		when(mapper.findBm25TermMatches(eq("revision-budget"), anyList(), eq(List.of("law"))))
+			.thenReturn(List.of());
+
+		service(mapper).search("희소1 희소2 중간1 중간2 과다", List.of("law"), 30);
+
+		@SuppressWarnings("unchecked")
+		ArgumentCaptor<List<String>> selected = ArgumentCaptor.forClass(List.class);
+		verify(mapper).findBm25TermMatches(eq("revision-budget"), selected.capture(), eq(List.of("law")));
+		assertThat(selected.getValue()).containsExactly("희소1", "희소2", "중간1", "중간2");
+		assertThat(selected.getValue()).doesNotContain("과다");
 	}
 
 	private KoreanBm25SearchService service(SemanticLexicalMapper mapper) {

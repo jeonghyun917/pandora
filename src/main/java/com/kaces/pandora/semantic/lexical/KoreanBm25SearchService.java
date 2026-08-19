@@ -17,6 +17,8 @@ import org.springframework.stereotype.Service;
 public class KoreanBm25SearchService {
 
 	private static final Logger log = LoggerFactory.getLogger(KoreanBm25SearchService.class);
+	private static final int MAX_POSTING_DOCUMENT_BUDGET = 12_000;
+	private static final int MAX_POSTING_QUERY_TERMS = 8;
 
 	private final SemanticLexicalMapper mapper;
 	private final KoreanLexicalTokenizer tokenizer;
@@ -41,15 +43,19 @@ public class KoreanBm25SearchService {
 		}
 		List<String> targetFilter = normalizedTargets(targets);
 		try {
+			List<String> postingTerms = selectPostingTerms(revision, terms);
+			if (postingTerms.isEmpty()) {
+				return List.of();
+			}
 			List<SemanticLexicalMapper.Bm25TermMatchRow> rows = mapper.findBm25TermMatches(
 				revision,
-				terms,
+				postingTerms,
 				targetFilter
 			);
 			List<LexicalSearchHit> results = rank(rows, boundedLimit(limit));
 			log.info(
-				"Korean BM25 shadow completed. revision={} termCount={} resultCount={} elapsedMs={}",
-				revision, terms.size(), results.size(), elapsedMillis(started)
+				"Korean BM25 shadow completed. revision={} termCount={} postingTermCount={} resultCount={} elapsedMs={}",
+				revision, terms.size(), postingTerms.size(), results.size(), elapsedMillis(started)
 			);
 			return results;
 		} catch (RuntimeException exception) {
@@ -59,6 +65,30 @@ public class KoreanBm25SearchService {
 			);
 			return List.of();
 		}
+	}
+
+	private List<String> selectPostingTerms(String revision, List<String> terms) {
+		List<SemanticLexicalMapper.TermStatisticRow> statistics = mapper.findTermStatistics(revision, terms);
+		if (statistics == null || statistics.isEmpty()) {
+			return List.of();
+		}
+		List<String> selected = new ArrayList<>();
+		long postingBudget = 0;
+		for (SemanticLexicalMapper.TermStatisticRow statistic : statistics) {
+			if (statistic == null || statistic.term() == null || statistic.term().isBlank()) {
+				continue;
+			}
+			long frequency = Math.max(1, statistic.documentFrequency());
+			if (!selected.isEmpty() && postingBudget + frequency > MAX_POSTING_DOCUMENT_BUDGET) {
+				break;
+			}
+			selected.add(statistic.term());
+			postingBudget += frequency;
+			if (selected.size() >= MAX_POSTING_QUERY_TERMS) {
+				break;
+			}
+		}
+		return List.copyOf(selected);
 	}
 
 	private String readyRevision() {

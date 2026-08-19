@@ -58,9 +58,31 @@
     LIMIT 1
   </select>
 
+  <select id="findTermStatistics"
+          resultType="com.kaces.pandora.semantic.lexical.SemanticLexicalMapper$TermStatisticRow"
+          timeout="1">
+    SELECT
+      stats.term AS term,
+      stats.document_frequency AS documentFrequency
+    FROM semantic_lexical_term_stats stats
+    WHERE stats.index_version = (
+      SELECT index_version
+      FROM semantic_lexical_index_state
+      WHERE status = 'READY'
+        AND content_fingerprint = #{revision}
+      ORDER BY completed_at DESC, index_version DESC
+      LIMIT 1
+    )
+      AND stats.term IN
+      <foreach collection="terms" item="term" open="(" separator="," close=")">
+        #{term}
+      </foreach>
+    ORDER BY stats.document_frequency, stats.term
+  </select>
+
   <select id="findBm25TermMatches"
           resultType="com.kaces.pandora.semantic.lexical.SemanticLexicalMapper$Bm25TermMatchRow"
-          timeout="1">
+          timeout="2">
     SELECT
       t.target AS target,
       t.chunk_id AS chunkId,
@@ -71,18 +93,24 @@
       state.active_chunk_count AS activeChunkCount,
       state.average_weighted_length AS averageWeightedLength,
       c.weighted_length AS weightedLength
-    FROM semantic_lexical_index_state state
-    JOIN semantic_lexical_chunks c
-      ON c.index_version = state.index_version
-    JOIN semantic_lexical_terms t
-      ON t.index_version = c.index_version
-     AND t.target = c.target
-     AND t.chunk_id = c.chunk_id
-    JOIN semantic_lexical_term_stats stats
+    FROM semantic_lexical_terms t FORCE INDEX (idx_semantic_lexical_terms_lookup)
+    STRAIGHT_JOIN semantic_lexical_chunks c
+      ON c.index_version = t.index_version
+     AND c.target = t.target
+     AND c.chunk_id = t.chunk_id
+    STRAIGHT_JOIN semantic_lexical_term_stats stats
       ON stats.index_version = t.index_version
      AND stats.term = t.term
-    WHERE state.status = 'READY'
-      AND state.content_fingerprint = #{revision}
+    STRAIGHT_JOIN semantic_lexical_index_state state
+      ON state.index_version = t.index_version
+    WHERE t.index_version = (
+      SELECT index_version
+      FROM semantic_lexical_index_state
+      WHERE status = 'READY'
+        AND content_fingerprint = #{revision}
+      ORDER BY completed_at DESC, index_version DESC
+      LIMIT 1
+    )
       AND c.build_status = 'READY'
       AND t.term IN
       <foreach collection="terms" item="term" open="(" separator="," close=")">
