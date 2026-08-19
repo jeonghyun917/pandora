@@ -8,6 +8,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 final class ClaimEvidenceAtomizer {
+	private final KoreanEvidenceAtomParser evidenceAtomParser = new KoreanEvidenceAtomParser();
 
 	private static final Pattern STRUCTURAL_BOUNDARY = Pattern.compile(
 		"(?<=[!?])\\s+"
@@ -131,6 +132,10 @@ final class ClaimEvidenceAtomizer {
 
 	List<String> atomizeForAlignment(String text) {
 		return atomize(text, true);
+	}
+
+	List<EvidenceAtom> parseAtoms(String text) {
+		return atomizeForAlignment(text).stream().map(evidenceAtomParser::parse).toList();
 	}
 
 	private List<String> atomize(String text, boolean strictCoordinatingBoundaries) {
