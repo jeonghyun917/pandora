@@ -196,9 +196,14 @@ async function runGateAgainstResults(requestedIds, results, options = {}) {
     qdrantSearchFailureCount: 0,
   };
   let evaluationRequestCount = 0;
+  let runtimeInfoRequestCount = 0;
   const server = http.createServer((request, response) => {
     response.setHeader('Content-Type', 'application/json; charset=utf-8');
     if (request.method === 'GET' && request.url === '/api/law-data/ai/debug/runtime-info') {
+      runtimeInfoRequestCount += 1;
+      if (options.runtimeInfoHandler?.({ request, response, runtimeInfo, runtimeInfoRequestCount })) {
+        return;
+      }
       response.end(JSON.stringify(runtimeInfo));
       return;
     }
@@ -303,6 +308,7 @@ async function runGateAgainstResults(requestedIds, results, options = {}) {
       stdout,
       stderr,
       evaluationRequestCount,
+      runtimeInfoRequestCount,
       outputBody,
       checkpointBody,
     };
@@ -606,6 +612,44 @@ test('gate accepts a response with exactly one result per requested case ID', as
 
   assert.equal(result.code, 0, result.stderr);
   assert.match(result.stdout, /PASS 2\/2/);
+});
+
+test('gate retries one transient runtime-info transport failure', async () => {
+  const result = await runGateAgainstResults(
+    ['project-review-target'],
+    [{ id: 'project-review-target', passed: true, resultMsg: 'OK' }],
+    {
+      runtimeInfoHandler: ({ response, runtimeInfoRequestCount }) => {
+        if (runtimeInfoRequestCount !== 1) {
+          return false;
+        }
+        response.destroy();
+        return true;
+      },
+    },
+  );
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.runtimeInfoRequestCount, 3);
+  assert.equal(result.outputBody.provenance.runtimeInfoReadAttempts, 2);
+});
+
+test('gate does not retry a completed runtime-info HTTP failure', async () => {
+  const result = await runGateAgainstResults(
+    ['project-review-target'],
+    [{ id: 'project-review-target', passed: true, resultMsg: 'OK' }],
+    {
+      runtimeInfoHandler: ({ response }) => {
+        response.statusCode = 503;
+        response.end(JSON.stringify({ error: 'unavailable' }));
+        return true;
+      },
+    },
+  );
+
+  assert.notEqual(result.code, 0);
+  assert.equal(result.runtimeInfoRequestCount, 1);
+  assert.equal(result.evaluationRequestCount, 0);
 });
 
 test('gate rejects a supplied baseline manifest before evaluation when the index revision differs', async () => {

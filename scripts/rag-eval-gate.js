@@ -147,17 +147,27 @@ async function main() {
 }
 
 async function loadRuntimeInfo() {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5000);
-  try {
-    const response = await fetch(runtimeInfoEndpoint, { signal: controller.signal });
-    if (response.ok) {
-      return { ...(await response.json()), source: 'server' };
+  const attempts = 2;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    try {
+      const response = await fetch(runtimeInfoEndpoint, { signal: controller.signal });
+      if (!response.ok) {
+        console.warn(`[rag-eval-gate] runtime provenance unavailable: runtime info HTTP ${response.status}`);
+        break;
+      }
+      return { ...(await response.json()), source: 'server', readAttempts: attempt };
+    } catch (error) {
+      const retryable = error?.name === 'AbortError' || error instanceof TypeError;
+      if (!retryable || attempt === attempts) {
+        console.warn(`[rag-eval-gate] runtime provenance unavailable: ${error?.message ?? error}`);
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    } finally {
+      clearTimeout(timer);
     }
-  } catch (error) {
-    console.warn(`[rag-eval-gate] runtime provenance unavailable: ${error?.message ?? error}`);
-  } finally {
-    clearTimeout(timer);
   }
   const environmentInfo = {
     indexVersion: process.env.RAG_EVAL_INDEX_VERSION || null,

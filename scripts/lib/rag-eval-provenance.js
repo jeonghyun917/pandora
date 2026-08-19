@@ -298,6 +298,9 @@ function buildProvenance({
     qdrantReady: runtimeInfo?.qdrantReady === true,
     qdrantSearchFailureCount: normalizeFailureCount(runtimeInfo?.qdrantSearchFailureCount),
     runtimeInfoSource: runtimeInfo?.source || 'unavailable',
+    runtimeInfoReadAttempts: Number.isSafeInteger(runtimeInfo?.readAttempts)
+      ? runtimeInfo.readAttempts
+      : null,
   };
 }
 
