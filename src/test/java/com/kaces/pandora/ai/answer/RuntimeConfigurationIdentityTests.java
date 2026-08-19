@@ -2,7 +2,9 @@ package com.kaces.pandora.ai.answer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.kaces.pandora.semantic.config.LawAiLexicalProperties;
 import com.kaces.pandora.semantic.config.LawAiProperties;
+import com.kaces.pandora.semantic.config.LawAiRrfProperties;
 import org.junit.jupiter.api.Test;
 
 class RuntimeConfigurationIdentityTests {
@@ -25,6 +27,23 @@ class RuntimeConfigurationIdentityTests {
 		assertThat(RuntimeConfigurationIdentity.instanceId()).isNotBlank();
 		assertThat(RuntimeConfigurationIdentity.instanceId())
 			.isEqualTo(RuntimeConfigurationIdentity.instanceId());
+	}
+
+	@Test
+	void fingerprintsLexicalAndRrfBehaviorConfiguration() {
+		LawAiProperties base = properties("secret", "http://127.0.0.1:6333");
+		LawAiLexicalProperties lexical = new LawAiLexicalProperties(1.2, 0.75, 8, 6, 7, 1, 24, 100);
+		LawAiRrfProperties shadow = new LawAiRrfProperties(true, false, 60, 1.0, 1.0, 100);
+		LawAiRrfProperties authoritative = new LawAiRrfProperties(true, true, 60, 1.0, 1.0, 100);
+
+		assertThat(RuntimeConfigurationIdentity.sha256(base, lexical, shadow))
+			.isNotEqualTo(RuntimeConfigurationIdentity.sha256(base, lexical, authoritative));
+		assertThat(RuntimeConfigurationIdentity.sha256(base, lexical, shadow))
+			.isNotEqualTo(RuntimeConfigurationIdentity.sha256(
+				base,
+				new LawAiLexicalProperties(1.6, 0.75, 8, 6, 7, 1, 24, 100),
+				shadow
+			));
 	}
 
 	private LawAiProperties properties(String apiKey, String qdrantBaseUrl) {

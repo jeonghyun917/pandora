@@ -17,6 +17,52 @@ import org.mockito.ArgumentCaptor;
 class LawAiAnswerServiceEvidenceGateTests {
 
 	@Test
+	void shadowModePreservesTheExistingControlCandidateOrder() throws Exception {
+		LawSemanticChunkRow first = chunk(10L, "law", "첫째", "제1조", "첫째 본문");
+		LawSemanticChunkRow second = chunk(20L, "law", "둘째", "제2조", "둘째 본문");
+		Method method = LawAiAnswerService.class.getDeclaredMethod(
+			"selectCandidateOrder",
+			List.class,
+			List.class,
+			boolean.class
+		);
+		method.setAccessible(true);
+
+		@SuppressWarnings("unchecked")
+		List<LawSemanticChunkRow> selected = (List<LawSemanticChunkRow>) method.invoke(
+			null,
+			List.of(first, second),
+			List.of(second, first),
+			false
+		);
+
+		assertThat(selected).containsExactly(first, second);
+	}
+
+	@Test
+	void authoritativeModeCanPassTheFusedCandidateOrderForward() throws Exception {
+		LawSemanticChunkRow first = chunk(10L, "law", "첫째", "제1조", "첫째 본문");
+		LawSemanticChunkRow second = chunk(20L, "law", "둘째", "제2조", "둘째 본문");
+		Method method = LawAiAnswerService.class.getDeclaredMethod(
+			"selectCandidateOrder",
+			List.class,
+			List.class,
+			boolean.class
+		);
+		method.setAccessible(true);
+
+		@SuppressWarnings("unchecked")
+		List<LawSemanticChunkRow> selected = (List<LawSemanticChunkRow>) method.invoke(
+			null,
+			List.of(first, second),
+			List.of(second, first),
+			true
+		);
+
+		assertThat(selected).containsExactly(second, first);
+	}
+
+	@Test
 	void runtimeInfoUsesArtifactIdentityCapturedByTheService() throws Exception {
 		LawAiAnswerService service = service();
 		try {

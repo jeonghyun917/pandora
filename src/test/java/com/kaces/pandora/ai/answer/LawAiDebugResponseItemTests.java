@@ -15,6 +15,11 @@ class LawAiDebugResponseItemTests {
 			.contains(
 				"parentSectionTitle",
 				"sectionType",
+				"vectorRank",
+				"lexicalRank",
+				"fusedRank",
+				"bm25Score",
+				"rrfScore",
 				"matchedAuditGroupIndexes",
 				"matchedAuditAliases"
 			);

@@ -14,7 +14,12 @@ import com.kaces.pandora.rag.chunk.RagChunker;
 import com.kaces.pandora.rag.common.HwpxTextCleaner;
 import com.kaces.pandora.rag.persistence.RagDocumentMapper;
 import com.kaces.pandora.rag.search.RagChunkSearchIndexService;
+import com.kaces.pandora.semantic.config.LawAiLexicalProperties;
 import com.kaces.pandora.semantic.config.LawAiProperties;
+import com.kaces.pandora.semantic.config.LawAiRrfProperties;
+import com.kaces.pandora.semantic.lexical.KoreanBm25SearchService;
+import com.kaces.pandora.semantic.lexical.LexicalSearchHit;
+import com.kaces.pandora.semantic.lexical.ReciprocalRankFusion;
 import com.kaces.pandora.semantic.lexical.SemanticLexicalIndexService;
 import com.kaces.pandora.semantic.provenance.IndexContentSnapshot;
 import com.kaces.pandora.semantic.search.QdrantSearchHit;
@@ -92,6 +97,7 @@ public class LawAiAnswerService {
 	private static final long KEYWORD_SEARCH_TIMEOUT_MILLIS = 1_500L;
 	private static final long FOCUSED_KEYWORD_SEARCH_TIMEOUT_MILLIS = 3_000L;
 	private static final long VECTOR_SHORTFALL_KEYWORD_SEARCH_TIMEOUT_MILLIS = 2_500L;
+	private static final long BM25_SHADOW_TIMEOUT_MILLIS = 1_250L;
 	private static final int MAX_USEFUL_TEXT_CHECK_CHARS = 900;
 	private static final int SIMPLE_ANSWER_CONTEXT_CHARS_PER_GROUND = 420;
 	private static final int STANDARD_ANSWER_CONTEXT_CHARS_PER_GROUND = 620;
@@ -131,6 +137,10 @@ public class LawAiAnswerService {
 	private final RuntimeArtifactIdentity runtimeArtifactIdentity;
 	private final RagChunkSearchIndexService ragChunkSearchIndexService;
 	private final SemanticLexicalIndexService semanticLexicalIndexService;
+	private final KoreanBm25SearchService koreanBm25SearchService;
+	private final ReciprocalRankFusion reciprocalRankFusion;
+	private final LawAiLexicalProperties lexicalProperties;
+	private final LawAiRrfProperties rrfProperties;
 	private final Map<String, CachedAnswer> answerCache = new ConcurrentHashMap<>();
 	private final ExecutorService streamExecutor;
 	private final ExecutorService searchExecutor;
@@ -234,7 +244,6 @@ public class LawAiAnswerService {
 		);
 	}
 
-	@Autowired
 	public LawAiAnswerService(
 		LawChunkMapper lawChunkMapper,
 		RagDocumentMapper ragDocumentMapper,
@@ -253,6 +262,39 @@ public class LawAiAnswerService {
 		GroundedAnswerRepairService groundedAnswerRepairService,
 		RagChunkSearchIndexService ragChunkSearchIndexService,
 		SemanticLexicalIndexService semanticLexicalIndexService
+	) {
+		this(
+			lawChunkMapper, ragDocumentMapper, embeddingClient, qdrantClient, answerClient,
+			evidenceJudge, answerGuard, claimVerifier, answerVerificationService,
+			parentContextAssembler, evidenceCandidateDiversifier, failureLoggingService,
+			searchFailureMapper, properties, groundedAnswerRepairService,
+			ragChunkSearchIndexService, semanticLexicalIndexService, null, null, null, null
+		);
+	}
+
+	@Autowired
+	public LawAiAnswerService(
+		LawChunkMapper lawChunkMapper,
+		RagDocumentMapper ragDocumentMapper,
+		OpenAiEmbeddingClient embeddingClient,
+		QdrantClient qdrantClient,
+		OpenAiAnswerClient answerClient,
+		EvidenceJudge evidenceJudge,
+		AnswerGuard answerGuard,
+		ClaimVerifier claimVerifier,
+		AnswerVerificationService answerVerificationService,
+		ParentContextAssembler parentContextAssembler,
+		EvidenceCandidateDiversifier evidenceCandidateDiversifier,
+		FailureLoggingService failureLoggingService,
+		LawAiSearchFailureMapper searchFailureMapper,
+		LawAiProperties properties,
+		GroundedAnswerRepairService groundedAnswerRepairService,
+		RagChunkSearchIndexService ragChunkSearchIndexService,
+		SemanticLexicalIndexService semanticLexicalIndexService,
+		KoreanBm25SearchService koreanBm25SearchService,
+		ReciprocalRankFusion reciprocalRankFusion,
+		LawAiLexicalProperties lexicalProperties,
+		LawAiRrfProperties rrfProperties
 	) {
 		this.lawChunkMapper = lawChunkMapper;
 		this.ragDocumentMapper = ragDocumentMapper;
@@ -279,6 +321,14 @@ public class LawAiAnswerService {
 		this.properties = properties;
 		this.ragChunkSearchIndexService = ragChunkSearchIndexService;
 		this.semanticLexicalIndexService = semanticLexicalIndexService;
+		this.koreanBm25SearchService = koreanBm25SearchService;
+		this.reciprocalRankFusion = reciprocalRankFusion == null ? new ReciprocalRankFusion() : reciprocalRankFusion;
+		this.lexicalProperties = lexicalProperties == null
+			? new LawAiLexicalProperties(1.2, 0.75, 8, 6, 7, 1, 24, 100)
+			: lexicalProperties;
+		this.rrfProperties = rrfProperties == null
+			? new LawAiRrfProperties(false, false, 60, 1.0, 1.0, 100)
+			: rrfProperties;
 		this.runtimeArtifactIdentity = RuntimeArtifactIdentity.from(LawAiAnswerService.class);
 		this.streamExecutor = Executors.newFixedThreadPool(4, namedThreadFactory("law-ai-stream-"));
 		this.searchExecutor = Executors.newFixedThreadPool(8, namedThreadFactory("law-ai-search-"));
@@ -312,7 +362,7 @@ public class LawAiAnswerService {
 			artifact.path(),
 			artifact.modifiedAt(),
 			RuntimeConfigurationIdentity.instanceId(),
-			RuntimeConfigurationIdentity.sha256(properties),
+			RuntimeConfigurationIdentity.sha256(properties, lexicalProperties, rrfProperties),
 			indexIdentity == null ? null : indexIdentity.revision(),
 			lexicalRevision(),
 			indexIdentity == null ? null : pointCount(indexIdentity.lawQdrant()),
@@ -941,6 +991,14 @@ public class LawAiAnswerService {
 				return List.of();
 			}
 		}, searchExecutor);
+		CompletableFuture<List<LexicalSearchHit>> bm25Future = rrfProperties.enabled()
+			? CompletableFuture.supplyAsync(
+				() -> koreanBm25SearchService == null
+					? List.of()
+					: koreanBm25SearchService.search(normalized.query(), targets, rrfProperties.rrfFusedLimit()),
+				searchExecutor
+			)
+			: CompletableFuture.completedFuture(List.of());
 		CompletableFuture<List<List<Double>>> embeddingFuture = CompletableFuture.supplyAsync(() -> {
 			long start = System.nanoTime();
 			try {
@@ -967,16 +1025,29 @@ public class LawAiAnswerService {
 		for (QdrantSearchHit hit : hits) {
 			vectorScoreByChunkId.put(scoreKey(hit.target(), hit.chunkId()), hit.score());
 		}
-		List<Long> lawChunkIds = hits.stream()
-			.filter(hit -> isLawTarget(hit.target()))
-			.map(QdrantSearchHit::chunkId)
-			.distinct()
-			.toList();
-		List<Long> ragChunkIds = hits.stream()
-			.filter(hit -> isRagTarget(hit.target()))
-			.map(QdrantSearchHit::chunkId)
-			.distinct()
-			.toList();
+		List<LexicalSearchHit> bm25Hits = joinFutureOrDefault(
+			bm25Future,
+			List.of(),
+			BM25_SHADOW_TIMEOUT_MILLIS
+		);
+		Set<Long> lawChunkIdSet = new LinkedHashSet<>();
+		Set<Long> ragChunkIdSet = new LinkedHashSet<>();
+		for (QdrantSearchHit hit : hits) {
+			if (isLawTarget(hit.target())) {
+				lawChunkIdSet.add(hit.chunkId());
+			} else if (isRagTarget(hit.target())) {
+				ragChunkIdSet.add(hit.chunkId());
+			}
+		}
+		for (LexicalSearchHit hit : bm25Hits) {
+			if (isLawTarget(hit.target())) {
+				lawChunkIdSet.add(hit.chunkId());
+			} else if (isRagTarget(hit.target())) {
+				ragChunkIdSet.add(hit.chunkId());
+			}
+		}
+		List<Long> lawChunkIds = List.copyOf(lawChunkIdSet);
+		List<Long> ragChunkIds = List.copyOf(ragChunkIdSet);
 		timing.candidateBuildMs.addAndGet(elapsedMillis(candidateBuildStart));
 		Map<String, LawSemanticChunkRow> chunkById = new HashMap<>();
 		long vectorDbStart = System.nanoTime();
@@ -1007,6 +1078,10 @@ public class LawAiAnswerService {
 			.filter(chunk -> chunk != null)
 			.toList();
 		List<LawSemanticChunkRow> vectorChunks = searchedChunks;
+		List<LawSemanticChunkRow> bm25Chunks = bm25Hits.stream()
+			.map(hit -> chunkById.get(scoreKey(hit.target(), hit.chunkId())))
+			.filter(chunk -> chunk != null)
+			.toList();
 		timing.candidateBuildMs.addAndGet(elapsedMillis(candidateBuildStart));
 		long keywordTimeoutMillis = lexicalSearchTimeoutMillis(normalized.query(), vectorChunks.size());
 		long lexicalWaitStart = System.nanoTime();
@@ -1032,7 +1107,30 @@ public class LawAiAnswerService {
 				.stream()
 				.toList();
 		}
+		List<ReciprocalRankFusion.RrfHit> fusedHits = rrfProperties.enabled()
+			? reciprocalRankFusion.fuse(
+				hits,
+				bm25Hits,
+				rrfProperties.rrfK(),
+				rrfProperties.rrfVectorWeight(),
+				rrfProperties.rrfLexicalWeight(),
+				rrfProperties.rrfFusedLimit()
+			)
+			: List.of();
+		List<LawSemanticChunkRow> fusedChunks = fusedHits.stream()
+			.map(hit -> chunkById.get(hit.candidateKey()))
+			.filter(chunk -> chunk != null)
+			.toList();
+		HybridRetrieval hybrid = new HybridRetrieval(bm25Hits, fusedHits, bm25Chunks, fusedChunks);
+		List<LawSemanticChunkRow> controlChunks = searchedChunks;
+		List<LawSemanticChunkRow> authoritativeChunks = mergeChunks(fusedChunks, lexicalChunks);
+		searchedChunks = selectCandidateOrder(
+			controlChunks,
+			authoritativeChunks,
+			rrfProperties.rrfAuthoritative()
+		);
 		Map<String, Double> baseScoreByChunkId = baseScoreMap(searchedChunks, vectorScoreByChunkId, keywordScoreByChunkId);
+		baseScoreByChunkId = applyAuthoritativeRrfScores(baseScoreByChunkId, hybrid);
 		timing.candidateBuildMs.addAndGet(elapsedMillis(candidateBuildStart));
 		if (searchedChunks.isEmpty()) {
 			return RetrievalResult.empty(
@@ -1048,7 +1146,8 @@ public class LawAiAnswerService {
 				keywordScoreByChunkId,
 				baseScoreByChunkId,
 				noCandidateMessage(hits.size(), vectorChunks.size(), lexicalChunks.size(), targets),
-				List.of()
+				List.of(),
+				hybrid
 			);
 		}
 		long rerankStart = System.nanoTime();
@@ -1095,6 +1194,7 @@ public class LawAiAnswerService {
 				}
 				searchedChunks = mergeChunks(fallbackChunks, searchedChunks);
 				baseScoreByChunkId = baseScoreMap(searchedChunks, vectorScoreByChunkId, keywordScoreByChunkId);
+				baseScoreByChunkId = applyAuthoritativeRrfScores(baseScoreByChunkId, hybrid);
 				timing.candidateBuildMs.addAndGet(elapsedMillis(candidateBuildStart));
 				rerankStart = System.nanoTime();
 				rankedChunks = rerankChunks(searchedChunks, normalized.query(), baseScoreByChunkId);
@@ -1202,7 +1302,8 @@ public class LawAiAnswerService {
 				judgedEvidence.topicAlignedCount(),
 				judgedEvidence.relevantCount(),
 				judgedEvidence.directEvidenceCount(),
-				judgedEvidence.selectionPolicy()
+				judgedEvidence.selectionPolicy(),
+				hybrid
 			);
 		}
 		List<LawSemanticChunkRow> orderedEvidenceChunks = DocumentDiscoveryPolicy.orderChunks(
@@ -1284,7 +1385,8 @@ public class LawAiAnswerService {
 				judgedEvidence.topicAlignedCount(),
 				judgedEvidence.relevantCount(),
 				judgedEvidence.directEvidenceCount(),
-				judgedEvidence.selectionPolicy()
+				judgedEvidence.selectionPolicy(),
+				hybrid
 			);
 		}
 		List<LawSemanticChunkRow> answerChunks = selectAnswerContextChunks(displayChunks, normalized.query());
@@ -1315,7 +1417,8 @@ public class LawAiAnswerService {
 			judgedEvidence.topicAlignedCount(),
 			judgedEvidence.relevantCount(),
 			judgedEvidence.directEvidenceCount(),
-			judgedEvidence.selectionPolicy()
+			judgedEvidence.selectionPolicy(),
+			hybrid
 		);
 	}
 
@@ -1620,6 +1723,8 @@ public class LawAiAnswerService {
 			List.of(
 				new LawAiDebugResponse.Stage("vector", retrieval.vectorChunks().size(), "Qdrant vector search hits loaded from DB"),
 				new LawAiDebugResponse.Stage("keyword", retrieval.lexicalChunks().size(), "Lexical keyword candidates"),
+				new LawAiDebugResponse.Stage("bm25", retrieval.hybrid().bm25Chunks().size(), "Common Korean BM25 shadow candidates"),
+				new LawAiDebugResponse.Stage("rrf", retrieval.hybrid().fusedChunks().size(), "Vector and BM25 reciprocal-rank fusion"),
 				new LawAiDebugResponse.Stage("merged", retrieval.searchedChunks().size(), "Merged vector and keyword candidates"),
 				new LawAiDebugResponse.Stage("reranked", retrieval.rankedChunks().size(), "Heuristic rerank result"),
 				new LawAiDebugResponse.Stage("intent", retrieval.intentFilteredChunks().size(), "Question intent filtered candidates"),
@@ -1632,6 +1737,8 @@ public class LawAiAnswerService {
 			),
 			toDebugItems(retrieval.vectorChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.lexicalChunks(), retrieval, selectedKeys, auditTermGroups),
+			toDebugItems(retrieval.hybrid().bm25Chunks(), retrieval, selectedKeys, auditTermGroups),
+			toDebugItems(retrieval.hybrid().fusedChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.searchedChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.rankedChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.intentFilteredChunks(), retrieval, selectedKeys, auditTermGroups),
@@ -1669,6 +1776,9 @@ public class LawAiAnswerService {
 		return chunks.stream()
 			.map(chunk -> {
 				String key = scoreKey(chunk.target(), chunk.chunkId());
+				Integer vectorRank = vectorRank(retrieval.qdrantHits(), key);
+				LexicalSearchHit bm25Hit = retrieval.hybrid().bm25Hit(key);
+				ReciprocalRankFusion.RrfHit fusedHit = retrieval.hybrid().fusedHit(key);
 				List<RetrievalAuditTermMatcher.GroupMatch> auditMatches =
 					RetrievalAuditTermMatcher.matchGroups(auditTermGroups, chunk.chunkText());
 				return new LawAiDebugResponse.Item(
@@ -1685,7 +1795,12 @@ public class LawAiAnswerService {
 					chunk.sectionType(),
 					chunk.pageNo(),
 					chunk.sourcePath(),
+					vectorRank,
+					bm25Hit == null ? null : bm25Hit.rank(),
+					fusedHit == null ? null : retrieval.hybrid().fusedRank(key),
 					retrieval.vectorScoreByChunkId().getOrDefault(key, 0.0),
+					bm25Hit == null ? 0.0 : bm25Hit.score(),
+					fusedHit == null ? 0.0 : fusedHit.score(),
 					retrieval.keywordScoreByChunkId().getOrDefault(key, 0.0),
 					retrieval.metadataScoreByChunkId().getOrDefault(key, 0.0),
 					retrieval.combinedScoreByChunkId().getOrDefault(key, retrieval.baseScoreByChunkId().getOrDefault(key, 0.0)),
@@ -4524,6 +4639,19 @@ public class LawAiAnswerService {
 			.toList();
 	}
 
+	private Integer vectorRank(List<QdrantSearchHit> hits, String candidateKey) {
+		if (hits == null) {
+			return null;
+		}
+		for (int index = 0; index < hits.size(); index++) {
+			QdrantSearchHit hit = hits.get(index);
+			if (hit != null && scoreKey(hit.target(), hit.chunkId()).equals(candidateKey)) {
+				return index + 1;
+			}
+		}
+		return null;
+	}
+
 	private boolean hasConfiguredPolicyActionHeading(
 		LawSemanticChunkRow chunk,
 		QuestionIntentProfile profile
@@ -4791,6 +4919,34 @@ public class LawAiAnswerService {
 			merged.putIfAbsent(scoreKey(chunk.target(), chunk.chunkId()), chunk);
 		}
 		return merged.values().stream().toList();
+	}
+
+	private static List<LawSemanticChunkRow> selectCandidateOrder(
+		List<LawSemanticChunkRow> controlOrder,
+		List<LawSemanticChunkRow> fusedOrder,
+		boolean authoritative
+	) {
+		return authoritative ? List.copyOf(fusedOrder) : List.copyOf(controlOrder);
+	}
+
+	private Map<String, Double> applyAuthoritativeRrfScores(
+		Map<String, Double> controlScores,
+		HybridRetrieval hybrid
+	) {
+		if (!rrfProperties.rrfAuthoritative() || hybrid.fusedHits().isEmpty()) {
+			return controlScores;
+		}
+		Map<String, Double> scores = new HashMap<>(controlScores);
+		double maximumControl = scores.values().stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
+		double maximumRrf = hybrid.fusedHits().stream()
+			.mapToDouble(ReciprocalRankFusion.RrfHit::score)
+			.max()
+			.orElse(1.0);
+		for (ReciprocalRankFusion.RrfHit hit : hybrid.fusedHits()) {
+			double normalizedRrf = maximumRrf <= 0 ? 0.0 : hit.score() / maximumRrf;
+			scores.put(hit.candidateKey(), maximumControl + normalizedRrf);
+		}
+		return Map.copyOf(scores);
 	}
 
 	private List<LawSemanticChunkRow> preferOfficialSecurityReviewTargetEvidence(
@@ -9930,7 +10086,8 @@ public class LawAiAnswerService {
 		int topicAlignedCount,
 		int relevantCount,
 		int directEvidenceCount,
-		String evidenceSelectionPolicy
+		String evidenceSelectionPolicy,
+		HybridRetrieval hybrid
 	) {
 		static RetrievalResult empty(
 			String resultMsg,
@@ -9946,6 +10103,29 @@ public class LawAiAnswerService {
 			Map<String, Double> baseScoreByChunkId,
 			String message,
 			List<LawSemanticChunkRow> rankedChunks
+		) {
+			return empty(
+				resultMsg, target, query, targets, lexicalKeywords, qdrantHits,
+				vectorChunks, lexicalChunks, vectorScoreByChunkId, keywordScoreByChunkId,
+				baseScoreByChunkId, message, rankedChunks, HybridRetrieval.empty()
+			);
+		}
+
+		static RetrievalResult empty(
+			String resultMsg,
+			String target,
+			String query,
+			List<String> targets,
+			List<String> lexicalKeywords,
+			List<QdrantSearchHit> qdrantHits,
+			List<LawSemanticChunkRow> vectorChunks,
+			List<LawSemanticChunkRow> lexicalChunks,
+			Map<String, Double> vectorScoreByChunkId,
+			Map<String, Double> keywordScoreByChunkId,
+			Map<String, Double> baseScoreByChunkId,
+			String message,
+			List<LawSemanticChunkRow> rankedChunks,
+			HybridRetrieval hybrid
 		) {
 			List<LawSemanticChunkRow> safeRankedChunks = rankedChunks == null ? List.of() : rankedChunks;
 			Map<String, Double> safeVectorScores = vectorScoreByChunkId == null ? Map.of() : vectorScoreByChunkId;
@@ -9977,8 +10157,50 @@ public class LawAiAnswerService {
 				0,
 				0,
 				0,
-				"empty"
+				"empty",
+				hybrid == null ? HybridRetrieval.empty() : hybrid
 			);
+		}
+	}
+
+	private record HybridRetrieval(
+		List<LexicalSearchHit> bm25Hits,
+		List<ReciprocalRankFusion.RrfHit> fusedHits,
+		List<LawSemanticChunkRow> bm25Chunks,
+		List<LawSemanticChunkRow> fusedChunks
+	) {
+		private HybridRetrieval {
+			bm25Hits = bm25Hits == null ? List.of() : List.copyOf(bm25Hits);
+			fusedHits = fusedHits == null ? List.of() : List.copyOf(fusedHits);
+			bm25Chunks = bm25Chunks == null ? List.of() : List.copyOf(bm25Chunks);
+			fusedChunks = fusedChunks == null ? List.of() : List.copyOf(fusedChunks);
+		}
+
+		private static HybridRetrieval empty() {
+			return new HybridRetrieval(List.of(), List.of(), List.of(), List.of());
+		}
+
+		private LexicalSearchHit bm25Hit(String candidateKey) {
+			return bm25Hits.stream()
+				.filter(hit -> (hit.target() + ':' + hit.chunkId()).equals(candidateKey))
+				.findFirst()
+				.orElse(null);
+		}
+
+		private ReciprocalRankFusion.RrfHit fusedHit(String candidateKey) {
+			return fusedHits.stream()
+				.filter(hit -> hit.candidateKey().equals(candidateKey))
+				.findFirst()
+				.orElse(null);
+		}
+
+		private Integer fusedRank(String candidateKey) {
+			for (int index = 0; index < fusedHits.size(); index++) {
+				if (fusedHits.get(index).candidateKey().equals(candidateKey)) {
+					return index + 1;
+				}
+			}
+			return null;
 		}
 	}
 }
