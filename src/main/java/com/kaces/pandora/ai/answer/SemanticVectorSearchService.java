@@ -124,7 +124,9 @@ final class SemanticVectorSearchService {
 			}
 		}
 		return bestByChunk.values().stream()
-			.sorted(Comparator.comparingDouble(QdrantSearchHit::score).reversed())
+			.sorted(Comparator.comparingDouble(QdrantSearchHit::score).reversed()
+				.thenComparing(QdrantSearchHit::target, Comparator.nullsFirst(String::compareTo))
+				.thenComparingLong(QdrantSearchHit::chunkId))
 			.limit(Math.max(1, limit))
 			.toList();
 	}
