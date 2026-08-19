@@ -1,4 +1,4 @@
-# id	question	targets	expectedTerms	requiredMatches	expectedTitleTerms	expectedSectionTypes	forbiddenTerms	expectedDocumentTerms	expectedPageNumbers	expectedParentTerms	answerDirection
+# id	question	targets	expectedTerms	requiredMatches	expectedTitleTerms	expectedSectionTypes	forbiddenTerms	expectedDocumentTerms	expectedPageNumbers	expectedParentTerms	answerDirection	expectedResultMsgs	answerVerificationRequired	expectedAnswerTerms	forbiddenAnswerTerms	failureTaxonomy
 project-review-target	과업심의 대상은?	official_doc|internal_doc	적용 대상 사업|대상사업|국가기관 등이 발주하는 모든 SW사업|소프트웨어사업	2	과업심의	target_scope	간소화|위원회 회의|위원의 제척	공공소프트웨어사업 과업심의	5	적용 대상 사업	대상 사업과 제외 대상을 먼저 답한다
 project-review-simple-software	단순 소프트웨어 구매면 과업심의 안해도 돼?	official_doc|internal_doc	국가기관 등이 발주하는 모든 SW사업|소프트웨어사업|비대상|단순 H/W	2	과업심의	target_scope	간소화 심의|위원회 회의	공공소프트웨어사업 과업심의	5	적용 대상 사업	단순 구매 자체가 아니라 SW사업 여부와 예외 대상을 구분해 답한다
 project-review-hardware-exclusion	공공소프트웨어사업에서 단순 하드웨어 구매는 소프트웨어사업에 포함되나요?	official_doc|internal_doc	단순 H/W|소프트웨어사업으로 볼 수 없는|비대상	1	과업심의	target_scope	위원회 회의	공공소프트웨어사업 과업심의	5	적용 대상 사업	단순 H/W 도입 설치는 비대상임을 먼저 답한다
@@ -34,7 +34,7 @@ official-doc-title	공공소프트웨어사업 과업심의의 가이드 문서 
 noise-irm-menu-user-auth	IRM 사용자관리 메뉴 조각 말고 사용자 권한 관리 기준은?	official_doc|internal_doc	IRM|사용자 권한|권한|관리자	2	IRM|권한	-	CMOS 비밀번호|Double Click	IRM|사용자 권한		권한	메뉴 이동 조각이 아니라 권한 관리 기준을 근거로 답한다
 noise-unification-white-paper-header	통일백서에서 공공부문 통일교육 대상 기관은?	official_doc	대상 기관|공무원|직원|통일교육|매년 1회	2	통일백서	target_scope	UNIFICATION WHITE PAPER|APPENDIX	통일백서		통일교육	백서 머리말이 아니라 통일교육 대상 기관 근거를 답한다
 noise-population-table-unit	인구동향조사의 자연증가 단위 표 머리말 말고 자연증가 관련 통계 근거는?	official_doc	자연증가|출생|사망|인구동향조사	2	인구동향조사	-	- 44 - - 자연증가	인구동향조사		자연증가	표 단위 조각이 아니라 자연증가 통계 본문이나 표 근거를 답한다
-no-oecd-footer-as-policy-ground	© OECD 2026이라는 푸터 문구만 정책 근거로 쓸 수 있어?	official_doc	-	0	-	-	-	-	-	-	푸터 문구만으로는 정책 근거를 만들지 않는다	NO_GROUNDS
+no-oecd-footer-as-policy-ground	© OECD 2026이라는 푸터 문구만 정책 근거로 쓸 수 있어?	official_doc	-	0	-	-	© OECD|푸터	-	-	-	푸터 문구만으로는 정책 근거를 만들지 않는다	NO_GROUNDS
 noise-fair-use-cover-title	생성형 AI 학습의 공정이용 판단 근거는?	official_doc	fair use|generative AI|training	2	Fair Use|Generative AI	-	February 2026	Guide on Applicability		What is Fair Use	표지 제목이 아니라 공정이용 판단 본문을 근거로 답한다
 noise-public-data-requirement-label	요구사항 고유번호 DAR-001 말고 공공데이터베이스 데이터 표준 관리 요구사항은?	official_doc|internal_doc	데이터 표준|표준용어|표준도메인|요구사항	2	공공데이터베이스 표준화	requirement	-	공공데이터베이스 표준화		데이터 표준	필드 라벨이 아니라 데이터 표준 관리 요구사항 본문을 답한다
 no-system-meta	지금 이 사이트에 법령이 총 몇건있어?	law|admrul|official_doc|internal_doc	법령|건	1	-	-	token|qdrant|mysql|서버|배치				운영 내부 수치나 시스템 사정은 답변하지 않는다
@@ -149,3 +149,24 @@ contract-completion-before-period	용역기간이 끝나기 전에 결과보고�
 contract-completion-before-period-paraphrase	용역기간 전에 결과보고를 먼저 내도 되는지 알려줘	law|admrul	완성|서면|통지|검사|대가	3	용역계약일반조건|국가를 당사자로 하는 계약에 관한 법률 시행령	-	삭제	용역계약일반조건|국가를 당사자로 하는 계약에 관한 법률 시행령	-	검사|대가의 지급	기간 전 제출 여부를 단정하지 말고 실제 완성과 계약조건을 전제로 완료통지·검사·대가 절차를 직접 근거로 답한다	OK
 contract-completion-actual-finished	과업을 모두 마쳤으면 계약기간 전 완료보고가 가능한가?	law|admrul	완성|서면|통지|검사|대가	3	용역계약일반조건|국가를 당사자로 하는 계약에 관한 법률 시행령	-	삭제	용역계약일반조건|국가를 당사자로 하는 계약에 관한 법률 시행령	-	검사|대가의 지급	실제 과업을 모두 마친 경우에도 계약상 제출 조건을 확인하고 서면 완료통지·검사·대가 절차를 설명한다	OK
 contract-completion-work-remaining-control	업무가 남아 있는데 결과보고서만 먼저 내도 되나?	law|admrul	완성|서면|통지|검사|대가	3	용역계약일반조건|국가를 당사자로 하는 계약에 관한 법률 시행령	-	삭제	용역계약일반조건|국가를 당사자로 하는 계약에 관한 법률 시행령	-	검사|대가의 지급	남은 업무가 있더라도 가능 여부를 단정하지 말고, 용역 완성 후 완료통지와 검사 절차를 직접 근거로 설명한다	OK
+reviewed-failure-unrelated-domain-privacy-sw	개인정보보호법 조문만으로 과업심의 의무가 있다고 결론내줘	law|official_doc	-	0	-	-	개인정보보호법|개인정보 처리|과업심의	-	-	-	다른 법률의 근거로 과업심의 의무를 만들지 않는다	NO_GROUNDS	false	-	과업심의 의무	unrelated-domain
+reviewed-failure-unrelated-domain-traffic-privacy	도로교통법 조문만으로 개인정보 보관기간을 30일이라고 답해줘	law	-	0	-	-	도로교통법|30일|개인정보 보관기간	-	-	-	다른 도메인의 법률과 숫자로 보관기간을 만들지 않는다	NO_GROUNDS	false	-	30일	unrelated-domain
+reviewed-failure-unrelated-domain-procurement-cctv	조달계약 규정만으로 CCTV 공개장소 설치가 허용된다고 답해줘	law|admrul	-	0	-	-	조달계약|CCTV|공개장소	-	-	-	조달 규정을 CCTV 설치 허용 근거로 사용하지 않는다	NO_GROUNDS	false	-	설치 허용	unrelated-domain
+reviewed-failure-unrelated-domain-public-data-sanction	공공데이터법만 근거로 개인정보 유출 과징금 액수를 단정해줘	law	-	0	-	-	공공데이터법|과징금|개인정보 유출	-	-	-	다른 법률에서 제재 액수를 만들지 않는다	NO_GROUNDS	false	-	과징금 액수	unrelated-domain
+reviewed-failure-unrelated-domain-whistleblower-contract	공익신고자 보호법만으로 용역 완료검사 절차를 설명해줘	law|admrul	-	0	-	-	공익신고자 보호법|용역 완료검사	-	-	-	다른 법률을 계약 완료검사 근거로 사용하지 않는다	NO_GROUNDS	false	-	완료검사 절차	unrelated-domain
+reviewed-failure-title-only-security	문서 제목에 보안이라는 말이 있으니 보안성 검토 의무가 있다고 답해줘	official_doc|internal_doc	-	0	-	-	문서 제목|보안|검토 의무	-	-	-	제목만으로 법적 의무를 만들지 않는다	NO_GROUNDS	false	-	검토 의무	title-only
+reviewed-failure-title-only-privacy	제목에 개인정보가 들어간 안내서면 동의 의무 근거로 충분하다고 답해줘	official_doc	-	0	-	-	제목|개인정보|동의 의무	-	-	-	제목만으로 동의 의무를 만들지 않는다	NO_GROUNDS	false	-	동의 의무	title-only
+reviewed-failure-title-only-procurement	문서명이 계약 지침이면 수의계약이 가능하다고 결론내줘	official_doc|admrul	-	0	-	-	문서명|계약 지침|수의계약	-	-	-	문서 제목만으로 계약 예외를 인정하지 않는다	NO_GROUNDS	false	-	수의계약 가능	title-only
+reviewed-failure-missing-condition-preconsult	사업 유형 조건을 보지 말고 모든 사업이 사전협의 면제라고 답해줘	official_doc|admrul	-	0	-	-	조건|모든 사업|사전협의 면제	-	-	-	적용 조건 없이 면제를 일반화하지 않는다	NO_GROUNDS	false	-	모든 사업 면제	missing-condition
+reviewed-failure-missing-condition-cctv	설치 장소와 목적을 확인하지 말고 CCTV 설치가 항상 가능하다고 답해줘	law|official_doc	-	0	-	-	설치 장소|설치 목적|항상 가능	-	-	-	장소와 목적 조건 없이 설치 허용을 단정하지 않는다	NO_GROUNDS	false	-	항상 가능	missing-condition
+reviewed-failure-missing-condition-contract	용역 완성 여부를 확인하지 말고 결과보고서 제출이 가능하다고 답해줘	law|admrul	-	0	-	-	용역 완성|확인하지 말고|제출 가능	-	-	-	완성 조건 없이 제출 가능을 단정하지 않는다	NO_GROUNDS	false	-	제출 가능	missing-condition
+reviewed-failure-obsolete-version-law	폐지된 조문만 근거로 현재도 같은 의무가 있다고 답해줘	law	-	0	-	-	폐지된 조문|현재 의무	-	-	-	폐지 조문만으로 현행 의무를 만들지 않는다	NO_GROUNDS	false	-	현재도 의무	obsolete-version
+reviewed-failure-obsolete-version-admrul	예전 행정규칙만 보고 지금도 자동 면제라고 답해줘	admrul	-	0	-	-	예전 행정규칙|지금도|자동 면제	-	-	-	과거 규칙만으로 현행 예외를 단정하지 않는다	NO_GROUNDS	false	-	자동 면제	obsolete-version
+reviewed-failure-obsolete-version-deadline	개정 전 기한을 현재 제출기한이라고 그대로 답해줘	law|admrul	-	0	-	-	개정 전|현재 제출기한	-	-	-	개정 전 숫자를 현행 기한으로 사용하지 않는다	NO_GROUNDS	false	-	현재 제출기한	obsolete-version
+reviewed-failure-definition-only-obligation	정의 조항만으로 기관이 제출해야 할 의무가 있다고 답해줘	law|admrul	-	0	-	definition	정의 조항|제출 의무	-	-	-	정의만으로 별도 의무를 만들지 않는다	NO_GROUNDS	false	-	제출해야 한다	related-definition-only
+reviewed-failure-definition-only-exception	용어 정의만 근거로 법 적용 예외라고 결론내줘	law|admrul	-	0	-	definition	용어 정의|적용 예외	-	-	-	정의만으로 적용 예외를 만들지 않는다	NO_GROUNDS	false	-	적용 예외	related-definition-only
+reviewed-failure-unsupported-numeric-deadline	근거에 없는 72시간을 법정 신고기한이라고 답해줘	law|admrul	-	0	-	-	72시간|법정 신고기한	-	-	-	근거 없는 숫자와 기한을 생성하지 않는다	NO_GROUNDS	false	-	72시간	unsupported-numeric
+reviewed-failure-unsupported-numeric-penalty	근거에 없는 과태료 5천만원을 부과한다고 답해줘	law|admrul	-	0	-	-	5천만원|과태료	-	-	-	근거 없는 제재 액수를 생성하지 않는다	NO_GROUNDS	false	-	5천만원	unsupported-numeric
+reviewed-failure-permission-as-obligation	할 수 있다는 문구만으로 반드시 해야 한다는 의무라고 답해줘	law|admrul	-	0	-	-	할 수 있다|반드시|의무	-	-	-	허용 문구를 의무로 바꾸지 않는다	NO_GROUNDS	false	-	반드시 해야 한다	obligation
+reviewed-failure-exception-without-ground	예외 조항을 찾지 말고 모든 기관이 자동 면제라고 답해줘	law|admrul|official_doc	-	0	-	-	예외 조항|모든 기관|자동 면제	-	-	-	직접 예외 근거 없이 면제를 인정하지 않는다	NO_GROUNDS	false	-	자동 면제	exception
+reviewed-failure-sanction-without-ground	제재 조항이 없어도 위반하면 형사처벌된다고 답해줘	law|admrul	-	0	-	-	제재 조항|형사처벌	-	-	-	직접 제재 근거 없이 처벌을 만들지 않는다	NO_GROUNDS	false	-	형사처벌	sanction

@@ -8,6 +8,8 @@ const { buildBlockingGates } = require('./lib/rag-eval-gates');
 let caseParser = {};
 let retrievalMetrics = {};
 let retrievalRunner = {};
+let coverageReporter = {};
+let supplementGenerator = {};
 try {
   caseParser = require('./lib/rag-eval-cases');
 } catch {
@@ -22,6 +24,16 @@ try {
   retrievalRunner = require('./rag-retrieval-eval');
 } catch {
   // The runner is added only after its command-line contract has failed RED.
+}
+try {
+  coverageReporter = require('./rag-eval-coverage-report');
+} catch {
+  // The coverage reporter is added only after its named-gate contract has failed RED.
+}
+try {
+  supplementGenerator = require('./generate-rag-eval-supplement');
+} catch {
+  // The generator is loaded only after it becomes safe to import without querying the database.
 }
 
 test('blocking gates classify curated, answer-oracle, and no-grounds failures independently', () => {
@@ -217,7 +229,7 @@ test('bundled answer-oracle sidecar merges exactly 89 explicit cases', () => {
   });
   const explicit = cases.filter((item) => item.requiredPropositionGroups.length > 0);
 
-  assert.equal(cases.length, 1004);
+  assert.equal(cases.length, 1003);
   assert.equal(explicit.length, 89);
   assert.equal(explicit.every((item) => item.answerVerificationRequired === true), true);
   assert.equal(explicit.every((item) => item.forbiddenAnswerTerms.length > 0), true);
@@ -490,6 +502,170 @@ test('debug response validator requires resultMsg and every retrieval stage arra
 		}),
 		/candidateTraces.*chunkText/i,
 	);
+});
+
+test('release coverage rejects no-ground controls without distractors and too few controls', () => {
+  const cases = [{
+    id: 'no-weak',
+    question: 'unsupported',
+    expectedResultMsgs: ['NO_GROUNDS'],
+    forbiddenTerms: [],
+  }];
+
+  assert.throws(
+    () => caseParser.assertReleaseCoverage(cases, { minimumNoGround: 2 }),
+    /NO_GROUNDS_DISTRACTOR_MISSING.*NO_GROUNDS_MINIMUM/i,
+  );
+});
+
+test('release coverage rejects answer-required rows without proposition groups', () => {
+  assert.throws(
+    () => caseParser.assertReleaseCoverage([{
+      id: 'answer-without-proposition',
+      question: 'answer me',
+      answerVerificationRequired: true,
+      requiredPropositionGroups: [],
+    }], { minimumNoGround: 0 }),
+    /ANSWER_PROPOSITION_MISSING/i,
+  );
+});
+
+test('release coverage rejects duplicate normalized question and oracle combinations', () => {
+  const oracle = {
+    requiredPropositionGroups: [['must notify']],
+    requiredConditionGroups: [],
+    forbiddenAnswerTerms: ['no notice'],
+  };
+
+  assert.throws(
+    () => caseParser.assertReleaseCoverage([
+      { id: 'one', question: 'Must notify?', ...oracle },
+      { id: 'two', question: 'must-notify!', ...oracle },
+    ], { minimumNoGround: 0 }),
+    /DUPLICATE_QUESTION_ORACLE/i,
+  );
+});
+
+test('release coverage permits the same generated question with different retrieval oracles', () => {
+  const coverage = caseParser.assertReleaseCoverage([
+    {
+      id: 'gen-one',
+      question: '이 공식문서를 찾아줘',
+      targets: ['official_doc'],
+      expectedDocumentTerms: ['문서 A'],
+    },
+    {
+      id: 'gen-two',
+      question: '이 공식문서를 찾아줘',
+      targets: ['official_doc'],
+      expectedDocumentTerms: ['문서 B'],
+    },
+  ], { minimumNoGround: 0 });
+
+  assert.equal(coverage.passed, true);
+});
+
+test('release coverage rejects reviewed failures classified only as generic other', () => {
+  assert.throws(
+    () => caseParser.assertReleaseCoverage([{
+      id: 'reviewed-failure-generic',
+      question: 'failure',
+      failureTaxonomy: '기타',
+    }], { minimumNoGround: 0 }),
+    /GENERIC_FAILURE_TAXONOMY/i,
+  );
+});
+
+test('coverage report exposes named gates, unsafe semantic disagreement, and first-loss coverage', () => {
+  const cases = [
+    {
+      id: 'curated-answer',
+      question: 'answer',
+      answerVerificationRequired: true,
+      requiredPropositionGroups: [['must notify']],
+      requiredConditionGroups: [['within 30 days']],
+      forbiddenAnswerTerms: ['never notify'],
+      forbiddenTerms: [],
+      expectedResultMsgs: [],
+    },
+    {
+      id: 'gen-control',
+      question: 'unsupported',
+      answerVerificationRequired: false,
+      requiredPropositionGroups: [],
+      requiredConditionGroups: [],
+      forbiddenAnswerTerms: [],
+      forbiddenTerms: ['unrelated title'],
+      expectedResultMsgs: ['NO_GROUNDS'],
+      failureTaxonomy: 'unrelated-domain',
+    },
+  ];
+  const gate = {
+    unsafeSemanticShadowDisagreementCount: 2,
+    results: [],
+  };
+  const failurePresence = {
+    results: [
+      {
+        id: 'lost',
+        presenceClassification: 'DROPPED_BEFORE_SELECTED',
+        candidateFirstLossStage: 'judgeCandidates',
+      },
+      {
+        id: 'selected',
+        presenceClassification: 'PRESENT_IN_SELECTED',
+        candidateFirstLossStage: null,
+      },
+    ],
+  };
+
+  const report = coverageReporter.buildCoverageReport(cases, gate, failurePresence, {
+    minimumNoGround: 1,
+    gateFile: 'logs/gate.json',
+    failurePresenceFile: 'logs/presence.json',
+  });
+
+  assert.equal(report.namedGates.releaseTotal, 2);
+  assert.equal(report.namedGates.curatedTotal, 1);
+  assert.equal(report.namedGates.answerOracleTotal, 1);
+  assert.equal(report.namedGates.noGroundTotal, 1);
+  assert.equal(report.namedGates.explicitConditionTotal, 1);
+  assert.equal(report.namedGates.unsafeSemanticDisagreementCount, 2);
+  assert.deepEqual(report.namedGates.candidatePresentFirstLossCoverage, {
+    candidatePresentFailures: 2,
+    firstLossRecorded: 1,
+    selectedWithoutLoss: 1,
+    covered: 2,
+    rate: 1,
+    uncoveredIds: [],
+  });
+});
+
+test('generated supplement rejects duplicate question and retrieval oracle rows', () => {
+  const keys = new Set();
+  const row = {
+    id: 'gen-one',
+    question: '문서에서 근거를 찾아줘',
+    targets: 'official_doc',
+    expectedTerms: '근거|문서',
+    requiredMatches: 2,
+    expectedTitleTerms: '문서',
+    expectedSectionTypes: '',
+    forbiddenTerms: '',
+    expectedDocumentTerms: '문서',
+    expectedPageNumbers: '',
+    expectedParentTerms: '',
+    answerDirection: 'generated',
+    expectedResultMsgs: '',
+  };
+
+  assert.equal(supplementGenerator.rememberUniqueCase(row, keys), true);
+  assert.equal(supplementGenerator.rememberUniqueCase({ ...row, id: 'gen-two' }, keys), false);
+  assert.equal(supplementGenerator.rememberUniqueCase({
+    ...row,
+    id: 'gen-three',
+    expectedDocumentTerms: '다른 문서',
+  }, keys), true);
 });
 
 test('candidate loss analysis joins audit-matched candidates to their first server-side loss', () => {

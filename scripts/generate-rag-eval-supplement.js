@@ -29,6 +29,7 @@ const HEADER = [
 
 function main() {
   const existingIds = new Set(readExistingIds());
+  const caseKeys = new Set();
   const officialRows = queryOfficialRows();
   const lawRows = queryLawRows("law");
   const admrulRows = queryLawRows("admrul");
@@ -37,9 +38,9 @@ function main() {
   const admrulCount = Math.max(0, targetCount - officialCount - lawCount);
 
   const cases = [
-    ...selectOfficialCases(officialRows, officialCount, existingIds),
-    ...selectLawCases(lawRows, lawCount, existingIds),
-    ...selectLawCases(admrulRows, admrulCount, existingIds),
+    ...selectOfficialCases(officialRows, officialCount, existingIds, caseKeys),
+    ...selectLawCases(lawRows, lawCount, existingIds, caseKeys),
+    ...selectLawCases(admrulRows, admrulCount, existingIds, caseKeys),
   ].slice(0, targetCount);
 
   if (cases.length < targetCount) {
@@ -147,18 +148,31 @@ LIMIT ${queryLimit};
 `, ["target", "source_org", "title", "chunk_id", "chunk_title", "parent_title", "section_type", "page_no", "chunk_text"]);
 }
 
-function selectOfficialCases(rows, count, existingIds) {
-	return roundRobin(rows, (row) => `${row.source_org || "(none)"}:${row.title || row.chunk_id}`, Math.min(rows.length, count * 3))
+function selectOfficialCases(rows, count, existingIds, caseKeys) {
+	return roundRobin(rows, (row) => `${row.source_org || "(none)"}:${row.title || row.chunk_id}`, rows.length)
 		.map((row) => toEvalCase(row, existingIds))
 		.filter(Boolean)
+		.filter((row) => rememberUniqueCase(row, caseKeys))
 		.slice(0, count);
 }
 
-function selectLawCases(rows, count, existingIds) {
-	return roundRobin(rows, (row) => `${row.source_org || row.target}:${row.title || row.chunk_id}`, Math.min(rows.length, count * 3))
+function selectLawCases(rows, count, existingIds, caseKeys) {
+	return roundRobin(rows, (row) => `${row.source_org || row.target}:${row.title || row.chunk_id}`, rows.length)
 		.map((row) => toEvalCase(row, existingIds))
 		.filter(Boolean)
+		.filter((row) => rememberUniqueCase(row, caseKeys))
 		.slice(0, count);
+}
+
+function rememberUniqueCase(row, caseKeys) {
+	const key = JSON.stringify(HEADER
+		.filter((column) => column !== "id" && column !== "answerDirection")
+		.map((column) => cleanText(row[column]).normalize("NFKC").toLowerCase()));
+	if (caseKeys.has(key)) {
+		return false;
+	}
+	caseKeys.add(key);
+	return true;
 }
 
 function toEvalCase(row, existingIds) {
@@ -452,4 +466,11 @@ function sql(value) {
   return String(value ?? "").replace(/'/g, "''");
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  main,
+  rememberUniqueCase,
+};

@@ -1,46 +1,34 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const {
+  assertReleaseCoverage,
+  loadEvalCases,
+} = require("./lib/rag-eval-cases");
 
 const workspace = path.resolve(__dirname, "..");
 const casePaths = [
   path.resolve(workspace, "src", "main", "resources", "rag-evaluation-cases.tsv"),
   path.resolve(workspace, "src", "main", "resources", "rag-evaluation-cases.generated.tsv"),
 ];
+const answerOraclePath = path.resolve(
+  workspace,
+  "src",
+  "main",
+  "resources",
+  "rag-answer-evaluation-oracles.tsv",
+);
 const gatePath = process.env.RAG_EVAL_GATE_JSON
   ? path.resolve(workspace, process.env.RAG_EVAL_GATE_JSON)
   : resolveLatestEvalGatePath(path.resolve(workspace, "logs", "rag-eval-gate-latest.json"));
+const failurePresencePath = process.env.RAG_FAILURE_PRESENCE_JSON
+  ? path.resolve(workspace, process.env.RAG_FAILURE_PRESENCE_JSON)
+  : resolveLatestJsonPath(
+    path.resolve(workspace, "logs"),
+    /^rag-failure-presence.*\.json$/i,
+    path.resolve(workspace, "logs", "rag-failure-presence-latest.json"),
+  );
 const outPath = path.resolve(workspace, "logs", "rag-eval-coverage-latest.md");
 const jsonPath = path.resolve(workspace, "logs", "rag-eval-coverage-latest.json");
-
-function parseTsvFiles(filePaths) {
-  const byId = new Map();
-  for (const filePath of filePaths) {
-    if (!fs.existsSync(filePath)) {
-      continue;
-    }
-    for (const row of parseTsv(filePath)) {
-      byId.set(row.id, row);
-    }
-  }
-  return Array.from(byId.values());
-}
-
-function parseTsv(filePath) {
-  const lines = fs.readFileSync(filePath, "utf8")
-    .split(/\r?\n/)
-    .filter((line) => line.trim() && !line.startsWith("//"));
-  const headerLine = lines.shift();
-  if (!headerLine) {
-    return [];
-  }
-  const header = headerLine
-    .replace(/^#\s*/, "")
-    .split("\t");
-  return lines.map((line) => {
-    const values = line.split("\t");
-    return Object.fromEntries(header.map((name, index) => [name, values[index] ?? ""]));
-  });
-}
 
 function readGate() {
   try {
@@ -48,6 +36,10 @@ function readGate() {
   } catch {
     return null;
   }
+}
+
+function readFailurePresence() {
+  return readJsonIfExists(failurePresencePath);
 }
 
 function readJsonIfExists(filePath) {
@@ -87,7 +79,32 @@ function resolveLatestEvalGatePath(fallbackPath) {
   return best?.filePath || fallbackPath;
 }
 
+function resolveLatestJsonPath(directory, pattern, fallbackPath) {
+  let best = null;
+  try {
+    for (const fileName of fs.readdirSync(directory)) {
+      if (!pattern.test(fileName)) {
+        continue;
+      }
+      const filePath = path.join(directory, fileName);
+      if (!readJsonIfExists(filePath)) {
+        continue;
+      }
+      const mtimeMs = fs.statSync(filePath).mtimeMs;
+      if (!best || mtimeMs > best.mtimeMs) {
+        best = { filePath, mtimeMs };
+      }
+    }
+  } catch {
+    return fallbackPath;
+  }
+  return best?.filePath || fallbackPath;
+}
+
 function split(value, delimiter = "|") {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
   return String(value ?? "")
     .split(delimiter)
     .map((item) => item.trim())
@@ -187,17 +204,18 @@ function sourceOrgRisk(rows) {
     { label: "Ministry of Culture, Sports and Tourism", aliases: ["Ministry of Culture, Sports and Tourism", "문화체육관광부", "문체부", "MCST"] },
     { label: "Ministry of Science and ICT", aliases: ["Ministry of Science and ICT", "과학기술정보통신부", "과기정통부", "MSIT"] },
   ];
-  const text = rows.map((row) => `${row.expectedDocumentTerms} ${row.expectedTitleTerms} ${row.question}`).join("\n");
+  const text = rows.map((row) => `${split(row.expectedDocumentTerms).join(" ")} ${split(row.expectedTitleTerms).join(" ")} ${row.question}`).join("\n");
   return required
     .filter((source) => !source.aliases.some((alias) => text.includes(alias)))
     .map((source) => `${source.label} 출처를 직접 겨냥한 평가 케이스가 부족합니다.`);
 }
 
-function main() {
-  const rows = parseTsvFiles(casePaths);
-  const gate = readGate();
+function buildCoverageReport(cases, gate, failurePresence, options = {}) {
+  const coverage = assertReleaseCoverage(cases, {
+    minimumNoGround: options.minimumNoGround ?? 30,
+  });
   const resultById = new Map((gate?.results ?? []).map((result) => [result.id, result]));
-  const withResult = rows.map((row) => ({
+  const withResult = cases.map((row) => ({
     ...row,
     domain: domainOf(row.id),
     passed: resultById.get(row.id)?.passed ?? null,
@@ -216,9 +234,24 @@ function main() {
   }));
   const passRows = [
     {
-      metric: "평가 케이스",
-      value: String(rows.length),
-      target: "1차 50+, 안정화 100+",
+      metric: "릴리스 평가 케이스",
+      value: String(coverage.releaseTotal),
+      target: "정확한 고정 데이터셋",
+    },
+    {
+      metric: "수동 큐레이션",
+      value: String(coverage.curatedTotal),
+      target: "명시적 오라클/통제 포함",
+    },
+    {
+      metric: "정답 오라클",
+      value: String(coverage.answerOracleTotal),
+      target: "명제 그룹 필수",
+    },
+    {
+      metric: "NO_GROUNDS 통제",
+      value: String(coverage.noGroundTotal),
+      target: "30+",
     },
     {
       metric: "최근 게이트",
@@ -231,21 +264,72 @@ function main() {
     ...domainRisk(withResult),
     ...sourceOrgRisk(withResult),
   ];
-  const result = {
-    generatedAt: new Date().toISOString(),
-    caseCount: rows.length,
-    gateFile: path.relative(workspace, gatePath).replace(/\\/g, "/"),
+  const candidatePresentFirstLossCoverage = measureCandidatePresentFirstLossCoverage(failurePresence);
+  const namedGates = {
+    ...coverage,
+    unsafeSemanticDisagreementCount: unsafeSemanticDisagreementCount(gate),
+    candidatePresentFirstLossCoverage,
+  };
+  return {
+    generatedAt: options.generatedAt ?? new Date().toISOString(),
+    caseCount: coverage.releaseTotal,
+    gateFile: options.gateFile ?? path.relative(workspace, gatePath).replace(/\\/g, "/"),
+    failurePresenceFile: options.failurePresenceFile
+      ?? path.relative(workspace, failurePresencePath).replace(/\\/g, "/"),
     gate: gate ? {
       total: gate.total,
       passed: gate.passed,
       failed: gate.failed,
       gatePassed: gate.gatePassed,
     } : null,
+    namedGates,
     domains: domainRows,
     targets: targetRows,
     sectionTypes: sectionRows,
     risks,
+    passRows,
   };
+}
+
+function unsafeSemanticDisagreementCount(gate) {
+  if (gate?.unsafeSemanticShadowDisagreementCount != null) {
+    const direct = Number(gate.unsafeSemanticShadowDisagreementCount);
+    return Number.isFinite(direct) ? direct : null;
+  }
+  const measured = (gate?.results ?? [])
+    .filter((result) => result?.unsafeSemanticShadowDisagreementCount != null)
+    .map((result) => Number(result.unsafeSemanticShadowDisagreementCount))
+    .filter(Number.isFinite);
+  return measured.length === 0 ? null : measured.reduce((sum, value) => sum + value, 0);
+}
+
+function measureCandidatePresentFirstLossCoverage(failurePresence) {
+  const candidatePresent = (failurePresence?.results ?? []).filter((row) =>
+    row?.presenceClassification === "DROPPED_BEFORE_SELECTED"
+      || row?.presenceClassification === "PRESENT_IN_SELECTED");
+  const firstLossRecorded = candidatePresent.filter((row) =>
+    String(row?.candidateFirstLossStage ?? "").trim()).length;
+  const selectedWithoutLoss = candidatePresent.filter((row) =>
+    row?.presenceClassification === "PRESENT_IN_SELECTED"
+      && !String(row?.candidateFirstLossStage ?? "").trim()).length;
+  const covered = firstLossRecorded + selectedWithoutLoss;
+  return {
+    candidatePresentFailures: candidatePresent.length,
+    firstLossRecorded,
+    selectedWithoutLoss,
+    covered,
+    rate: candidatePresent.length === 0 ? null : covered / candidatePresent.length,
+    uncoveredIds: candidatePresent
+      .filter((row) => !String(row?.candidateFirstLossStage ?? "").trim()
+        && row?.presenceClassification !== "PRESENT_IN_SELECTED")
+      .map((row) => String(row?.id ?? "")),
+  };
+}
+
+function renderMarkdown(result) {
+  const taxonomyRows = Object.entries(result.namedGates.failureTaxonomyCounts ?? {})
+    .map(([taxonomy, count]) => ({ taxonomy, count }));
+  const firstLoss = result.namedGates.candidatePresentFirstLossCoverage;
   const markdown = [
     "# RAG Evaluation Coverage",
     "",
@@ -254,36 +338,49 @@ function main() {
     "",
     "## Summary",
     "",
-    mdTable(passRows, [
+    mdTable(result.passRows, [
       { key: "metric", label: "Metric" },
       { key: "value", label: "Current", align: "right" },
       { key: "target", label: "Target" },
     ]),
     "",
+    "## Named Release Gates",
+    "",
+    `- Explicit condition cases: ${result.namedGates.explicitConditionTotal}`,
+    `- Unsafe semantic disagreements: ${result.namedGates.unsafeSemanticDisagreementCount ?? "UNVERIFIED"}`,
+    `- Candidate-present first-loss coverage: ${firstLoss.covered}/${firstLoss.candidatePresentFailures} (${firstLoss.rate == null ? "N/A" : `${Math.round(firstLoss.rate * 100)}%`})`,
+    "",
+    "Failure taxonomy:",
+    "",
+    mdTable(taxonomyRows, [
+      { key: "taxonomy", label: "Taxonomy" },
+      { key: "count", label: "Cases", align: "right" },
+    ]),
+    "",
     "## Domain Coverage",
     "",
-    mdTable(domainRows, [
+    mdTable(result.domains, [
       { key: "domain", label: "Domain" },
       { key: "cases", label: "Cases", align: "right" },
     ]),
     "",
     "## Target Coverage",
     "",
-    mdTable(targetRows, [
+    mdTable(result.targets, [
       { key: "target", label: "Target" },
       { key: "cases", label: "Cases", align: "right" },
     ]),
     "",
     "## Section Coverage",
     "",
-    mdTable(sectionRows, [
+    mdTable(result.sectionTypes, [
       { key: "sectionType", label: "Expected section" },
       { key: "cases", label: "Cases", align: "right" },
     ]),
     "",
     "## Coverage Risks",
     "",
-    risks.length ? risks.map((risk) => `- ${risk}`).join("\n") : "_없음_",
+    result.risks.length ? result.risks.map((risk) => `- ${risk}`).join("\n") : "_없음_",
     "",
     "## Next Expansion Targets",
     "",
@@ -293,6 +390,13 @@ function main() {
     "- 실패 방지 질문: 문서가 없거나 직접근거가 약한 질문에서 근거 없음으로 멈추는 케이스를 추가합니다.",
     "",
   ].join("\n");
+  return markdown;
+}
+
+function main() {
+  const cases = loadEvalCases(casePaths, { answerOraclePath });
+  const result = buildCoverageReport(cases, readGate(), readFailurePresence());
+  const markdown = renderMarkdown(result);
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, markdown, "utf8");
   fs.writeFileSync(jsonPath, JSON.stringify(result, null, 2), "utf8");
@@ -300,4 +404,13 @@ function main() {
   console.log(jsonPath);
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  buildCoverageReport,
+  main,
+  measureCandidatePresentFirstLossCoverage,
+  renderMarkdown,
+};

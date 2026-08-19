@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const RELEASE_EVALUATION_CASE_COUNT = 1004;
+const RELEASE_EVALUATION_CASE_COUNT = 1003;
 
 function determineRunScope(selectedCases, allCases, caseIds, caseLimit) {
   const explicitlyTargeted = (caseIds?.length ?? 0) > 0 || Number(caseLimit ?? 0) > 0;

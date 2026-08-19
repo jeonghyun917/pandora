@@ -421,6 +421,42 @@ function riskRows(metrics) {
       action: "실패 원인 리포트의 Likely Cause 기준으로 검색/근거 판정 보정",
     });
   }
+  const namedGates = metrics.evalCoverage?.namedGates;
+  if (namedGates && number(namedGates.noGroundTotal) < 30) {
+    rows.push({
+      priority: "P1",
+      area: "RAG release coverage",
+      finding: `NO_GROUNDS controls ${fmt(namedGates.noGroundTotal)} / required 30`,
+      action: "Add reviewed negative controls with explicit distractor expectations before release",
+    });
+  }
+  if (namedGates && number(namedGates.unsafeSemanticDisagreementCount) > 0) {
+    rows.push({
+      priority: "P1",
+      area: "semantic shadow",
+      finding: `Unsafe semantic disagreements ${fmt(namedGates.unsafeSemanticDisagreementCount)}`,
+      action: "Review every disagreement and keep semantic-authoritative disabled until the count is zero",
+    });
+  }
+  if (namedGates && namedGates.unsafeSemanticDisagreementCount == null) {
+    rows.push({
+      priority: "P1",
+      area: "semantic shadow",
+      finding: "Unsafe semantic disagreement count is UNVERIFIED",
+      action: "Run the semantic shadow evaluation before enabling semantic-authoritative",
+    });
+  }
+  const firstLossCoverage = namedGates?.candidatePresentFirstLossCoverage;
+  if (firstLossCoverage
+      && number(firstLossCoverage.candidatePresentFailures) > 0
+      && number(firstLossCoverage.covered) < number(firstLossCoverage.candidatePresentFailures)) {
+    rows.push({
+      priority: "P1",
+      area: "candidate loss trace",
+      finding: `Candidate-present first-loss coverage ${fmt(firstLossCoverage.covered)}/${fmt(firstLossCoverage.candidatePresentFailures)}`,
+      action: "Capture the first loss stage for every candidate-present failure before changing ranking or selection",
+    });
+  }
   if (qdrantStatusIssues.length > 0) {
     rows.push({
       priority: "P1",
@@ -936,6 +972,30 @@ LIMIT 12;
     { key: "passRate", label: "Pass rate" },
     { key: "gatePassed", label: "Gate passed" },
     { key: "failureIds", label: "Failure IDs" },
+  ]));
+  lines.push("");
+  lines.push("## Eval Coverage Contract");
+  lines.push("");
+  const namedGates = metrics.evalCoverage?.namedGates;
+  const firstLossCoverage = namedGates?.candidatePresentFirstLossCoverage;
+  lines.push(mdTable(namedGates ? [{
+    releaseTotal: namedGates.releaseTotal,
+    curatedTotal: namedGates.curatedTotal,
+    answerOracleTotal: namedGates.answerOracleTotal,
+    noGroundTotal: namedGates.noGroundTotal,
+    explicitConditionTotal: namedGates.explicitConditionTotal,
+    unsafeSemanticDisagreementCount: namedGates.unsafeSemanticDisagreementCount,
+    firstLossCoverage: firstLossCoverage
+      ? `${firstLossCoverage.covered}/${firstLossCoverage.candidatePresentFailures}`
+      : "-",
+  }] : [], [
+    { key: "releaseTotal", label: "Release", align: "right", format: "number" },
+    { key: "curatedTotal", label: "Curated", align: "right", format: "number" },
+    { key: "answerOracleTotal", label: "Answer oracle", align: "right", format: "number" },
+    { key: "noGroundTotal", label: "NO_GROUNDS", align: "right", format: "number" },
+    { key: "explicitConditionTotal", label: "Conditions", align: "right", format: "number" },
+    { key: "unsafeSemanticDisagreementCount", label: "Unsafe semantic", align: "right", format: "number" },
+    { key: "firstLossCoverage", label: "First-loss coverage" },
   ]));
   lines.push("");
   lines.push("## Embedding Backlog");
