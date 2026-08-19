@@ -12,6 +12,7 @@ import com.kaces.pandora.lawdata.version.LawVersionStatusService;
 import com.kaces.pandora.rag.persistence.RagChunkQualitySchemaMaintenance;
 import com.kaces.pandora.rag.search.RagChunkSearchIndexSchemaMaintenance;
 import com.kaces.pandora.semantic.lexical.SemanticLexicalSchemaMaintenance;
+import com.kaces.pandora.semantic.provenance.IndexRevisionSchemaMaintenance;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -58,6 +59,9 @@ class PandoraApplicationTests {
 
 	@MockitoBean
 	private SemanticLexicalSchemaMaintenance semanticLexicalSchemaMaintenance;
+
+	@MockitoBean
+	private IndexRevisionSchemaMaintenance indexRevisionSchemaMaintenance;
 
 	@Test
 	// 메소드 설명: contextLoads 처리 흐름을 수행합니다.

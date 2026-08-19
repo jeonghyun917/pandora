@@ -144,6 +144,7 @@ CREATE TABLE IF NOT EXISTS law_api_chunk_embeddings (
     vector_store VARCHAR(100) NOT NULL COMMENT '벡터 저장소 또는 컬렉션명',
     vector_point_id VARCHAR(100) NOT NULL COMMENT '벡터 저장소 point id',
     content_hash CHAR(64) NULL COMMENT '벡터화 당시 청크 본문 해시',
+    revision_hash CHAR(64) NULL COMMENT '동적 인덱스 revision 집계용 청크 식별 해시',
     status VARCHAR(30) NOT NULL DEFAULT 'PENDING' COMMENT '벡터 색인 상태',
     embedded_at DATETIME NULL COMMENT '벡터 저장 완료 일시',
     last_error_message TEXT NULL COMMENT '마지막 임베딩/색인 오류 메시지',
@@ -153,7 +154,11 @@ CREATE TABLE IF NOT EXISTS law_api_chunk_embeddings (
     KEY idx_law_api_chunk_embeddings_status (status, embedded_at),
     CONSTRAINT fk_law_api_chunk_embeddings_chunk
         FOREIGN KEY (chunk_id) REFERENCES law_api_document_chunks (chunk_id)
-        ON DELETE CASCADE
+        ON DELETE CASCADE,
+    CONSTRAINT chk_law_api_chunk_embeddings_revision_hash CHECK (
+        (content_hash IS NULL AND revision_hash IS NULL)
+        OR (content_hash IS NOT NULL AND revision_hash = SHA2(CONCAT(CAST(chunk_id AS CHAR), ':', content_hash), 256))
+    )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS semantic_batch_jobs (
@@ -396,6 +401,7 @@ CREATE TABLE IF NOT EXISTS rag_chunk_embeddings (
     vector_store VARCHAR(100) NOT NULL COMMENT 'Qdrant collection',
     vector_point_id VARCHAR(100) NOT NULL COMMENT 'Qdrant point id',
     content_hash CHAR(64) NULL COMMENT 'chunk content hash',
+    revision_hash CHAR(64) NULL COMMENT 'materialized chunk identity hash for index revision',
     status VARCHAR(30) NOT NULL DEFAULT 'PENDING' COMMENT 'embedding status',
     embedded_at DATETIME NULL COMMENT 'embedded time',
     last_error_message TEXT NULL COMMENT 'last embedding error',
@@ -405,7 +411,11 @@ CREATE TABLE IF NOT EXISTS rag_chunk_embeddings (
     KEY idx_rag_chunk_embeddings_status (status, embedded_at),
     CONSTRAINT fk_rag_chunk_embeddings_chunk
         FOREIGN KEY (chunk_id) REFERENCES rag_document_chunks (chunk_id)
-        ON DELETE CASCADE
+        ON DELETE CASCADE,
+    CONSTRAINT chk_rag_chunk_embeddings_revision_hash CHECK (
+        (content_hash IS NULL AND revision_hash IS NULL)
+        OR (content_hash IS NOT NULL AND revision_hash = SHA2(CONCAT(CAST(chunk_id AS CHAR), ':', content_hash), 256))
+    )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS rag_import_jobs (

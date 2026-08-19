@@ -242,11 +242,11 @@ function Mark-Indexed {
     $chunkId = [Int64]$chunk.chunkId
     $pointId = [string]($PointOffset + $chunkId)
     $contentHash = Sql-Escape ([string]$chunk.contentHash)
-    $values.Add("($chunkId, '$safeModel', '$safeVectorStore', '$pointId', '$contentHash', 'INDEXED', NOW(), NULL)")
+    $values.Add("($chunkId, '$safeModel', '$safeVectorStore', '$pointId', '$contentHash', SHA2(CONCAT(CAST($chunkId AS CHAR), ':', '$contentHash'), 256), 'INDEXED', NOW(), NULL)")
   }
   $sql = @"
 INSERT INTO rag_chunk_embeddings (
-  chunk_id, embedding_model, vector_store, vector_point_id, content_hash,
+  chunk_id, embedding_model, vector_store, vector_point_id, content_hash, revision_hash,
   status, embedded_at, last_error_message
 )
 VALUES
@@ -254,6 +254,7 @@ VALUES
 ON DUPLICATE KEY UPDATE
   vector_point_id = VALUES(vector_point_id),
   content_hash = VALUES(content_hash),
+  revision_hash = VALUES(revision_hash),
   status = VALUES(status),
   embedded_at = VALUES(embedded_at),
   last_error_message = VALUES(last_error_message),
