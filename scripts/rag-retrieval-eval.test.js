@@ -499,6 +499,46 @@ test('retrieval runner accepts explicit case IDs, case limit, K, and output path
   assert.equal(options.reportPath, 'logs/custom-retrieval.md');
 });
 
+test('runtime verification retries one read-only transport timeout and preserves attempt count', async () => {
+  assert.equal(typeof retrievalRunner.loadRuntimeInfo, 'function');
+  let calls = 0;
+  const runtime = await retrievalRunner.loadRuntimeInfo('http://runtime.test', 50, {
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls === 1) {
+        const error = new Error('timed out');
+        error.name = 'AbortError';
+        throw error;
+      }
+      return {
+        ok: true,
+        json: async () => ({ runtimeInstanceId: 'runtime-a', indexRevision: 'revision-a' }),
+      };
+    },
+    delayImpl: async () => {},
+  });
+
+  assert.equal(calls, 2);
+  assert.equal(runtime.readAttempts, 2);
+  assert.equal(runtime.runtimeInstanceId, 'runtime-a');
+});
+
+test('runtime verification never retries a completed HTTP rejection', async () => {
+  assert.equal(typeof retrievalRunner.loadRuntimeInfo, 'function');
+  let calls = 0;
+  await assert.rejects(
+    retrievalRunner.loadRuntimeInfo('http://runtime.test', 50, {
+      fetchImpl: async () => {
+        calls += 1;
+        return { ok: false, status: 503 };
+      },
+      delayImpl: async () => {},
+    }),
+    /HTTP 503/,
+  );
+  assert.equal(calls, 1);
+});
+
 test('debug response validator requires resultMsg and every retrieval stage array', () => {
   assert.equal(typeof retrievalRunner.assertDebugResponse, 'function');
   const valid = Object.fromEntries(retrievalMetrics.STAGE_NAMES.map((stage) => [stage, []]));

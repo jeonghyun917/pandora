@@ -17,8 +17,8 @@ import org.springframework.stereotype.Service;
 public class KoreanBm25SearchService {
 
 	private static final Logger log = LoggerFactory.getLogger(KoreanBm25SearchService.class);
-	private static final int MAX_POSTING_DOCUMENT_BUDGET = 12_000;
-	private static final int MAX_POSTING_QUERY_TERMS = 8;
+	private static final int MAX_POSTING_DOCUMENT_BUDGET = 4_000;
+	private static final int MAX_POSTING_QUERY_TERMS = 6;
 
 	private final SemanticLexicalMapper mapper;
 	private final KoreanLexicalTokenizer tokenizer;

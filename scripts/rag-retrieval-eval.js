@@ -160,19 +160,35 @@ function resolveOutputPaths(scope, options) {
   return { outputPath, reportPath };
 }
 
-async function loadRuntimeInfo(baseUrl, timeoutMs) {
+async function loadRuntimeInfo(baseUrl, timeoutMs, dependencies = {}) {
   const endpoint = `${baseUrl}/api/law-data/ai/debug/runtime-info`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), Math.min(timeoutMs, 5000));
-  try {
-    const response = await fetch(endpoint, { signal: controller.signal });
-    if (!response.ok) {
-      throw new Error(`runtime info HTTP ${response.status}`);
+  const fetchImpl = dependencies.fetchImpl ?? fetch;
+  const delayImpl = dependencies.delayImpl ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+  const attempts = 2;
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Math.min(timeoutMs, 5000));
+    try {
+      const response = await fetchImpl(endpoint, { signal: controller.signal });
+      if (!response.ok) {
+        const error = new Error(`runtime info HTTP ${response.status}`);
+        error.retryable = false;
+        throw error;
+      }
+      return { ...(await response.json()), source: 'server', readAttempts: attempt };
+    } catch (error) {
+      lastError = error;
+      const retryable = error?.name === 'AbortError' || error instanceof TypeError;
+      if (!retryable || attempt === attempts) {
+        throw error;
+      }
+      await delayImpl(1000);
+    } finally {
+      clearTimeout(timer);
     }
-    return { ...(await response.json()), source: 'server' };
-  } finally {
-    clearTimeout(timer);
   }
+  throw lastError;
 }
 
 async function loadDebugResponse(evalCase, options) {
@@ -452,6 +468,7 @@ module.exports = {
   assertDebugResponse,
   buildDebugRequest,
 	extractCandidateLossAnalysis,
+  loadRuntimeInfo,
   main,
   parseOptions,
 };

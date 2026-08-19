@@ -77,7 +77,7 @@ class KoreanBm25SearchServiceTests {
 		@SuppressWarnings("unchecked")
 		ArgumentCaptor<List<String>> postingTerms = ArgumentCaptor.forClass(List.class);
 		verify(mapper).findBm25TermMatches(eq("revision-b"), postingTerms.capture(), eq(List.of("law")));
-		assertThat(postingTerms.getValue()).hasSize(8);
+		assertThat(postingTerms.getValue()).hasSize(6);
 		assertThat(hits).hasSize(100);
 	}
 
@@ -102,7 +102,7 @@ class KoreanBm25SearchServiceTests {
 				new SemanticLexicalMapper.TermStatisticRow("희소1", 80),
 				new SemanticLexicalMapper.TermStatisticRow("희소2", 90),
 				new SemanticLexicalMapper.TermStatisticRow("중간1", 3_000),
-				new SemanticLexicalMapper.TermStatisticRow("중간2", 8_000),
+				new SemanticLexicalMapper.TermStatisticRow("중간2", 800),
 				new SemanticLexicalMapper.TermStatisticRow("과다", 40_000)
 			));
 		when(mapper.findBm25TermMatches(eq("revision-budget"), anyList(), eq(List.of("law"))))
