@@ -12,6 +12,12 @@ public interface SemanticLexicalMapper {
 
 	String findReadyRevision();
 
+	List<Bm25TermMatchRow> findBm25TermMatches(
+		@Param("revision") String revision,
+		@Param("terms") List<String> terms,
+		@Param("targets") List<String> targets
+	);
+
 	int insertIndexState(@Param("state") IndexStateRow state);
 
 	int insertChunks(
@@ -63,6 +69,19 @@ public interface SemanticLexicalMapper {
 		String fieldKind,
 		int termFrequency,
 		int fieldWeight
+	) {
+	}
+
+	record Bm25TermMatchRow(
+		String target,
+		long chunkId,
+		long documentId,
+		String term,
+		double weightedTermFrequency,
+		int documentFrequency,
+		int activeChunkCount,
+		double averageWeightedLength,
+		int weightedLength
 	) {
 	}
 

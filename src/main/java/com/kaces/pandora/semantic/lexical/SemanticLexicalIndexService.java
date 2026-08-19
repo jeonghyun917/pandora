@@ -1,5 +1,6 @@
 package com.kaces.pandora.semantic.lexical;
 
+import com.kaces.pandora.semantic.config.LawAiLexicalProperties;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -19,29 +20,27 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class SemanticLexicalIndexService {
 
 	private static final int WRITE_BATCH_SIZE = 500;
-	private static final List<Field> FIELDS = List.of(
-		new Field("document_title", 8, LexicalChunkDocument::documentTitle),
-		new Field("parent_title", 6, LexicalChunkDocument::parentTitle),
-		new Field("chunk_title", 7, LexicalChunkDocument::chunkTitle),
-		new Field("body", 1, LexicalChunkDocument::body)
-	);
-
 	private final SemanticLexicalMapper mapper;
 	private final KoreanLexicalTokenizer tokenizer;
 	private final Supplier<String> versionSupplier;
 	private final TransactionTemplate transactionTemplate;
+	private final List<Field> fields;
 
 	public SemanticLexicalIndexService(SemanticLexicalMapper mapper, KoreanLexicalTokenizer tokenizer) {
-		this(mapper, tokenizer, () -> UUID.randomUUID().toString(), null);
+		this(mapper, tokenizer, () -> UUID.randomUUID().toString(), null, defaultLexical());
 	}
 
 	@Autowired
 	public SemanticLexicalIndexService(
 		SemanticLexicalMapper mapper,
 		KoreanLexicalTokenizer tokenizer,
-		PlatformTransactionManager transactionManager
+		PlatformTransactionManager transactionManager,
+		LawAiLexicalProperties properties
 	) {
-		this(mapper, tokenizer, () -> UUID.randomUUID().toString(), new TransactionTemplate(transactionManager));
+		this(
+			mapper, tokenizer, () -> UUID.randomUUID().toString(),
+			new TransactionTemplate(transactionManager), properties
+		);
 	}
 
 	SemanticLexicalIndexService(
@@ -49,19 +48,35 @@ public class SemanticLexicalIndexService {
 		KoreanLexicalTokenizer tokenizer,
 		Supplier<String> versionSupplier
 	) {
-		this(mapper, tokenizer, versionSupplier, null);
+		this(mapper, tokenizer, versionSupplier, null, defaultLexical());
+	}
+
+	SemanticLexicalIndexService(
+		SemanticLexicalMapper mapper,
+		KoreanLexicalTokenizer tokenizer,
+		Supplier<String> versionSupplier,
+		LawAiLexicalProperties properties
+	) {
+		this(mapper, tokenizer, versionSupplier, null, properties);
 	}
 
 	private SemanticLexicalIndexService(
 		SemanticLexicalMapper mapper,
 		KoreanLexicalTokenizer tokenizer,
 		Supplier<String> versionSupplier,
-		TransactionTemplate transactionTemplate
+		TransactionTemplate transactionTemplate,
+		LawAiLexicalProperties properties
 	) {
 		this.mapper = mapper;
 		this.tokenizer = tokenizer;
 		this.versionSupplier = versionSupplier;
 		this.transactionTemplate = transactionTemplate;
+		this.fields = List.of(
+			new Field("document_title", properties.documentTitleWeight(), LexicalChunkDocument::documentTitle),
+			new Field("parent_title", properties.parentTitleWeight(), LexicalChunkDocument::parentTitle),
+			new Field("chunk_title", properties.chunkTitleWeight(), LexicalChunkDocument::chunkTitle),
+			new Field("body", properties.bodyWeight(), LexicalChunkDocument::body)
+		);
 	}
 
 	public String currentRevision() {
@@ -96,7 +111,7 @@ public class SemanticLexicalIndexService {
 			List<SemanticLexicalMapper.TermRow> terms = new ArrayList<>();
 			for (LexicalChunkDocument document : documents.subList(start, end)) {
 				int weightedLength = 0;
-				for (Field field : FIELDS) {
+				for (Field field : fields) {
 					Map<String, Integer> frequencies = tokenizer.tokenize(field.reader().read(document));
 					for (Map.Entry<String, Integer> frequency : frequencies.entrySet()) {
 						terms.add(new SemanticLexicalMapper.TermRow(
@@ -178,6 +193,10 @@ public class SemanticLexicalIndexService {
 
 	private String nullToEmpty(String value) {
 		return value == null ? "" : value;
+	}
+
+	private static LawAiLexicalProperties defaultLexical() {
+		return new LawAiLexicalProperties(1.2, 0.75, 8, 6, 7, 1, 24, 100);
 	}
 
 	public record BuildResult(

@@ -57,12 +57,33 @@ class SemanticLexicalMapperXmlTests {
 			.contains("LIMIT 1");
 	}
 
+	@Test
+	void bm25TermReadHasAOneSecondStatementTimeout() throws Exception {
+		Configuration configuration = configuration();
+		MappedStatement statement = configuration.getMappedStatement(NAMESPACE + ".findBm25TermMatches");
+
+		assertThat(statement.getTimeout()).isEqualTo(1);
+		assertThat(statement.getBoundSql(Map.of(
+			"revision", "revision-a",
+			"terms", List.of("검사"),
+			"targets", List.of("law")
+		)).getSql().replaceAll("\\s+", " "))
+			.contains("state.status = 'READY'")
+			.contains("state.content_fingerprint = ?")
+			.contains("c.build_status = 'READY'");
+	}
+
 	private String sql(String id, Map<String, ?> parameters) throws Exception {
+		Configuration configuration = configuration();
+		MappedStatement statement = configuration.getMappedStatement(NAMESPACE + "." + id);
+		return statement.getBoundSql(parameters).getSql().replaceAll("\\s+", " ").trim();
+	}
+
+	private Configuration configuration() throws Exception {
 		Configuration configuration = new Configuration();
 		try (InputStream input = Resources.getResourceAsStream(RESOURCE)) {
 			new XMLMapperBuilder(input, configuration, RESOURCE, configuration.getSqlFragments()).parse();
 		}
-		MappedStatement statement = configuration.getMappedStatement(NAMESPACE + "." + id);
-		return statement.getBoundSql(parameters).getSql().replaceAll("\\s+", " ").trim();
+		return configuration;
 	}
 }

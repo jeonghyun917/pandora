@@ -11,6 +11,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.kaces.pandora.semantic.config.LawAiLexicalProperties;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -100,6 +101,32 @@ class SemanticLexicalIndexServiceTests {
 
 		assertThat(new SemanticLexicalIndexService(mapper, new KoreanLexicalTokenizer()).currentRevision())
 			.isNull();
+	}
+
+	@Test
+	void usesTheConfiguredFieldWeightsWhenBuildingWeightedLength() {
+		SemanticLexicalMapper mapper = mock(SemanticLexicalMapper.class);
+		when(mapper.findActiveSearchableChunks()).thenReturn(List.of(
+			new LexicalChunkDocument(
+				"law", 1L, 2L, "parent", "a".repeat(64),
+				"문서", "부모", "조문", "본문"
+			)
+		));
+		LawAiLexicalProperties weights = new LawAiLexicalProperties(
+			1.2, 0.75, 10, 9, 8, 2, 24, 100
+		);
+		SemanticLexicalIndexService service = new SemanticLexicalIndexService(
+			mapper, new KoreanLexicalTokenizer(), () -> "weighted-build", weights
+		);
+
+		service.rebuild();
+
+		@SuppressWarnings("unchecked")
+		ArgumentCaptor<List<SemanticLexicalMapper.ChunkRow>> chunks = ArgumentCaptor.forClass(List.class);
+		verify(mapper).insertChunks(eq("weighted-build"), chunks.capture());
+		assertThat(chunks.getValue()).singleElement()
+			.extracting(SemanticLexicalMapper.ChunkRow::weightedLength)
+			.isEqualTo(29);
 	}
 
 	private static LexicalChunkDocument document(

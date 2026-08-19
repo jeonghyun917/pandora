@@ -58,6 +58,48 @@
     LIMIT 1
   </select>
 
+  <select id="findBm25TermMatches"
+          resultType="com.kaces.pandora.semantic.lexical.SemanticLexicalMapper$Bm25TermMatchRow"
+          timeout="1">
+    SELECT
+      t.target AS target,
+      t.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      t.term AS term,
+      SUM(t.term_frequency * t.field_weight) AS weightedTermFrequency,
+      stats.document_frequency AS documentFrequency,
+      state.active_chunk_count AS activeChunkCount,
+      state.average_weighted_length AS averageWeightedLength,
+      c.weighted_length AS weightedLength
+    FROM semantic_lexical_index_state state
+    JOIN semantic_lexical_chunks c
+      ON c.index_version = state.index_version
+    JOIN semantic_lexical_terms t
+      ON t.index_version = c.index_version
+     AND t.target = c.target
+     AND t.chunk_id = c.chunk_id
+    JOIN semantic_lexical_term_stats stats
+      ON stats.index_version = t.index_version
+     AND stats.term = t.term
+    WHERE state.status = 'READY'
+      AND state.content_fingerprint = #{revision}
+      AND c.build_status = 'READY'
+      AND t.term IN
+      <foreach collection="terms" item="term" open="(" separator="," close=")">
+        #{term}
+      </foreach>
+      <if test="targets != null and targets.size() > 0">
+        AND t.target IN
+        <foreach collection="targets" item="target" open="(" separator="," close=")">
+          #{target}
+        </foreach>
+      </if>
+    GROUP BY
+      t.target, t.chunk_id, c.document_id, t.term, stats.document_frequency,
+      state.active_chunk_count, state.average_weighted_length, c.weighted_length
+    ORDER BY t.target, t.chunk_id, t.term
+  </select>
+
   <insert id="insertIndexState">
     INSERT INTO semantic_lexical_index_state (
       index_version, tokenizer_version, active_chunk_count, average_weighted_length,
