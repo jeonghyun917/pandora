@@ -143,6 +143,9 @@ public class SemanticEvidenceMatcher {
 		if (!required) {
 			return true;
 		}
+		if (expected == null || expected.isEmpty()) {
+			return false;
+		}
 		return slotAligned(expected, actual, name, aligned);
 	}
 

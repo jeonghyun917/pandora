@@ -17,6 +17,7 @@ import com.kaces.pandora.rag.search.RagChunkSearchIndexService;
 import com.kaces.pandora.semantic.config.LawAiLexicalProperties;
 import com.kaces.pandora.semantic.config.LawAiProperties;
 import com.kaces.pandora.semantic.config.LawAiRrfProperties;
+import com.kaces.pandora.semantic.config.LawAiSemanticSelectionProperties;
 import com.kaces.pandora.semantic.lexical.KoreanBm25SearchService;
 import com.kaces.pandora.semantic.lexical.LexicalSearchHit;
 import com.kaces.pandora.semantic.lexical.ReciprocalRankFusion;
@@ -125,6 +126,7 @@ public class LawAiAnswerService {
 	private final OpenAiAnswerClient answerClient;
 	private final EvidenceJudge evidenceJudge;
 	private final EvidenceReranker evidenceReranker = new EvidenceReranker();
+	private final DirectEvidenceSelectionPolicy directEvidenceSelectionPolicy = new DirectEvidenceSelectionPolicy();
 	private final AnswerGuard answerGuard;
 	private final ClaimVerifier claimVerifier;
 	private final AnswerVerificationService answerVerificationService;
@@ -141,6 +143,7 @@ public class LawAiAnswerService {
 	private final ReciprocalRankFusion reciprocalRankFusion;
 	private final LawAiLexicalProperties lexicalProperties;
 	private final LawAiRrfProperties rrfProperties;
+	private final LawAiSemanticSelectionProperties semanticSelectionProperties;
 	private final Map<String, CachedAnswer> answerCache = new ConcurrentHashMap<>();
 	private final ExecutorService streamExecutor;
 	private final ExecutorService searchExecutor;
@@ -268,7 +271,7 @@ public class LawAiAnswerService {
 			evidenceJudge, answerGuard, claimVerifier, answerVerificationService,
 			parentContextAssembler, evidenceCandidateDiversifier, failureLoggingService,
 			searchFailureMapper, properties, groundedAnswerRepairService,
-			ragChunkSearchIndexService, semanticLexicalIndexService, null, null, null, null
+			ragChunkSearchIndexService, semanticLexicalIndexService, null, null, null, null, null
 		);
 	}
 
@@ -294,7 +297,8 @@ public class LawAiAnswerService {
 		KoreanBm25SearchService koreanBm25SearchService,
 		ReciprocalRankFusion reciprocalRankFusion,
 		LawAiLexicalProperties lexicalProperties,
-		LawAiRrfProperties rrfProperties
+		LawAiRrfProperties rrfProperties,
+		LawAiSemanticSelectionProperties semanticSelectionProperties
 	) {
 		this.lawChunkMapper = lawChunkMapper;
 		this.ragDocumentMapper = ragDocumentMapper;
@@ -329,6 +333,9 @@ public class LawAiAnswerService {
 		this.rrfProperties = rrfProperties == null
 			? new LawAiRrfProperties(false, false, 60, 1.0, 1.0, 100)
 			: rrfProperties;
+		this.semanticSelectionProperties = semanticSelectionProperties == null
+			? new LawAiSemanticSelectionProperties(false, false, 4)
+			: semanticSelectionProperties;
 		this.runtimeArtifactIdentity = RuntimeArtifactIdentity.from(LawAiAnswerService.class);
 		this.streamExecutor = Executors.newFixedThreadPool(4, namedThreadFactory("law-ai-stream-"));
 		this.searchExecutor = Executors.newFixedThreadPool(8, namedThreadFactory("law-ai-search-"));
@@ -1244,6 +1251,48 @@ public class LawAiAnswerService {
 		);
 		finalScoreByChunkId = judgedEvidence.scoreByChunkId();
 		evidenceChunks = judgedEvidence.chunks();
+		boolean semanticSelectionObserved = semanticSelectionProperties.shadowEnabled()
+			|| semanticSelectionProperties.authoritative();
+		DirectEvidenceSelectionPolicy.Result semanticDirectSelection = semanticSelectionObserved
+			? directEvidenceSelectionPolicy.apply(
+				normalized.query(),
+				queryPlan.profile(),
+				evidenceChunks,
+				judgeContextChunks,
+				finalScoreByChunkId,
+				new LinkedHashSet<>(targets),
+				semanticSelectionProperties.preserveLimit()
+			)
+			: DirectEvidenceSelectionPolicy.Result.unchanged(evidenceChunks, finalScoreByChunkId);
+		Map<String, String> semanticDirectSelectionReasons = semanticSelectionProperties.authoritative()
+			? semanticDirectSelection.reasonByCandidateKey()
+			: semanticDirectSelection.reasonByCandidateKey().entrySet().stream().collect(
+				java.util.stream.Collectors.toUnmodifiableMap(
+					Map.Entry::getKey,
+					entry -> "DIRECT_ATOM_PRESERVED".equals(entry.getValue())
+						? "DIRECT_ATOM_SHADOW_PRESERVE"
+						: entry.getValue()
+				)
+			);
+		if (semanticSelectionProperties.authoritative() && semanticDirectSelection.changed()) {
+			int semanticDirectEvidenceCount = (int) semanticDirectSelectionReasons.values().stream()
+				.filter("DIRECT_ATOM_PRESERVED"::equals)
+				.count();
+			finalScoreByChunkId = semanticDirectSelection.scoreByCandidateKey();
+			evidenceChunks = semanticDirectSelection.chunks();
+			judgedEvidence = new EvidenceJudge.Result(
+				evidenceChunks,
+				finalScoreByChunkId,
+				judgedEvidence.directEvidenceRequired(),
+				true,
+				judgedEvidence.conceptEvidenceRequired(),
+				judgedEvidence.conceptEvidenceFound(),
+				Math.max(judgedEvidence.topicAlignedCount(), evidenceChunks.size()),
+				Math.max(judgedEvidence.relevantCount(), evidenceChunks.size()),
+				Math.max(judgedEvidence.directEvidenceCount(), semanticDirectEvidenceCount),
+				judgedEvidence.selectionPolicy() + "+semantic_direct_preserve"
+			);
+		}
 		List<LawSemanticChunkRow> discoveryPreservedChunks = DocumentDiscoveryPolicy.preserveHeadingCandidates(
 			normalized.query(),
 			evidenceChunks,
@@ -1311,6 +1360,7 @@ public class LawAiAnswerService {
 				judgedEvidence.topicAlignedCount(),
 				judgedEvidence.relevantCount(),
 				judgedEvidence.directEvidenceCount(),
+				semanticDirectSelectionReasons,
 				judgedEvidence.selectionPolicy(),
 				hybrid
 			);
@@ -1394,6 +1444,7 @@ public class LawAiAnswerService {
 				judgedEvidence.topicAlignedCount(),
 				judgedEvidence.relevantCount(),
 				judgedEvidence.directEvidenceCount(),
+				semanticDirectSelectionReasons,
 				judgedEvidence.selectionPolicy(),
 				hybrid
 			);
@@ -1426,6 +1477,7 @@ public class LawAiAnswerService {
 			judgedEvidence.topicAlignedCount(),
 			judgedEvidence.relevantCount(),
 			judgedEvidence.directEvidenceCount(),
+			semanticDirectSelectionReasons,
 			judgedEvidence.selectionPolicy(),
 			hybrid
 		);
@@ -2256,6 +2308,9 @@ public class LawAiAnswerService {
 		collector.transition(
 			"judgeCandidates", candidateKeys(retrieval.judgeCandidateChunks()), "JUDGE_CANDIDATE_LIMIT"
 		);
+		for (Map.Entry<String, String> decision : retrieval.semanticDirectSelectionReasons().entrySet()) {
+			collector.note(decision.getKey(), "directEvidencePolicy", decision.getValue());
+		}
 		collector.transition("judge", candidateKeys(retrieval.judgedChunks()), "JUDGE_NOT_DIRECT");
 		collector.transition("grounds", retrieval.grounds().stream()
 			.map(ground -> scoreKey(ground.target(), ground.chunkId()))
@@ -10195,6 +10250,7 @@ public class LawAiAnswerService {
 		int topicAlignedCount,
 		int relevantCount,
 		int directEvidenceCount,
+		Map<String, String> semanticDirectSelectionReasons,
 		String evidenceSelectionPolicy,
 		HybridRetrieval hybrid
 	) {
@@ -10266,6 +10322,7 @@ public class LawAiAnswerService {
 				0,
 				0,
 				0,
+				Map.of(),
 				"empty",
 				hybrid == null ? HybridRetrieval.empty() : hybrid
 			);

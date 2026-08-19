@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.kaces.pandora.semantic.config.LawAiVerificationProperties;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class SemanticEvidenceMatcherTests {
@@ -98,6 +99,17 @@ class SemanticEvidenceMatcherTests {
 
 		assertThat(result.unsupportedClaims()).containsExactly("계약상대자는 완료 후 통지해야 한다.");
 		assertThat(result.semanticShadowResults()).isEmpty();
+	}
+
+	@Test
+	void requiredTemplateSlotsCannotMatchWhenTheQuestionProvidedNoSlotValue() {
+		PropositionTemplate incomplete = new PropositionTemplate(
+			Set.of(), Set.of(), Set.of(), Set.of(), Set.of(),
+			Set.of(PropositionTemplate.RequiredSlot.ACTION)
+		);
+
+		assertThat(matcher.match(incomplete, parser.parse("계약상대자는 통지해야 한다.")).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
 	}
 
 	private LawAiAnswerGround ground(String text) {

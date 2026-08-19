@@ -41,6 +41,21 @@ class RetrievalTraceCollectorTests {
 	}
 
 	@Test
+	void selectedCandidatesCanRetainNonLossPolicyNotes() {
+		RetrievalTraceCollector collector = new RetrievalTraceCollector(100);
+		collector.source("law:8", "law", 8L, "bm25", 1);
+		collector.note("law:8", "directEvidencePolicy", "DIRECT_ATOM_PRESERVED");
+		collector.select("law:8");
+
+		RetrievalCandidateTrace trace = collector.finish("law:8");
+
+		assertThat(trace.selected()).isTrue();
+		assertThat(trace.firstLossStage()).isNull();
+		assertThat(trace.enteredStages()).contains("directEvidencePolicy");
+		assertThat(trace.reasonCodes()).containsExactly("DIRECT_ATOM_PRESERVED");
+	}
+
+	@Test
 	void boundsDebugTracesWithoutIncludingChunkText() {
 		RetrievalTraceCollector collector = new RetrievalTraceCollector(2);
 		collector.source("law:1", "law", 1L, "vector", 1);

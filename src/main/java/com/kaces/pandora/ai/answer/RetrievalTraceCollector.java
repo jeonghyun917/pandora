@@ -67,6 +67,19 @@ public final class RetrievalTraceCollector {
 		}
 	}
 
+	public void note(String candidateKey, String stage, String reasonCode) {
+		MutableTrace trace = traces.get(candidateKey);
+		if (trace == null) {
+			return;
+		}
+		if (stage != null && !stage.isBlank()) {
+			trace.enteredStages.add(stage);
+		}
+		if (reasonCode != null && !reasonCode.isBlank() && !trace.reasonCodes.contains(reasonCode)) {
+			trace.reasonCodes.add(reasonCode);
+		}
+	}
+
 	public void select(String candidateKey) {
 		MutableTrace trace = traces.get(candidateKey);
 		if (trace == null) {
@@ -128,7 +141,7 @@ public final class RetrievalTraceCollector {
 				sourceRanks,
 				List.copyOf(enteredStages),
 				selected ? null : firstLossStage,
-				selected ? List.of() : reasonCodes,
+				List.copyOf(reasonCodes),
 				selected
 			);
 		}

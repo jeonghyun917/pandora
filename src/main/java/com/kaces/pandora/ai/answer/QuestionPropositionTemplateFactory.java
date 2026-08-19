@@ -30,10 +30,10 @@ public class QuestionPropositionTemplateFactory {
 		if (!atom.relations().isEmpty()) {
 			required.add(PropositionTemplate.RequiredSlot.RELATION);
 		}
-		if (!atom.targetScopes().isEmpty() || effective.intentTypes().contains("target_scope")) {
+		if (!atom.targetScopes().isEmpty()) {
 			required.add(PropositionTemplate.RequiredSlot.TARGET_SCOPE);
 		}
-		if (!atom.conditions().isEmpty() || !effective.directEvidenceGroups().isEmpty()) {
+		if (!atom.conditions().isEmpty()) {
 			required.add(PropositionTemplate.RequiredSlot.CONDITION);
 		}
 		if (atom.modality() != EvidenceAtom.Modality.UNSPECIFIED) {
@@ -45,7 +45,7 @@ public class QuestionPropositionTemplateFactory {
 		if (!atom.numericAnchors().isEmpty()) {
 			required.add(PropositionTemplate.RequiredSlot.NUMERIC_ANCHOR);
 		}
-		if (required.isEmpty() && !effective.intentTypes().isEmpty()) {
+		if (required.isEmpty() && !effective.intentTypes().isEmpty() && !atom.actions().isEmpty()) {
 			required.add(PropositionTemplate.RequiredSlot.ACTION);
 		}
 		return new PropositionTemplate(
