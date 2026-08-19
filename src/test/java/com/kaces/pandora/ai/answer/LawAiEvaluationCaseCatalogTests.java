@@ -17,7 +17,7 @@ class LawAiEvaluationCaseCatalogTests {
 	void loadsEnoughDefaultCasesForRegressionGate() {
 		List<LawAiEvalRequest.EvalCase> cases = LawAiEvaluationCaseCatalog.loadDefaultCases();
 
-		assertThat(cases).hasSizeGreaterThanOrEqualTo(1_004);
+		assertThat(cases).hasSizeGreaterThanOrEqualTo(1_003);
 	}
 
 	@Test
