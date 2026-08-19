@@ -23,6 +23,7 @@ public record LawAiDebugResponse(
 	List<Item> judgeCandidates,
 	List<Item> judged,
 	List<Item> selected,
+	List<RetrievalCandidateTrace> candidateTraces,
 	String message,
 	String failureType,
 	String failureStage,

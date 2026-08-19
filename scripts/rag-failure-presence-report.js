@@ -70,6 +70,8 @@ function parseOptions(argv = []) {
 function renderMarkdown(report) {
   const failureRows = Object.entries(report?.failureCategoryCounts ?? {});
   const presenceRows = Object.entries(report?.presenceClassificationCounts ?? {});
+	const candidateLossRows = Object.entries(report?.candidateFirstLossStageCounts ?? {});
+	const candidateReasonRows = Object.entries(report?.candidateReasonCodeCounts ?? {});
   const caseRows = report?.results ?? [];
   const lines = [
     '# Failed Proposition Presence Audit',
@@ -88,6 +90,18 @@ function renderMarkdown(report) {
     '| Classification | Count |',
     '|---|---:|',
     ...presenceRows.map(([classification, count]) => `| ${escapeCell(classification)} | ${count} |`),
+	'',
+	'## Candidate first loss',
+	'',
+	'| Stage | Count |',
+	'|---|---:|',
+	...candidateLossRows.map(([stage, count]) => `| ${escapeCell(stage)} | ${count} |`),
+	'',
+	'## Candidate loss reasons',
+	'',
+	'| Reason | Count |',
+	'|---|---:|',
+	...candidateReasonRows.map(([reason, count]) => `| ${escapeCell(reason)} | ${count} |`),
     '',
     '## Cases',
     '',

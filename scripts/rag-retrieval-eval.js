@@ -48,6 +48,7 @@ async function main() {
       const response = await loadDebugResponse(evalCase, options);
       measurements[index] = {
         ...measureRetrievalCase(evalCase, response, options.k),
+		candidateLoss: extractCandidateLossAnalysis(response),
         question: evalCase.question,
         targets: evalCase.targets,
       };
@@ -256,7 +257,84 @@ function assertDebugResponse(body, auditGroupCount = 0) {
       }
     }
   }
+	if (body.candidateTraces != null) {
+		if (!Array.isArray(body.candidateTraces) || body.candidateTraces.length > 100) {
+			throw new Error('debug search response candidateTraces must be an array with at most 100 items');
+		}
+		for (const [index, trace] of body.candidateTraces.entries()) {
+			if (!trace || typeof trace !== 'object' || Array.isArray(trace)) {
+				throw new Error(`debug search response candidateTraces[${index}] must be an object`);
+			}
+			for (const forbidden of ['chunkText', 'body', 'snippet']) {
+				if (Object.hasOwn(trace, forbidden)) {
+					throw new Error(`debug search response candidateTraces[${index}] must not contain ${forbidden}`);
+				}
+			}
+		}
+	}
   return body;
+}
+
+function extractCandidateLossAnalysis(response) {
+	const traces = Array.isArray(response?.candidateTraces) ? response.candidateTraces : [];
+	const auditMatches = new Map();
+	for (const stage of STAGE_NAMES) {
+		for (const item of Array.isArray(response?.[stage]) ? response[stage] : []) {
+			const indexes = Array.isArray(item?.matchedAuditGroupIndexes)
+				? item.matchedAuditGroupIndexes.filter(Number.isInteger)
+				: [];
+			if (indexes.length === 0) {
+				continue;
+			}
+			const key = candidateKey(item);
+			if (!key) {
+				continue;
+			}
+			const existing = auditMatches.get(key) ?? new Set();
+			indexes.forEach((index) => existing.add(index));
+			auditMatches.set(key, existing);
+		}
+	}
+	const oracleCandidateTraces = traces
+		.filter((trace) => auditMatches.has(String(trace?.candidateKey ?? '')))
+		.map((trace) => ({
+			candidateKey: String(trace.candidateKey),
+			oraclePresenceStage: Array.isArray(trace.enteredStages) && trace.enteredStages.length > 0
+				? trace.enteredStages[trace.enteredStages.length - 1]
+				: null,
+			matchedAuditGroupIndexes: Array.from(auditMatches.get(String(trace.candidateKey))).sort((a, b) => a - b),
+			firstLossStage: trace.firstLossStage ?? null,
+			reasonCodes: Array.isArray(trace.reasonCodes) ? [...trace.reasonCodes] : [],
+		}));
+	return {
+		candidateTraces: traces,
+		oracleCandidateTraces,
+		firstLossStageCounts: countValues(traces.map((trace) => trace?.firstLossStage)),
+		reasonCodeCounts: countValues(traces.flatMap((trace) =>
+			Array.isArray(trace?.reasonCodes) ? trace.reasonCodes : [])),
+	};
+}
+
+function candidateKey(item) {
+	if (typeof item?.candidateKey === 'string' && item.candidateKey) {
+		return item.candidateKey;
+	}
+	if (item?.target == null || item?.chunkId == null) {
+		return null;
+	}
+	return `${item.target}:${item.chunkId}`;
+}
+
+function countValues(values) {
+	const counts = {};
+	for (const value of values) {
+		if (value == null || String(value).trim() === '') {
+			continue;
+		}
+		const key = String(value);
+		counts[key] = (counts[key] ?? 0) + 1;
+	}
+	return counts;
 }
 
 async function mapWithConcurrency(values, concurrency, callback) {
@@ -373,6 +451,7 @@ if (require.main === module) {
 module.exports = {
   assertDebugResponse,
   buildDebugRequest,
+	extractCandidateLossAnalysis,
   main,
   parseOptions,
 };

@@ -33,6 +33,8 @@ function buildFailurePresenceReport(evaluationReport, retrievalReport) {
 
   const results = failed.map((evaluation) => {
     const retrieval = retrievalById.get(String(evaluation.id));
+		const candidateTrace = (retrieval?.candidateLoss?.oracleCandidateTraces ?? [])
+			.find((trace) => trace?.firstLossStage != null) ?? null;
     return {
       id: String(evaluation.id),
       question: evaluation.question ?? '',
@@ -41,13 +43,17 @@ function buildFailurePresenceReport(evaluationReport, retrievalReport) {
       presenceClassification:
         retrieval?.oraclePresence?.classification ?? 'NO_EXPLICIT_ORACLE',
       firstLossStage: retrieval?.oraclePresence?.firstLossStage ?? null,
+		candidateFirstLossStage: candidateTrace?.firstLossStage ?? null,
+		candidateReasonCodes: Array.isArray(candidateTrace?.reasonCodes)
+			? candidateTrace.reasonCodes
+			: [],
       retrievalFirstDropStage: retrieval?.firstDropStage ?? null,
       oraclePresence: retrieval?.oraclePresence ?? null,
     };
   });
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt:
       retrievalReport?.provenance?.generatedAt
         ?? evaluationReport?.provenance?.generatedAt
@@ -56,6 +62,11 @@ function buildFailurePresenceReport(evaluationReport, retrievalReport) {
     totalFailures: results.length,
     failureCategoryCounts: countBy(results, (row) => row.failureCategory),
     presenceClassificationCounts: countBy(results, (row) => row.presenceClassification),
+	candidateFirstLossStageCounts: countBy(
+		results.filter((row) => row.candidateFirstLossStage != null),
+		(row) => row.candidateFirstLossStage,
+	),
+	candidateReasonCodeCounts: countValues(results.flatMap((row) => row.candidateReasonCodes)),
     byFailureCategory: Object.fromEntries(
       Array.from(new Set(results.map((row) => row.failureCategory))).map((category) => {
         const rows = results.filter((row) => row.failureCategory === category);
@@ -83,6 +94,10 @@ function countBy(rows, valueProvider) {
     counts[value] = (counts[value] ?? 0) + 1;
   }
   return counts;
+}
+
+function countValues(values) {
+	return countBy(values.map((value) => ({ value })), (row) => row.value);
 }
 
 module.exports = {

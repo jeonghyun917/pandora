@@ -30,7 +30,7 @@ function evaluationResult(overrides) {
   };
 }
 
-function retrievalResult(id, classification, firstLossStage = null) {
+function retrievalResult(id, classification, firstLossStage = null, candidateLoss = null) {
   return {
     id,
     firstDropStage: 'selected',
@@ -40,6 +40,7 @@ function retrievalResult(id, classification, firstLossStage = null) {
       firstLossStage,
       stages: {},
     },
+		candidateLoss,
   };
 }
 
@@ -91,7 +92,13 @@ test('joined report keeps every failed ID and counts failure by proposition pres
     provenance: { runtimeInstanceId: 'runtime-b', indexRevision: 'index-a' },
     results: [
       retrievalResult('unsupported', 'PRESENT_IN_SELECTED'),
-      retrievalResult('missing', 'DROPPED_BEFORE_SELECTED', 'judged'),
+      retrievalResult('missing', 'DROPPED_BEFORE_SELECTED', 'judged', {
+			oracleCandidateTraces: [{
+				candidateKey: 'law:10',
+				firstLossStage: 'judge',
+				reasonCodes: ['JUDGE_NOT_DIRECT'],
+			}],
+		}),
       retrievalResult('no-ground', 'NO_EXPLICIT_ORACLE'),
     ],
   };
@@ -110,6 +117,9 @@ test('joined report keeps every failed ID and counts failure by proposition pres
     NO_EXPLICIT_ORACLE: 1,
   });
   assert.equal(report.results.find((row) => row.id === 'missing').firstLossStage, 'judged');
+	assert.equal(report.results.find((row) => row.id === 'missing').candidateFirstLossStage, 'judge');
+	assert.deepEqual(report.candidateFirstLossStageCounts, { judge: 1 });
+	assert.deepEqual(report.candidateReasonCodeCounts, { JUDGE_NOT_DIRECT: 1 });
   assert.equal(report.results.some((row) => row.id === 'passed'), false);
 });
 

@@ -483,6 +483,47 @@ test('debug response validator requires resultMsg and every retrieval stage arra
     }),
     /vectorHits.*parentSectionTitle.*sectionType/i,
   );
+	assert.throws(
+		() => retrievalRunner.assertDebugResponse({
+			...valid,
+			candidateTraces: [{ candidateKey: 'law:1', chunkText: 'must not escape' }],
+		}),
+		/candidateTraces.*chunkText/i,
+	);
+});
+
+test('candidate loss analysis joins audit-matched candidates to their first server-side loss', () => {
+	assert.equal(typeof retrievalRunner.extractCandidateLossAnalysis, 'function');
+	const response = Object.fromEntries(retrievalMetrics.STAGE_NAMES.map((stage) => [stage, []]));
+	response.resultMsg = 'NO_GROUNDS';
+	response.vectorHits = [{
+		candidateKey: 'law:10',
+		target: 'law',
+		chunkId: 10,
+		matchedAuditGroupIndexes: [0, 2],
+	}];
+	response.candidateTraces = [{
+		candidateKey: 'law:10',
+		target: 'law',
+		chunkId: 10,
+		sourceRanks: { vector: 3, bm25: 1 },
+		enteredStages: ['loaded', 'merged', 'reranked', 'intent'],
+		firstLossStage: 'judgeCandidates',
+		reasonCodes: ['JUDGE_CANDIDATE_LIMIT'],
+		selected: false,
+	}];
+
+	const analysis = retrievalRunner.extractCandidateLossAnalysis(response);
+
+	assert.deepEqual(analysis.firstLossStageCounts, { judgeCandidates: 1 });
+	assert.deepEqual(analysis.reasonCodeCounts, { JUDGE_CANDIDATE_LIMIT: 1 });
+	assert.deepEqual(analysis.oracleCandidateTraces, [{
+		candidateKey: 'law:10',
+		oraclePresenceStage: 'intent',
+		matchedAuditGroupIndexes: [0, 2],
+		firstLossStage: 'judgeCandidates',
+		reasonCodes: ['JUDGE_CANDIDATE_LIMIT'],
+	}]);
 });
 
 test('judged and selected stages distinguish judge rejection from ground rejection', () => {

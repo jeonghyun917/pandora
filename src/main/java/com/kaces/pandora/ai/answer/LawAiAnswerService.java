@@ -1745,6 +1745,7 @@ public class LawAiAnswerService {
 			toDebugItems(retrieval.judgeCandidateChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.judgedChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.answerChunks(), retrieval, selectedKeys, auditTermGroups),
+			buildCandidateTraces(retrieval),
 			retrieval.message(),
 			classification.failureType(),
 			classification.failureStage(),
@@ -2196,6 +2197,72 @@ public class LawAiAnswerService {
 			limitText(verifiedAnswer, 1_500),
 			passed ? "" : "metadata-only answer did not satisfy the configured answer expectations"
 		);
+	}
+
+	private List<RetrievalCandidateTrace> buildCandidateTraces(RetrievalResult retrieval) {
+		RetrievalTraceCollector collector = new RetrievalTraceCollector(100);
+		for (QdrantSearchHit hit : retrieval.qdrantHits()) {
+			collector.source(
+				scoreKey(hit.target(), hit.chunkId()), hit.target(), hit.chunkId(),
+				"vector", vectorRank(retrieval.qdrantHits(), scoreKey(hit.target(), hit.chunkId()))
+			);
+		}
+		for (LawSemanticChunkRow chunk : retrieval.lexicalChunks()) {
+			String key = scoreKey(chunk.target(), chunk.chunkId());
+			collector.source(key, chunk.target(), chunk.chunkId(), "keyword", rankOf(retrieval.lexicalChunks(), key));
+		}
+		for (LexicalSearchHit hit : retrieval.hybrid().bm25Hits()) {
+			collector.source(
+				scoreKey(hit.target(), hit.chunkId()), hit.target(), hit.chunkId(), "bm25", hit.rank()
+			);
+		}
+		for (ReciprocalRankFusion.RrfHit hit : retrieval.hybrid().fusedHits()) {
+			collector.source(
+				scoreKey(hit.target(), hit.chunkId()), hit.target(), hit.chunkId(),
+				"rrf", retrieval.hybrid().fusedRank(scoreKey(hit.target(), hit.chunkId()))
+			);
+		}
+
+		collector.transition("loaded", candidateKeys(
+			retrieval.vectorChunks(), retrieval.lexicalChunks(),
+			retrieval.hybrid().bm25Chunks(), retrieval.hybrid().fusedChunks()
+		), "SOURCE_CHUNK_NOT_LOADED");
+		collector.transition("merged", candidateKeys(retrieval.searchedChunks()), "MERGE_NOT_SELECTED");
+		collector.transition("reranked", candidateKeys(retrieval.rankedChunks()), "RERANK_LIMIT");
+		collector.transition("intent", candidateKeys(retrieval.intentFilteredChunks()), "INTENT_FILTERED");
+		collector.transition(
+			"judgeCandidates", candidateKeys(retrieval.judgeCandidateChunks()), "JUDGE_CANDIDATE_LIMIT"
+		);
+		collector.transition("judge", candidateKeys(retrieval.judgedChunks()), "JUDGE_NOT_DIRECT");
+		collector.transition("grounds", retrieval.grounds().stream()
+			.map(ground -> scoreKey(ground.target(), ground.chunkId()))
+			.toList(), "GROUND_NOT_BUILT");
+		collector.transition("selected", candidateKeys(retrieval.answerChunks()), "ANSWER_CONTEXT_NOT_SELECTED");
+		for (String selectedKey : candidateKeys(retrieval.answerChunks())) {
+			collector.select(selectedKey);
+		}
+		return collector.finishAll();
+	}
+
+	@SafeVarargs
+	private final List<String> candidateKeys(List<LawSemanticChunkRow>... groups) {
+		java.util.LinkedHashSet<String> keys = new java.util.LinkedHashSet<>();
+		for (List<LawSemanticChunkRow> group : groups) {
+			for (LawSemanticChunkRow chunk : group == null ? List.<LawSemanticChunkRow>of() : group) {
+				keys.add(scoreKey(chunk.target(), chunk.chunkId()));
+			}
+		}
+		return List.copyOf(keys);
+	}
+
+	private int rankOf(List<LawSemanticChunkRow> chunks, String candidateKey) {
+		for (int index = 0; index < chunks.size(); index++) {
+			LawSemanticChunkRow chunk = chunks.get(index);
+			if (scoreKey(chunk.target(), chunk.chunkId()).equals(candidateKey)) {
+				return index + 1;
+			}
+		}
+		return 0;
 	}
 
 	private boolean hasExplicitAnswerOracle(LawAiEvalRequest.EvalCase evalCase) {
