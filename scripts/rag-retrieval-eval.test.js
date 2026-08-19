@@ -303,6 +303,35 @@ test('retrieval metrics find a first downstream drop after vector or lexical ent
   assert.equal(measured.stages.intentFiltered.directHit, false);
 });
 
+test('retrieval metrics preserve BM25 and fused shadow ranks for deterministic acceptance', () => {
+  const evalCase = {
+    id: 'shadow-rank',
+    expectedTitleTerms: ['정답 문서'],
+    expectedDocumentTerms: [],
+    expectedSectionTypes: [],
+    expectedParentTerms: [],
+    expectedResultMsgs: ['OK'],
+  };
+  const direct = { chunkId: 7, target: 'law', title: '정답 문서' };
+  const wrong = { chunkId: 8, target: 'law', title: '오답 문서' };
+  const response = Object.fromEntries(retrievalMetrics.STAGE_NAMES.map((stage) => [stage, [direct]]));
+  response.resultMsg = 'OK';
+  response.bm25Hits = [wrong, direct];
+  response.fused = [direct, wrong];
+
+  const measured = retrievalMetrics.measureRetrievalCase(evalCase, response, 30);
+  const summary = retrievalMetrics.summarizeRetrievalCases([measured], 30);
+
+  assert.equal(measured.stages.bm25Hits.directHit, true);
+  assert.equal(measured.stages.fused.directHit, true);
+  assert.deepEqual(measured.shadowRanks, {
+    bm25Hits: ['law:8', 'law:7'],
+    fused: ['law:7', 'law:8'],
+  });
+  assert.equal(summary.shadowStages.bm25Hits.directHitRate, 1);
+  assert.equal(summary.shadowStages.fused.directHitRate, 1);
+});
+
 test('retrieval metrics honor K and report no-ground false grounds outside recall denominators', () => {
   assert.equal(typeof retrievalMetrics.measureRetrievalCase, 'function');
   assert.equal(typeof retrievalMetrics.summarizeRetrievalCases, 'function');

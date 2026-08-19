@@ -9,13 +9,18 @@ const STAGE_NAMES = [
   'selected',
 ];
 
+const SHADOW_STAGE_NAMES = [
+  'bm25Hits',
+  'fused',
+];
+
 const DOWNSTREAM_STAGES = STAGE_NAMES.slice(2);
 
 function measureRetrievalCase(evalCase, response, k = 10) {
   const safeK = normalizeK(k);
   const noGroundExpected = (evalCase?.expectedResultMsgs ?? [])
     .some((value) => normalize(value) === 'nogrounds');
-  const stages = Object.fromEntries(STAGE_NAMES.map((stage) => [
+  const stages = Object.fromEntries([...STAGE_NAMES, ...SHADOW_STAGE_NAMES].map((stage) => [
     stage,
     measureStage(evalCase, response?.[stage], safeK),
   ]));
@@ -51,6 +56,10 @@ function measureRetrievalCase(evalCase, response, k = 10) {
       ...Object.fromEntries(DOWNSTREAM_STAGES.map((stage) => [stage, candidateEntryHit && stages[stage].directHit])),
     },
     stages,
+    shadowRanks: Object.fromEntries(SHADOW_STAGE_NAMES.map((stage) => [
+      stage,
+      topK(response?.[stage], safeK).map(candidateKey).filter(Boolean),
+    ])),
     oraclePresence: measureOraclePresence(evalCase, response, safeK),
   };
 }
@@ -81,7 +90,7 @@ function measureOraclePresence(evalCase, response, k) {
   ]);
   const stages = {
     candidateSources: measureAuditStage(candidateItems, candidateItems.length, totalGroupCount),
-    ...Object.fromEntries(STAGE_NAMES.map((stage) => [
+    ...Object.fromEntries([...STAGE_NAMES, ...SHADOW_STAGE_NAMES].map((stage) => [
       stage,
       measureAuditStage(response?.[stage], k, totalGroupCount),
     ])),
@@ -203,6 +212,10 @@ function summarizeRetrievalCases(results, k = 10) {
       ids: noGround.filter((row) => row.falseGround).map((row) => row.id),
     },
     stages: Object.fromEntries(STAGE_NAMES.map((stage) => [stage, summarizeStage(eligible, stage)])),
+    shadowStages: Object.fromEntries(SHADOW_STAGE_NAMES.map((stage) => [
+      stage,
+      summarizeStage(eligible, stage),
+    ])),
     stageSurvival: {
       candidateSources: survivalSummary(eligible, 'candidateSources', eligible.length),
       ...Object.fromEntries(DOWNSTREAM_STAGES.map((stage) => [
@@ -303,6 +316,10 @@ function uniqueItems(items) {
   return Array.from(byKey.values());
 }
 
+function candidateKey(item) {
+  return item?.chunkId == null ? null : `${item?.target ?? ''}:${item.chunkId}`;
+}
+
 function topK(items, k) {
   return Array.isArray(items) ? items.slice(0, normalizeK(k)) : [];
 }
@@ -328,6 +345,7 @@ function average(values) {
 }
 
 module.exports = {
+  SHADOW_STAGE_NAMES,
   STAGE_NAMES,
   measureOraclePresence,
   measureRetrievalCase,
