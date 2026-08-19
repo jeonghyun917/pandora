@@ -41,6 +41,8 @@ public interface SemanticLexicalMapper {
 		@Param("averageWeightedLength") double averageWeightedLength
 	);
 
+	int markIndexFailed(@Param("indexVersion") String indexVersion);
+
 	record IndexStateRow(
 		String indexVersion,
 		String tokenizerVersion,

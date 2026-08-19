@@ -47,6 +47,14 @@ class KoreanLexicalTokenizerTests {
 	void leavesConfiguredSynonymsForQueryExpansionInsteadOfCorpusDuplication() {
 		assertThat(tokenizer.tokenize("개인정보"))
 			.containsOnly(Map.entry("개인정보", 1));
-		assertThat(tokenizer.version()).isEqualTo("korean-lexical-v1");
+		assertThat(tokenizer.version()).isEqualTo("korean-lexical-v2");
+	}
+
+	@Test
+	void treatsHangulToneMarksAsSeparatorsInsteadOfDistinctTermCharacters() {
+		assertThat(tokenizer.tokenize("\u302E장애상황 장애상황 \u302F대응수준 대응수준"))
+			.containsEntry("장애상황", 2)
+			.containsEntry("대응수준", 2)
+			.doesNotContainKeys("\u302E장애상황", "\u302F대응수준");
 	}
 }

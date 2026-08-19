@@ -569,7 +569,7 @@ CREATE TABLE IF NOT EXISTS semantic_lexical_terms (
     index_version VARCHAR(64) NOT NULL,
     target VARCHAR(30) NOT NULL,
     chunk_id BIGINT NOT NULL,
-    term VARCHAR(80) NOT NULL,
+    term VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
     field_kind VARCHAR(30) NOT NULL,
     term_frequency INT NOT NULL,
     field_weight SMALLINT NOT NULL,
@@ -581,7 +581,7 @@ CREATE TABLE IF NOT EXISTS semantic_lexical_terms (
 
 CREATE TABLE IF NOT EXISTS semantic_lexical_term_stats (
     index_version VARCHAR(64) NOT NULL,
-    term VARCHAR(80) NOT NULL,
+    term VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
     document_frequency INT NOT NULL,
     PRIMARY KEY (index_version, term),
     CONSTRAINT fk_semantic_lexical_term_stats_state FOREIGN KEY (index_version)

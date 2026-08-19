@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class KoreanLexicalTokenizer {
 
-	public static final String VERSION = "korean-lexical-v1";
+	public static final String VERSION = "korean-lexical-v2";
 
 	public String version() {
 		return VERSION;
@@ -23,6 +23,7 @@ public class KoreanLexicalTokenizer {
 		}
 		String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC)
 			.toLowerCase(Locale.ROOT)
+			.replaceAll("[\u302E\u302F]+", " ")
 			.replaceAll("(?<=\\d),(?=\\d)", "");
 		Map<String, Integer> frequencies = new LinkedHashMap<>();
 		for (String raw : normalized.split("[^\\p{IsHangul}\\p{L}\\p{N}]+")) {

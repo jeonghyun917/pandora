@@ -92,6 +92,7 @@ class SemanticLexicalIndexServiceTests {
 		assertThat(service.currentRevision()).isEqualTo("ready-before");
 		assertThatThrownBy(service::rebuild).isInstanceOf(IllegalStateException.class);
 		verify(mapper, never()).markIndexReady(any(), any(), any(Integer.class), any(Double.class));
+		verify(mapper).markIndexFailed("lexical-build-failed");
 	}
 
 	@Test

@@ -156,4 +156,10 @@
         completed_at = CURRENT_TIMESTAMP(6)
     WHERE index_version = #{indexVersion} AND status = 'BUILDING'
   </update>
+
+	<update id="markIndexFailed">
+		UPDATE semantic_lexical_index_state
+		SET status = 'FAILED', completed_at = CURRENT_TIMESTAMP(6)
+		WHERE index_version = #{indexVersion} AND status = 'BUILDING'
+	</update>
 </mapper>

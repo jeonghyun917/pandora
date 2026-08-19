@@ -102,7 +102,19 @@ public class SemanticLexicalIndexService {
 			"BUILDING",
 			null
 		));
+		try {
+			return build(indexVersion, documents);
+		} catch (RuntimeException exception) {
+			try {
+				mapper.markIndexFailed(indexVersion);
+			} catch (RuntimeException failureUpdate) {
+				exception.addSuppressed(failureUpdate);
+			}
+			throw exception;
+		}
+	}
 
+	private BuildResult build(String indexVersion, List<LexicalChunkDocument> documents) {
 		long totalWeightedLength = 0;
 		int termRows = 0;
 		for (int start = 0; start < documents.size(); start += WRITE_BATCH_SIZE) {

@@ -58,6 +58,13 @@ class SemanticLexicalMapperXmlTests {
 	}
 
 	@Test
+	void failedBuildTransitionCannotOverwriteATerminalRevision() throws Exception {
+		assertThat(sql("markIndexFailed", Map.of("indexVersion", "failed-build")))
+			.contains("SET status = 'FAILED', completed_at = CURRENT_TIMESTAMP(6)")
+			.contains("WHERE index_version = ? AND status = 'BUILDING'");
+	}
+
+	@Test
 	void bm25TermReadHasAOneSecondStatementTimeout() throws Exception {
 		Configuration configuration = configuration();
 		MappedStatement statement = configuration.getMappedStatement(NAMESPACE + ".findBm25TermMatches");

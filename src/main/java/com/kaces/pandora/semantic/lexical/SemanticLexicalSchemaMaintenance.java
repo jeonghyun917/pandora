@@ -23,6 +23,21 @@ public class SemanticLexicalSchemaMaintenance implements ApplicationRunner {
 		jdbcTemplate.execute(chunkTable());
 		jdbcTemplate.execute(termTable());
 		jdbcTemplate.execute(termStatsTable());
+		ensureBinaryTermIdentity("semantic_lexical_terms");
+		ensureBinaryTermIdentity("semantic_lexical_term_stats");
+	}
+
+	private void ensureBinaryTermIdentity(String tableName) {
+		String collation = jdbcTemplate.queryForObject("""
+			SELECT COLLATION_NAME
+			FROM information_schema.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'term'
+			""", String.class, tableName);
+		if ("utf8mb4_bin".equalsIgnoreCase(collation)) {
+			return;
+		}
+		jdbcTemplate.execute("ALTER TABLE " + tableName
+			+ " MODIFY term VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL");
 	}
 
 	private String indexStateTable() {
@@ -70,7 +85,7 @@ public class SemanticLexicalSchemaMaintenance implements ApplicationRunner {
 				index_version VARCHAR(64) NOT NULL,
 				target VARCHAR(30) NOT NULL,
 				chunk_id BIGINT NOT NULL,
-				term VARCHAR(80) NOT NULL,
+				term VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
 				field_kind VARCHAR(30) NOT NULL,
 				term_frequency INT NOT NULL,
 				field_weight SMALLINT NOT NULL,
@@ -86,7 +101,7 @@ public class SemanticLexicalSchemaMaintenance implements ApplicationRunner {
 		return """
 			CREATE TABLE IF NOT EXISTS semantic_lexical_term_stats (
 				index_version VARCHAR(64) NOT NULL,
-				term VARCHAR(80) NOT NULL,
+				term VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
 				document_frequency INT NOT NULL,
 				PRIMARY KEY (index_version, term),
 				CONSTRAINT fk_semantic_lexical_term_stats_state FOREIGN KEY (index_version)
