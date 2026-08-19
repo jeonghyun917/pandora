@@ -33,7 +33,7 @@ public class KoreanEvidenceAtomParser {
 			+ "([\\p{IsHangul}A-Za-z0-9]{2,}?)(?:한\\s*경우|된\\s*경우|하면|되면|받으면|있으면|없으면)"
 	);
 	private static final Pattern POST_CONDITION = Pattern.compile(
-		"([\\p{IsHangul}A-Za-z0-9]{2,}?)(?:을|를)?\\s*(?:완료|종료|제출|신청|통지)(?:한|한\\s*)?\\s*후"
+		"([\\p{IsHangul}A-Za-z0-9]{2,}?)(?:을|를)?(?:한|한\\s*)?\\s*후"
 	);
 	private static final Pattern EXCEPTION = Pattern.compile("(?:다만|예외적으로)\\s*([^.!?]{2,160})");
 	private static final Pattern EXCLUDED_SCOPE = Pattern.compile(

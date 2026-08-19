@@ -891,8 +891,17 @@ public class LawAiAnswerService {
 			.filter(result -> !result.passed())
 			.map(LawAiEvalResponse.CaseResult::id)
 			.toList();
+		int semanticShadowDisagreementCount = results.stream()
+			.mapToInt(result -> result.semanticShadowDisagreements().size())
+			.sum();
+		int unsafeSemanticShadowDisagreementCount = results.stream()
+			.mapToInt(LawAiEvalResponse.CaseResult::unsafeSemanticShadowDisagreementCount)
+			.sum();
 		boolean gatePassed = total > 0 && failed == 0;
-		return new LawAiEvalResponse(total, passed, failed, passRate, gatePassed, minimumPassed, blockingFailureIds, results);
+		return new LawAiEvalResponse(
+			total, passed, failed, passRate, gatePassed, minimumPassed, blockingFailureIds,
+			semanticShadowDisagreementCount, unsafeSemanticShadowDisagreementCount, results
+		);
 	}
 
 	private List<LawAiEvalRequest.EvalCase> filterEvaluationCases(
@@ -1877,6 +1886,8 @@ public class LawAiAnswerService {
 			List.of(),
 			List.of(),
 			List.of(),
+			List.of(),
+			0,
 			""
 		);
 	}
@@ -2005,6 +2016,8 @@ public class LawAiAnswerService {
 			answerEval.unsupportedClaims(),
 			answerEval.contradictedClaims(),
 			answerEval.evidenceLinks(),
+			answerEval.semanticShadowDisagreements(),
+			answerEval.unsafeSemanticShadowDisagreementCount(),
 			answerEval.verifiedAnswer()
 		);
 	}
@@ -2098,6 +2111,8 @@ public class LawAiAnswerService {
 					verification.claimResult().unsupportedClaims(),
 					verification.claimResult().contradictedClaims(),
 					verification.claimResult().evidenceLinks(),
+					verification.claimResult().semanticShadowResults(),
+					unsafeShadowCount(verification.claimResult().semanticShadowResults()),
 					limitText(verifiedAnswer, 1_500),
 					passed ? "" : appendMessage(supportMessage, oracleResult.message())
 				);
@@ -2128,12 +2143,20 @@ public class LawAiAnswerService {
 				verification.claimResult().unsupportedClaims(),
 				verification.claimResult().contradictedClaims(),
 				verification.claimResult().evidenceLinks(),
+				verification.claimResult().semanticShadowResults(),
+				unsafeShadowCount(verification.claimResult().semanticShadowResults()),
 				limitText(verifiedAnswer, 1_500),
 				message
 			);
 		} catch (RuntimeException exception) {
 			return AnswerEvalResult.failed("Answer-level evaluation failed: " + exception.getMessage());
 		}
+	}
+
+	private int unsafeShadowCount(List<ClaimMatcherShadowResult> results) {
+		return (int) (results == null ? List.<ClaimMatcherShadowResult>of() : results).stream()
+			.filter(ClaimMatcherShadowResult::unsafeDisagreement)
+			.count();
 	}
 
 	private Long pointCount(QdrantIndexSnapshot snapshot) {
@@ -3251,9 +3274,28 @@ public class LawAiAnswerService {
 		List<String> unsupportedClaims,
 		List<String> contradictedClaims,
 		List<ClaimVerifier.ClaimEvidenceLink> evidenceLinks,
+		List<ClaimMatcherShadowResult> semanticShadowDisagreements,
+		int unsafeSemanticShadowDisagreementCount,
 		String verifiedAnswer,
 		String message
 	) {
+		private AnswerEvalResult(
+			boolean passed,
+			List<String> matchedTerms,
+			List<String> missingTerms,
+			List<String> forbiddenMatchedTerms,
+			List<String> unsupportedClaims,
+			List<String> contradictedClaims,
+			List<ClaimVerifier.ClaimEvidenceLink> evidenceLinks,
+			String verifiedAnswer,
+			String message
+		) {
+			this(
+				passed, matchedTerms, missingTerms, forbiddenMatchedTerms, unsupportedClaims,
+				contradictedClaims, evidenceLinks, List.of(), 0, verifiedAnswer, message
+			);
+		}
+
 		static AnswerEvalResult notRequired(boolean answerVerificationRequired) {
 			return new AnswerEvalResult(
 				!answerVerificationRequired,
