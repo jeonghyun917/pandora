@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.kaces.pandora.semantic.lexical.SemanticLexicalMapper">
+
+  <select id="findActiveSearchableChunks"
+          resultType="com.kaces.pandora.semantic.lexical.LexicalChunkDocument"
+          timeout="30">
+    SELECT
+      doc.target AS target,
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      c.parent_key AS parentKey,
+      c.content_hash AS contentHash,
+      doc.title AS documentTitle,
+      COALESCE(NULLIF(c.parent_title, ''), c.chunk_title, '') AS parentTitle,
+      COALESCE(c.chunk_title, '') AS chunkTitle,
+      c.chunk_text AS body
+    FROM law_api_document_chunks c
+    JOIN law_api_documents doc ON doc.document_id = c.document_id
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
+      AND COALESCE(c.quality_status, 'PASS') IN ('PASS', 'REVIEW')
+    UNION ALL
+    SELECT
+      doc.document_type AS target,
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      CONCAT('rag:', c.document_id, ':', SHA2(COALESCE(NULLIF(c.parent_section_title, ''), doc.title), 256)) AS parentKey,
+      c.content_hash AS contentHash,
+      doc.title AS documentTitle,
+      COALESCE(c.parent_section_title, '') AS parentTitle,
+      COALESCE(c.chunk_title, '') AS chunkTitle,
+      c.chunk_text AS body
+    FROM rag_document_chunks c
+    JOIN rag_documents doc ON doc.document_id = c.document_id
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND COALESCE(c.quality_status, 'PASS') IN ('PASS', 'REVIEW')
+      AND c.chunk_version = (
+        SELECT MAX(c2.chunk_version)
+        FROM rag_document_chunks c2
+        WHERE c2.document_id = c.document_id
+          AND c2.use_yn = 'Y'
+          AND COALESCE(c2.quality_status, 'PASS') IN ('PASS', 'REVIEW')
+      )
+    ORDER BY target, chunkId
+  </select>
+
+  <select id="findReadyRevision" resultType="string" timeout="1">
+    SELECT content_fingerprint
+    FROM semantic_lexical_index_state
+    WHERE status = 'READY'
+    ORDER BY completed_at DESC, index_version DESC
+    LIMIT 1
+  </select>
+
+  <insert id="insertIndexState">
+    INSERT INTO semantic_lexical_index_state (
+      index_version, tokenizer_version, active_chunk_count, average_weighted_length,
+      content_fingerprint, status, completed_at
+    ) VALUES (
+      #{state.indexVersion}, #{state.tokenizerVersion}, #{state.activeChunkCount},
+      #{state.averageWeightedLength}, #{state.contentFingerprint}, #{state.status}, #{state.completedAt}
+    )
+  </insert>
+
+  <insert id="insertChunks">
+    INSERT INTO semantic_lexical_chunks (
+      index_version, target, chunk_id, document_id, parent_key, content_hash,
+      weighted_length, build_status, completed_at
+    ) VALUES
+    <foreach collection="chunks" item="chunk" separator=",">
+      (#{indexVersion}, #{chunk.target}, #{chunk.chunkId}, #{chunk.documentId},
+       #{chunk.parentKey}, #{chunk.contentHash}, #{chunk.weightedLength}, 'BUILDING', NULL)
+    </foreach>
+  </insert>
+
+  <insert id="insertTerms">
+    INSERT INTO semantic_lexical_terms (
+      index_version, target, chunk_id, term, field_kind, term_frequency, field_weight
+    ) VALUES
+    <foreach collection="terms" item="term" separator=",">
+      (#{indexVersion}, #{term.target}, #{term.chunkId}, #{term.term}, #{term.fieldKind},
+       #{term.termFrequency}, #{term.fieldWeight})
+    </foreach>
+  </insert>
+
+  <insert id="populateTermStats">
+    INSERT INTO semantic_lexical_term_stats (
+      index_version, term, document_frequency
+    )
+    SELECT #{indexVersion}, term, COUNT(DISTINCT CONCAT(target, ':', chunk_id))
+    FROM semantic_lexical_terms
+    WHERE index_version = #{indexVersion}
+    GROUP BY term
+  </insert>
+
+  <update id="markChunksReady">
+    UPDATE semantic_lexical_chunks
+    SET build_status = 'READY', completed_at = CURRENT_TIMESTAMP(6)
+    WHERE index_version = #{indexVersion} AND build_status = 'BUILDING'
+  </update>
+
+  <update id="markIndexReady">
+    UPDATE semantic_lexical_index_state
+    SET content_fingerprint = #{contentFingerprint},
+        active_chunk_count = #{activeChunkCount},
+        average_weighted_length = #{averageWeightedLength},
+        status = 'READY',
+        completed_at = CURRENT_TIMESTAMP(6)
+    WHERE index_version = #{indexVersion} AND status = 'BUILDING'
+  </update>
+</mapper>

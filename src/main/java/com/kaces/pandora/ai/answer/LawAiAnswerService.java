@@ -15,6 +15,7 @@ import com.kaces.pandora.rag.common.HwpxTextCleaner;
 import com.kaces.pandora.rag.persistence.RagDocumentMapper;
 import com.kaces.pandora.rag.search.RagChunkSearchIndexService;
 import com.kaces.pandora.semantic.config.LawAiProperties;
+import com.kaces.pandora.semantic.lexical.SemanticLexicalIndexService;
 import com.kaces.pandora.semantic.provenance.IndexContentSnapshot;
 import com.kaces.pandora.semantic.search.QdrantSearchHit;
 import jakarta.annotation.PreDestroy;
@@ -129,6 +130,7 @@ public class LawAiAnswerService {
 	private final LawAiProperties properties;
 	private final RuntimeArtifactIdentity runtimeArtifactIdentity;
 	private final RagChunkSearchIndexService ragChunkSearchIndexService;
+	private final SemanticLexicalIndexService semanticLexicalIndexService;
 	private final Map<String, CachedAnswer> answerCache = new ConcurrentHashMap<>();
 	private final ExecutorService streamExecutor;
 	private final ExecutorService searchExecutor;
@@ -205,7 +207,6 @@ public class LawAiAnswerService {
 		);
 	}
 
-	@Autowired
 	public LawAiAnswerService(
 		LawChunkMapper lawChunkMapper,
 		RagDocumentMapper ragDocumentMapper,
@@ -223,6 +224,35 @@ public class LawAiAnswerService {
 		LawAiProperties properties,
 		GroundedAnswerRepairService groundedAnswerRepairService,
 		RagChunkSearchIndexService ragChunkSearchIndexService
+	) {
+		this(
+			lawChunkMapper, ragDocumentMapper, embeddingClient, qdrantClient, answerClient,
+			evidenceJudge, answerGuard, claimVerifier, answerVerificationService,
+			parentContextAssembler, evidenceCandidateDiversifier, failureLoggingService,
+			searchFailureMapper, properties, groundedAnswerRepairService,
+			ragChunkSearchIndexService, null
+		);
+	}
+
+	@Autowired
+	public LawAiAnswerService(
+		LawChunkMapper lawChunkMapper,
+		RagDocumentMapper ragDocumentMapper,
+		OpenAiEmbeddingClient embeddingClient,
+		QdrantClient qdrantClient,
+		OpenAiAnswerClient answerClient,
+		EvidenceJudge evidenceJudge,
+		AnswerGuard answerGuard,
+		ClaimVerifier claimVerifier,
+		AnswerVerificationService answerVerificationService,
+		ParentContextAssembler parentContextAssembler,
+		EvidenceCandidateDiversifier evidenceCandidateDiversifier,
+		FailureLoggingService failureLoggingService,
+		LawAiSearchFailureMapper searchFailureMapper,
+		LawAiProperties properties,
+		GroundedAnswerRepairService groundedAnswerRepairService,
+		RagChunkSearchIndexService ragChunkSearchIndexService,
+		SemanticLexicalIndexService semanticLexicalIndexService
 	) {
 		this.lawChunkMapper = lawChunkMapper;
 		this.ragDocumentMapper = ragDocumentMapper;
@@ -248,6 +278,7 @@ public class LawAiAnswerService {
 		this.searchFailureMapper = searchFailureMapper;
 		this.properties = properties;
 		this.ragChunkSearchIndexService = ragChunkSearchIndexService;
+		this.semanticLexicalIndexService = semanticLexicalIndexService;
 		this.runtimeArtifactIdentity = RuntimeArtifactIdentity.from(LawAiAnswerService.class);
 		this.streamExecutor = Executors.newFixedThreadPool(4, namedThreadFactory("law-ai-stream-"));
 		this.searchExecutor = Executors.newFixedThreadPool(8, namedThreadFactory("law-ai-search-"));
@@ -296,6 +327,12 @@ public class LawAiAnswerService {
 	}
 
 	private String lexicalRevision() {
+		if (semanticLexicalIndexService != null) {
+			String revision = semanticLexicalIndexService.currentRevision();
+			if (revision != null && !revision.isBlank()) {
+				return revision;
+			}
+		}
 		if (ragChunkSearchIndexService == null) {
 			return "legacy-law-like-v1+rag-terms-v2-unavailable";
 		}
