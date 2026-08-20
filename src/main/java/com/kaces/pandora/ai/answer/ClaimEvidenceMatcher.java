@@ -1775,10 +1775,14 @@ public class ClaimEvidenceMatcher {
 			String action = KoreanQueryNormalizer.normalizeQueryTerm(rawAction);
 			for (String suffix : List.of("하여야", "되어야", "해야")) {
 				if (action.endsWith(suffix) && action.length() > suffix.length() + 1) {
-					return action.substring(0, action.length() - suffix.length());
+					action = action.substring(0, action.length() - suffix.length());
+					break;
 				}
 			}
-			return action;
+			return switch (action) {
+				case "기재", "기술" -> "명시";
+				default -> action;
+			};
 		}
 
 		private static Set<String> responsibilityBearers(String text) {

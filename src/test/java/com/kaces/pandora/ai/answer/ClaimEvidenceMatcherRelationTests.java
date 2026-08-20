@@ -3297,6 +3297,32 @@ class ClaimEvidenceMatcherRelationTests {
 	}
 
 	@Test
+	void supportsStatutoryEnumerationWhenClaimUsesDifferentListSeparators() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"제안요청서에는 과업내용·요구사항·계약조건·평가요소·평가방법을 반드시 기재해야 합니다.",
+			List.of(ground(
+				"제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법, "
+					+ "제안서의 규격, 기타 필요한 사항 등을 기술하여야 합니다."
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void rejectsStatutoryEnumerationWhenClaimAddsAnUnsupportedRequiredItem() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"제안요청서에는 과업내용·요구사항·계약조건·평가요소·보증금 면제를 반드시 기재해야 합니다.",
+			List.of(ground(
+				"제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법, "
+					+ "제안서의 규격, 기타 필요한 사항 등을 기술하여야 합니다."
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
 	void explicitProhibitionOfTheSamePermissionActionRemainsContradictory() {
 		ClaimEvidenceMatcher.Match match = matcher.match(
 			"기관은 자료를 제출할 수 있습니다.",
