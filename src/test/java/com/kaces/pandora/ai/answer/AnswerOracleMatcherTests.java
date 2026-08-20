@@ -176,6 +176,18 @@ class AnswerOracleMatcherTests {
 	}
 
 	@Test
+	void acceptsTheStatutoryConsentRefusalNoticeWithTheReferencedConsentParagraph() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"개인정보처리자는 제1항제1호에 따른 동의를 받을 때에는 다음 각 호의 사항을 "
+				+ "정보주체에게 알려야 한다. 동의를 거부할 권리가 있다는 사실 및 "
+				+ "동의 거부에 따른 불이익이 있는 경우에는 그 불이익의 내용",
+			defaultCase("privacy-consent-refusal")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
 	void acceptsSeparatelyStatedWhistleblowerProtectionMeasures() {
 		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
 			"공익신고자의 신분비밀을 보장합니다. "
