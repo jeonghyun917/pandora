@@ -188,6 +188,40 @@ class AnswerOracleMatcherTests {
 	}
 
 	@Test
+	void acceptsTheCurrentStatutoryPreConsultationTimingWording() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"중앙행정기관등의 장은 사전협의 대상사업을 추진하려는 경우에는 "
+				+ "사업계획을 수립한 후 지체 없이 행정안전부장관에게 사업계획서 등의 자료를 "
+				+ "제출하여 사전협의를 요청하여야 한다.",
+			defaultCase("pre-consultation-when")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
+	void acceptsTheCurrentStatutoryCentralAgencyScopeWording() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"사전협의 대상사업은 중앙행정기관등의 장이 다른 중앙행정기관등과 "
+				+ "상호연계하거나 공동이용과 관련하여 추진하는 사업으로 한다.",
+			defaultCase("pre-consultation-central-agency")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
+	void acceptsTheOfficialRfpEnumerationWithPunctuationSeparators() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법, "
+				+ "제안서의 규격, 기타 필요한 사항 등을 기술하여야 합니다.",
+			defaultCase("rfp-required-items")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
 	void acceptsSeparatelyStatedWhistleblowerProtectionMeasures() {
 		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
 			"공익신고자의 신분비밀을 보장합니다. "
