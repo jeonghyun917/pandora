@@ -5,11 +5,12 @@
 - Task 6 law embedding repair: `4272/4272` complete.
 - Tasks 7-14: implemented.
 - Task 15 remains shadow-only. Do not enable RRF or semantic authoritative mode until the acceptance gates pass.
-- App-dev: port `8080`, runtime instance `b8581a12-85f9-4e2f-884f-0ecb15f2328f`.
+- App-dev: port `8080`, runtime instance `c77d3b5d-6181-480b-b315-4d17496a6974`.
 - Runtime JAR SHA-256: `133747579250ab1391bd1ed1eaa6a992f5162f89a92d06b78b781c7825601b4d`.
-- Index revision: `4ed8606c64dd489395c9cffec7bc7e6b002c85817b2a689a7452071cc458b5e1`.
+- Runtime config SHA-256: `8674f478300aa0f2cf49213f00c7b27c8d29ee096f687b442e2b459cdff0d85d`.
+- Index revision: `3c0f52cd2806db2ec003b8a7c72c24a700e71a3051e41609b21f5b8a8a75c8fc`.
 - Lexical revision: `da8d51cecea3bd10ce9ba7eb40c2a25015d2166e983d836018616377de9bb9aa`.
-- Law DB/Qdrant: `211548/211548`; RAG DB/Qdrant: `84248/84248`; Qdrant ready; search failures `0`.
+- Law DB/Qdrant: `211548/211548`; RAG DB/Qdrant: `84248/84248`; Qdrant ready; both collections green with optimizer status `ok`; search failures `0`.
 - Port `18080` remains absent. The untracked `output/` directory was not touched.
 
 ## Changes in this checkpoint
@@ -46,13 +47,15 @@ The exact approved 12 questions were sent twice with `K=30` and concurrency `1`:
 - `mois-national-safety-plan`
 - `official-find-pipc-ai-privacy`
 
-- Artifacts: `logs/task15-difficult12-planned-bm25-run1.json` and `logs/task15-difficult12-planned-bm25-run2.json` (plus matching Markdown reports).
-- Both runs completed `12/12` with request errors `0` and false grounds `0`.
-- Explicit-oracle cases: `8`; BM25 all-required recall `2/8` (`25%`); fused all-required recall `4/8` (`50%`).
-- BM25 ranks repeated exactly `12/12`; fused ranks differed in `3/12` cases.
-- Warm BM25 latency across 24 samples: p95 `444ms`, maximum `534ms`.
-- Acceptance failed on the required `80%` direct-ground recall and exact fused-rank repeatability. RRF and semantic authoritative flags therefore remain off.
-- Case comparison showed useful gains for preliminary-review and consent-refusal queries, but a BM25 regression for whistleblower disadvantage. The focused-first planner-term change is deployed locally and fully unit-tested, but has not yet received a new external difficult-12 rerun. A further 12-question × 2-run external evaluation requires a new exact approval because the prior two-run allowance was consumed.
+- Pre-change artifacts: `logs/task15-difficult12-planned-bm25-run1.json` and `logs/task15-difficult12-planned-bm25-run2.json` (plus matching Markdown reports).
+- Focused-first rerun artifacts: `logs/task15-difficult12-focused-first-run1.json` and `logs/task15-difficult12-focused-first-run2.json` (plus matching Markdown reports).
+- Both focused-first runs completed `12/12` with request errors `0` and false grounds `0` under the same runtime, JAR, config, index revision, and lexical revision.
+- Explicit-oracle cases: `8`; BM25 all-required recall improved from `2/8` (`25%`) to `3/8` (`37.5%`); fused all-required recall improved from `4/8` (`50%`) to `5/8` (`62.5%`).
+- BM25 any-required recall is `6/8`; fused any-required recall is `8/8`.
+- BM25 and fused ranks both repeated exactly `12/12` across the two focused-first runs.
+- Warm BM25 latency across the latest 24 samples: p95 `291ms`, maximum `388ms`.
+- Rank repeatability, latency, request-error, and false-ground gates pass. Acceptance still fails the required `80%` all-required direct-ground recall, so RRF and semantic authoritative flags remain off.
+- The remaining fused all-required failures are `privacy-integrated-guide-purpose`, `pre-consultation-plan-stage`, and `whistleblower-disadvantage`. Continue with a bounded local diagnosis of candidate coverage and fusion loss before proposing another retrieval change or consuming another external evaluation allowance.
 
 ## Evaluation CLI incident
 
