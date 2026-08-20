@@ -61,6 +61,16 @@ class KoreanEvidenceAtomParserTests {
 	}
 
 	@Test
+	void mixedPermissionAndProhibitionAcrossDifferentActorsFailsClosed() {
+		EvidenceAtom atom = parser.parse(
+			"신청인은 보호조치를 신청할 수 있고, 위원회는 위반자에게 금지 조치를 할 수 있다."
+		);
+
+		assertThat(atom.parseStatus()).isEqualTo(EvidenceAtom.ParseStatus.AMBIGUOUS);
+		assertThat(atom.reasonCodes()).contains("AMBIGUOUS_MIXED_MODALITY");
+	}
+
+	@Test
 	void questionFactoryReturnsEmptyDiscoveryTemplateAndRequiredAnswerTemplate() {
 		QuestionPropositionTemplateFactory factory = new QuestionPropositionTemplateFactory(parser);
 		PropositionTemplate discovery = factory.from(

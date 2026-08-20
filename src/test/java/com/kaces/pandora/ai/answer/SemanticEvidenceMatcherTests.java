@@ -63,6 +63,33 @@ class SemanticEvidenceMatcherTests {
 	}
 
 	@Test
+	void supportsAnExactPartialLabelValueButRejectsADifferentValue() {
+		EvidenceAtom claim = parser.parse("평가기간 : 2025. 12. 17 ~ 2026. 10. 31");
+		EvidenceAtom exact = parser.parse("평가기간 : 2025. 12. 17 ~ 2026. 10. 31");
+		EvidenceAtom different = parser.parse("평가기간 : 2025. 12. 17 ~ 2026. 11. 30");
+
+		assertThat(claim.parseStatus()).isEqualTo(EvidenceAtom.ParseStatus.PARTIAL);
+		assertThat(matcher.match(claim, SemanticEvidenceMatcher.EvidenceIndex.of(exact)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(claim, SemanticEvidenceMatcher.EvidenceIndex.of(different)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void mixedModalityEvidenceCannotTurnASeparateSupportedClaimIntoAConflict() {
+		EvidenceAtom claim = parser.parse("신청인은 보호조치를 신청할 수 있다.");
+		EvidenceAtom supported = parser.parse("신청인은 보호조치를 신청할 수 있다.");
+		EvidenceAtom mixed = parser.parse(
+			"신청인은 보호조치를 신청할 수 있고, 위원회는 위반자에게 금지 조치를 할 수 있다."
+		);
+
+		assertThat(matcher.match(
+			claim,
+			SemanticEvidenceMatcher.EvidenceIndex.of(supported, mixed)
+		).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
 	void shadowVerifierRecordsDisagreementWithoutChangingControlAnswer() {
 		ClaimEvidenceMatcher control = new ClaimEvidenceMatcher();
 		ClaimVerifier verifier = new ClaimVerifier(

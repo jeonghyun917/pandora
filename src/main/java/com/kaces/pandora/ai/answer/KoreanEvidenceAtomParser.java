@@ -2,6 +2,7 @@ package com.kaces.pandora.ai.answer;
 
 import com.kaces.pandora.common.text.KoreanQueryNormalizer;
 import java.text.Normalizer;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -80,9 +81,18 @@ public class KoreanEvidenceAtomParser {
 
 		EvidenceAtom.Modality modality = modality(source);
 		EvidenceAtom.Polarity polarity = polarity(source, modality);
-		List<String> reasons = DOUBLE_NEGATION.matcher(canonical(source)).find()
-			? List.of("AMBIGUOUS_DOUBLE_NEGATION")
-			: List.of();
+		String normalized = canonical(source);
+		List<String> reasons = new ArrayList<>();
+		if (DOUBLE_NEGATION.matcher(normalized).find()) {
+			reasons.add("AMBIGUOUS_DOUBLE_NEGATION");
+		}
+		boolean prohibited = containsAny(normalized, "할수없", "금지", "불가능", "허용되지않");
+		boolean permitted = normalized.contains(canonical("할수있"))
+			|| (normalized.contains(canonical("가능")) && !normalized.contains(canonical("불가능")))
+			|| (normalized.contains(canonical("허용")) && !normalized.contains(canonical("허용되지않")));
+		if (permitted && prohibited) {
+			reasons.add("AMBIGUOUS_MIXED_MODALITY");
+		}
 		EvidenceAtom.ParseStatus status = !reasons.isEmpty()
 			? EvidenceAtom.ParseStatus.AMBIGUOUS
 			: !actions.isEmpty() && (!subjects.isEmpty() || !scopes.isEmpty())

@@ -1,5 +1,6 @@
 package com.kaces.pandora.ai.answer;
 
+import com.kaces.pandora.common.text.KoreanQueryNormalizer;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -36,8 +37,11 @@ public class SemanticEvidenceMatcher {
 	}
 
 	public SemanticMatch match(EvidenceAtom claim, EvidenceIndex evidenceIndex) {
-		if (claim == null || claim.parseStatus() != EvidenceAtom.ParseStatus.COMPLETE) {
+		if (claim == null || claim.parseStatus() == EvidenceAtom.ParseStatus.AMBIGUOUS) {
 			return SemanticMatch.insufficient("CLAIM_PARSE_INCOMPLETE");
+		}
+		if (claim.parseStatus() == EvidenceAtom.ParseStatus.PARTIAL) {
+			return matchExactPartial(claim, evidenceIndex);
 		}
 		List<SemanticMatch> supported = new ArrayList<>();
 		List<SemanticMatch> contradicted = new ArrayList<>();
@@ -63,6 +67,23 @@ public class SemanticEvidenceMatcher {
 			return contradicted.get(0);
 		}
 		return SemanticMatch.insufficient("NO_ALIGNED_EVIDENCE_ATOM");
+	}
+
+	private SemanticMatch matchExactPartial(EvidenceAtom claim, EvidenceIndex evidenceIndex) {
+		String expected = canonical(claim.sourceText());
+		if (expected.isBlank()) {
+			return SemanticMatch.insufficient("CLAIM_PARSE_INCOMPLETE");
+		}
+		for (IndexedAtom evidence : evidenceIndex == null ? List.<IndexedAtom>of() : evidenceIndex.atoms()) {
+			if (evidence.atom().parseStatus() != EvidenceAtom.ParseStatus.AMBIGUOUS
+				&& expected.equals(canonical(evidence.atom().sourceText()))) {
+				return new SemanticMatch(
+					ClaimEvidenceMatcher.Status.SUPPORTED, Set.of("exactText"), evidence.groundNumber(),
+					evidence.sentence(), 1.0d, "EXACT_PARTIAL_TEXT"
+				);
+			}
+		}
+		return SemanticMatch.insufficient("CLAIM_PARSE_INCOMPLETE");
 	}
 
 	public SemanticMatch match(PropositionTemplate template, EvidenceAtom evidence) {
@@ -191,6 +212,10 @@ public class SemanticEvidenceMatcher {
 
 	private String value(String value) {
 		return value == null ? "" : value;
+	}
+
+	private String canonical(String value) {
+		return KoreanQueryNormalizer.normalizeForMatch(value == null ? "" : value);
 	}
 
 	public record EvidenceIndex(List<IndexedAtom> atoms) {
