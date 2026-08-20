@@ -18,11 +18,14 @@
 1. BM25 consumes the bounded question plan in addition to the raw question. After the first difficult-12 run exposed noisy planner-term displacement, `focusedKeywords()` are now ordered before the remaining `lexicalKeywords()`. The existing maximum 24 query terms, 6 posting terms, and 4,000-document posting budget remain unchanged.
 2. Semantic shadow matching now allows an action-bearing partial Korean claim with an implicit subject to use normal slot alignment. Partial label/value text without an action remains exact-text-only.
 3. Regression tests were added for both behaviors using red/green TDD.
+4. The bounded retrieval trace now retains the best-ranked untouched candidates across vector and BM25 sources instead of letting the source recorded first consume the entire trace budget. Candidates that have entered later stages, received a loss reason, or been selected are never evicted.
+5. Candidate-loss extraction now includes the BM25 and fused shadow stages, so a direct oracle candidate visible only in shadow retrieval is no longer omitted from the diagnostic report.
 
 ## Verification evidence
 
 - Focused BM25/planner/evidence-gate tests: `93/93` pass.
-- Final backend suite after the focused-first BM25 change: `1206` tests, `0` failures, `0` errors, `18` environment-dependent skips.
+- Final backend suite after the retrieval-trace diagnostic fix: `1207` tests, `0` failures, `0` errors, `18` environment-dependent skips.
+- Retrieval evaluation script suite: `37/37` pass.
 - Exact approved Answer API evaluation:
   - `rfp-required-items`: pass, unsupported claims `0`.
   - `pre-consultation-when`: pass, unsupported claims `0`.
@@ -56,6 +59,14 @@ The exact approved 12 questions were sent twice with `K=30` and concurrency `1`:
 - Warm BM25 latency across the latest 24 samples: p95 `291ms`, maximum `388ms`.
 - Rank repeatability, latency, request-error, and false-ground gates pass. Acceptance still fails the required `80%` all-required direct-ground recall, so RRF and semantic authoritative flags remain off.
 - The remaining fused all-required failures are `privacy-integrated-guide-purpose`, `pre-consultation-plan-stage`, and `whistleblower-disadvantage`. Continue with a bounded local diagnosis of candidate coverage and fusion loss before proposing another retrieval change or consuming another external evaluation allowance.
+
+## Remaining-failure diagnosis
+
+- `privacy-integrated-guide-purpose`: BM25 finds required group 0 at rank 23 (`official_doc:118568`) and groups 0/1 overall, while vector top 30 finds neither. Fused top 30 retains only group 1.
+- `pre-consultation-plan-stage`: vector, BM25, and fused top 30 all retain only group 1; group 0 is absent before fusion and therefore cannot be recovered by changing RRF weights alone.
+- `whistleblower-disadvantage`: vector top 30 contains all three required groups; `law:11115402` at vector rank 28 covers groups 0 and 2. BM25 contains only group 1, and pure chunk-level RRF pushes that law candidate to fused rank 64.
+- The common fusion symptom is that cross-source overlap can outrank a required sibling chunk from a document that already has a strong fused anchor. However, the current design requires pure weighted RRF and requires its initial weights to be selected on an independent training subset. The difficult-12 acceptance set must not be used for per-case or global weight tuning.
+- No declared training split currently exists. Define and freeze an independent, stratified training manifest before implementing or selecting new RRF weights. Keep the difficult-12 and holdout sets untouched until the selected configuration is final.
 
 ## Evaluation CLI incident
 

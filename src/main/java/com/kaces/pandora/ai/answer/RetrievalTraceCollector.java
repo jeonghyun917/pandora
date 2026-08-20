@@ -25,8 +25,11 @@ public final class RetrievalTraceCollector {
 		String source,
 		int rank
 	) {
-		MutableTrace trace = trace(candidateKey, target, chunkId);
-		if (trace == null || source == null || source.isBlank() || rank <= 0) {
+		if (source == null || source.isBlank() || rank <= 0) {
+			return;
+		}
+		MutableTrace trace = trace(candidateKey, target, chunkId, rank);
+		if (trace == null) {
 			return;
 		}
 		trace.sourceRanks.merge(source, rank, Math::min);
@@ -101,7 +104,7 @@ public final class RetrievalTraceCollector {
 		return traces.values().stream().map(MutableTrace::immutable).toList();
 	}
 
-	private MutableTrace trace(String candidateKey, String target, long chunkId) {
+	private MutableTrace trace(String candidateKey, String target, long chunkId, int rank) {
 		if (candidateKey == null || candidateKey.isBlank()) {
 			return null;
 		}
@@ -110,7 +113,20 @@ public final class RetrievalTraceCollector {
 			return existing;
 		}
 		if (traces.size() >= limit) {
-			return null;
+			String evictionKey = null;
+			int worstRank = rank;
+			for (Map.Entry<String, MutableTrace> entry : traces.entrySet()) {
+				int candidateRank = entry.getValue().bestSourceRank();
+				if (entry.getValue().canEvict() && candidateRank > worstRank) {
+					evictionKey = entry.getKey();
+					worstRank = candidateRank;
+				}
+			}
+			if (evictionKey == null) {
+				return null;
+			}
+			traces.remove(evictionKey);
+			activeKeys.remove(evictionKey);
 		}
 		MutableTrace created = new MutableTrace(candidateKey, target, chunkId);
 		traces.put(candidateKey, created);
@@ -131,6 +147,14 @@ public final class RetrievalTraceCollector {
 			this.candidateKey = candidateKey;
 			this.target = target;
 			this.chunkId = chunkId;
+		}
+
+		private int bestSourceRank() {
+			return sourceRanks.values().stream().mapToInt(Integer::intValue).min().orElse(Integer.MAX_VALUE);
+		}
+
+		private boolean canEvict() {
+			return enteredStages.isEmpty() && firstLossStage == null && !selected;
 		}
 
 		private RetrievalCandidateTrace immutable() {

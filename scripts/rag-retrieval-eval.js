@@ -7,6 +7,7 @@ const {
   splitCaseIds,
 } = require('./lib/rag-eval-cases');
 const {
+	SHADOW_STAGE_NAMES,
   STAGE_NAMES,
   measureRetrievalCase,
   summarizeRetrievalCases,
@@ -294,7 +295,7 @@ function assertDebugResponse(body, auditGroupCount = 0) {
 function extractCandidateLossAnalysis(response) {
 	const traces = Array.isArray(response?.candidateTraces) ? response.candidateTraces : [];
 	const auditMatches = new Map();
-	for (const stage of STAGE_NAMES) {
+	for (const stage of [...STAGE_NAMES, ...SHADOW_STAGE_NAMES]) {
 		for (const item of Array.isArray(response?.[stage]) ? response[stage] : []) {
 			const indexes = Array.isArray(item?.matchedAuditGroupIndexes)
 				? item.matchedAuditGroupIndexes.filter(Number.isInteger)

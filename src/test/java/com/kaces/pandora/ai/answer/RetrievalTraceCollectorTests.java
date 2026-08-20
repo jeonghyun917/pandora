@@ -70,4 +70,17 @@ class RetrievalTraceCollectorTests {
 			.extracting(java.lang.reflect.RecordComponent::getName)
 			.doesNotContain("chunkText", "body", "snippet");
 	}
+
+	@Test
+	void boundedTraceKeepsTheBestRankedCandidatesAcrossRetrievalSources() {
+		RetrievalTraceCollector collector = new RetrievalTraceCollector(2);
+		collector.source("law:1", "law", 1L, "vector", 1);
+		collector.source("law:2", "law", 2L, "vector", 40);
+
+		collector.source("official_doc:3", "official_doc", 3L, "bm25", 23);
+
+		assertThat(collector.finishAll())
+			.extracting(RetrievalCandidateTrace::candidateKey)
+			.containsExactly("law:1", "official_doc:3");
+	}
 }

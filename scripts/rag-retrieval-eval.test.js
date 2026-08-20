@@ -771,6 +771,38 @@ test('candidate loss analysis joins audit-matched candidates to their first serv
 	}]);
 });
 
+test('candidate loss analysis includes audit matches found only by shadow retrieval', () => {
+	const response = Object.fromEntries(retrievalMetrics.STAGE_NAMES.map((stage) => [stage, []]));
+	response.resultMsg = 'NO_GROUNDS';
+	response.bm25Hits = [{
+		candidateKey: 'official_doc:23',
+		target: 'official_doc',
+		chunkId: 23,
+		matchedAuditGroupIndexes: [0],
+	}];
+	response.fused = [];
+	response.candidateTraces = [{
+		candidateKey: 'official_doc:23',
+		target: 'official_doc',
+		chunkId: 23,
+		sourceRanks: { bm25: 23 },
+		enteredStages: ['loaded'],
+		firstLossStage: 'merged',
+		reasonCodes: ['MERGE_NOT_SELECTED'],
+		selected: false,
+	}];
+
+	const analysis = retrievalRunner.extractCandidateLossAnalysis(response);
+
+	assert.deepEqual(analysis.oracleCandidateTraces, [{
+		candidateKey: 'official_doc:23',
+		oraclePresenceStage: 'loaded',
+		matchedAuditGroupIndexes: [0],
+		firstLossStage: 'merged',
+		reasonCodes: ['MERGE_NOT_SELECTED'],
+	}]);
+});
+
 test('judged and selected stages distinguish judge rejection from ground rejection', () => {
   assert.equal(retrievalMetrics.STAGE_NAMES.includes('judged'), true);
   const evalCase = {
