@@ -21,6 +21,13 @@ public record QuestionSearchPlan(
 	private static final int MAX_FOCUSED_KEYWORDS = 18;
 	private static final int MAX_EXPANDED_QUERIES = 4;
 
+	public List<String> bm25Keywords() {
+		LinkedHashSet<String> prioritized = new LinkedHashSet<>();
+		addAll(prioritized, focusedKeywords);
+		addAll(prioritized, lexicalKeywords);
+		return cleanKeywords(prioritized, MAX_LEXICAL_KEYWORDS);
+	}
+
 	public static QuestionSearchPlan from(String question) {
 		String original = question == null ? "" : question.trim();
 		QuestionIntentProfile profile = QuestionIntentProfile.from(original);

@@ -231,6 +231,15 @@ class QuestionSearchPlanTests {
 	}
 
 	@Test
+	void prioritizesFocusedDirectEvidenceTermsForBm25Planning() {
+		QuestionSearchPlan plan = QuestionSearchPlan.from("공익신고자에게 불이익을 주면 어떤 보호를 받을 수 있어?");
+
+		assertThat(plan.bm25Keywords())
+			.startsWith(plan.focusedKeywords().toArray(String[]::new))
+			.contains("공익신고자 보호", "비밀보장", "보호조치");
+	}
+
+	@Test
 	void expandsContractCompletionReportQuestionToCompletionInspectionAndPayment() {
 		QuestionSearchPlan plan = QuestionSearchPlan.from(
 			"\uACFC\uC5C5\uC9C0\uC2DC\uC11C \uC6A9\uC5ED\uAE30\uAC04\uC774 \uC548 \uB05D\uB0AC\uB294\uB370 \uACB0\uACFC\uBCF4\uACE0\uD574\uB3C4 \uB418\uB098?"

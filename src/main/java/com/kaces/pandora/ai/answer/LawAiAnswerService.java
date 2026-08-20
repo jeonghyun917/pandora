@@ -1013,7 +1013,7 @@ public class LawAiAnswerService {
 					? List.of()
 					: koreanBm25SearchService.search(
 						normalized.query(),
-						lexicalKeywords,
+						queryPlan.bm25Keywords(),
 						targets,
 						rrfProperties.rrfFusedLimit()
 					),
