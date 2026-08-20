@@ -933,6 +933,95 @@ class ClaimVerifierTests {
 		assertThat(result.supportedStrongClaimCount()).isEqualTo(2);
 	}
 
+	@Test
+	void keepsGroundedRfpRequiredItemEnumerationFromSelectedOfficialGuide() {
+		String answer = "결론부터 말하면, 제안요청서에는 과업내용, 요구사항, 계약조건, "
+			+ "평가요소·평가방법, 제안서 규격·제출방법 등 핵심 기재사항을 반드시 포함해야 합니다."
+			+ " 구체적으로는 과업내용과 요구사항, 계약조건을 포함하여 평가요소·평가방법, "
+			+ "제안서 규격·제출방법·제본형태를 반드시 기재해야 합니다."
+			+ " 사업내용이 비교적 단순하면 제안요청서 교부를 생략할 수 있습니다.";
+
+		List<LawAiAnswerGround> grounds = List.of(
+				ground(
+					"공공정보화사업 유형별 제안요청서 작성 가이드",
+					"제안요청서 기재사항",
+					"제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법, "
+						+ "제안서의 규격, 기타 필요한 사항 등을 기술하여야 합니다."
+				),
+				ground(
+					"공공정보화사업 유형별 제안요청서 작성 가이드",
+					"평가요소, 평가방법",
+					"제안요청서에는 다음 각 호의 사항을 명시하여야 한다. 과업내용, "
+						+ "평가요소와 평가방법, 제안서 규격·제출방법·제본형태."
+				)
+			);
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(answer, grounds);
+
+		assertThat(result.insufficientEvidence()).as("result=%s", result).isFalse();
+		assertThat(result.verifiedAnswer())
+			.contains("과업내용, 요구사항, 계약조건")
+			.contains("제안서 규격·제출방법")
+			.doesNotContain("제안서 규격·제출방법·제본형태")
+			.doesNotContain("제안요청서 교부를 생략");
+		assertThat(result.supportedStrongClaimCount()).isEqualTo(1);
+	}
+
+	@Test
+	void keepsCompleteRfpEnumerationCombinedAcrossSelectedGuideGrounds() {
+		String answer = "결론부터 말하면, 제안요청서에는 과업내용, 요구사항, 계약조건, "
+			+ "평가요소와 평가방법, 제안서의 규격·제출방법·제본형태, 제안서 보상에 관한 사항, "
+			+ "사업자가 준수해야 하는 사항, 과학기술정보통신부장관 고시 따른 적정사업기간 "
+			+ "산정에 관한 사항, SW분리발주에 따른 사업범위 및 제약사항, 그밖에 필요한 사항을 "
+			+ "반드시 기재해야 합니다.";
+		List<LawAiAnswerGround> grounds = List.of(
+			ground(
+				"공공정보화사업 유형별 제안요청서 작성 가이드",
+				"제안요청서 기재사항",
+				"제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법, "
+					+ "제안서의 규격, 기타 필요한 사항 등을 기술하여야 합니다."
+			),
+			ground(
+				"공공정보화사업 유형별 제안요청서 작성 가이드",
+				"평가요소, 평가방법",
+				"제안요청서에는 다음 각 호의 사항을 명시하여야 한다. 1. 과업내용 "
+					+ "▢ 평가요소, 평가방법 ▢ 제안서 규격ㆍ제출방법ㆍ제본형태 "
+					+ "▢ 제안서 보상에 관한 사항 ▢ 사업자가 준수해야 하는 사항 "
+					+ "▢ 과학기술정보통신부장관이 고시한 소프트웨어사업 계약 및 관리감독에 "
+					+ "관한 지침 제10조에 따른 적정사업기간 산정에 관한 사항 "
+					+ "▢ SW분리발주에 따른 사업범위 및 제약사항 ▢ 그밖에 필요한 사항"
+			)
+		);
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(answer, grounds);
+
+		assertThat(result.insufficientEvidence()).as("result=%s", result).isFalse();
+		assertThat(result.unsupportedClaims()).isEmpty();
+		assertThat(result.verifiedAnswer()).contains("SW분리발주에 따른 사업범위 및 제약사항");
+		assertThat(result.supportedStrongClaimCount()).isEqualTo(1);
+	}
+
+	@Test
+	void keepsGroundedAtomicRfpItemClaimsFromSelectedOfficialGuide() {
+		String answer = "과업내용과 요구사항을 명확히 기술해야 합니다."
+			+ " 평가요소와 평가방법을 구체적으로 제시해야 합니다."
+			+ " 세부 절차나 금액은 해당 가이드 문서 원문을 확인해야 합니다.";
+		List<LawAiAnswerGround> grounds = List.of(ground(
+			"공공정보화사업 유형별 제안요청서 작성 가이드",
+			"제안요청서 기재사항",
+			"제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법, "
+				+ "제안서의 규격, 기타 필요한 사항 등을 기술하여야 합니다."
+		));
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(answer, grounds);
+
+		assertThat(result.insufficientEvidence()).as("result=%s", result).isFalse();
+		assertThat(result.verifiedAnswer())
+			.contains("과업내용과 요구사항")
+			.contains("평가요소와 평가방법")
+			.doesNotContain("원문을 확인해야");
+		assertThat(result.supportedStrongClaimCount()).isEqualTo(2);
+	}
+
 	private LawAiAnswerGround ground(String title, String chunkTitle, String snippet) {
 		return new LawAiAnswerGround(
 			1,

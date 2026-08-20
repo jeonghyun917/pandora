@@ -940,6 +940,28 @@ class GroundedAnswerRepairServiceTests {
 	}
 
 	@Test
+	void configuredRfpRequiredItemsRepairsWithBothCoreItemPairs() {
+		String question = "공공기관 제안요청서 작성할때 필수요소가 있나?";
+		String evidence = "제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법, "
+			+ "제안서의 규격, 기타 필요한 사항 등을 기술하여야 합니다.";
+		RecordingRewriter rewriter = RecordingRewriter.returning(evidence);
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(
+			realVerificationService(),
+			rewriter
+		);
+
+		GroundedAnswerRepairService.Result result = service.verifyAndRepair(
+			question,
+			"계약담당공무원은 제안요청서 교부를 언제나 생략할 수 있습니다.",
+			List.of(ground(1, evidence, "공공정보화사업 유형별 제안요청서 작성 가이드", null))
+		);
+
+		assertThat(result.insufficientEvidence()).as(result.toString()).isFalse();
+		assertThat(result.verifiedAnswer()).contains("과업내용, 요구사항, 계약조건, 평가요소");
+		assertThat(rewriter.atomCalls()).containsExactly(List.of(evidence));
+	}
+
+	@Test
 	void configuredTrafficCrosswalkStopPreservesTheOfficialParentheticalConditions() {
 		String question = "운전중 우회전할때 횡단보도에서 멈춰야 하나?";
 		String evidence =

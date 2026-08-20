@@ -35,9 +35,18 @@ public class KoreanBm25SearchService {
 	}
 
 	public List<LexicalSearchHit> search(String query, List<String> targets, int limit) {
+		return search(query, List.of(), targets, limit);
+	}
+
+	public List<LexicalSearchHit> search(
+		String query,
+		List<String> plannedKeywords,
+		List<String> targets,
+		int limit
+	) {
 		long started = System.nanoTime();
 		String revision = readyRevision();
-		List<String> terms = queryTerms(query);
+		List<String> terms = queryTerms(query, plannedKeywords);
 		if (revision == null || terms.isEmpty()) {
 			return List.of();
 		}
@@ -100,13 +109,23 @@ public class KoreanBm25SearchService {
 		}
 	}
 
-	private List<String> queryTerms(String query) {
+	private List<String> queryTerms(String query, List<String> plannedKeywords) {
 		Set<String> terms = new LinkedHashSet<>();
-		for (String base : tokenizer.tokenize(query).keySet()) {
-			for (String expansion : KoreanQueryNormalizer.expandSearchKeywords(base)) {
-				terms.addAll(tokenizer.tokenize(expansion).keySet());
-				if (terms.size() >= properties.maxQueryTerms()) {
-					return terms.stream().limit(properties.maxQueryTerms()).toList();
+		List<String> sources = new ArrayList<>();
+		sources.add(query);
+		if (plannedKeywords != null) {
+			sources.addAll(plannedKeywords);
+		}
+		for (String source : sources) {
+			if (source == null || source.isBlank()) {
+				continue;
+			}
+			for (String base : tokenizer.tokenize(source).keySet()) {
+				for (String expansion : KoreanQueryNormalizer.expandSearchKeywords(base)) {
+					terms.addAll(tokenizer.tokenize(expansion).keySet());
+					if (terms.size() >= properties.maxQueryTerms()) {
+						return terms.stream().limit(properties.maxQueryTerms()).toList();
+					}
 				}
 			}
 		}

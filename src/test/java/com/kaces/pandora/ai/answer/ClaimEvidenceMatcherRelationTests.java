@@ -3310,6 +3310,32 @@ class ClaimEvidenceMatcherRelationTests {
 	}
 
 	@Test
+	void supportsGroundedTwoItemRequirementWithEquivalentRequiredPredicate() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"제안요청서에는 과업내용과 요구사항을 명확히 기술해야 합니다.",
+			List.of(ground(
+				"제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법을 "
+					+ "기술하여야 합니다."
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void rejectsTwoItemRequirementWhenOneItemIsUnsupported() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"제안요청서에는 과업내용과 보증금 면제를 명확히 기술해야 합니다.",
+			List.of(ground(
+				"제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법을 "
+					+ "기술하여야 합니다."
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
 	void rejectsStatutoryEnumerationWhenClaimAddsAnUnsupportedRequiredItem() {
 		ClaimEvidenceMatcher.Match match = matcher.match(
 			"제안요청서에는 과업내용·요구사항·계약조건·평가요소·보증금 면제를 반드시 기재해야 합니다.",
@@ -3320,6 +3346,34 @@ class ClaimEvidenceMatcherRelationTests {
 		);
 
 		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void supportsCompleteRequiredEnumerationCombinedAcrossSelectedGrounds() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"결론부터 말하면, 제안요청서에는 과업내용, 요구사항, 계약조건, "
+				+ "평가요소와 평가방법, 제안서의 규격·제출방법·제본형태, "
+				+ "제안서 보상에 관한 사항, 사업자가 준수해야 하는 사항, "
+				+ "과학기술정보통신부장관 고시 따른 적정사업기간 산정에 관한 사항, "
+				+ "SW분리발주에 따른 사업범위 및 제약사항, 그밖에 필요한 사항을 "
+				+ "반드시 기재해야 합니다.",
+			List.of(
+				ground(
+					"제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법, "
+						+ "제안서의 규격, 기타 필요한 사항 등을 기술하여야 합니다."
+				),
+				ground(
+					"제안요청서에는 다음 각 호의 사항을 명시하여야 한다. 1. 과업내용 "
+						+ "▢ 평가요소, 평가방법 ▢ 제안서 규격ㆍ제출방법ㆍ제본형태 "
+						+ "▢ 제안서 보상에 관한 사항 ▢ 사업자가 준수해야 하는 사항 "
+						+ "▢ 과학기술정보통신부장관이 고시한 소프트웨어사업 계약 및 관리감독에 "
+						+ "관한 지침 제10조에 따른 적정사업기간 산정에 관한 사항 "
+						+ "▢ SW분리발주에 따른 사업범위 및 제약사항 ▢ 그밖에 필요한 사항"
+				)
+			)
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
 	}
 
 	@Test

@@ -222,6 +222,17 @@ class AnswerOracleMatcherTests {
 	}
 
 	@Test
+	void acceptsVerifiedRfpSummaryWithCommaSeparatedRequiredItems() {
+		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
+			"결론부터 말하면, 제안요청서에는 과업내용, 요구사항, 계약조건, "
+				+ "평가요소와 평가방법 등 필수 항목을 명시해야 합니다.",
+			defaultCase("rfp-required-items")
+		);
+
+		assertThat(result.passed()).as(result.message()).isTrue();
+	}
+
+	@Test
 	void acceptsSeparatelyStatedWhistleblowerProtectionMeasures() {
 		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
 			"공익신고자의 신분비밀을 보장합니다. "

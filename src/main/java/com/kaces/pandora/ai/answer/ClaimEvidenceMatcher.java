@@ -222,6 +222,13 @@ public class ClaimEvidenceMatcher {
 			+ "(?=\\s|[,.!?]|$)",
 		Pattern.CASE_INSENSITIVE
 	);
+	private static final Pattern REQUIRED_ITEM_ENUMERATION_PREDICATE = Pattern.compile(
+		"(?:반드시\\s*)?(?:명시|기재|기술|제시|포함)(?:하여야|해야|되어야)",
+		Pattern.CASE_INSENSITIVE
+	);
+	private static final Set<String> REQUIRED_ITEM_ENUMERATION_ACTIONS = Set.of(
+		"명시", "기재", "기술", "제시", "포함"
+	);
 	private static final Pattern ARTICLE_HEADING_ONLY = Pattern.compile(
 		"^\\s*제\\s*\\d+\\s*조(?:의\\s*\\d+)?\\s*\\([^\\r\\n]{1,100}\\)\\s*$"
 	);
@@ -427,7 +434,8 @@ public class ClaimEvidenceMatcher {
 				);
 			}
 			double requiredCoverage = claimNumbers.isEmpty() ? MIN_COVERAGE : 0.20d;
-			if (coverage < requiredCoverage) {
+			if (coverage < requiredCoverage
+				&& !requiredItemEnumerationAligned(claimSemantics, evidenceSemantics)) {
 				continue;
 			}
 			Relation relation = relation(claimSemantics, evidenceSemantics, sentence.anchorContext());
@@ -443,6 +451,10 @@ public class ClaimEvidenceMatcher {
 				supported.add(candidate);
 			}
 		}
+		if (supported.isEmpty() && contradicted.isEmpty()) {
+			aggregateRequiredItemEnumerationCandidate(claimSemantics, claimTokens, sentences)
+				.ifPresent(supported::add);
+		}
 
 		if (!supported.isEmpty() && !contradicted.isEmpty()) {
 			return best(contradicted).toMatch(Status.CONFLICTED);
@@ -454,6 +466,77 @@ public class ClaimEvidenceMatcher {
 			return best(contradicted).toMatch(Status.CONTRADICTED);
 		}
 		return Match.insufficient();
+	}
+
+	private java.util.Optional<Candidate> aggregateRequiredItemEnumerationCandidate(
+		ClaimSemantics claim,
+		List<String> claimTokens,
+		List<EvidenceSentence> sentences
+	) {
+		if (claim.obligationMode() != ObligationMode.REQUIRED
+			|| claim.requiredItemEnumerationTerms().size() < 3) {
+			return java.util.Optional.empty();
+		}
+		String claimTopic = requiredItemEnumerationTopic(claim.normalizedText());
+		if (claimTopic.isBlank()) {
+			return java.util.Optional.empty();
+		}
+		Set<String> coveredTerms = new LinkedHashSet<>();
+		List<Candidate> contributors = new ArrayList<>();
+		Set<Integer> requiredEnumerationGrounds = new LinkedHashSet<>();
+		for (EvidenceSentence sentence : sentences) {
+			if (sentence.documentTitleMetadata() || isStructuralOnlyEvidence(sentence.text())) {
+				continue;
+			}
+			ClaimSemantics evidence = ClaimSemantics.from(sentence.text());
+			if (evidence.obligationMode() != ObligationMode.REQUIRED
+				|| !REQUIRED_ITEM_ENUMERATION_PREDICATE.matcher(sentence.text()).find()
+				|| !claimTopic.equals(requiredItemEnumerationTopic(sentence.text()))) {
+				continue;
+			}
+			requiredEnumerationGrounds.add(sentence.groundNumber());
+			coveredTerms.addAll(evidence.requiredItemEnumerationTerms());
+			int overlap = overlapCount(claimTokens, sentence.tokens());
+			double coverage = (double) overlap
+				/ Math.max(1, new LinkedHashSet<>(claimTokens).size());
+			contributors.add(new Candidate(sentence, overlap, coverage, overlap + (coverage * 3.0d)));
+		}
+		for (EvidenceSentence sentence : sentences) {
+			if (sentence.documentTitleMetadata()
+				|| !requiredEnumerationGrounds.contains(sentence.groundNumber())) {
+				continue;
+			}
+			Set<String> listTerms = ClaimSemantics.standaloneEnumerationTerms(sentence.text());
+			if (listTerms.isEmpty()) {
+				continue;
+			}
+			coveredTerms.addAll(listTerms);
+			int overlap = overlapCount(claimTokens, sentence.tokens());
+			double coverage = (double) overlap
+				/ Math.max(1, new LinkedHashSet<>(claimTokens).size());
+			contributors.add(new Candidate(sentence, overlap, coverage, overlap + (coverage * 3.0d)));
+		}
+		boolean fullyCovered = claim.requiredItemEnumerationTerms().stream().allMatch(claimTerm ->
+			coveredTerms.stream().anyMatch(evidenceTerm ->
+				requiredEnumerationTermMatches(claimTerm, evidenceTerm)
+			)
+		);
+		return fullyCovered && contributors.size() >= 2
+			? contributors.stream().max(Comparator.comparingDouble(Candidate::score))
+			: java.util.Optional.empty();
+	}
+
+	private String requiredItemEnumerationTopic(String text) {
+		String source = LEADING_SUMMARY_DISCOURSE_FRAME.matcher(
+			String.valueOf(text == null ? "" : text)
+		).replaceFirst("");
+		int topicEnd = source.indexOf("에는");
+		if (topicEnd <= 0) {
+			return "";
+		}
+		return canonicalSoftwareTerm(
+			KoreanQueryNormalizer.normalizeForMatch(source.substring(0, topicEnd))
+		);
 	}
 
 	private Candidate best(List<Candidate> candidates) {
@@ -736,6 +819,28 @@ public class ClaimEvidenceMatcher {
 			|| canonicalCompletionCondition(canonicalAssertiveEndingText(claim.normalizedText()))
 				.equals(canonicalCompletionCondition(canonicalAssertiveEndingText(evidence.normalizedText())));
 		boolean namedUniversalDefinition = namedUniversalDefinitionAligned(claim, evidence);
+		if (requiredItemEnumerationAligned(claim, evidence)
+			&& !evidence.disjunctiveCoordination()
+			&& !evidence.ambiguousSubjectAttribution()
+			&& claim.exclusiveRoleAnchors().isEmpty()
+			&& claim.requiredRelationAnchors().isEmpty()
+			&& claim.requiredConditionAnchors().isEmpty()
+			&& claim.requiredNumericAnchors().isEmpty()
+			&& targetScopeAligned(claim, evidence, evidenceAnchorContext)
+			&& responsibilityBearersAligned(
+				claim.responsibilityBearers(), evidence.responsibilityBearers()
+			)
+			&& scopeAnchorsCovered(
+				claim.universalScopeAnchors(), evidence.universalScopeAnchors()
+			)
+			&& !claim.openEndedEnumeration()
+			&& rolesAligned(claim, evidence)
+			&& evidence.categories().containsAll(claim.categories())
+			&& claim.narrowingCondition() == evidence.narrowingCondition()
+			&& sameOrUnspecified(claim.targetMode(), evidence.targetMode())
+			&& sameOrUnspecified(claim.permissionMode(), evidence.permissionMode())) {
+			return Relation.COMPATIBLE;
+		}
 		if (evidence.disjunctiveCoordination() && !exactProposition) {
 			return Relation.NOT_ENTAILED;
 		}
@@ -835,6 +940,11 @@ public class ClaimEvidenceMatcher {
 		}
 		if (claim.conditional() && !evidence.conditional() && claim.requiredConditionAnchors().isEmpty()) {
 			return Relation.NOT_ENTAILED;
+		}
+		if (requiredItemEnumerationAligned(claim, evidence)
+			&& sameOrUnspecified(claim.targetMode(), evidence.targetMode())
+			&& sameOrUnspecified(claim.permissionMode(), evidence.permissionMode())) {
+			return Relation.COMPATIBLE;
 		}
 		Relation predicateRelation = predicateRelation(claim, evidence);
 		if (predicateRelation == Relation.CONTRADICTED
@@ -1042,10 +1152,63 @@ public class ClaimEvidenceMatcher {
 			claimRoles.objects(),
 			evidenceRoles.objects(),
 			evidenceObjectAlternatives
-		)) {
+		) && !requiredItemEnumerationAligned(claim, evidence)) {
 			return false;
 		}
 		return permissionTargetsCovered(claimRoles.permissionTargets(), evidenceRoles);
+	}
+
+	private boolean requiredItemEnumerationAligned(
+		ClaimSemantics claim,
+		ClaimSemantics evidence
+	) {
+		return claim.obligationMode() == ObligationMode.REQUIRED
+			&& evidence.obligationMode() == ObligationMode.REQUIRED
+			&& claim.requiredItemEnumerationTerms().size() >= 2
+			&& claim.requiredItemEnumerationTerms().stream().allMatch(claimTerm ->
+				evidence.requiredItemEnumerationTerms().stream()
+					.anyMatch(evidenceTerm ->
+						requiredEnumerationTermMatches(claimTerm, evidenceTerm)
+					)
+			);
+	}
+
+	private boolean requiredEnumerationTermMatches(String claimTerm, String evidenceTerm) {
+		if (termMatches(claimTerm, evidenceTerm)) {
+			return true;
+		}
+		int shorterLength = Math.min(claimTerm.length(), evidenceTerm.length());
+		if (shorterLength < 12) {
+			return false;
+		}
+		int commonPrefix = commonPrefixLength(claimTerm, evidenceTerm);
+		int commonSuffix = commonSuffixLength(claimTerm, evidenceTerm);
+		return commonPrefix >= 6
+			&& commonSuffix >= 6
+			&& commonPrefix + commonSuffix >= Math.max(12, shorterLength / 2);
+	}
+
+	private int commonPrefixLength(String left, String right) {
+		int limit = Math.min(left.length(), right.length());
+		int index = 0;
+		while (index < limit && left.charAt(index) == right.charAt(index)) {
+			index++;
+		}
+		return index;
+	}
+
+	private int commonSuffixLength(String left, String right) {
+		int leftIndex = left.length() - 1;
+		int rightIndex = right.length() - 1;
+		int matched = 0;
+		while (leftIndex >= 0
+			&& rightIndex >= 0
+			&& left.charAt(leftIndex) == right.charAt(rightIndex)) {
+			matched++;
+			leftIndex--;
+			rightIndex--;
+		}
+		return matched;
 	}
 
 	private boolean patientTopicAligned(ClaimSemantics claim, ClaimSemantics evidence) {
@@ -1275,7 +1438,9 @@ public class ClaimEvidenceMatcher {
 				return Relation.CONTRADICTED;
 			}
 			if (!evidence.affirmedPredicateActions().contains(action)
-				&& !isAuxiliaryPredicateAction(action, claim, evidence)) {
+				&& !isAuxiliaryPredicateAction(action, claim, evidence)
+				&& !(REQUIRED_ITEM_ENUMERATION_ACTIONS.contains(action)
+					&& requiredItemEnumerationAligned(claim, evidence))) {
 				return Relation.NOT_ENTAILED;
 			}
 		}
@@ -1501,6 +1666,7 @@ public class ClaimEvidenceMatcher {
 		Set<String> universalScopeAnchors,
 		Set<String> enumerationScopeAnchors,
 		boolean openEndedEnumeration,
+		Set<String> requiredItemEnumerationTerms,
 		Set<String> lexicalTerms,
 		PropositionRoles roles,
 		Set<String> requiredRelationAnchors,
@@ -1521,14 +1687,14 @@ public class ClaimEvidenceMatcher {
 			String conditionText = LEADING_SUMMARY_DISCOURSE_FRAME.matcher(sourceText)
 				.replaceFirst("");
 			String conditionNormalized = KoreanQueryNormalizer.normalizeForMatch(conditionText);
-			TargetMode targetMode = containsAny(normalized,
+			TargetMode targetMode = containsAny(conditionNormalized,
 				"비대상", "대상에서제외", "제외대상", "면제", "대상에포함되지",
 				"대상에포함하지", "대상에포함안", "해당하지")
-				|| hasNegatedTargetCopula(normalized)
-				|| hasNegatedTargetClassification(normalized)
-				|| hasNegatedTargetInclusion(normalized)
+				|| hasNegatedTargetCopula(conditionNormalized)
+				|| hasNegatedTargetClassification(conditionNormalized)
+				|| hasNegatedTargetInclusion(conditionNormalized)
 				? TargetMode.EXCLUDED
-				: containsAny(normalized,
+				: containsAny(conditionNormalized,
 					"대상입니다", "대상이다", "대상이며", "대상이고", "대상으로", "대상임",
 					"대상에포함", "적용대상", "해당합니다", "해당한다", "포함됩니다", "포함된다")
 					? TargetMode.INCLUDED : TargetMode.UNSPECIFIED;
@@ -1600,6 +1766,7 @@ public class ClaimEvidenceMatcher {
 			Set<String> responsibilityBearers = responsibilityBearers(text);
 			Set<String> universalScopeAnchors = universalScopeAnchors(text);
 			EnumerationScope enumerationScope = enumerationScope(text);
+			Set<String> requiredItemEnumerationTerms = requiredItemEnumerationTerms(text);
 			Set<String> lexicalTerms = lexicalTerms(text);
 			Set<String> requiredRelationAnchors = requiredRelationAnchors(text);
 			Set<String> requiredConditionAnchors = requiredConditionAnchors(conditionText);
@@ -1644,6 +1811,7 @@ public class ClaimEvidenceMatcher {
 				universalScopeAnchors,
 				enumerationScope.anchors(),
 				enumerationScope.openEnded(),
+				requiredItemEnumerationTerms,
 				lexicalTerms,
 				PropositionRoles.from(text),
 				requiredRelationAnchors,
@@ -1780,7 +1948,7 @@ public class ClaimEvidenceMatcher {
 				}
 			}
 			return switch (action) {
-				case "기재", "기술" -> "명시";
+				case "기재", "기술", "제시" -> "명시";
 				default -> action;
 			};
 		}
@@ -1856,7 +2024,9 @@ public class ClaimEvidenceMatcher {
 
 		private static EnumerationScope enumerationScope(String text) {
 			Matcher matcher = OPEN_ENDED_ENUMERATION.matcher(
-				String.valueOf(text == null ? "" : text)
+				LEADING_SUMMARY_DISCOURSE_FRAME.matcher(
+					String.valueOf(text == null ? "" : text)
+				).replaceFirst("")
 			);
 			Set<String> anchors = new LinkedHashSet<>();
 			boolean openEnded = false;
@@ -1876,6 +2046,72 @@ public class ClaimEvidenceMatcher {
 				}
 			}
 			return new EnumerationScope(Set.copyOf(anchors), openEnded);
+		}
+
+		private static Set<String> requiredItemEnumerationTerms(String text) {
+			String source = LEADING_SUMMARY_DISCOURSE_FRAME.matcher(
+				String.valueOf(text == null ? "" : text)
+			).replaceFirst("");
+			Matcher predicate = REQUIRED_ITEM_ENUMERATION_PREDICATE.matcher(source);
+			if (!predicate.find()) {
+				return Set.of();
+			}
+			String list = source.substring(0, predicate.start()).trim();
+			int topicEnd = list.indexOf("에는");
+			if (topicEnd >= 0) {
+				list = list.substring(topicEnd + "에는".length());
+			}
+			list = list
+				.replaceFirst("^\\s*다음\\s+각\\s+호의\\s+사항(?:을|를)?\\s*", "")
+				.replaceFirst("\\s+(?:명확히|구체적으로)\\s*$", "")
+				.replaceFirst(
+					"\\s+등\\s+(?:필수\\s*항목|핵심\\s*기재사항)(?:을|를)?\\s*$",
+					""
+				)
+				.replaceFirst("\\s+등(?:을|를)?\\s*$", "")
+				.replaceAll("\\s+(?:및|또는)\\s+", "·")
+				.replaceAll("(?<=[\\p{IsHangul}A-Za-z0-9])(?:와|과)\\s+", "·")
+				.replaceAll("[ㆍ/,]", "·");
+			Set<String> terms = new LinkedHashSet<>();
+			for (String part : list.split("·")) {
+				String term = canonicalEnumerationItem(part);
+				if (term.length() >= 2 && !STOPWORDS.contains(term)) {
+					terms.add(term);
+				}
+			}
+			return terms.size() >= 2 ? Set.copyOf(terms) : Set.of();
+		}
+
+		private static Set<String> standaloneEnumerationTerms(String text) {
+			String source = String.valueOf(text == null ? "" : text);
+			if (!source.matches("(?s).*(?:[·ㆍ,/▢□■▪]|\\s+(?:및|또는)\\s+).*")
+				|| REQUIRED_ITEM_ENUMERATION_PREDICATE.matcher(source).find()) {
+				return Set.of();
+			}
+			String list = source
+				.replaceAll("\\s+(?:및|또는)\\s+", "·")
+				.replaceAll("(?<=[\\p{IsHangul}A-Za-z0-9])(?:와|과)\\s+", "·")
+				.replaceAll("[ㆍ,/▢□■▪]", "·");
+			Set<String> terms = new LinkedHashSet<>();
+			for (String part : list.split("·")) {
+				String term = canonicalEnumerationItem(part);
+				if (term.length() >= 2 && !STOPWORDS.contains(term)) {
+					terms.add(term);
+				}
+			}
+			return terms.size() >= 3 ? Set.copyOf(terms) : Set.of();
+		}
+
+		private static String canonicalEnumerationItem(String raw) {
+			String source = String.valueOf(raw == null ? "" : raw)
+				.replaceAll("[^\\p{IsHangul}A-Za-z0-9]+", " ")
+				.trim();
+			StringBuilder builder = new StringBuilder();
+			for (String token : source.split("\\s+")) {
+				String normalized = KoreanQueryNormalizer.normalizeForMatch(token);
+				builder.append(KoreanQueryNormalizer.stripTrailingJosa(normalized));
+			}
+			return canonicalSoftwareTerm(builder.toString());
 		}
 
 		private static List<String> scopeTerms(String text) {

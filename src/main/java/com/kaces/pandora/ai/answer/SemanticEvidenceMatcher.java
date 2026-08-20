@@ -40,7 +40,7 @@ public class SemanticEvidenceMatcher {
 		if (claim == null || claim.parseStatus() == EvidenceAtom.ParseStatus.AMBIGUOUS) {
 			return SemanticMatch.insufficient("CLAIM_PARSE_INCOMPLETE");
 		}
-		if (claim.parseStatus() == EvidenceAtom.ParseStatus.PARTIAL) {
+		if (claim.parseStatus() == EvidenceAtom.ParseStatus.PARTIAL && claim.actions().isEmpty()) {
 			return matchExactPartial(claim, evidenceIndex);
 		}
 		List<SemanticMatch> supported = new ArrayList<>();

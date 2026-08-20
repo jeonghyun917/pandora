@@ -117,6 +117,31 @@ class KoreanBm25SearchServiceTests {
 		assertThat(selected.getValue()).doesNotContain("과다");
 	}
 
+	@Test
+	void usesPlannedDirectEvidenceKeywordsWhenTheRawQuestionDoesNotNameTheProvisionLanguage() {
+		SemanticLexicalMapper mapper = mock(SemanticLexicalMapper.class);
+		when(mapper.findReadyRevision()).thenReturn("revision-planned");
+		when(mapper.findTermStatistics(eq("revision-planned"), anyList()))
+			.thenReturn(List.of(
+				new SemanticLexicalMapper.TermStatisticRow("평가기간", 3),
+				new SemanticLexicalMapper.TermStatisticRow("성과측정", 40)
+			));
+		when(mapper.findBm25TermMatches(eq("revision-planned"), anyList(), eq(List.of("admrul"))))
+			.thenReturn(List.of(
+				match("admrul", 77L, 707L, "평가기간", 7.0, 3, 100, 50.0, 40)
+			));
+
+		List<LexicalSearchHit> hits = service(mapper).search(
+			"IRM 성과측정은 언제해?",
+			List.of("평가기간", "측정 시점"),
+			List.of("admrul"),
+			30
+		);
+
+		assertThat(hits).extracting(LexicalSearchHit::chunkId).containsExactly(77L);
+		assertThat(hits.get(0).matchedTerms()).contains("평가기간");
+	}
+
 	private KoreanBm25SearchService service(SemanticLexicalMapper mapper) {
 		return new KoreanBm25SearchService(
 			mapper,

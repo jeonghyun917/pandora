@@ -76,6 +76,21 @@ class SemanticEvidenceMatcherTests {
 	}
 
 	@Test
+	void alignsAnActionBearingPartialClaimWithCompleteEvidenceThatSuppliesTheImplicitSubject() {
+		EvidenceAtom claim = parser.parse(
+			"결론부터 말하면, 사업계획을 수립한 후 지체 없이 사업계획서 등을 제출하여 사전협의를 요청해야 합니다."
+		);
+		EvidenceAtom evidence = parser.parse(
+			"중앙행정기관등의 장은 사업계획을 수립한 후 지체 없이 행정안전부장관에게 "
+				+ "사업계획서 등의 자료를 제출하여 사전협의를 요청하여야 한다."
+		);
+
+		assertThat(claim.parseStatus()).isEqualTo(EvidenceAtom.ParseStatus.PARTIAL);
+		assertThat(matcher.match(claim, SemanticEvidenceMatcher.EvidenceIndex.of(evidence)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
 	void mixedModalityEvidenceCannotTurnASeparateSupportedClaimIntoAConflict() {
 		EvidenceAtom claim = parser.parse("신청인은 보호조치를 신청할 수 있다.");
 		EvidenceAtom supported = parser.parse("신청인은 보호조치를 신청할 수 있다.");

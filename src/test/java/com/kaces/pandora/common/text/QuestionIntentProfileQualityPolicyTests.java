@@ -209,6 +209,19 @@ class QuestionIntentProfileQualityPolicyTests {
 	}
 
 	@Test
+	void rfpRequiredItemsPolicyRequiresBothCoreItemPairs() {
+		QuestionIntentProfile profile = QuestionIntentProfile.from(
+			"공공기관 제안요청서 작성할때 필수요소가 있나?"
+		);
+
+		assertThat(profile.matchedPolicyIds()).contains("rfp_required_items");
+		assertThat(profile.configuredAnswerCoverageGroups()).containsExactly(
+			List.of("과업내용, 요구사항", "과업내용과 요구사항", "과업내용 및 요구사항"),
+			List.of("계약조건, 평가요소", "계약조건과 평가요소", "계약조건 및 평가요소")
+		);
+	}
+
+	@Test
 	void egovPreliminaryReviewScopePolicyRequiresTheOfficialTargetRelationship() {
 		QuestionIntentProfile profile = QuestionIntentProfile.from(
 			"지능정보사회 실행계획의 예비검토는 어떤 사업을 대상으로 하는거야?"

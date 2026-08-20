@@ -1011,7 +1011,12 @@ public class LawAiAnswerService {
 			? CompletableFuture.supplyAsync(
 				() -> koreanBm25SearchService == null
 					? List.of()
-					: koreanBm25SearchService.search(normalized.query(), targets, rrfProperties.rrfFusedLimit()),
+					: koreanBm25SearchService.search(
+						normalized.query(),
+						lexicalKeywords,
+						targets,
+						rrfProperties.rrfFusedLimit()
+					),
 				searchExecutor
 			)
 			: CompletableFuture.completedFuture(List.of());
