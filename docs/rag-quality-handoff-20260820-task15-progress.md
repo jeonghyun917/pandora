@@ -154,7 +154,32 @@ The exact approved 12 questions were sent twice with `K=30` and concurrency `1`:
   It freezes the same ordered 24 training IDs, two runs, K `30`, rank capture
   `100`, concurrency `1`, 48 total OpenAI Embedding requests, and read-only
   Qdrant/MariaDB access. Difficult-12 overlap is zero.
-- External execution remains blocked until the exact 24-ID payload,
-  destination, request hash, candidate JAR/runtime fences, and artifact paths
-  receive explicit execution approval. No evaluation payload has been sent at
-  this checkpoint.
+- The exact execution manifest above was explicitly approved and executed once.
+  Both independent 24-case runs completed without request errors:
+  - run 1 JSON SHA-256:
+    `fe317137d5c88aecd6ad68ca9413712ac20a8c327b05c8bbd90e3ad1be697144`;
+  - run 2 JSON SHA-256:
+    `ec7f76cd106853c5cede842a853af5e6511e5fc5269d1ee5780c39db03e56f4b`.
+- The offline selector artifact
+  `logs/task15-coverage-policy-selection.json` has SHA-256
+  `34c08265b18ef06d38c022c5ddeed83ae4c5f2fb6356e94112508681fc147719`
+  and terminal status `NO_COVERAGE_IMPROVEMENT`.
+- Baseline training performance was `7/24` all-required cases, `14/24`
+  any-required cases, and `23` total matched required groups. Bounded rescue
+  policies changed ranks but did not improve the all-required count in either
+  independent run (`7/7` versus baseline in both selectors). The selected
+  policy is therefore the disabled baseline.
+- Fail-closed outcome: the difficult-12 and holdout sets were not consumed;
+  `law-ai.retrieval.rrf-authoritative=false`,
+  `law-ai.retrieval.coverage-aware.enabled=false`,
+  `law-ai.retrieval.coverage-aware.max-rescues=0`, and both semantic
+  authoritative flags remain false.
+- Post-selection runtime fences remained healthy on app-dev `8080`: runtime
+  `3e9c0f0f-f88c-453d-a960-b857a93aa700`, candidate JAR
+  `8c86337616de1c2c89baad8acc03019c47a46cc0c9529e483ee04e7f67761763`,
+  config
+  `4e0943f88ee5ba07bd2ef4a5f0940cdd2015debf545d7bb9be2d1264272df429`,
+  final index revision
+  `f97cb99b9e5526ae566564a4a52b47266849e89b4d6dd4c4194af63cb0894814`,
+  law and RAG DB/Qdrant parity `211548/211548` and `84248/84248`, Qdrant
+  ready, search failures `0`, and no `18080` listener.
