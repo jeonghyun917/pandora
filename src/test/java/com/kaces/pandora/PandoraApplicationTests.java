@@ -10,6 +10,7 @@ import com.kaces.pandora.lawdata.persistence.LawApiSchemaMaintenance;
 import com.kaces.pandora.lawdata.sync.LawOpenApiSyncStartupRunner;
 import com.kaces.pandora.lawdata.version.LawVersionStatusService;
 import com.kaces.pandora.rag.persistence.RagChunkQualitySchemaMaintenance;
+import com.kaces.pandora.rag.persistence.RagObjectStorageSchemaMaintenance;
 import com.kaces.pandora.rag.search.RagChunkSearchIndexSchemaMaintenance;
 import com.kaces.pandora.semantic.lexical.SemanticLexicalSchemaMaintenance;
 import com.kaces.pandora.semantic.provenance.IndexRevisionSchemaMaintenance;
@@ -53,6 +54,9 @@ class PandoraApplicationTests {
 
 	@MockitoBean
 	private RagChunkQualitySchemaMaintenance ragChunkQualitySchemaMaintenance;
+
+	@MockitoBean
+	private RagObjectStorageSchemaMaintenance ragObjectStorageSchemaMaintenance;
 
 	@MockitoBean
 	private RagChunkSearchIndexSchemaMaintenance ragChunkSearchIndexSchemaMaintenance;
