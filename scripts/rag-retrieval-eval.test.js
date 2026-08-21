@@ -303,7 +303,7 @@ test('retrieval metrics find a first downstream drop after vector or lexical ent
   assert.equal(measured.stages.intentFiltered.directHit, false);
 });
 
-test('retrieval metrics preserve BM25 and fused shadow ranks for deterministic acceptance', () => {
+test('retrieval metrics preserve BM25, fused, and coverage shadow ranks for deterministic acceptance', () => {
   const evalCase = {
     id: 'shadow-rank',
     expectedTitleTerms: ['정답 문서'],
@@ -318,18 +318,22 @@ test('retrieval metrics preserve BM25 and fused shadow ranks for deterministic a
   response.resultMsg = 'OK';
   response.bm25Hits = [wrong, direct];
   response.fused = [direct, wrong];
+  response.coverageFused = [wrong, direct];
 
   const measured = retrievalMetrics.measureRetrievalCase(evalCase, response, 30);
   const summary = retrievalMetrics.summarizeRetrievalCases([measured], 30);
 
   assert.equal(measured.stages.bm25Hits.directHit, true);
   assert.equal(measured.stages.fused.directHit, true);
+  assert.equal(measured.stages.coverageFused.directHit, true);
   assert.deepEqual(measured.shadowRanks, {
     bm25Hits: ['law:8', 'law:7'],
     fused: ['law:7', 'law:8'],
+    coverageFused: ['law:8', 'law:7'],
   });
   assert.equal(summary.shadowStages.bm25Hits.directHitRate, 1);
   assert.equal(summary.shadowStages.fused.directHitRate, 1);
+  assert.equal(summary.shadowStages.coverageFused.directHitRate, 1);
 });
 
 test('retrieval metrics honor K and report no-ground false grounds outside recall denominators', () => {
@@ -609,7 +613,10 @@ test('runtime verification never retries a completed HTTP rejection', async () =
 
 test('debug response validator requires resultMsg and every retrieval stage array', () => {
   assert.equal(typeof retrievalRunner.assertDebugResponse, 'function');
-  const valid = Object.fromEntries(retrievalMetrics.STAGE_NAMES.map((stage) => [stage, []]));
+  const valid = Object.fromEntries([
+    ...retrievalMetrics.STAGE_NAMES,
+    ...retrievalMetrics.SHADOW_STAGE_NAMES,
+  ].map((stage) => [stage, []]));
   valid.resultMsg = 'OK';
 
   assert.equal(retrievalRunner.assertDebugResponse(valid), valid);
@@ -624,6 +631,10 @@ test('debug response validator requires resultMsg and every retrieval stage arra
   assert.throws(
     () => retrievalRunner.assertDebugResponse({ ...valid, selected: {} }),
     /selected.*array/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDebugResponse({ ...valid, coverageFused: undefined }),
+    /coverageFused.*array/i,
   );
   assert.throws(
     () => retrievalRunner.assertDebugResponse({

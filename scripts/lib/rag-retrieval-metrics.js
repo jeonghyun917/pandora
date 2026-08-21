@@ -12,6 +12,7 @@ const STAGE_NAMES = [
 const SHADOW_STAGE_NAMES = [
   'bm25Hits',
   'fused',
+  'coverageFused',
 ];
 
 const DOWNSTREAM_STAGES = STAGE_NAMES.slice(2);

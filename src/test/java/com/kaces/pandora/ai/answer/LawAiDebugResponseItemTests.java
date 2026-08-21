@@ -18,10 +18,17 @@ class LawAiDebugResponseItemTests {
 				"vectorRank",
 				"lexicalRank",
 				"fusedRank",
+				"coverageFusedRank",
+				"coverageAnchorCandidateKey",
+				"coverageReason",
 				"bm25Score",
 				"rrfScore",
 				"matchedAuditGroupIndexes",
 				"matchedAuditAliases"
 			);
+		assertThat(Arrays.stream(LawAiDebugResponse.class.getRecordComponents())
+			.map(component -> component.getName())
+			.toList())
+			.contains("coverageFused");
 	}
 }

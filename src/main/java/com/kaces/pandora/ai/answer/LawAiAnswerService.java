@@ -1818,6 +1818,11 @@ public class LawAiAnswerService {
 				new LawAiDebugResponse.Stage("keyword", retrieval.lexicalChunks().size(), "Lexical keyword candidates"),
 				new LawAiDebugResponse.Stage("bm25", retrieval.hybrid().bm25Chunks().size(), "Common Korean BM25 shadow candidates"),
 				new LawAiDebugResponse.Stage("rrf", retrieval.hybrid().fusedChunks().size(), "Vector and BM25 reciprocal-rank fusion"),
+				new LawAiDebugResponse.Stage(
+					RetrievalCandidateTrace.COVERAGE_FUSED_STAGE,
+					Math.min(retrieval.hybrid().coverageChunks().size(), JUDGE_CANDIDATE_LIMIT),
+					"Bounded document coverage shadow. status=" + retrieval.hybrid().coverageStatus()
+				),
 				new LawAiDebugResponse.Stage("merged", retrieval.searchedChunks().size(), "Merged vector and keyword candidates"),
 				new LawAiDebugResponse.Stage("reranked", retrieval.rankedChunks().size(), "Heuristic rerank result"),
 				new LawAiDebugResponse.Stage("intent", retrieval.intentFilteredChunks().size(), "Question intent filtered candidates"),
@@ -1832,6 +1837,12 @@ public class LawAiAnswerService {
 			toDebugItems(retrieval.lexicalChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.hybrid().bm25Chunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.hybrid().fusedChunks(), retrieval, selectedKeys, auditTermGroups),
+			toDebugItems(
+				retrieval.hybrid().coverageChunks().stream().limit(JUDGE_CANDIDATE_LIMIT).toList(),
+				retrieval,
+				selectedKeys,
+				auditTermGroups
+			),
 			toDebugItems(retrieval.searchedChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.rankedChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.intentFilteredChunks(), retrieval, selectedKeys, auditTermGroups),
@@ -1873,6 +1884,7 @@ public class LawAiAnswerService {
 				Integer vectorRank = vectorRank(retrieval.qdrantHits(), key);
 				LexicalSearchHit bm25Hit = retrieval.hybrid().bm25Hit(key);
 				ReciprocalRankFusion.RrfHit fusedHit = retrieval.hybrid().fusedHit(key);
+				CoverageAwareFusion.Rescue coverageRescue = retrieval.hybrid().coverageRescue(key);
 				List<RetrievalAuditTermMatcher.GroupMatch> auditMatches =
 					RetrievalAuditTermMatcher.matchGroups(auditTermGroups, chunk.chunkText());
 				return new LawAiDebugResponse.Item(
@@ -1892,6 +1904,9 @@ public class LawAiAnswerService {
 					vectorRank,
 					bm25Hit == null ? null : bm25Hit.rank(),
 					fusedHit == null ? null : retrieval.hybrid().fusedRank(key),
+					retrieval.hybrid().coverageRank(key),
+					coverageRescue == null ? null : coverageRescue.anchorCandidateKey(),
+					coverageRescue == null ? null : coverageRescue.reason(),
 					retrieval.vectorScoreByChunkId().getOrDefault(key, 0.0),
 					bm25Hit == null ? 0.0 : bm25Hit.score(),
 					fusedHit == null ? 0.0 : fusedHit.score(),
@@ -2334,6 +2349,10 @@ public class LawAiAnswerService {
 			retrieval.vectorChunks(), retrieval.lexicalChunks(),
 			retrieval.hybrid().bm25Chunks(), retrieval.hybrid().fusedChunks()
 		), "SOURCE_CHUNK_NOT_LOADED");
+		collector.transitionCoverage(
+			candidateKeys(retrieval.hybrid().coverageChunks().stream().limit(JUDGE_CANDIDATE_LIMIT).toList()),
+			coverageLossReasons(retrieval)
+		);
 		collector.transition("merged", candidateKeys(retrieval.searchedChunks()), "MERGE_NOT_SELECTED");
 		collector.transition("reranked", candidateKeys(retrieval.rankedChunks()), "RERANK_LIMIT");
 		collector.transition("intent", candidateKeys(retrieval.intentFilteredChunks()), "INTENT_FILTERED");
@@ -2352,6 +2371,45 @@ public class LawAiAnswerService {
 			collector.select(selectedKey);
 		}
 		return collector.finishAll();
+	}
+
+	private Map<String, String> coverageLossReasons(RetrievalResult retrieval) {
+		Map<String, ReciprocalRankFusion.RrfHit> fusedByKey = retrieval.hybrid().fusedHits().stream()
+			.collect(java.util.stream.Collectors.toMap(
+				ReciprocalRankFusion.RrfHit::candidateKey,
+				hit -> hit,
+				(first, second) -> first,
+				LinkedHashMap::new
+			));
+		Map<String, LawSemanticChunkRow> chunksByKey = java.util.stream.Stream.of(
+			retrieval.vectorChunks(),
+			retrieval.lexicalChunks(),
+			retrieval.hybrid().bm25Chunks(),
+			retrieval.hybrid().fusedChunks()
+		).flatMap(List::stream).collect(java.util.stream.Collectors.toMap(
+			chunk -> scoreKey(chunk.target(), chunk.chunkId()),
+			chunk -> chunk,
+			(first, second) -> first,
+			LinkedHashMap::new
+		));
+		Map<String, String> reasons = new LinkedHashMap<>();
+		for (String key : candidateKeys(
+			retrieval.vectorChunks(), retrieval.lexicalChunks(),
+			retrieval.hybrid().bm25Chunks(), retrieval.hybrid().fusedChunks()
+		)) {
+			ReciprocalRankFusion.RrfHit fusedHit = fusedByKey.get(key);
+			LawSemanticChunkRow chunk = chunksByKey.get(key);
+			if (fusedHit == null) {
+				reasons.put(key, RetrievalCandidateTrace.ABSENT_FROM_SOURCE_UNION);
+			} else if (chunk == null || chunk.documentId() <= 0) {
+				reasons.put(key, RetrievalCandidateTrace.INVALID_DOCUMENT_IDENTITY);
+			} else if (fusedHit.bestSourceRank() > coverageAwareProperties.sourceRankLimit()) {
+				reasons.put(key, RetrievalCandidateTrace.SOURCE_RANK_LIMIT);
+			} else {
+				reasons.put(key, RetrievalCandidateTrace.TOP_K_DISPLACED);
+			}
+		}
+		return Map.copyOf(reasons);
 	}
 
 	@SafeVarargs
@@ -10428,6 +10486,22 @@ public class LawAiAnswerService {
 				}
 			}
 			return null;
+		}
+
+		private Integer coverageRank(String candidateKey) {
+			for (int index = 0; index < coverageHits.size(); index++) {
+				if (coverageHits.get(index).candidateKey().equals(candidateKey)) {
+					return index + 1;
+				}
+			}
+			return null;
+		}
+
+		private CoverageAwareFusion.Rescue coverageRescue(String candidateKey) {
+			return coverageRescues.stream()
+				.filter(rescue -> rescue.candidateKey().equals(candidateKey))
+				.findFirst()
+				.orElse(null);
 		}
 	}
 }

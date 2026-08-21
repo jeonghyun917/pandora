@@ -15,6 +15,12 @@ public record RetrievalCandidateTrace(
 	List<String> reasonCodes,
 	boolean selected
 ) {
+	public static final String COVERAGE_FUSED_STAGE = "coverage-fused";
+	public static final String ABSENT_FROM_SOURCE_UNION = "ABSENT_FROM_SOURCE_UNION";
+	public static final String SOURCE_RANK_LIMIT = "SOURCE_RANK_LIMIT";
+	public static final String INVALID_DOCUMENT_IDENTITY = "INVALID_DOCUMENT_IDENTITY";
+	public static final String TOP_K_DISPLACED = "TOP_K_DISPLACED";
+
 	public RetrievalCandidateTrace {
 		sourceRanks = sourceRanks == null
 			? Map.of()

@@ -274,7 +274,7 @@ function assertDebugResponse(body, auditGroupCount = 0) {
   if (typeof body.resultMsg !== 'string') {
     throw new Error('debug search response resultMsg must be a string');
   }
-  for (const stage of STAGE_NAMES) {
+  for (const stage of [...STAGE_NAMES, ...SHADOW_STAGE_NAMES]) {
     if (!Array.isArray(body[stage])) {
       throw new Error(`debug search response ${stage} must be an array`);
     }
