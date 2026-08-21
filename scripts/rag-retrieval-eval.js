@@ -47,12 +47,16 @@ async function main() {
   await mapWithConcurrency(cases, options.concurrency, async (evalCase, index) => {
     try {
       const response = await loadDebugResponse(evalCase, options);
-      measurements[index] = {
+      const measurement = {
         ...measureRetrievalCase(evalCase, response, options.k),
 		candidateLoss: extractCandidateLossAnalysis(response),
         question: evalCase.question,
         targets: evalCase.targets,
       };
+      if (options.captureRankLimit > 0) {
+        measurement.sourceRankSnapshot = captureSourceRankSnapshot(response, options.captureRankLimit);
+      }
+      measurements[index] = measurement;
     } catch (error) {
       errors.push({ id: evalCase.id, message: error?.message ?? String(error) });
     }
@@ -102,6 +106,7 @@ function parseOptions(argv = [], env = process.env) {
     caseIds: splitCaseIds(env.RAG_RETRIEVAL_CASE_IDS || ''),
     caseLimit: positiveInteger(env.RAG_RETRIEVAL_CASE_LIMIT, 0, true),
     k: positiveInteger(env.RAG_RETRIEVAL_K, 10),
+    captureRankLimit: captureRankLimit(env.RAG_RETRIEVAL_CAPTURE_RANK_LIMIT),
     outputPath: env.RAG_RETRIEVAL_OUTPUT || null,
     reportPath: env.RAG_RETRIEVAL_REPORT || null,
     baseUrl: env.RAG_RETRIEVAL_BASE_URL || env.RAG_EVAL_BASE_URL || 'http://127.0.0.1:8080',
@@ -131,6 +136,9 @@ function parseOptions(argv = [], env = process.env) {
         break;
       case '--k':
         values.k = positiveInteger(readValue(), 10);
+        break;
+      case '--capture-rank-limit':
+        values.captureRankLimit = captureRankLimit(readValue());
         break;
       case '--output':
         values.outputPath = readValue();
@@ -342,6 +350,28 @@ function candidateKey(item) {
 	return `${item.target}:${item.chunkId}`;
 }
 
+function captureSourceRankSnapshot(response, limit) {
+	const safeLimit = captureRankLimit(limit);
+	return {
+		vector: captureRankedItems(response?.vectorHits, safeLimit),
+		bm25: captureRankedItems(response?.bm25Hits, safeLimit),
+	};
+}
+
+function captureRankedItems(items, limit) {
+	return (Array.isArray(items) ? items : [])
+		.slice(0, limit)
+		.map((item, index) => ({
+			candidateKey: candidateKey(item),
+			rank: index + 1,
+			matchedAuditGroupIndexes: Array.from(new Set(
+				(Array.isArray(item?.matchedAuditGroupIndexes) ? item.matchedAuditGroupIndexes : [])
+					.filter((value) => Number.isSafeInteger(value) && value >= 0),
+			)).sort((left, right) => left - right),
+		}))
+		.filter((item) => item.candidateKey);
+}
+
 function countValues(values) {
 	const counts = {};
 	for (const value of values) {
@@ -433,6 +463,14 @@ function positiveInteger(value, fallback, allowZero = false) {
   return parsed;
 }
 
+function captureRankLimit(value) {
+	const parsed = positiveInteger(value, 0, true);
+	if (parsed > 100) {
+		throw new Error(`capture rank limit must be between 0 and 100, got ${value}`);
+	}
+	return parsed;
+}
+
 function replaceExtension(filePath, extension) {
   const currentExtension = path.extname(filePath);
   return currentExtension ? filePath.slice(0, -currentExtension.length) + extension : filePath + extension;
@@ -468,6 +506,7 @@ if (require.main === module) {
 module.exports = {
   assertDebugResponse,
   buildDebugRequest,
+	captureSourceRankSnapshot,
 	extractCandidateLossAnalysis,
   loadRuntimeInfo,
   main,

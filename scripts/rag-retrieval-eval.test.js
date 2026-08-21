@@ -482,21 +482,68 @@ test('section type matching uses the indexed section type instead of body infere
   assert.equal(measured.stages.vectorHits.directHit, false);
 });
 
-test('retrieval runner accepts explicit case IDs, case limit, K, and output path', () => {
+test('retrieval runner accepts explicit case IDs, case limit, K, output path, and bounded rank capture', () => {
   assert.equal(typeof retrievalRunner.parseOptions, 'function');
 
   const options = retrievalRunner.parseOptions([
     '--case-ids', 'guide-a,guide-b',
     '--limit', '12',
     '--k', '7',
+    '--capture-rank-limit', '3',
     '--output', 'logs/custom-retrieval.json',
   ], {});
 
   assert.deepEqual(options.caseIds, ['guide-a', 'guide-b']);
   assert.equal(options.caseLimit, 12);
   assert.equal(options.k, 7);
+  assert.equal(options.captureRankLimit, 3);
   assert.equal(options.outputPath, 'logs/custom-retrieval.json');
   assert.equal(options.reportPath, 'logs/custom-retrieval.md');
+});
+
+test('retrieval rank capture defaults off and rejects limits above 100', () => {
+  assert.equal(retrievalRunner.parseOptions([], {}).captureRankLimit, 0);
+  assert.throws(
+    () => retrievalRunner.parseOptions(['--capture-rank-limit', '101'], {}),
+    /capture rank limit must be between 0 and 100/i,
+  );
+});
+
+test('source rank snapshot is bounded, ordered, audit-only, and excludes candidate text', () => {
+  const response = {
+    vectorHits: [
+      {
+        target: 'law',
+        chunkId: 9,
+        matchedAuditGroupIndexes: [2, 0, 2, -1, '1'],
+        chunkText: 'secret chunk',
+        body: 'secret body',
+        snippet: 'secret snippet',
+      },
+      { candidateKey: 'official_doc:7', matchedAuditGroupIndexes: [1] },
+      { candidateKey: 'law:8', matchedAuditGroupIndexes: [] },
+    ],
+    bm25Hits: [
+      { candidateKey: 'internal_doc:4', matchedAuditGroupIndexes: [3, 1] },
+    ],
+  };
+
+  const snapshot = retrievalRunner.captureSourceRankSnapshot(response, 2);
+
+  assert.deepEqual(snapshot, {
+    vector: [
+      { candidateKey: 'law:9', rank: 1, matchedAuditGroupIndexes: [0, 2] },
+      { candidateKey: 'official_doc:7', rank: 2, matchedAuditGroupIndexes: [1] },
+    ],
+    bm25: [
+      { candidateKey: 'internal_doc:4', rank: 1, matchedAuditGroupIndexes: [1, 3] },
+    ],
+  });
+  const serialized = JSON.stringify(snapshot);
+  assert.equal(serialized.includes('secret'), false);
+  assert.equal(serialized.includes('chunkText'), false);
+  assert.equal(serialized.includes('body'), false);
+  assert.equal(serialized.includes('snippet'), false);
 });
 
 test('runtime verification retries one read-only transport timeout and preserves attempt count', async () => {
