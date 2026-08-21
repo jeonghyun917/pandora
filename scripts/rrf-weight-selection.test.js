@@ -6,7 +6,11 @@ const test = require('node:test');
 
 const { loadEvalCases } = require('./lib/rag-eval-cases');
 const {
+  fuseRanks,
   loadTrainingManifest,
+  measureFused,
+  selectWeights,
+  selectionEligibility,
   sha256Bytes,
 } = require('./lib/rrf-weight-selection');
 
@@ -79,6 +83,189 @@ test('training manifest rejects count mismatch, unknown cases, and cases without
   );
 });
 
+test('pure RRF replay uses hand-derived scores and merges audit groups across sources', () => {
+  const ranking = fuseRanks({
+    vector: [
+      ranked('law:20', 1, [0]),
+      ranked('official_doc:3', 2, []),
+      ranked('law:10', 3, []),
+    ],
+    bm25: [
+      ranked('official_doc:3', 1, [1]),
+      ranked('law:10', 2, []),
+      ranked('law:20', 3, [0]),
+    ],
+  }, { vectorWeight: 1, lexicalWeight: 1 }, 60);
+
+  assert.deepEqual(ranking.map((item) => item.candidateKey), [
+    'official_doc:3',
+    'law:20',
+    'law:10',
+  ]);
+  assert.equal(Math.abs(ranking[0].score - ((1 / 62) + (1 / 61))) < 1e-12, true);
+  assert.deepEqual(ranking[0].matchedAuditGroupIndexes, [1]);
+  assert.deepEqual(ranking[1].matchedAuditGroupIndexes, [0]);
+});
+
+test('pure RRF replay breaks exact ties by target and numeric chunk ID', () => {
+  const ranking = fuseRanks({
+    vector: [ranked('law:10', 1, [])],
+    bm25: [ranked('law:2', 1, []), ranked('official_doc:1', 2, [])],
+  }, { vectorWeight: 1, lexicalWeight: 1 }, 60);
+
+  assert.deepEqual(ranking.slice(0, 2).map((item) => item.candidateKey), ['law:2', 'law:10']);
+});
+
+test('fused measurement aggregates distinct required groups only inside top K', () => {
+  const result = measureFused([
+    { candidateKey: 'law:1', matchedAuditGroupIndexes: [0, 0] },
+    { candidateKey: 'law:2', matchedAuditGroupIndexes: [1] },
+    { candidateKey: 'law:3', matchedAuditGroupIndexes: [2] },
+  ], 3, 2);
+
+  assert.deepEqual(result, {
+    matchedGroupIndexes: [0, 1],
+    matchedGroupCount: 2,
+    requiredGroupCount: 3,
+    anyRequiredPresent: true,
+    allRequiredPresent: false,
+  });
+});
+
+test('selection guardrails reject baseline case loss and any-required regression', () => {
+  const baseline = {
+    allRequiredCount: 2,
+    anyRequiredCount: 3,
+    passedCaseIds: ['case-a', 'case-b'],
+  };
+
+  assert.deepEqual(selectionEligibility({
+    allRequiredCount: 3,
+    anyRequiredCount: 3,
+    passedCaseIds: ['case-a', 'case-c', 'case-d'],
+  }, baseline), {
+    eligible: false,
+    reasons: ['BASELINE_CASE_REGRESSION:case-b'],
+  });
+  assert.deepEqual(selectionEligibility({
+    allRequiredCount: 3,
+    anyRequiredCount: 2,
+    passedCaseIds: ['case-a', 'case-b', 'case-c'],
+  }, baseline), {
+    eligible: false,
+    reasons: ['ANY_REQUIRED_REGRESSION:2/3'],
+  });
+});
+
+test('weight selection chooses the nearest improving pair without baseline regression', () => {
+  const manifestInfo = selectionManifestInfo();
+  const run1 = selectionRun(improvementSnapshots());
+  const run2 = structuredClone(run1);
+
+  const result = selectWeights({ manifestInfo, run1, run2, topK: 2, rrfK: 60 });
+
+  assert.equal(result.status, 'RECOMMENDED');
+  assert.deepEqual(result.baseline.weights, { vectorWeight: 1, lexicalWeight: 1 });
+  assert.deepEqual(result.recommendation.weights, { vectorWeight: 0.75, lexicalWeight: 1 });
+  assert.equal(result.baseline.metrics.allRequiredCount, 1);
+  assert.equal(result.recommendation.metrics.allRequiredCount, 2);
+  assert.deepEqual(result.recommendation.metrics.passedCaseIds, ['case-a', 'case-b']);
+});
+
+test('weight selection preserves baseline when no grid pair improves training', () => {
+  const manifestInfo = selectionManifestInfo();
+  const snapshots = {
+    'case-a': singleCompleteSnapshot('law:1'),
+    'case-b': singleCompleteSnapshot('law:2'),
+  };
+  const run1 = selectionRun(snapshots);
+
+  const result = selectWeights({
+    manifestInfo,
+    run1,
+    run2: structuredClone(run1),
+    topK: 2,
+    rrfK: 60,
+  });
+
+  assert.equal(result.status, 'NO_TRAINING_IMPROVEMENT');
+  assert.deepEqual(result.recommendation.weights, { vectorWeight: 1, lexicalWeight: 1 });
+});
+
+test('weight selection fails closed on provenance, order, or rank-repeatability drift', () => {
+  const manifestInfo = selectionManifestInfo();
+  const run1 = selectionRun(improvementSnapshots());
+  const provenanceDrift = structuredClone(run1);
+  provenanceDrift.provenance.runtimeConfigSha256 = 'config-b';
+  assert.throws(
+    () => selectWeights({ manifestInfo, run1, run2: provenanceDrift, topK: 2, rrfK: 60 }),
+    /training provenance mismatch: runtimeConfigSha256/i,
+  );
+
+  const reordered = structuredClone(run1);
+  reordered.results.reverse();
+  assert.throws(
+    () => selectWeights({ manifestInfo, run1, run2: reordered, topK: 2, rrfK: 60 }),
+    /training result order does not match manifest/i,
+  );
+
+  const rankDrift = structuredClone(run1);
+  rankDrift.results[0].sourceRankSnapshot.vector[0].candidateKey = 'law:999';
+  assert.throws(
+    () => selectWeights({ manifestInfo, run1, run2: rankDrift, topK: 2, rrfK: 60 }),
+    /training rank snapshot mismatch: case-a/i,
+  );
+});
+
+test('weight selection rejects captures with missing provenance fences', () => {
+  const manifestInfo = selectionManifestInfo();
+  const run1 = selectionRun(improvementSnapshots());
+  const run2 = structuredClone(run1);
+  delete run1.provenance.lexicalRevision;
+  delete run2.provenance.lexicalRevision;
+
+  assert.throws(
+    () => selectWeights({ manifestInfo, run1, run2, topK: 2, rrfK: 60 }),
+    /missing training provenance: lexicalRevision/i,
+  );
+});
+
+test('selector CLI parses exact required paths and rejects unknown options', () => {
+  const selectorCli = require('./rrf-weight-select');
+  assert.deepEqual(selectorCli.parseCliOptions([
+    '--manifest', 'manifest.json',
+    '--run-1', 'run1.json',
+    '--run-2', 'run2.json',
+    '--output', 'selection.json',
+  ]), {
+    manifestPath: 'manifest.json',
+    run1Path: 'run1.json',
+    run2Path: 'run2.json',
+    outputPath: 'selection.json',
+  });
+  assert.throws(() => selectorCli.parseCliOptions(['--unknown', 'x']), /unknown option: --unknown/i);
+  assert.throws(() => selectorCli.parseCliOptions(['--manifest', 'x']), /--run-1 is required/i);
+});
+
+test('selector output writer is atomic, idempotent for exact bytes, and rejects different existing evidence', () => {
+  const selectorCli = require('./rrf-weight-select');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pandora-rrf-output-'));
+  const file = path.join(directory, 'selection.json');
+  try {
+    selectorCli.writeJsonAtomic(file, { status: 'RECOMMENDED', value: 1 });
+    const first = fs.readFileSync(file, 'utf8');
+    assert.equal(first, '{\n  "status": "RECOMMENDED",\n  "value": 1\n}\n');
+    selectorCli.writeJsonAtomic(file, { status: 'RECOMMENDED', value: 1 });
+    assert.equal(fs.readFileSync(file, 'utf8'), first);
+    assert.throws(
+      () => selectorCli.writeJsonAtomic(file, { status: 'RECOMMENDED', value: 2 }),
+      /refusing to overwrite different selection evidence/i,
+    );
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 function hasExplicitOracle(item) {
   return (item.requiredPropositionGroups?.length ?? 0)
     + (item.requiredConditionGroups?.length ?? 0) > 0;
@@ -90,6 +277,70 @@ function fixtureCases(ids) {
     requiredPropositionGroups: [[`${id}-proposition`]],
     requiredConditionGroups: [],
   }));
+}
+
+function ranked(candidateKey, rank, matchedAuditGroupIndexes) {
+  return { candidateKey, rank, matchedAuditGroupIndexes };
+}
+
+function selectionManifestInfo() {
+  return {
+    manifestHash: 'manifest-hash',
+    manifest: {
+      splitName: 'fixture-training',
+      trainingCaseIds: ['case-a', 'case-b'],
+    },
+    trainingCases: [
+      { id: 'case-a', requiredPropositionGroups: [['a0'], ['a1']], requiredConditionGroups: [] },
+      { id: 'case-b', requiredPropositionGroups: [['b0'], ['b1']], requiredConditionGroups: [] },
+    ],
+  };
+}
+
+function improvementSnapshots() {
+  return {
+    'case-a': {
+      vector: [ranked('law:1', 1, [0]), ranked('official_doc:2', 2, [0])],
+      bm25: [ranked('law:3', 1, [1]), ranked('official_doc:2', 2, [0])],
+    },
+    'case-b': singleCompleteSnapshot('law:4'),
+  };
+}
+
+function singleCompleteSnapshot(candidateKey) {
+  return {
+    vector: [ranked(candidateKey, 1, [0, 1])],
+    bm25: [ranked(candidateKey, 1, [0, 1])],
+  };
+}
+
+function selectionRun(snapshots, provenanceOverrides = {}) {
+  const ids = ['case-a', 'case-b'];
+  return {
+    complete: true,
+    selectedCases: 2,
+    completedCases: 2,
+    requestErrors: [],
+    provenance: {
+      trainingManifestHash: 'manifest-hash',
+      trainingSplitName: 'fixture-training',
+      datasetHash: 'dataset-a',
+      selectionHash: 'selection-a',
+      runtimeInstanceId: 'runtime-a',
+      runtimeArtifactSha256: 'jar-a',
+      runtimeConfigSha256: 'config-a',
+      indexRevision: 'index-a',
+      lexicalRevision: 'lexical-a',
+      qdrantReady: true,
+      qdrantSearchFailureCount: 0,
+      ...provenanceOverrides,
+    },
+    results: ids.map((id) => ({
+      id,
+      oraclePresence: { totalGroupCount: 2 },
+      sourceRankSnapshot: snapshots[id],
+    })),
+  };
 }
 
 function manifest(trainingCaseIds, excludedDifficultCaseIds, expectedTrainingCount) {

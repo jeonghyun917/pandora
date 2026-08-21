@@ -55,11 +55,11 @@ The ordered training IDs are:
 17. `video-cctv-guide`
 18. `personal-info-purpose`
 19. `privacy-consent-notice-items`
-20. `pipc-cctv-public-place-exception`
-21. `pipc-pseudonym-additional-info`
-22. `ai-law-enforcement-date`
-23. `mois-autonomy-preconsultation-procedure`
-24. `msit-tving-investigation`
+20. `mois-autonomy-preconsultation-procedure`
+21. `pipc-cctv-public-place-exception`
+22. `pipc-pseudonym-additional-info`
+23. `msit-tving-investigation`
+24. `ai-law-enforcement-date`
 
 The manifest is JSON with schema version, split name, ordered training IDs,
 excluded difficult IDs, selection basis, and expected case count. Its SHA-256
@@ -161,4 +161,3 @@ it does not trigger further tuning on difficult or holdout results.
 - Use app-dev `8080`, Qdrant `6333`, and the documented runtime scripts only.
 - Fail closed on external API, Qdrant, provenance, rank-stability, or artifact
   ambiguity.
-

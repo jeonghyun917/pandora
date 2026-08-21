@@ -23,11 +23,11 @@
     "video-cctv-guide",
     "personal-info-purpose",
     "privacy-consent-notice-items",
+    "mois-autonomy-preconsultation-procedure",
     "pipc-cctv-public-place-exception",
     "pipc-pseudonym-additional-info",
-    "ai-law-enforcement-date",
-    "mois-autonomy-preconsultation-procedure",
-    "msit-tving-investigation"
+    "msit-tving-investigation",
+    "ai-law-enforcement-date"
   ],
   "excludedDifficultCaseIds": [
     "egov-preliminary-review-target",

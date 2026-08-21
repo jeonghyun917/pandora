@@ -20,6 +20,7 @@ const {
   isRuntimeStable,
   selectionHash,
 } = require('./lib/rag-eval-provenance');
+const { loadTrainingManifest } = require('./lib/rrf-weight-selection');
 
 const CASE_PATHS = [
   path.resolve('src/main/resources/rag-evaluation-cases.tsv'),
@@ -34,6 +35,12 @@ async function main() {
   const cases = selectEvalCases(allCases, options);
   if (cases.length === 0) {
     throw new Error('no evaluation cases selected');
+  }
+  const trainingManifestInfo = options.trainingManifestPath
+    ? loadTrainingManifest(options.trainingManifestPath, allCases)
+    : null;
+  if (trainingManifestInfo) {
+    assertTrainingSelection(trainingManifestInfo, cases);
   }
   const scope = determineRunScope(cases, allCases, options.caseIds, options.caseLimit);
   const outputPaths = resolveOutputPaths(scope, options);
@@ -79,7 +86,8 @@ async function main() {
     completedCases: successfulMeasurements.length,
     requestErrors: errors,
     complete: errors.length === 0 && successfulMeasurements.length === cases.length,
-    provenance: buildProvenance({
+    provenance: {
+      ...buildProvenance({
       scope,
       baseUrl: options.baseUrl,
       gitCommit: gitOutput(['rev-parse', 'HEAD']),
@@ -89,7 +97,12 @@ async function main() {
       selectedCount: cases.length,
       totalCaseCount: allCases.length,
       runtimeInfo,
-    }),
+      }),
+      ...(trainingManifestInfo ? {
+        trainingManifestHash: trainingManifestInfo.manifestHash,
+        trainingSplitName: trainingManifestInfo.manifest.splitName,
+      } : {}),
+    },
     runtimeVerifiedAtEnd: true,
     results: successfulMeasurements,
   };
@@ -107,6 +120,7 @@ function parseOptions(argv = [], env = process.env) {
     caseLimit: positiveInteger(env.RAG_RETRIEVAL_CASE_LIMIT, 0, true),
     k: positiveInteger(env.RAG_RETRIEVAL_K, 10),
     captureRankLimit: captureRankLimit(env.RAG_RETRIEVAL_CAPTURE_RANK_LIMIT),
+    trainingManifestPath: env.RAG_RETRIEVAL_TRAINING_MANIFEST || null,
     outputPath: env.RAG_RETRIEVAL_OUTPUT || null,
     reportPath: env.RAG_RETRIEVAL_REPORT || null,
     baseUrl: env.RAG_RETRIEVAL_BASE_URL || env.RAG_EVAL_BASE_URL || 'http://127.0.0.1:8080',
@@ -139,6 +153,9 @@ function parseOptions(argv = [], env = process.env) {
         break;
       case '--capture-rank-limit':
         values.captureRankLimit = captureRankLimit(readValue());
+        break;
+      case '--training-manifest':
+        values.trainingManifestPath = readValue();
         break;
       case '--output':
         values.outputPath = readValue();
@@ -358,6 +375,14 @@ function captureSourceRankSnapshot(response, limit) {
 	};
 }
 
+function assertTrainingSelection(manifestInfo, selectedCases) {
+	const expected = (manifestInfo?.trainingCases ?? []).map((item) => String(item?.id ?? ''));
+	const actual = (selectedCases ?? []).map((item) => String(item?.id ?? ''));
+	if (expected.length !== actual.length || expected.some((id, index) => id !== actual[index])) {
+		throw new Error(`training selection does not match manifest order: expected ${expected.join(',')}, got ${actual.join(',')}`);
+	}
+}
+
 function captureRankedItems(items, limit) {
 	return (Array.isArray(items) ? items : [])
 		.slice(0, limit)
@@ -504,6 +529,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  assertTrainingSelection,
   assertDebugResponse,
   buildDebugRequest,
 	captureSourceRankSnapshot,

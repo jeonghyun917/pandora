@@ -490,6 +490,7 @@ test('retrieval runner accepts explicit case IDs, case limit, K, output path, an
     '--limit', '12',
     '--k', '7',
     '--capture-rank-limit', '3',
+    '--training-manifest', 'src/main/resources/training.json',
     '--output', 'logs/custom-retrieval.json',
   ], {});
 
@@ -497,8 +498,27 @@ test('retrieval runner accepts explicit case IDs, case limit, K, output path, an
   assert.equal(options.caseLimit, 12);
   assert.equal(options.k, 7);
   assert.equal(options.captureRankLimit, 3);
+  assert.equal(options.trainingManifestPath, 'src/main/resources/training.json');
   assert.equal(options.outputPath, 'logs/custom-retrieval.json');
   assert.equal(options.reportPath, 'logs/custom-retrieval.md');
+});
+
+test('training capture requires the exact manifest order', () => {
+  const manifestInfo = {
+    trainingCases: [{ id: 'case-a' }, { id: 'case-b' }],
+  };
+
+  assert.doesNotThrow(() => retrievalRunner.assertTrainingSelection(
+    manifestInfo,
+    [{ id: 'case-a' }, { id: 'case-b' }],
+  ));
+  assert.throws(
+    () => retrievalRunner.assertTrainingSelection(
+      manifestInfo,
+      [{ id: 'case-b' }, { id: 'case-a' }],
+    ),
+    /training selection does not match manifest order/i,
+  );
 });
 
 test('retrieval rank capture defaults off and rejects limits above 100', () => {
