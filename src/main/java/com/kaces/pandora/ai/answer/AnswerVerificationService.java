@@ -41,7 +41,7 @@ public class AnswerVerificationService {
 		ClaimVerifier.VerificationResult claimResult = claimVerifier.verifyDetailed(guardedAnswer, grounds);
 		AnswerQuestionAlignmentVerifier.AlignmentResult alignmentResult = claimResult.insufficientEvidence()
 			? AnswerQuestionAlignmentVerifier.AlignmentResult.claimInsufficient()
-			: alignmentVerifier.verify(question, claimResult);
+			: alignmentVerifier.verify(question, claimResult, grounds);
 		return new Result(guardedAnswer, claimResult, alignmentResult);
 	}
 

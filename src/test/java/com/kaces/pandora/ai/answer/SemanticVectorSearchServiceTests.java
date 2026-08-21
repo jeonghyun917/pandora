@@ -24,4 +24,25 @@ class SemanticVectorSearchServiceTests {
 			new QdrantSearchHit("official_doc", 20, 0.82)
 		);
 	}
+
+	@Test
+	void mergeBreaksEqualScoreTiesByStableCandidateIdentity() {
+		List<QdrantSearchHit> first = service.merge(List.of(
+			new QdrantSearchHit("official_doc", 20, 0.82),
+			new QdrantSearchHit("law", 30, 0.82),
+			new QdrantSearchHit("law", 10, 0.82)
+		), 3);
+		List<QdrantSearchHit> reversed = service.merge(List.of(
+			new QdrantSearchHit("law", 10, 0.82),
+			new QdrantSearchHit("law", 30, 0.82),
+			new QdrantSearchHit("official_doc", 20, 0.82)
+		), 3);
+
+		assertThat(first).containsExactly(
+			new QdrantSearchHit("law", 10, 0.82),
+			new QdrantSearchHit("law", 30, 0.82),
+			new QdrantSearchHit("official_doc", 20, 0.82)
+		);
+		assertThat(reversed).containsExactlyElementsOf(first);
+	}
 }

@@ -25,6 +25,26 @@ class ClaimVerifierTests {
 	}
 
 	@Test
+	void exactOfficialHardwareBoundaryRemainsSupportedWithSlashAndMiddleDot() {
+		String boundary =
+			"단순 H/W 도입·설치처럼 소프트웨어사업으로 볼 수 없는 경우는 비대상이다.";
+		assertThat(new ClaimEvidenceAtomizer().atomize(boundary)).containsExactly(boundary);
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(
+			boundary,
+			List.of(ground(
+				"공공소프트웨어사업 과업심의 가이드",
+				"적용 대상 사업",
+				boundary
+			))
+		);
+
+		assertThat(result.insufficientEvidence()).as(result.toString()).isFalse();
+		assertThat(result.unsupportedClaims()).isEmpty();
+		assertThat(result.supportedStrongClaimCount()).isEqualTo(1);
+	}
+
+	@Test
 	void verifiesCoordinatedGeneralProhibitionAndItsScopedExceptionSeparately() {
 		String answer = "결론부터 말하면, 공개된 장소에 CCTV(고정형 영상정보처리기기)를 "
 			+ "설치하는 것은 원칙적으로 금지되어 있으며, 법 제25조에서 정한 사유에 "
@@ -856,6 +876,150 @@ class ClaimVerifierTests {
 		assertThat(result.insufficientEvidence()).isFalse();
 		assertThat(result.unsupportedClaims()).isEmpty();
 		assertThat(result.verifiedAnswer()).isEqualTo(answer);
+	}
+
+	@Test
+	void supportsAtomicContractCompletionProcedureParaphrasesFromDirectArticles() {
+		String inspectionArticle = "\uACC4\uC57D\uC0C1\uB300\uC790\uB294 \uC6A9\uC5ED\uC744 \uC644\uC131\uD558\uC600\uC744 \uB54C\uC5D0\uB294 \uADF8 \uC0AC\uC2E4\uC744 \uACC4\uC57D\uB2F4\uB2F9\uACF5\uBB34\uC6D0\uC5D0\uAC8C \uC11C\uBA74\uC73C\uB85C \uD1B5\uC9C0\uD558\uACE0 \uD544\uC694\uD55C \uAC80\uC0AC\uB97C \uBC1B\uC544\uC57C \uD55C\uB2E4.";
+		String paymentArticle = "\uAC80\uC0AC\uC5D0 \uD569\uACA9\uD55C \uB54C\uC5D0\uB294 \uB300\uAC00\uC9C0\uAE09\uCCAD\uAD6C\uC11C\uB97C \uC81C\uCD9C\uD558\uB294 \uB4F1 \uC18C\uC815\uC758 \uC808\uCC28\uC5D0 \uB530\uB77C \uB300\uAC00\uC9C0\uAE09\uC744 \uCCAD\uAD6C\uD560 \uC218 \uC788\uB2E4.";
+		LawAiAnswerGround inspectionGround = ground(
+			"(\uACC4\uC57D\uC608\uADDC) \uC6A9\uC5ED\uACC4\uC57D\uC77C\uBC18\uC870\uAC74",
+			"\uC81C20\uC870(\uAC80\uC0AC)",
+			inspectionArticle
+		);
+		LawAiAnswerGround paymentGround = ground(
+			"(\uACC4\uC57D\uC608\uADDC) \uC6A9\uC5ED\uACC4\uC57D\uC77C\uBC18\uC870\uAC74",
+			"\uC81C27\uC870(\uB300\uAC00\uC758 \uC9C0\uAE09)",
+			paymentArticle
+		);
+		ClaimEvidenceMatcher matcher = new ClaimEvidenceMatcher();
+		assertThat(new ClaimEvidenceAtomizer().atomize(inspectionArticle))
+			.as("inspection article atoms")
+			.containsExactly(inspectionArticle);
+		assertThat(matcher.match(inspectionArticle, List.of(inspectionGround)).status())
+			.as("exact inspection article")
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(
+			"\uACC4\uC57D\uC0C1\uB300\uC790\uB294 \uC6A9\uC5ED\uC744 \uC644\uC131\uD558\uBA74 \uADF8 \uC0AC\uC2E4\uC744 \uACC4\uC57D\uB2F4\uB2F9\uACF5\uBB34\uC6D0\uC5D0\uAC8C \uC11C\uBA74\uC73C\uB85C \uD1B5\uC9C0\uD558\uACE0 \uD544\uC694\uD55C \uAC80\uC0AC\uB97C \uBC1B\uC544\uC57C \uD55C\uB2E4.",
+			List.of(inspectionGround)
+		).status())
+			.as("completion condition paraphrase")
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(
+			"\uACC4\uC57D\uC0C1\uB300\uC790\uB294 \uC6A9\uC5ED\uC744 \uC644\uC131\uD558\uC600\uC744 \uB54C\uC5D0\uB294 \uADF8 \uC0AC\uC2E4\uC744 \uACC4\uC57D\uB2F4\uB2F9\uACF5\uBB34\uC6D0\uC5D0\uAC8C \uC11C\uBA74\uC73C\uB85C \uD1B5\uC9C0\uD558\uACE0 \uD544\uC694\uD55C \uAC80\uC0AC\uB97C \uBC1B\uC544\uC57C \uD569\uB2C8\uB2E4.",
+			List.of(inspectionGround)
+		).status())
+			.as("polite terminal paraphrase")
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(paymentArticle, List.of(paymentGround)).status())
+			.as("exact payment article")
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(
+			"\uAC80\uC0AC\uC5D0 \uD569\uACA9\uD55C \uD6C4\uC5D0\uB294 \uB300\uAC00\uC9C0\uAE09\uCCAD\uAD6C\uC11C\uB97C \uC81C\uCD9C\uD558\uB294 \uB4F1 \uC18C\uC815\uC758 \uC808\uCC28\uC5D0 \uB530\uB77C \uB300\uAC00\uC9C0\uAE09\uC744 \uCCAD\uAD6C\uD560 \uC218 \uC788\uB2E4.",
+			List.of(paymentGround)
+		).status())
+			.as("payment timing paraphrase only")
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		String answer = "\uACC4\uC57D\uC0C1\uB300\uC790\uB294 \uC6A9\uC5ED\uC744 \uC644\uC131\uD558\uBA74 \uADF8 \uC0AC\uC2E4\uC744 \uACC4\uC57D\uB2F4\uB2F9\uACF5\uBB34\uC6D0\uC5D0\uAC8C \uC11C\uBA74\uC73C\uB85C \uD1B5\uC9C0\uD558\uACE0 \uD544\uC694\uD55C \uAC80\uC0AC\uB97C \uBC1B\uC544\uC57C \uD569\uB2C8\uB2E4. "
+			+ "\uAC80\uC0AC\uC5D0 \uD569\uACA9\uD55C \uB54C\uC5D0\uB294 \uB300\uAC00\uC9C0\uAE09\uCCAD\uAD6C\uC11C\uB97C \uC81C\uCD9C\uD558\uB294 \uB4F1 \uC18C\uC815\uC758 \uC808\uCC28\uC5D0 \uB530\uB77C \uB300\uAC00\uC9C0\uAE09\uC744 \uCCAD\uAD6C\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.";
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(
+			answer,
+			List.of(inspectionGround, paymentGround)
+		);
+
+		assertThat(result.insufficientEvidence()).as("result=%s", result).isFalse();
+		assertThat(result.unsupportedClaims()).isEmpty();
+		assertThat(result.supportedStrongClaimCount()).isEqualTo(2);
+	}
+
+	@Test
+	void keepsGroundedRfpRequiredItemEnumerationFromSelectedOfficialGuide() {
+		String answer = "결론부터 말하면, 제안요청서에는 과업내용, 요구사항, 계약조건, "
+			+ "평가요소·평가방법, 제안서 규격·제출방법 등 핵심 기재사항을 반드시 포함해야 합니다."
+			+ " 구체적으로는 과업내용과 요구사항, 계약조건을 포함하여 평가요소·평가방법, "
+			+ "제안서 규격·제출방법·제본형태를 반드시 기재해야 합니다."
+			+ " 사업내용이 비교적 단순하면 제안요청서 교부를 생략할 수 있습니다.";
+
+		List<LawAiAnswerGround> grounds = List.of(
+				ground(
+					"공공정보화사업 유형별 제안요청서 작성 가이드",
+					"제안요청서 기재사항",
+					"제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법, "
+						+ "제안서의 규격, 기타 필요한 사항 등을 기술하여야 합니다."
+				),
+				ground(
+					"공공정보화사업 유형별 제안요청서 작성 가이드",
+					"평가요소, 평가방법",
+					"제안요청서에는 다음 각 호의 사항을 명시하여야 한다. 과업내용, "
+						+ "평가요소와 평가방법, 제안서 규격·제출방법·제본형태."
+				)
+			);
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(answer, grounds);
+
+		assertThat(result.insufficientEvidence()).as("result=%s", result).isFalse();
+		assertThat(result.verifiedAnswer())
+			.contains("과업내용, 요구사항, 계약조건")
+			.contains("제안서 규격·제출방법")
+			.doesNotContain("제안서 규격·제출방법·제본형태")
+			.doesNotContain("제안요청서 교부를 생략");
+		assertThat(result.supportedStrongClaimCount()).isEqualTo(1);
+	}
+
+	@Test
+	void keepsCompleteRfpEnumerationCombinedAcrossSelectedGuideGrounds() {
+		String answer = "결론부터 말하면, 제안요청서에는 과업내용, 요구사항, 계약조건, "
+			+ "평가요소와 평가방법, 제안서의 규격·제출방법·제본형태, 제안서 보상에 관한 사항, "
+			+ "사업자가 준수해야 하는 사항, 과학기술정보통신부장관 고시 따른 적정사업기간 "
+			+ "산정에 관한 사항, SW분리발주에 따른 사업범위 및 제약사항, 그밖에 필요한 사항을 "
+			+ "반드시 기재해야 합니다.";
+		List<LawAiAnswerGround> grounds = List.of(
+			ground(
+				"공공정보화사업 유형별 제안요청서 작성 가이드",
+				"제안요청서 기재사항",
+				"제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법, "
+					+ "제안서의 규격, 기타 필요한 사항 등을 기술하여야 합니다."
+			),
+			ground(
+				"공공정보화사업 유형별 제안요청서 작성 가이드",
+				"평가요소, 평가방법",
+				"제안요청서에는 다음 각 호의 사항을 명시하여야 한다. 1. 과업내용 "
+					+ "▢ 평가요소, 평가방법 ▢ 제안서 규격ㆍ제출방법ㆍ제본형태 "
+					+ "▢ 제안서 보상에 관한 사항 ▢ 사업자가 준수해야 하는 사항 "
+					+ "▢ 과학기술정보통신부장관이 고시한 소프트웨어사업 계약 및 관리감독에 "
+					+ "관한 지침 제10조에 따른 적정사업기간 산정에 관한 사항 "
+					+ "▢ SW분리발주에 따른 사업범위 및 제약사항 ▢ 그밖에 필요한 사항"
+			)
+		);
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(answer, grounds);
+
+		assertThat(result.insufficientEvidence()).as("result=%s", result).isFalse();
+		assertThat(result.unsupportedClaims()).isEmpty();
+		assertThat(result.verifiedAnswer()).contains("SW분리발주에 따른 사업범위 및 제약사항");
+		assertThat(result.supportedStrongClaimCount()).isEqualTo(1);
+	}
+
+	@Test
+	void keepsGroundedAtomicRfpItemClaimsFromSelectedOfficialGuide() {
+		String answer = "과업내용과 요구사항을 명확히 기술해야 합니다."
+			+ " 평가요소와 평가방법을 구체적으로 제시해야 합니다."
+			+ " 세부 절차나 금액은 해당 가이드 문서 원문을 확인해야 합니다.";
+		List<LawAiAnswerGround> grounds = List.of(ground(
+			"공공정보화사업 유형별 제안요청서 작성 가이드",
+			"제안요청서 기재사항",
+			"제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법, "
+				+ "제안서의 규격, 기타 필요한 사항 등을 기술하여야 합니다."
+		));
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(answer, grounds);
+
+		assertThat(result.insufficientEvidence()).as("result=%s", result).isFalse();
+		assertThat(result.verifiedAnswer())
+			.contains("과업내용과 요구사항")
+			.contains("평가요소와 평가방법")
+			.doesNotContain("원문을 확인해야");
+		assertThat(result.supportedStrongClaimCount()).isEqualTo(2);
 	}
 
 	private LawAiAnswerGround ground(String title, String chunkTitle, String snippet) {

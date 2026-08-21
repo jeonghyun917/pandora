@@ -7,6 +7,7 @@ const {
   splitCaseIds,
 } = require('./lib/rag-eval-cases');
 const {
+	SHADOW_STAGE_NAMES,
   STAGE_NAMES,
   measureRetrievalCase,
   summarizeRetrievalCases,
@@ -19,6 +20,7 @@ const {
   isRuntimeStable,
   selectionHash,
 } = require('./lib/rag-eval-provenance');
+const { loadTrainingManifest } = require('./lib/rrf-weight-selection');
 
 const CASE_PATHS = [
   path.resolve('src/main/resources/rag-evaluation-cases.tsv'),
@@ -34,6 +36,12 @@ async function main() {
   if (cases.length === 0) {
     throw new Error('no evaluation cases selected');
   }
+  const trainingManifestInfo = options.trainingManifestPath
+    ? loadTrainingManifest(options.trainingManifestPath, allCases)
+    : null;
+  if (trainingManifestInfo) {
+    assertTrainingSelection(trainingManifestInfo, cases);
+  }
   const scope = determineRunScope(cases, allCases, options.caseIds, options.caseLimit);
   const outputPaths = resolveOutputPaths(scope, options);
   const datasetHashValue = datasetHash(DATASET_PATHS.filter((casePath) => fs.existsSync(casePath)));
@@ -46,11 +54,16 @@ async function main() {
   await mapWithConcurrency(cases, options.concurrency, async (evalCase, index) => {
     try {
       const response = await loadDebugResponse(evalCase, options);
-      measurements[index] = {
+      const measurement = {
         ...measureRetrievalCase(evalCase, response, options.k),
+		candidateLoss: extractCandidateLossAnalysis(response),
         question: evalCase.question,
         targets: evalCase.targets,
       };
+      if (options.captureRankLimit > 0) {
+        measurement.sourceRankSnapshot = captureSourceRankSnapshot(response, options.captureRankLimit);
+      }
+      measurements[index] = measurement;
     } catch (error) {
       errors.push({ id: evalCase.id, message: error?.message ?? String(error) });
     }
@@ -73,7 +86,8 @@ async function main() {
     completedCases: successfulMeasurements.length,
     requestErrors: errors,
     complete: errors.length === 0 && successfulMeasurements.length === cases.length,
-    provenance: buildProvenance({
+    provenance: {
+      ...buildProvenance({
       scope,
       baseUrl: options.baseUrl,
       gitCommit: gitOutput(['rev-parse', 'HEAD']),
@@ -83,7 +97,12 @@ async function main() {
       selectedCount: cases.length,
       totalCaseCount: allCases.length,
       runtimeInfo,
-    }),
+      }),
+      ...(trainingManifestInfo ? {
+        trainingManifestHash: trainingManifestInfo.manifestHash,
+        trainingSplitName: trainingManifestInfo.manifest.splitName,
+      } : {}),
+    },
     runtimeVerifiedAtEnd: true,
     results: successfulMeasurements,
   };
@@ -100,6 +119,8 @@ function parseOptions(argv = [], env = process.env) {
     caseIds: splitCaseIds(env.RAG_RETRIEVAL_CASE_IDS || ''),
     caseLimit: positiveInteger(env.RAG_RETRIEVAL_CASE_LIMIT, 0, true),
     k: positiveInteger(env.RAG_RETRIEVAL_K, 10),
+    captureRankLimit: captureRankLimit(env.RAG_RETRIEVAL_CAPTURE_RANK_LIMIT),
+    trainingManifestPath: env.RAG_RETRIEVAL_TRAINING_MANIFEST || null,
     outputPath: env.RAG_RETRIEVAL_OUTPUT || null,
     reportPath: env.RAG_RETRIEVAL_REPORT || null,
     baseUrl: env.RAG_RETRIEVAL_BASE_URL || env.RAG_EVAL_BASE_URL || 'http://127.0.0.1:8080',
@@ -130,6 +151,12 @@ function parseOptions(argv = [], env = process.env) {
       case '--k':
         values.k = positiveInteger(readValue(), 10);
         break;
+      case '--capture-rank-limit':
+        values.captureRankLimit = captureRankLimit(readValue());
+        break;
+      case '--training-manifest':
+        values.trainingManifestPath = readValue();
+        break;
       case '--output':
         values.outputPath = readValue();
         break;
@@ -159,19 +186,35 @@ function resolveOutputPaths(scope, options) {
   return { outputPath, reportPath };
 }
 
-async function loadRuntimeInfo(baseUrl, timeoutMs) {
+async function loadRuntimeInfo(baseUrl, timeoutMs, dependencies = {}) {
   const endpoint = `${baseUrl}/api/law-data/ai/debug/runtime-info`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), Math.min(timeoutMs, 5000));
-  try {
-    const response = await fetch(endpoint, { signal: controller.signal });
-    if (!response.ok) {
-      throw new Error(`runtime info HTTP ${response.status}`);
+  const fetchImpl = dependencies.fetchImpl ?? fetch;
+  const delayImpl = dependencies.delayImpl ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+  const attempts = 2;
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Math.min(timeoutMs, 5000));
+    try {
+      const response = await fetchImpl(endpoint, { signal: controller.signal });
+      if (!response.ok) {
+        const error = new Error(`runtime info HTTP ${response.status}`);
+        error.retryable = false;
+        throw error;
+      }
+      return { ...(await response.json()), source: 'server', readAttempts: attempt };
+    } catch (error) {
+      lastError = error;
+      const retryable = error?.name === 'AbortError' || error instanceof TypeError;
+      if (!retryable || attempt === attempts) {
+        throw error;
+      }
+      await delayImpl(1000);
+    } finally {
+      clearTimeout(timer);
     }
-    return { ...(await response.json()), source: 'server' };
-  } finally {
-    clearTimeout(timer);
   }
+  throw lastError;
 }
 
 async function loadDebugResponse(evalCase, options) {
@@ -182,12 +225,7 @@ async function loadDebugResponse(evalCase, options) {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
-      body: JSON.stringify({
-        targets: evalCase.targets,
-        question: evalCase.question,
-        limit: options.k,
-        includeFuture: true,
-      }),
+      body: JSON.stringify(buildDebugRequest(evalCase, options.k)),
       signal: controller.signal,
     });
     const text = await response.text();
@@ -200,7 +238,8 @@ async function loadDebugResponse(evalCase, options) {
     if (!response.ok || !body) {
       throw new Error(`debug search HTTP ${response.status}: ${text.slice(0, 200)}`);
     }
-    return assertDebugResponse(body);
+    const auditGroupCount = buildAuditTermGroups(evalCase).length;
+    return assertDebugResponse(body, auditGroupCount);
   } catch (error) {
     if (error?.name === 'AbortError') {
       throw new Error(`debug search timed out after ${options.timeoutMs}ms`);
@@ -211,7 +250,24 @@ async function loadDebugResponse(evalCase, options) {
   }
 }
 
-function assertDebugResponse(body) {
+function buildDebugRequest(evalCase, k) {
+  return {
+    targets: evalCase?.targets ?? [],
+    question: evalCase?.question ?? '',
+    limit: k,
+    includeFuture: true,
+    auditTermGroups: buildAuditTermGroups(evalCase),
+  };
+}
+
+function buildAuditTermGroups(evalCase) {
+  return [
+    ...(Array.isArray(evalCase?.requiredPropositionGroups) ? evalCase.requiredPropositionGroups : []),
+    ...(Array.isArray(evalCase?.requiredConditionGroups) ? evalCase.requiredConditionGroups : []),
+  ];
+}
+
+function assertDebugResponse(body, auditGroupCount = 0) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw new Error('debug search response must be an object');
   }
@@ -226,14 +282,131 @@ function assertDebugResponse(body) {
       if (!item || typeof item !== 'object' || Array.isArray(item)) {
         throw new Error(`debug search response ${stage}[${index}] must be an object`);
       }
-      const missing = ['parentSectionTitle', 'sectionType']
+      const requiredFields = ['parentSectionTitle', 'sectionType'];
+      if (auditGroupCount > 0) {
+        requiredFields.push('matchedAuditGroupIndexes', 'matchedAuditAliases');
+      }
+      const missing = requiredFields
         .filter((field) => !Object.hasOwn(item, field));
       if (missing.length > 0) {
         throw new Error(`debug search response ${stage}[${index}] missing ${missing.join(', ')}`);
       }
+      if (auditGroupCount > 0 && (
+        !Array.isArray(item.matchedAuditGroupIndexes)
+          || !Array.isArray(item.matchedAuditAliases)
+      )) {
+        throw new Error(`debug search response ${stage}[${index}] audit matches must be arrays`);
+      }
     }
   }
+	if (body.candidateTraces != null) {
+		if (!Array.isArray(body.candidateTraces) || body.candidateTraces.length > 100) {
+			throw new Error('debug search response candidateTraces must be an array with at most 100 items');
+		}
+		for (const [index, trace] of body.candidateTraces.entries()) {
+			if (!trace || typeof trace !== 'object' || Array.isArray(trace)) {
+				throw new Error(`debug search response candidateTraces[${index}] must be an object`);
+			}
+			for (const forbidden of ['chunkText', 'body', 'snippet']) {
+				if (Object.hasOwn(trace, forbidden)) {
+					throw new Error(`debug search response candidateTraces[${index}] must not contain ${forbidden}`);
+				}
+			}
+		}
+	}
   return body;
+}
+
+function extractCandidateLossAnalysis(response) {
+	const traces = Array.isArray(response?.candidateTraces) ? response.candidateTraces : [];
+	const auditMatches = new Map();
+	for (const stage of [...STAGE_NAMES, ...SHADOW_STAGE_NAMES]) {
+		for (const item of Array.isArray(response?.[stage]) ? response[stage] : []) {
+			const indexes = Array.isArray(item?.matchedAuditGroupIndexes)
+				? item.matchedAuditGroupIndexes.filter(Number.isInteger)
+				: [];
+			if (indexes.length === 0) {
+				continue;
+			}
+			const key = candidateKey(item);
+			if (!key) {
+				continue;
+			}
+			const existing = auditMatches.get(key) ?? new Set();
+			indexes.forEach((index) => existing.add(index));
+			auditMatches.set(key, existing);
+		}
+	}
+	const oracleCandidateTraces = traces
+		.filter((trace) => auditMatches.has(String(trace?.candidateKey ?? '')))
+		.map((trace) => ({
+			candidateKey: String(trace.candidateKey),
+			oraclePresenceStage: Array.isArray(trace.enteredStages) && trace.enteredStages.length > 0
+				? trace.enteredStages[trace.enteredStages.length - 1]
+				: null,
+			matchedAuditGroupIndexes: Array.from(auditMatches.get(String(trace.candidateKey))).sort((a, b) => a - b),
+			firstLossStage: trace.firstLossStage ?? null,
+			reasonCodes: Array.isArray(trace.reasonCodes) ? [...trace.reasonCodes] : [],
+		}));
+	return {
+		candidateTraces: traces,
+		oracleCandidateTraces,
+		firstLossStageCounts: countValues(traces.map((trace) => trace?.firstLossStage)),
+		reasonCodeCounts: countValues(traces.flatMap((trace) =>
+			Array.isArray(trace?.reasonCodes) ? trace.reasonCodes : [])),
+	};
+}
+
+function candidateKey(item) {
+	if (typeof item?.candidateKey === 'string' && item.candidateKey) {
+		return item.candidateKey;
+	}
+	if (item?.target == null || item?.chunkId == null) {
+		return null;
+	}
+	return `${item.target}:${item.chunkId}`;
+}
+
+function captureSourceRankSnapshot(response, limit) {
+	const safeLimit = captureRankLimit(limit);
+	return {
+		vector: captureRankedItems(response?.vectorHits, safeLimit),
+		bm25: captureRankedItems(response?.bm25Hits, safeLimit),
+	};
+}
+
+function assertTrainingSelection(manifestInfo, selectedCases) {
+	const expected = (manifestInfo?.trainingCases ?? []).map((item) => String(item?.id ?? ''));
+	const actual = (selectedCases ?? []).map((item) => String(item?.id ?? ''));
+	if (expected.length !== actual.length || expected.some((id, index) => id !== actual[index])) {
+		throw new Error(`training selection does not match manifest order: expected ${expected.join(',')}, got ${actual.join(',')}`);
+	}
+}
+
+function captureRankedItems(items, limit) {
+	return (Array.isArray(items) ? items : [])
+		.slice(0, limit)
+		.map((item, index) => ({
+			candidateKey: candidateKey(item),
+			rank: index + 1,
+			matchedAuditGroupIndexes: Array.from(new Set(
+				(Array.isArray(item?.matchedAuditGroupIndexes) ? item.matchedAuditGroupIndexes : [])
+					.filter((value) => Number.isSafeInteger(value) && value >= 0),
+			)).sort((left, right) => left - right),
+		}))
+		.filter((item) => item.candidateKey);
+}
+
+function countValues(values) {
+	const counts = {};
+	for (const value of values) {
+		if (value == null || String(value).trim() === '') {
+			continue;
+		}
+		const key = String(value);
+		counts[key] = (counts[key] ?? 0) + 1;
+	}
+	return counts;
 }
 
 async function mapWithConcurrency(values, concurrency, callback) {
@@ -315,6 +488,14 @@ function positiveInteger(value, fallback, allowZero = false) {
   return parsed;
 }
 
+function captureRankLimit(value) {
+	const parsed = positiveInteger(value, 0, true);
+	if (parsed > 100) {
+		throw new Error(`capture rank limit must be between 0 and 100, got ${value}`);
+	}
+	return parsed;
+}
+
 function replaceExtension(filePath, extension) {
   const currentExtension = path.extname(filePath);
   return currentExtension ? filePath.slice(0, -currentExtension.length) + extension : filePath + extension;
@@ -348,7 +529,12 @@ if (require.main === module) {
 }
 
 module.exports = {
+  assertTrainingSelection,
   assertDebugResponse,
+  buildDebugRequest,
+	captureSourceRankSnapshot,
+	extractCandidateLossAnalysis,
+  loadRuntimeInfo,
   main,
   parseOptions,
 };

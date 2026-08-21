@@ -16,6 +16,7 @@
 
   <sql id="parentSectionTitleExpression">
     COALESCE(
+      NULLIF(c.parent_title, ''),
       NULLIF(TRIM(REGEXP_REPLACE(c.chunk_title, '\\s*문단\\s*[0-9]+.*$', '')), ''),
       NULLIF(c.chunk_title, ''),
       NULLIF(c.chunk_no, ''),
@@ -50,6 +51,35 @@
     WHERE document_id = #{documentId}
   </select>
 
+  <select id="findChunkIdsByDocumentIdAndVersion" resultType="long">
+    SELECT chunk_id FROM law_api_document_chunks
+    WHERE document_id = #{documentId} AND chunk_version = #{chunkVersion}
+    ORDER BY chunk_id
+  </select>
+
+  <select id="findActiveChunkIdsByDocumentId" resultType="long">
+    SELECT chunk_id FROM law_api_document_chunks
+    WHERE document_id = #{documentId} AND activation_status = 'ACTIVE' AND use_yn = 'Y'
+    ORDER BY chunk_id
+  </select>
+
+  <select id="findActiveChunkVersion" resultType="int">
+    SELECT COALESCE(MAX(chunk_version), 0)
+    FROM law_api_document_chunks
+    WHERE document_id = #{documentId} AND activation_status = 'ACTIVE' AND use_yn = 'Y'
+  </select>
+
+  <select id="findNextChunkVersion" resultType="int">
+    SELECT COALESCE(MAX(chunk_version), 0) + 1
+    FROM law_api_document_chunk_versions
+    WHERE document_id = #{documentId}
+  </select>
+
+  <select id="findChunkVersionStatus" resultType="string">
+    SELECT activation_status FROM law_api_document_chunk_versions
+    WHERE document_id = #{documentId} AND chunk_version = #{chunkVersion}
+  </select>
+
   <!-- 특정 문서의 기존 검색 청크를 모두 삭제합니다. -->
   <delete id="deleteChunks">
     DELETE FROM law_api_document_chunks
@@ -59,12 +89,178 @@
   <insert id="insertChunk">
     INSERT INTO law_api_document_chunks (
       document_id, detail_id, chunk_type, chunk_no, chunk_title, chunk_text,
-      source_path, source_url, sort_order, content_hash, index_status
+      source_path, source_url, sort_order, content_hash, chunk_schema_version,
+      chunk_version, activation_status, parent_key, parent_title, parent_source_path,
+      child_order, embedding_text, quality_status, quality_reason, index_status
     )
     VALUES (
       #{chunk.documentId}, #{chunk.detailId}, #{chunk.chunkType}, #{chunk.chunkNo}, #{chunk.chunkTitle}, #{chunk.chunkText},
-      #{chunk.sourcePath}, #{chunk.sourceUrl}, #{chunk.sortOrder}, #{chunk.contentHash}, 'PENDING'
+      #{chunk.sourcePath}, #{chunk.sourceUrl}, #{chunk.sortOrder}, #{chunk.contentHash}, #{chunk.chunkSchemaVersion},
+      #{chunk.chunkVersion}, #{chunk.activationStatus}, #{chunk.parentKey}, #{chunk.parentTitle}, #{chunk.parentSourcePath},
+      #{chunk.childOrder}, #{chunk.embeddingText}, #{chunk.qualityStatus}, #{chunk.qualityReason}, 'PENDING'
     )
+  </insert>
+
+  <select id="findChunkVersionVerification" resultType="com.kaces.pandora.lawdata.chunk.LawChunkVersionVerification">
+    SELECT COALESCE(v.expected_chunk_count, 0) AS expectedChunkCount,
+      COUNT(c.chunk_id) AS candidateChunkCount,
+      COALESCE(SUM(CASE WHEN e.status = 'INDEXED' AND e.content_hash = c.content_hash THEN 1 ELSE 0 END), 0) AS indexedCurrentCount,
+      COALESCE(SUM(CASE WHEN c.quality_status IN ('REVIEW', 'REJECT') THEN 1 ELSE 0 END), 0) AS blockingQualityCount,
+      v.preview_approved AS previewApproved,
+      v.unexplained_loss_span_count AS unexplainedLossSpanCount,
+      v.preview_token_hash AS previewTokenHash
+    FROM law_api_document_chunk_versions v
+    LEFT JOIN law_api_document_chunks c ON c.document_id = v.document_id
+      AND c.chunk_version = v.chunk_version AND c.activation_status = 'CANDIDATE' AND c.use_yn = 'Y'
+    LEFT JOIN law_api_chunk_embeddings e ON e.chunk_id = c.chunk_id
+      AND e.embedding_model = #{model} AND e.vector_store = #{vectorStore}
+    WHERE v.document_id = #{documentId} AND v.chunk_version = #{chunkVersion}
+      AND v.activation_status IN ('CANDIDATE', 'ACTIVATING')
+    GROUP BY v.expected_chunk_count, v.preview_approved, v.unexplained_loss_span_count, v.preview_token_hash
+  </select>
+
+  <update id="activateChunkVersion">
+    UPDATE law_api_document_chunks SET activation_status = 'ACTIVE', updated_at = NOW()
+    WHERE document_id = #{documentId} AND chunk_version = #{chunkVersion} AND activation_status = 'CANDIDATE'
+  </update>
+
+  <update id="retireOtherChunkVersions">
+    UPDATE law_api_document_chunks SET activation_status = 'RETIRED', updated_at = NOW()
+    WHERE document_id = #{documentId} AND chunk_version != #{chunkVersion} AND activation_status = 'ACTIVE'
+  </update>
+
+  <update id="reactivateChunkVersion">
+    UPDATE law_api_document_chunks SET activation_status = 'ACTIVE', updated_at = NOW()
+    WHERE document_id = #{documentId} AND chunk_version = #{chunkVersion} AND activation_status = 'RETIRED'
+  </update>
+
+  <update id="retireActiveChunkVersionsExcept">
+    UPDATE law_api_document_chunks SET activation_status = 'RETIRED', updated_at = NOW()
+    WHERE document_id = #{documentId} AND chunk_version != #{chunkVersion} AND activation_status = 'ACTIVE'
+  </update>
+
+  <update id="updateChunkVersionStatus">
+    UPDATE law_api_document_chunk_versions SET activation_status = #{activationStatus}, updated_at = NOW()
+    WHERE document_id = #{documentId} AND chunk_version = #{chunkVersion}
+  </update>
+
+  <select id="findActivationOperation" resultType="com.kaces.pandora.lawdata.sync.DocumentActivationOperation">
+    SELECT document_id AS documentId, candidate_version AS candidateVersion, owner_token AS owner, runtime_instance_id AS runtimeInstanceId,
+      lease_expires_at AS leaseExpiresAt, phase, prior_active_version AS priorActiveVersion,
+      prior_point_ids_json AS priorPointIdsJson, candidate_point_ids_json AS candidatePointIdsJson, last_error AS lastError
+    FROM law_api_document_activation_operations WHERE document_id = #{documentId}
+  </select>
+
+  <insert id="insertActivationOperation">
+    INSERT INTO law_api_document_activation_operations (document_id,candidate_version,owner_token,runtime_instance_id,lease_expires_at,phase,prior_active_version,prior_point_ids_json,candidate_point_ids_json,last_error)
+    VALUES (#{operation.documentId},#{operation.candidateVersion},#{operation.owner},#{operation.runtimeInstanceId},#{operation.leaseExpiresAt},#{operation.phase},#{operation.priorActiveVersion},#{operation.priorPointIdsJson},#{operation.candidatePointIdsJson},#{operation.lastError})
+  </insert>
+
+  <update id="reclaimActivationOperation">
+    UPDATE law_api_document_activation_operations
+    SET owner_token=#{owner}, runtime_instance_id=#{runtimeInstanceId}, lease_expires_at=#{leaseExpiresAt}, phase=#{phase}, last_error=#{lastError}, updated_at=NOW()
+    WHERE document_id=#{documentId} AND lease_expires_at &lt; NOW() AND phase=#{expectedPhase}
+  </update>
+
+  <update id="replaceCompletedActivationOperation">
+    UPDATE law_api_document_activation_operations
+    SET candidate_version=#{operation.candidateVersion}, owner_token=#{operation.owner}, runtime_instance_id=#{operation.runtimeInstanceId}, lease_expires_at=#{operation.leaseExpiresAt},
+      phase=#{operation.phase}, prior_active_version=#{operation.priorActiveVersion}, prior_point_ids_json=#{operation.priorPointIdsJson},
+      candidate_point_ids_json=#{operation.candidatePointIdsJson}, last_error=#{operation.lastError}, updated_at=NOW()
+    WHERE document_id=#{operation.documentId} AND phase='DONE'
+  </update>
+
+  <update id="renewActivationOperationLease">
+    UPDATE law_api_document_activation_operations
+    SET lease_expires_at=#{leaseExpiresAt}, updated_at=NOW()
+    WHERE document_id=#{documentId} AND owner_token=#{owner} AND phase=#{expectedPhase}
+  </update>
+
+  <update id="transitionActivationOperation">
+    UPDATE law_api_document_activation_operations SET phase=#{phase}, last_error=#{lastError}, updated_at=NOW()
+    WHERE document_id=#{documentId} AND owner_token=#{owner} AND phase=#{expectedPhase}
+  </update>
+
+  <update id="markCandidateActivatingForOperation">
+    UPDATE law_api_document_chunk_versions v
+    SET v.activation_status = 'ACTIVATING', v.activation_owner = #{owner}, v.updated_at = NOW()
+    WHERE v.document_id=#{documentId} AND v.chunk_version=#{chunkVersion} AND v.activation_status='CANDIDATE'
+      AND EXISTS (SELECT 1 FROM law_api_document_activation_operations o
+        WHERE o.document_id=v.document_id AND o.candidate_version=v.chunk_version
+          AND o.owner_token=#{owner} AND o.phase='PREPARING')
+  </update>
+
+  <update id="resetCandidateForOperation">
+    UPDATE law_api_document_chunk_versions v
+    SET v.activation_status='CANDIDATE', v.activation_owner=NULL, v.updated_at=NOW()
+    WHERE v.document_id=#{documentId} AND v.chunk_version=#{chunkVersion}
+      AND v.activation_status IN ('CANDIDATE','ACTIVATING')
+      AND EXISTS (SELECT 1 FROM law_api_document_activation_operations o
+        WHERE o.document_id=v.document_id AND o.candidate_version=v.chunk_version
+          AND o.owner_token=#{owner} AND o.phase=#{expectedPhase})
+  </update>
+
+  <update id="retireChunkIdsForOperation">
+    UPDATE law_api_document_chunks c
+    SET c.activation_status='RETIRED', c.updated_at=NOW()
+    WHERE c.document_id=#{documentId} AND c.activation_status='ACTIVE'
+      AND c.chunk_id IN
+      <foreach collection="chunkIds" item="chunkId" open="(" separator="," close=")">#{chunkId}</foreach>
+      AND EXISTS (SELECT 1 FROM law_api_document_activation_operations o
+        WHERE o.document_id=c.document_id AND o.owner_token=#{owner} AND o.phase='QDRANT_ACTIVATING')
+  </update>
+
+  <update id="activateCandidateChunksForOperation">
+    UPDATE law_api_document_chunks c
+    SET c.activation_status='ACTIVE', c.updated_at=NOW()
+    WHERE c.document_id=#{documentId} AND c.chunk_version=#{chunkVersion} AND c.activation_status='CANDIDATE'
+      AND EXISTS (SELECT 1 FROM law_api_document_activation_operations o
+        WHERE o.document_id=c.document_id AND o.candidate_version=c.chunk_version
+          AND o.owner_token=#{owner} AND o.phase='QDRANT_ACTIVATING')
+  </update>
+
+  <update id="markCandidateVersionCleanupPendingForOperation">
+    UPDATE law_api_document_chunk_versions v
+    SET v.activation_status='ACTIVE_CLEANUP_PENDING', v.updated_at=NOW()
+    WHERE v.document_id=#{documentId} AND v.chunk_version=#{chunkVersion}
+      AND v.activation_status='ACTIVATING' AND v.activation_owner=#{owner}
+      AND EXISTS (SELECT 1 FROM law_api_document_activation_operations o
+        WHERE o.document_id=v.document_id AND o.candidate_version=v.chunk_version
+          AND o.owner_token=#{owner} AND o.phase='QDRANT_ACTIVATING')
+  </update>
+
+  <update id="retirePriorVersionForOperation">
+    UPDATE law_api_document_chunk_versions v
+    SET v.activation_status='RETIRED', v.activation_owner=NULL, v.updated_at=NOW()
+    WHERE v.document_id=#{documentId} AND v.chunk_version=#{priorVersion} AND v.activation_status='ACTIVE'
+      AND EXISTS (SELECT 1 FROM law_api_document_activation_operations o
+        WHERE o.document_id=v.document_id AND o.candidate_version != v.chunk_version
+          AND o.prior_active_version=v.chunk_version AND o.owner_token=#{owner} AND o.phase='QDRANT_ACTIVATING')
+  </update>
+
+  <update id="completeCandidateCleanupForOperation">
+    UPDATE law_api_document_chunk_versions v
+    SET v.activation_status='ACTIVE', v.activation_owner=NULL, v.updated_at=NOW()
+    WHERE v.document_id=#{documentId} AND v.chunk_version=#{chunkVersion}
+      AND v.activation_status='ACTIVE_CLEANUP_PENDING'
+      AND EXISTS (SELECT 1 FROM law_api_document_activation_operations o
+        WHERE o.document_id=v.document_id AND o.candidate_version=v.chunk_version
+          AND o.owner_token=#{owner} AND o.phase='DB_ACTIVE_CLEANUP_PENDING')
+  </update>
+
+  <update id="retireOtherActiveChunkVersionStates">
+    UPDATE law_api_document_chunk_versions SET activation_status = 'RETIRED', updated_at = NOW()
+    WHERE document_id = #{documentId} AND chunk_version != #{chunkVersion} AND activation_status = 'ACTIVE'
+  </update>
+
+  <insert id="upsertChunkVersion">
+    INSERT INTO law_api_document_chunk_versions (document_id, chunk_version, activation_status, expected_chunk_count, preview_approved, unexplained_loss_span_count, preview_token_hash)
+    VALUES (#{version.documentId}, #{version.chunkVersion}, #{version.activationStatus}, #{version.expectedChunkCount}, #{version.previewApproved}, #{version.unexplainedLossSpanCount}, #{version.previewTokenHash})
+    ON DUPLICATE KEY UPDATE activation_status = VALUES(activation_status),
+      expected_chunk_count = VALUES(expected_chunk_count),
+      preview_approved = VALUES(preview_approved),
+      unexplained_loss_span_count = VALUES(unexplained_loss_span_count),
+      preview_token_hash = VALUES(preview_token_hash)
   </insert>
   <!-- 위치 기반 청크 본문 검색에서 일치하는 전체 건수를 조회합니다. -->
   <select id="countChunkSearch" resultType="int">
@@ -74,6 +270,7 @@
     WHERE doc.target = #{target}
       AND doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
       <include refid="effectiveSearchFilter"/>
       AND (
         c.chunk_text LIKE CONCAT('%', #{query}, '%')
@@ -106,6 +303,7 @@
     WHERE doc.target = #{target}
       AND doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
       <include refid="effectiveSearchFilter"/>
       AND (
         c.chunk_text LIKE CONCAT('%', #{query}, '%')
@@ -139,13 +337,17 @@
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
       c.chunk_text AS chunkText,
-      NULL AS pageNo,
+      CAST(NULL AS SIGNED) AS pageNo,
       c.source_path AS sourcePath,
       c.source_url AS sourceUrl,
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
-      <include refid="sectionTypeExpression"/> AS sectionType
+      <include refid="sectionTypeExpression"/> AS sectionType,
+      c.quality_status AS qualityStatus,
+      c.embedding_text AS embeddingText,
+      c.parent_key AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     LEFT JOIN law_api_chunk_embeddings e
@@ -154,6 +356,7 @@
       AND e.vector_store = #{vectorStore}
     WHERE doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
       AND (#{target} = '' OR doc.target = #{target})
       AND (
         #{query} = ''
@@ -205,13 +408,17 @@
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
       c.chunk_text AS chunkText,
-      NULL AS pageNo,
+      CAST(NULL AS SIGNED) AS pageNo,
       c.source_path AS sourcePath,
       c.source_url AS sourceUrl,
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
-      <include refid="sectionTypeExpression"/> AS sectionType
+      <include refid="sectionTypeExpression"/> AS sectionType,
+      c.quality_status AS qualityStatus,
+      c.embedding_text AS embeddingText,
+      c.parent_key AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     LEFT JOIN law_api_chunk_embeddings e
@@ -220,6 +427,7 @@
       AND e.vector_store = #{vectorStore}
     WHERE doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
       AND (#{target} = '' OR doc.target = #{target})
       AND c.document_id IN
       <foreach collection="documentIds" item="documentId" open="(" separator="," close=")">
@@ -231,6 +439,31 @@
         OR COALESCE(e.content_hash, '') != COALESCE(c.content_hash, '')
       )
     ORDER BY doc.target, c.document_id, c.sort_order, c.chunk_id
+    LIMIT #{limit}
+  </select>
+
+  <select id="findSemanticIndexCandidatesByDocumentIdAndVersion" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    SELECT c.chunk_id AS chunkId, c.document_id AS documentId, doc.target AS target,
+      doc.external_id AS externalId, doc.title AS title, doc.agency_name AS agencyName,
+      doc.category_name AS categoryName, doc.source_date AS sourceDate,
+      doc.effective_status AS effectiveStatus, c.chunk_no AS chunkNo, c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText, CAST(NULL AS SIGNED) AS pageNo, c.source_path AS sourcePath,
+      c.source_url AS sourceUrl, c.sort_order AS sortOrder, c.content_hash AS contentHash,
+      <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
+      <include refid="sectionTypeExpression"/> AS sectionType, c.quality_status AS qualityStatus,
+      c.embedding_text AS embeddingText,
+      c.parent_key AS parentKey, c.chunk_version AS chunkVersion
+    FROM law_api_document_chunks c
+    JOIN law_api_documents doc ON doc.document_id = c.document_id
+    LEFT JOIN law_api_chunk_embeddings e ON e.chunk_id = c.chunk_id
+      AND e.embedding_model = #{model} AND e.vector_store = #{vectorStore}
+    WHERE doc.use_yn = 'Y' AND c.use_yn = 'Y'
+      AND c.activation_status = 'CANDIDATE'
+      AND (#{target} = '' OR doc.target = #{target})
+      AND c.document_id = #{documentId} AND c.chunk_version = #{chunkVersion}
+      AND (e.chunk_id IS NULL OR e.status IN ('PENDING', 'NO_EMBED', 'FAILED', 'ERROR')
+        OR COALESCE(e.content_hash, '') != COALESCE(c.content_hash, ''))
+    ORDER BY c.sort_order, c.chunk_id
     LIMIT #{limit}
   </select>
 
@@ -248,17 +481,22 @@
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
       c.chunk_text AS chunkText,
-      NULL AS pageNo,
+      CAST(NULL AS SIGNED) AS pageNo,
       c.source_path AS sourcePath,
       c.source_url AS sourceUrl,
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
-      <include refid="sectionTypeExpression"/> AS sectionType
+      <include refid="sectionTypeExpression"/> AS sectionType,
+      c.quality_status AS qualityStatus,
+      CAST(NULL AS CHAR) AS embeddingText,
+      c.parent_key AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
       <include refid="effectiveSearchFilter"/>
       AND c.chunk_id IN
     <foreach collection="chunkIds" item="chunkId" open="(" separator="," close=")">
@@ -280,17 +518,22 @@
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
       c.chunk_text AS chunkText,
-      NULL AS pageNo,
+      CAST(NULL AS SIGNED) AS pageNo,
       c.source_path AS sourcePath,
       c.source_url AS sourceUrl,
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
-      <include refid="sectionTypeExpression"/> AS sectionType
+      <include refid="sectionTypeExpression"/> AS sectionType,
+      c.quality_status AS qualityStatus,
+      c.embedding_text AS embeddingText,
+      c.parent_key AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
       AND c.chunk_id IN
     <foreach collection="chunkIds" item="chunkId" open="(" separator="," close=")">
       #{chunkId}
@@ -311,17 +554,22 @@
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
       c.chunk_text AS chunkText,
-      NULL AS pageNo,
+      CAST(NULL AS SIGNED) AS pageNo,
       c.source_path AS sourcePath,
       c.source_url AS sourceUrl,
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
-      <include refid="sectionTypeExpression"/> AS sectionType
+      <include refid="sectionTypeExpression"/> AS sectionType,
+      c.quality_status AS qualityStatus,
+      CAST(NULL AS CHAR) AS embeddingText,
+      c.parent_key AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
       AND c.document_id = #{documentId}
       AND c.sort_order BETWEEN #{sortOrder} - #{radius} AND #{sortOrder} + #{radius}
     ORDER BY c.sort_order, c.chunk_id
@@ -341,17 +589,22 @@
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
       c.chunk_text AS chunkText,
-      NULL AS pageNo,
+      CAST(NULL AS SIGNED) AS pageNo,
       c.source_path AS sourcePath,
       c.source_url AS sourceUrl,
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
-      <include refid="sectionTypeExpression"/> AS sectionType
+      <include refid="sectionTypeExpression"/> AS sectionType,
+      c.quality_status AS qualityStatus,
+      CAST(NULL AS CHAR) AS embeddingText,
+      c.parent_key AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM law_api_document_chunks c
     JOIN law_api_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
       AND c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
       <include refid="effectiveSearchFilter"/>
       <if test="targets != null and targets.size() > 0">
         AND doc.target IN
@@ -394,6 +647,98 @@
     LIMIT #{limit}
   </select>
 
+  <select id="findSemanticChunksByHeadingOrDocumentTitle"
+          resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow"
+          timeout="3">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.target AS target,
+      doc.external_id AS externalId,
+      doc.title AS title,
+      doc.agency_name AS agencyName,
+      doc.category_name AS categoryName,
+      doc.source_date AS sourceDate,
+      doc.effective_status AS effectiveStatus,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      CAST(NULL AS SIGNED) AS pageNo,
+      c.source_path AS sourcePath,
+      c.source_url AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash,
+      <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
+      <include refid="sectionTypeExpression"/> AS sectionType,
+      c.quality_status AS qualityStatus,
+      c.embedding_text AS embeddingText,
+      c.parent_key AS parentKey,
+      c.chunk_version AS chunkVersion
+    FROM law_api_document_chunks c
+    JOIN law_api_documents doc ON doc.document_id = c.document_id
+    WHERE doc.use_yn = 'Y'
+      AND c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
+      <include refid="effectiveSearchFilter"/>
+      <if test="targets != null and targets.size() > 0">
+        AND doc.target IN
+        <foreach collection="targets" item="target" open="(" separator="," close=")">
+          #{target}
+        </foreach>
+      </if>
+      <if test="keywords != null and keywords.size() > 0">
+        AND (
+        <foreach collection="keywords" item="keyword" separator=" OR ">
+          c.chunk_title LIKE CONCAT('%', #{keyword}, '%')
+          OR doc.title LIKE CONCAT('%', #{keyword}, '%')
+        </foreach>
+        )
+      </if>
+    ORDER BY
+      (
+      <foreach collection="keywords" item="keyword" separator=" + ">
+        (CASE WHEN c.chunk_title = #{keyword} THEN 9 ELSE 0 END)
+        + (CASE WHEN c.chunk_title LIKE CONCAT(#{keyword}, '%') THEN 8 ELSE 0 END)
+        + (CASE WHEN c.chunk_title LIKE CONCAT('%', #{keyword}, '%') THEN 7 ELSE 0 END)
+        + (CASE WHEN doc.title = #{keyword} THEN 6 ELSE 0 END)
+        + (CASE WHEN doc.title LIKE CONCAT(#{keyword}, '%') THEN 5 ELSE 0 END)
+        + (CASE WHEN doc.title LIKE CONCAT('%', #{keyword}, '%') THEN 4 ELSE 0 END)
+      </foreach>
+      ) DESC,
+      CASE doc.target
+        WHEN 'law' THEN 0
+        WHEN 'admrul' THEN 1
+        ELSE 2
+      END,
+      doc.title,
+      c.sort_order
+    LIMIT #{limit}
+  </select>
+
+	<select id="findLawIndexIntegrityRowsByIds"
+					resultType="com.kaces.pandora.semantic.integrity.LawIndexIntegrityRow"
+					timeout="10">
+		SELECT
+			c.chunk_id AS chunkId,
+			c.document_id AS documentId,
+			CASE WHEN doc.use_yn = 'Y' AND c.use_yn = 'Y' AND c.activation_status = 'ACTIVE' THEN 1 ELSE 0 END AS active,
+			c.content_hash AS chunkContentHash,
+			e.content_hash AS embeddingContentHash,
+			e.status AS embeddingStatus,
+			e.vector_point_id AS vectorPointId
+		FROM law_api_document_chunks c
+		JOIN law_api_documents doc ON doc.document_id = c.document_id
+		LEFT JOIN law_api_chunk_embeddings e
+			ON e.chunk_id = c.chunk_id
+			AND e.embedding_model = #{model}
+			AND e.vector_store = #{vectorStore}
+		WHERE doc.target = #{target}
+			AND c.chunk_id IN
+		<foreach collection="chunkIds" item="chunkId" open="(" separator="," close=")">
+			#{chunkId}
+		</foreach>
+	</select>
+
   <select id="findSemanticChunksByDocumentTitle" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
     SELECT
       c.chunk_id AS chunkId,
@@ -408,13 +753,17 @@
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
       c.chunk_text AS chunkText,
-      NULL AS pageNo,
+      CAST(NULL AS SIGNED) AS pageNo,
       c.source_path AS sourcePath,
       c.source_url AS sourceUrl,
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
-      <include refid="sectionTypeExpression"/> AS sectionType
+      <include refid="sectionTypeExpression"/> AS sectionType,
+      c.quality_status AS qualityStatus,
+      CAST(NULL AS CHAR) AS embeddingText,
+      c.parent_key AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM (
       SELECT
         doc.document_id,
@@ -455,6 +804,7 @@
     ) doc
     JOIN law_api_document_chunks c ON c.document_id = doc.document_id
     WHERE c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
       <if test="targets != null and targets.size() > 0">
         AND doc.target IN
         <foreach collection="targets" item="target" open="(" separator="," close=")">
@@ -497,13 +847,17 @@
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
       c.chunk_text AS chunkText,
-      NULL AS pageNo,
+      CAST(NULL AS SIGNED) AS pageNo,
       c.source_path AS sourcePath,
       c.source_url AS sourceUrl,
       c.sort_order AS sortOrder,
       c.content_hash AS contentHash,
       <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
-      <include refid="sectionTypeExpression"/> AS sectionType
+      <include refid="sectionTypeExpression"/> AS sectionType,
+      c.quality_status AS qualityStatus,
+      CAST(NULL AS CHAR) AS embeddingText,
+      c.parent_key AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM (
       SELECT
         doc.document_id,
@@ -591,10 +945,10 @@
     SELECT
       COUNT(*) AS currentIndexedCount,
       CONCAT(
-        LPAD(HEX(BIT_XOR(CAST(CONV(SUBSTRING(SHA2(CONCAT(CAST(c.chunk_id AS CHAR), ':', c.content_hash), 256), 1, 16), 16, 10) AS UNSIGNED))), 16, '0'),
-        LPAD(HEX(BIT_XOR(CAST(CONV(SUBSTRING(SHA2(CONCAT(CAST(c.chunk_id AS CHAR), ':', c.content_hash), 256), 17, 16), 16, 10) AS UNSIGNED))), 16, '0'),
-        LPAD(HEX(BIT_XOR(CAST(CONV(SUBSTRING(SHA2(CONCAT(CAST(c.chunk_id AS CHAR), ':', c.content_hash), 256), 33, 16), 16, 10) AS UNSIGNED))), 16, '0'),
-        LPAD(HEX(BIT_XOR(CAST(CONV(SUBSTRING(SHA2(CONCAT(CAST(c.chunk_id AS CHAR), ':', c.content_hash), 256), 49, 16), 16, 10) AS UNSIGNED))), 16, '0')
+        LPAD(HEX(BIT_XOR(CAST(CONV(SUBSTRING(e.revision_hash, 1, 16), 16, 10) AS UNSIGNED))), 16, '0'),
+        LPAD(HEX(BIT_XOR(CAST(CONV(SUBSTRING(e.revision_hash, 17, 16), 16, 10) AS UNSIGNED))), 16, '0'),
+        LPAD(HEX(BIT_XOR(CAST(CONV(SUBSTRING(e.revision_hash, 33, 16), 16, 10) AS UNSIGNED))), 16, '0'),
+        LPAD(HEX(BIT_XOR(CAST(CONV(SUBSTRING(e.revision_hash, 49, 16), 16, 10) AS UNSIGNED))), 16, '0')
       ) AS contentFingerprint,
       COALESCE(
         DATE_FORMAT(
@@ -612,21 +966,48 @@
       AND e.vector_store = #{vectorStore}
       AND e.status = 'INDEXED'
       AND e.content_hash = c.content_hash
+      AND e.revision_hash IS NOT NULL
       AND c.content_hash REGEXP '^[0-9A-Fa-f]{64}$'
+		AND c.activation_status = 'ACTIVE'
+  </select>
+
+  <select id="findLawIndexIntegrityRows"
+          resultType="com.kaces.pandora.semantic.integrity.LawIndexIntegrityRow"
+          timeout="10">
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      CASE WHEN doc.use_yn = 'Y' AND c.use_yn = 'Y' THEN 1 ELSE 0 END AS active,
+      c.content_hash AS chunkContentHash,
+      e.content_hash AS embeddingContentHash,
+      e.status AS embeddingStatus,
+      e.vector_point_id AS vectorPointId
+    FROM law_api_document_chunks c
+    JOIN law_api_documents doc ON doc.document_id = c.document_id
+    LEFT JOIN law_api_chunk_embeddings e
+      ON e.chunk_id = c.chunk_id
+      AND e.embedding_model = #{model}
+      AND e.vector_store = #{vectorStore}
+    WHERE (#{target} = '' OR doc.target = #{target})
+      AND c.chunk_id > #{afterChunkId}
+    ORDER BY c.chunk_id
+    LIMIT #{limit}
   </select>
 
   <insert id="upsertEmbeddingStatus">
     INSERT INTO law_api_chunk_embeddings (
-      chunk_id, embedding_model, vector_store, vector_point_id, content_hash,
+      chunk_id, embedding_model, vector_store, vector_point_id, content_hash, revision_hash,
       status, embedded_at, last_error_message
     )
     VALUES (
       #{chunkId}, #{model}, #{vectorStore}, #{vectorPointId}, #{contentHash},
+      SHA2(CONCAT(CAST(#{chunkId} AS CHAR), ':', #{contentHash}), 256),
       #{status}, NOW(), #{errorMessage}
     )
     ON DUPLICATE KEY UPDATE
       vector_point_id = VALUES(vector_point_id),
       content_hash = VALUES(content_hash),
+      revision_hash = VALUES(revision_hash),
       status = VALUES(status),
       embedded_at = VALUES(embedded_at),
       last_error_message = VALUES(last_error_message)

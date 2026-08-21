@@ -44,6 +44,28 @@ class OpenAiAnswerClientPromptTests {
 	}
 
 	@Test
+	void asksItemQuestionsToPreserveEveryExplicitTopLevelEvidenceItem() throws Exception {
+		OpenAiAnswerClient client = new OpenAiAnswerClient(
+			new LawAiProperties(null, null, null, null),
+			new ObjectMapper()
+		);
+
+		String instructions = invoke(client, "instructions");
+		String userInput = invoke(client, "userInput", "필수 항목은?", "근거");
+
+		assertThat(instructions)
+			.contains("asks for required items or elements")
+			.contains("preserve every explicitly listed top-level item")
+			.contains("one direct sentence")
+			.contains("Do not split those item names into standalone bullets");
+		assertThat(userInput)
+			.contains("질문이 필수 항목이나 요소를 묻는 경우")
+			.contains("명시적으로 열거된 상위 항목을 빠뜨리지 말고")
+			.contains("첫 결론 문장 하나에")
+			.contains("항목명만 단독 불릿으로 나누지 마세요");
+	}
+
+	@Test
 	void repairPromptContainsOnlyTheQuestionAndNumberedSupportedAtomsAsUserInput() throws Exception {
 		OpenAiAnswerClient client = new OpenAiAnswerClient(
 			new LawAiProperties(null, null, null, null),

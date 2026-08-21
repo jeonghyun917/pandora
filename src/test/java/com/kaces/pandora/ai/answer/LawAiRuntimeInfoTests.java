@@ -7,6 +7,7 @@ import com.kaces.pandora.infra.qdrant.QdrantIndexSnapshot;
 import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
 import com.kaces.pandora.rag.persistence.RagDocumentMapper;
 import com.kaces.pandora.semantic.config.LawAiProperties;
+import com.kaces.pandora.semantic.lexical.SemanticLexicalIndexService;
 import com.kaces.pandora.semantic.provenance.IndexContentSnapshot;
 import java.lang.reflect.Proxy;
 import java.util.List;
@@ -30,6 +31,13 @@ class LawAiRuntimeInfoTests {
 			LawAiRuntimeInfo runtimeInfo = service.runtimeInfo();
 
 			assertThat(runtimeInfo.indexRevision()).matches("[0-9a-f]{64}");
+			assertThat(runtimeInfo.lexicalRevision()).isEqualTo("legacy-law-like-v1+rag-terms-v2-unavailable");
+			assertThat(runtimeInfo.lawQdrantExactPointCount()).isEqualTo(20L);
+			assertThat(runtimeInfo.ragQdrantExactPointCount()).isEqualTo(10L);
+			assertThat(runtimeInfo.lawDatabaseIndexedCount()).isEqualTo(20L);
+			assertThat(runtimeInfo.ragDatabaseIndexedCount()).isEqualTo(10L);
+			assertThat(runtimeInfo.lawDatabaseContentFingerprint()).isEqualTo("a".repeat(64));
+			assertThat(runtimeInfo.ragDatabaseContentFingerprint()).isEqualTo("b".repeat(64));
 			assertThat(runtimeInfo.qdrantReady()).isTrue();
 			assertThat(runtimeInfo.qdrantSearchFailureCount()).isZero();
 		} finally {
@@ -52,7 +60,29 @@ class LawAiRuntimeInfoTests {
 			LawAiRuntimeInfo runtimeInfo = service.runtimeInfo();
 
 			assertThat(runtimeInfo.indexRevision()).isNull();
+			assertThat(runtimeInfo.lexicalRevision()).isEqualTo("legacy-law-like-v1+rag-terms-v2-unavailable");
 			assertThat(runtimeInfo.qdrantReady()).isTrue();
+		} finally {
+			service.shutdownExecutors();
+			qdrant.shutdownExecutor();
+		}
+	}
+
+	@Test
+	void runtimeInfoPublishesReadyCommonLexicalRevision() {
+		LawAiProperties properties = properties();
+		QdrantClient qdrant = qdrant(properties, true);
+		SemanticLexicalIndexService lexicalIndex = org.mockito.Mockito.mock(SemanticLexicalIndexService.class);
+		org.mockito.Mockito.when(lexicalIndex.currentRevision()).thenReturn("common-lexical-revision");
+		LawAiAnswerService service = service(
+			mapper(LawChunkMapper.class, snapshot(20, 'a'), false),
+			mapper(RagDocumentMapper.class, snapshot(10, 'b'), false),
+			qdrant,
+			properties,
+			lexicalIndex
+		);
+		try {
+			assertThat(service.runtimeInfo().lexicalRevision()).isEqualTo("common-lexical-revision");
 		} finally {
 			service.shutdownExecutors();
 			qdrant.shutdownExecutor();
@@ -64,6 +94,16 @@ class LawAiRuntimeInfoTests {
 		RagDocumentMapper ragMapper,
 		QdrantClient qdrant,
 		LawAiProperties properties
+	) {
+		return service(lawMapper, ragMapper, qdrant, properties, null);
+	}
+
+	private LawAiAnswerService service(
+		LawChunkMapper lawMapper,
+		RagDocumentMapper ragMapper,
+		QdrantClient qdrant,
+		LawAiProperties properties,
+		SemanticLexicalIndexService lexicalIndex
 	) {
 		return new LawAiAnswerService(
 			lawMapper,
@@ -79,7 +119,10 @@ class LawAiRuntimeInfoTests {
 			new EvidenceCandidateDiversifier(),
 			new FailureLoggingService(null),
 			null,
-			properties
+			properties,
+			null,
+			null,
+			lexicalIndex
 		);
 	}
 

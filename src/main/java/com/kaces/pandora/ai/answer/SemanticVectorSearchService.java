@@ -31,6 +31,10 @@ final class SemanticVectorSearchService {
 		return qdrantClient == null ? 0L : qdrantClient.searchFailureCount();
 	}
 
+	QdrantIndexSnapshot indexSnapshot(String collection) {
+		return qdrantClient == null ? null : qdrantClient.indexSnapshot(collection).orElse(null);
+	}
+
 	String indexRevision(
 		String embeddingModel,
 		String lawCollection,
@@ -41,8 +45,23 @@ final class SemanticVectorSearchService {
 		if (qdrantClient == null) {
 			return null;
 		}
-		QdrantIndexSnapshot lawQdrant = qdrantClient.indexSnapshot(lawCollection).orElse(null);
-		QdrantIndexSnapshot ragQdrant = qdrantClient.indexSnapshot(ragCollection).orElse(null);
+		QdrantIndexSnapshot lawQdrant = indexSnapshot(lawCollection);
+		QdrantIndexSnapshot ragQdrant = indexSnapshot(ragCollection);
+		return indexRevision(embeddingModel, lawCollection, lawDatabase, lawQdrant, ragCollection, ragDatabase, ragQdrant);
+	}
+
+	String indexRevision(
+		String embeddingModel,
+		String lawCollection,
+		IndexContentSnapshot lawDatabase,
+		QdrantIndexSnapshot lawQdrant,
+		String ragCollection,
+		IndexContentSnapshot ragDatabase,
+		QdrantIndexSnapshot ragQdrant
+	) {
+		if (qdrantClient == null) {
+			return null;
+		}
 		return IndexRevisionCalculator.calculate(
 			embeddingModel,
 			List.of(
@@ -105,7 +124,9 @@ final class SemanticVectorSearchService {
 			}
 		}
 		return bestByChunk.values().stream()
-			.sorted(Comparator.comparingDouble(QdrantSearchHit::score).reversed())
+			.sorted(Comparator.comparingDouble(QdrantSearchHit::score).reversed()
+				.thenComparing(QdrantSearchHit::target, Comparator.nullsFirst(String::compareTo))
+				.thenComparingLong(QdrantSearchHit::chunkId))
 			.limit(Math.max(1, limit))
 			.toList();
 	}

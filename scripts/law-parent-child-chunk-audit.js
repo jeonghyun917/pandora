@@ -1,9 +1,12 @@
 const { execFileSync } = require("node:child_process");
+const { runtimeComparableIndexedQuery } = require("./lib/law-runtime-comparable-index");
 const fs = require("node:fs");
 const path = require("node:path");
 
 const workspace = path.resolve(__dirname, "..");
 const mysql = process.env.MARIADB_EXE || "C:\\Program Files\\MariaDB 12.2\\bin\\mariadb.exe";
+const embeddingModel = process.env.PANDORA_EMBEDDING_MODEL || "text-embedding-3-small";
+const vectorStore = process.env.PANDORA_LAW_VECTOR_STORE || "law_chunks";
 const outPath = path.resolve(workspace, "logs", "law-parent-child-chunk-audit-latest.md");
 const jsonPath = path.resolve(workspace, "logs", "law-parent-child-chunk-audit-latest.json");
 
@@ -215,6 +218,12 @@ GROUP BY doc.target, COALESCE(e.vector_store, '(none)'), COALESCE(e.status, 'NO_
 ORDER BY doc.target, vector_store, status;
 `, ["target", "vectorStore", "status", "chunks"]);
 
+const runtimeComparableIndexed = {
+  embeddingModel,
+  vectorStore,
+  rows: table(runtimeComparableIndexedQuery({ embeddingModel, vectorStore }), ["target", "chunks"]),
+};
+
 const projectionRows = parentProjection.map((row) => ({
   ...row,
   reduction: number(row.sourceChunks) && number(row.projectedChildChunks)
@@ -243,6 +252,7 @@ const result = {
   qualitySummary,
   metadataGaps,
   embeddingStatus,
+  runtimeComparableIndexed,
   parentRisk,
   duplicateNoise,
   tinySamples,
@@ -304,6 +314,17 @@ const markdown = [
     { key: "vectorStore", label: "Vector store" },
     { key: "status", label: "Status" },
     { key: "chunks", label: "Chunks", align: "right", format: "number" },
+  ]),
+  "",
+  "## Runtime-Comparable Indexed Coverage",
+  "",
+  `- Embedding model: ${runtimeComparableIndexed.embeddingModel}`,
+  `- Vector store: ${runtimeComparableIndexed.vectorStore}`,
+  "- Filters: active document/chunk, active activation status, current valid content hash, matching model/store, and INDEXED embedding.",
+  "",
+  mdTable(runtimeComparableIndexed.rows, [
+    { key: "target", label: "Target" },
+    { key: "chunks", label: "Runtime-comparable indexed", align: "right", format: "number" },
   ]),
   "",
   "## Largest Parent Candidates",

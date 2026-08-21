@@ -10,6 +10,54 @@ class ClaimEvidenceMatcherRelationTests {
 	private final ClaimEvidenceMatcher matcher = new ClaimEvidenceMatcher();
 
 	@Test
+	void exactDocumentIdentityClaimCanUseTheSelectedDocumentTitle() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"결론부터 말씀드리면, 찾으시는 문서는 "
+				+ "\"공공소프트웨어사업 과업심의 가이드(2022. 12.)\"입니다.",
+			List.of(ground(
+				"공공소프트웨어사업 과업심의 가이드(2022. 12.)",
+				"본문에는 문서 제목을 다시 서술하지 않는다."
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(match.evidenceSentence())
+			.isEqualTo("공공소프트웨어사업 과업심의 가이드(2022. 12.)");
+	}
+
+	@Test
+	void documentTitleMetadataCannotSupportAContentOrObligationClaim() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"공공소프트웨어사업 과업심의 가이드는 모든 하드웨어 구매를 심의하도록 요구합니다.",
+			List.of(ground(
+				"공공소프트웨어사업 과업심의 가이드(2022. 12.)",
+				"이 문장은 문서 내용과 무관하다."
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void documentIdentityDescriptorMustMatchSelectedDocumentMetadata() {
+		LawAiAnswerGround ground = ground(
+			"공공소프트웨어사업 과업심의 가이드(2022. 12.)",
+			"본문에는 문서 제목을 다시 서술하지 않는다."
+		);
+
+		assertThat(matcher.match(
+			"요약하면, 요청하신 문서는 제목이 "
+				+ "\"공공소프트웨어사업 과업심의 가이드(2022. 12.)\"인 공식 가이드 문서입니다.",
+			List.of(ground)
+		).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(
+			"요약하면, 요청하신 문서는 제목이 "
+				+ "\"공공소프트웨어사업 과업심의 가이드(2022. 12.)\"인 법률 문서입니다.",
+			List.of(ground)
+		).status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
 	void requiresTheAddedConceptInAMultiConceptRelationClaim() {
 		ClaimEvidenceMatcher.Match match = matcher.match(
 			"과업심의 대상 사업은 사전협의도 함께 해야 합니다.",
@@ -575,6 +623,30 @@ class ClaimEvidenceMatcherRelationTests {
 		ClaimEvidenceMatcher.Match match = matcher.match(
 			"이 사업은 비대상입니다.",
 			List.of(ground("과업심의 가이드", "이 사업은 비대상입니다."))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void inlineUniversalTargetHeadingIsSelfContainedWithinASingleDocumentScope() {
+		String source =
+			"적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW 포함)";
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			source,
+			List.of(ground("공공소프트웨어사업 과업심의 가이드", source))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void inlineUniversalTargetHeadingCannotBorrowAnAmbiguousMultiScopeTitle() {
+		String source =
+			"적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW 포함)";
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			source,
+			List.of(ground("과업심의 및 사전협의 통합 가이드", source))
 		);
 
 		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
@@ -3169,6 +3241,33 @@ class ClaimEvidenceMatcherRelationTests {
 	}
 
 	@Test
+	void negativeClassificationBoundaryDoesNotConflictWithThePositiveBusinessCondition() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"소프트웨어사업에 해당하면 과업심의 대상입니다.",
+			List.of(ground(
+				"공공소프트웨어사업 과업심의 가이드",
+				"적용 대상 사업은 국가기관 등이 발주하는 모든 SW사업입니다. "
+					+ "단순 H/W 도입·설치처럼 소프트웨어사업으로 볼 수 없는 경우는 비대상입니다."
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void negativeClassificationBoundaryAloneDoesNotContradictThePositiveBusinessCondition() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"소프트웨어사업에 해당하면 과업심의 대상입니다.",
+			List.of(ground(
+				"공공소프트웨어사업 과업심의 가이드",
+				"단순 H/W 도입·설치처럼 소프트웨어사업으로 볼 수 없는 경우는 비대상입니다."
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
 	void exactGeneralSupportWinsOverConditionalOppositeGroundForSameSubject() {
 		ClaimEvidenceMatcher.Match match = matcher.match(
 			"사업은 지원 대상입니다.",
@@ -3195,6 +3294,86 @@ class ClaimEvidenceMatcherRelationTests {
 		);
 
 		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void supportsStatutoryEnumerationWhenClaimUsesDifferentListSeparators() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"제안요청서에는 과업내용·요구사항·계약조건·평가요소·평가방법을 반드시 기재해야 합니다.",
+			List.of(ground(
+				"제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법, "
+					+ "제안서의 규격, 기타 필요한 사항 등을 기술하여야 합니다."
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void supportsGroundedTwoItemRequirementWithEquivalentRequiredPredicate() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"제안요청서에는 과업내용과 요구사항을 명확히 기술해야 합니다.",
+			List.of(ground(
+				"제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법을 "
+					+ "기술하여야 합니다."
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void rejectsTwoItemRequirementWhenOneItemIsUnsupported() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"제안요청서에는 과업내용과 보증금 면제를 명확히 기술해야 합니다.",
+			List.of(ground(
+				"제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법을 "
+					+ "기술하여야 합니다."
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void rejectsStatutoryEnumerationWhenClaimAddsAnUnsupportedRequiredItem() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"제안요청서에는 과업내용·요구사항·계약조건·평가요소·보증금 면제를 반드시 기재해야 합니다.",
+			List.of(ground(
+				"제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법, "
+					+ "제안서의 규격, 기타 필요한 사항 등을 기술하여야 합니다."
+			))
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void supportsCompleteRequiredEnumerationCombinedAcrossSelectedGrounds() {
+		ClaimEvidenceMatcher.Match match = matcher.match(
+			"결론부터 말하면, 제안요청서에는 과업내용, 요구사항, 계약조건, "
+				+ "평가요소와 평가방법, 제안서의 규격·제출방법·제본형태, "
+				+ "제안서 보상에 관한 사항, 사업자가 준수해야 하는 사항, "
+				+ "과학기술정보통신부장관 고시 따른 적정사업기간 산정에 관한 사항, "
+				+ "SW분리발주에 따른 사업범위 및 제약사항, 그밖에 필요한 사항을 "
+				+ "반드시 기재해야 합니다.",
+			List.of(
+				ground(
+					"제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법, "
+						+ "제안서의 규격, 기타 필요한 사항 등을 기술하여야 합니다."
+				),
+				ground(
+					"제안요청서에는 다음 각 호의 사항을 명시하여야 한다. 1. 과업내용 "
+						+ "▢ 평가요소, 평가방법 ▢ 제안서 규격ㆍ제출방법ㆍ제본형태 "
+						+ "▢ 제안서 보상에 관한 사항 ▢ 사업자가 준수해야 하는 사항 "
+						+ "▢ 과학기술정보통신부장관이 고시한 소프트웨어사업 계약 및 관리감독에 "
+						+ "관한 지침 제10조에 따른 적정사업기간 산정에 관한 사항 "
+						+ "▢ SW분리발주에 따른 사업범위 및 제약사항 ▢ 그밖에 필요한 사항"
+				)
+			)
+		);
+
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
 	}
 
 	@Test

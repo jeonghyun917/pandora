@@ -1,6 +1,7 @@
 package com.kaces.pandora.ai.answer;
 
 import com.kaces.pandora.common.text.KoreanQueryNormalizer;
+import com.kaces.pandora.semantic.config.LawAiVerificationProperties;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -22,15 +23,37 @@ public class ClaimVerifier {
 	);
 
 	private final ClaimEvidenceMatcher evidenceMatcher;
+	private final SemanticEvidenceMatcher semanticEvidenceMatcher;
+	private final KoreanEvidenceAtomParser evidenceAtomParser;
+	private final LawAiVerificationProperties verificationProperties;
 	private final ClaimEvidenceAtomizer claimAtomizer = new ClaimEvidenceAtomizer();
 
 	public ClaimVerifier() {
 		this(new ClaimEvidenceMatcher());
 	}
 
-	@Autowired
 	public ClaimVerifier(ClaimEvidenceMatcher evidenceMatcher) {
+		this(
+			evidenceMatcher,
+			new SemanticEvidenceMatcher(),
+			new KoreanEvidenceAtomParser(),
+			new LawAiVerificationProperties(false, false, 20)
+		);
+	}
+
+	@Autowired
+	public ClaimVerifier(
+		ClaimEvidenceMatcher evidenceMatcher,
+		SemanticEvidenceMatcher semanticEvidenceMatcher,
+		KoreanEvidenceAtomParser evidenceAtomParser,
+		LawAiVerificationProperties verificationProperties
+	) {
 		this.evidenceMatcher = evidenceMatcher;
+		this.semanticEvidenceMatcher = semanticEvidenceMatcher;
+		this.evidenceAtomParser = evidenceAtomParser;
+		this.verificationProperties = verificationProperties == null
+			? new LawAiVerificationProperties(false, false, 20)
+			: verificationProperties;
 	}
 
 	public String verify(String answer, List<LawAiAnswerGround> grounds) {
@@ -42,6 +65,7 @@ public class ClaimVerifier {
 			return result(
 				INSUFFICIENT_EVIDENCE_MESSAGE,
 				false,
+				List.of(),
 				List.of(),
 				List.of(),
 				List.of(),
@@ -58,6 +82,7 @@ public class ClaimVerifier {
 				List.of(),
 				List.of(),
 				List.of(),
+				List.of(),
 				0,
 				0
 			);
@@ -68,7 +93,9 @@ public class ClaimVerifier {
 		List<String> unsupportedNumericClaims = new ArrayList<>();
 		List<String> contradictedClaims = new ArrayList<>();
 		List<ClaimEvidenceLink> evidenceLinks = new ArrayList<>();
+		List<ClaimMatcherShadowResult> shadowResults = new ArrayList<>();
 		ClaimEvidenceMatcher.EvidenceIndex evidenceIndex = evidenceMatcher.index(grounds);
+		SemanticEvidenceMatcher.EvidenceIndex semanticIndex = semanticEvidenceMatcher.index(grounds);
 		int substantiveClaims = 0;
 		int supportedSubstantiveClaims = 0;
 
@@ -81,7 +108,22 @@ public class ClaimVerifier {
 				continue;
 			}
 			substantiveClaims++;
-			ClaimEvidenceMatcher.Match match = evidenceMatcher.match(sentence, evidenceIndex);
+			ClaimEvidenceMatcher.Match controlMatch = evidenceMatcher.match(sentence, evidenceIndex);
+			SemanticEvidenceMatcher.SemanticMatch semanticMatch = (
+				verificationProperties.semanticShadowEnabled() || verificationProperties.semanticAuthoritative()
+			)
+				? semanticEvidenceMatcher.match(evidenceAtomParser.parse(sentence), semanticIndex)
+				: null;
+			if (verificationProperties.semanticShadowEnabled()
+				&& semanticMatch != null
+				&& semanticMatch.status() != controlMatch.status()
+				&& shadowResults.size() < verificationProperties.maxShadowDisagreements()) {
+				shadowResults.add(ClaimMatcherShadowResult.from(sentence, controlMatch, semanticMatch));
+			}
+			ClaimEvidenceMatcher.Match match = verificationProperties.semanticAuthoritative()
+				&& semanticMatch != null
+				? semanticMatch.toControlMatch()
+				: controlMatch;
 			if (match.status() == ClaimEvidenceMatcher.Status.SUPPORTED) {
 				kept.add(sentence);
 				supportedSubstantiveClaims++;
@@ -107,6 +149,7 @@ public class ClaimVerifier {
 				unsupportedNumericClaims,
 				contradictedClaims,
 				evidenceLinks,
+				shadowResults,
 				substantiveClaims,
 				supportedSubstantiveClaims
 			);
@@ -119,6 +162,7 @@ public class ClaimVerifier {
 				unsupportedNumericClaims,
 				contradictedClaims,
 				evidenceLinks,
+				shadowResults,
 				substantiveClaims,
 				supportedSubstantiveClaims
 			);
@@ -132,6 +176,7 @@ public class ClaimVerifier {
 			unsupportedNumericClaims,
 			contradictedClaims,
 			evidenceLinks,
+			shadowResults,
 			substantiveClaims,
 			supportedSubstantiveClaims
 		);
@@ -144,6 +189,7 @@ public class ClaimVerifier {
 		List<String> unsupportedNumericClaims,
 		List<String> contradictedClaims,
 		List<ClaimEvidenceLink> evidenceLinks,
+		List<ClaimMatcherShadowResult> semanticShadowResults,
 		int strongClaims,
 		int supportedStrongClaims
 	) {
@@ -155,6 +201,7 @@ public class ClaimVerifier {
 			List.copyOf(unsupportedNumericClaims),
 			List.copyOf(contradictedClaims),
 			List.copyOf(evidenceLinks),
+			List.copyOf(semanticShadowResults),
 			strongClaims,
 			supportedStrongClaims
 		);
@@ -221,9 +268,27 @@ public class ClaimVerifier {
 		List<String> unsupportedNumericClaims,
 		List<String> contradictedClaims,
 		List<ClaimEvidenceLink> evidenceLinks,
+		List<ClaimMatcherShadowResult> semanticShadowResults,
 		int strongClaimCount,
 		int supportedStrongClaimCount
 	) {
+		public VerificationResult(
+			String verifiedAnswer,
+			boolean insufficientEvidence,
+			boolean changed,
+			List<String> unsupportedClaims,
+			List<String> unsupportedNumericClaims,
+			List<String> contradictedClaims,
+			List<ClaimEvidenceLink> evidenceLinks,
+			int strongClaimCount,
+			int supportedStrongClaimCount
+		) {
+			this(
+				verifiedAnswer, insufficientEvidence, changed, unsupportedClaims,
+				unsupportedNumericClaims, contradictedClaims, evidenceLinks, List.of(),
+				strongClaimCount, supportedStrongClaimCount
+			);
+		}
 	}
 
 	public record ClaimEvidenceLink(

@@ -60,6 +60,31 @@ public class LawSyncController {
 		return lawOpenApiSyncService.previewRebuildChunksByDocumentIds(target, documentIds);
 	}
 
+	@PostMapping("/chunks/create-candidate")
+	public CandidateChunkVersionResult createCandidateChunks(
+		@RequestParam(defaultValue = "law") String target,
+		@RequestParam long documentId,
+		@RequestParam(defaultValue = "") String previewApprovalToken
+	) {
+		return lawOpenApiSyncService.createCandidateChunks(target, documentId, previewApprovalToken);
+	}
+
+	@PostMapping("/chunks/activate-candidate")
+	public ChunkActivationResult activateCandidate(
+		@RequestParam long documentId,
+		@RequestParam int candidateVersion
+	) {
+		return lawOpenApiSyncService.activateCandidate(documentId, candidateVersion);
+	}
+
+	@PostMapping("/chunks/rollback-version")
+	public ChunkActivationResult rollbackToVersion(
+		@RequestParam long documentId,
+		@RequestParam int retiredVersion
+	) {
+		return lawOpenApiSyncService.rollbackToVersion(documentId, retiredVersion);
+	}
+
 	@PostMapping("/sync/detail")
 	public LawOpenApiSyncService.SyncResult syncDetail(
 		@RequestParam(defaultValue = "law") String target,

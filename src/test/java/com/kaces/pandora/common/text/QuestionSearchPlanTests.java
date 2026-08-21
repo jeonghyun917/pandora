@@ -230,6 +230,65 @@ class QuestionSearchPlanTests {
 		);
 	}
 
+	@Test
+	void prioritizesFocusedDirectEvidenceTermsForBm25Planning() {
+		QuestionSearchPlan plan = QuestionSearchPlan.from("공익신고자에게 불이익을 주면 어떤 보호를 받을 수 있어?");
+
+		assertThat(plan.bm25Keywords())
+			.startsWith(plan.focusedKeywords().toArray(String[]::new))
+			.contains("공익신고자 보호", "비밀보장", "보호조치");
+	}
+
+	@Test
+	void expandsContractCompletionReportQuestionToCompletionInspectionAndPayment() {
+		QuestionSearchPlan plan = QuestionSearchPlan.from(
+			"\uACFC\uC5C5\uC9C0\uC2DC\uC11C \uC6A9\uC5ED\uAE30\uAC04\uC774 \uC548 \uB05D\uB0AC\uB294\uB370 \uACB0\uACFC\uBCF4\uACE0\uD574\uB3C4 \uB418\uB098?"
+		);
+
+		assertThat(plan.profile().matchedPolicyIds()).contains("contract_completion");
+		assertThat(plan.profile().preferredTargets()).contains("law", "admrul");
+		assertThat(plan.profile().preferredSectionTypes()).contains("procedure", "period");
+		assertThat(join(plan.focusedKeywords())).contains(
+			"\uC6A9\uC5ED\uACC4\uC57D\uC77C\uBC18\uC870\uAC74",
+			"\uC644\uB8CC\uD1B5\uC9C0",
+			"\uAC80\uC0AC",
+			"\uB300\uAC00\uC758 \uC9C0\uAE09"
+		);
+		assertThat(plan.profile().directEvidenceGroups()).anySatisfy(group ->
+			assertThat(group).contains("\uC6A9\uC5ED\uACC4\uC57D", "\uACFC\uC5C5\uB0B4\uC6A9\uC11C")
+		);
+		assertThat(plan.profile().directEvidenceGroups()).anySatisfy(group ->
+			assertThat(group).contains("\uC644\uB8CC\uD1B5\uC9C0", "\uAC80\uC0AC", "\uB300\uAC00\uC758 \uC9C0\uAE09")
+		);
+	}
+
+	@Test
+	void genericResultReportQuestionDoesNotActivateContractCompletionPolicy() {
+		QuestionSearchPlan plan = QuestionSearchPlan.from(
+			"\uC774\uBC88 \uBD84\uAE30 \uACB0\uACFC\uBCF4\uACE0\uC11C\uB294 \uC5B8\uC81C \uC791\uC131\uD574?"
+		);
+
+		assertThat(plan.profile().matchedPolicyIds()).doesNotContain("contract_completion");
+		assertThat(join(plan.focusedKeywords()))
+			.doesNotContain("\uC6A9\uC5ED\uACC4\uC57D\uC77C\uBC18\uC870\uAC74")
+			.doesNotContain("\uC644\uB8CC\uD1B5\uC9C0");
+	}
+
+	@Test
+	void remainingWorkReportQuestionActivatesContractCompletionPolicyWithoutGenericReportOverreach() {
+		QuestionSearchPlan plan = QuestionSearchPlan.from(
+			"\uC5C5\uBB34\uAC00 \uB0A8\uC544 \uC788\uB294\uB370 \uACB0\uACFC\uBCF4\uACE0\uC11C\uB9CC \uBA3C\uC800 \uB0B4\uB3C4 \uB418\uB098?"
+		);
+
+		assertThat(plan.profile().matchedPolicyIds()).contains("contract_completion");
+		assertThat(plan.profile().preferredTargets()).containsExactlyInAnyOrder("law", "admrul");
+		assertThat(join(plan.focusedKeywords())).contains(
+			"\uC6A9\uC5ED\uACC4\uC57D\uC77C\uBC18\uC870\uAC74",
+			"\uC644\uB8CC\uD1B5\uC9C0",
+			"\uAC80\uC0AC"
+		);
+	}
+
 	private String join(Iterable<String> values) {
 		return String.join("\n", values);
 	}

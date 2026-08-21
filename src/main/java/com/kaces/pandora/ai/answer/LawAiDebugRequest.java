@@ -7,7 +7,8 @@ public record LawAiDebugRequest(
 	List<String> targets,
 	String question,
 	Integer limit,
-	Boolean includeFuture
+	Boolean includeFuture,
+	List<List<String>> auditTermGroups
 ) {
 	public boolean includeFutureEnabled() {
 		return includeFuture == null || includeFuture;

@@ -3,10 +3,13 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { buildBlockingGates } = require('./lib/rag-eval-gates');
 
 let caseParser = {};
 let retrievalMetrics = {};
 let retrievalRunner = {};
+let coverageReporter = {};
+let supplementGenerator = {};
 try {
   caseParser = require('./lib/rag-eval-cases');
 } catch {
@@ -22,6 +25,54 @@ try {
 } catch {
   // The runner is added only after its command-line contract has failed RED.
 }
+try {
+  coverageReporter = require('./rag-eval-coverage-report');
+} catch {
+  // The coverage reporter is added only after its named-gate contract has failed RED.
+}
+try {
+  supplementGenerator = require('./generate-rag-eval-supplement');
+} catch {
+  // The generator is loaded only after it becomes safe to import without querying the database.
+}
+
+test('blocking gates classify curated, answer-oracle, and no-grounds failures independently', () => {
+  const rows = [
+    { id: 'curated-pass-one', passed: true },
+    { id: 'curated-pass-two', passed: true },
+    { id: 'curated-fail', passed: false },
+    { id: 'gen-oracle-pass', passed: true, answerVerificationRequired: true },
+    { id: 'gen-oracle-fail', passed: false, answerVerificationRequired: true },
+    { id: 'gen-no-ground-fail', passed: false, expectedResultMsgs: ['NO_GROUNDS'] },
+  ];
+
+  assert.deepEqual(buildBlockingGates(rows), {
+    curated: {
+      total: 3,
+      passed: 2,
+      failed: 1,
+      passRate: 2 / 3,
+      gatePassed: false,
+      blockingFailureIds: ['curated-fail'],
+    },
+    answerOracle: {
+      total: 2,
+      passed: 1,
+      failed: 1,
+      passRate: 1 / 2,
+      gatePassed: false,
+      blockingFailureIds: ['gen-oracle-fail'],
+    },
+    noGrounds: {
+      total: 1,
+      passed: 0,
+      failed: 1,
+      passRate: 0,
+      gatePassed: false,
+      blockingFailureIds: ['gen-no-ground-fail'],
+    },
+  });
+});
 
 test('TSV parser preserves UTF-8 and quoted tabs, newlines, and escaped quotes', () => {
   assert.equal(typeof caseParser.parseEvalCasesTsv, 'function');
@@ -168,7 +219,7 @@ test('answer-oracle merge rejects duplicate, orphan, missing, and malformed rows
   );
 });
 
-test('bundled answer-oracle sidecar merges exactly 85 explicit cases', () => {
+test('bundled answer-oracle sidecar merges exactly 89 explicit cases', () => {
   const repositoryRoot = path.resolve(__dirname, '..');
   const cases = caseParser.loadEvalCases([
     path.join(repositoryRoot, 'src', 'main', 'resources', 'rag-evaluation-cases.tsv'),
@@ -178,9 +229,22 @@ test('bundled answer-oracle sidecar merges exactly 85 explicit cases', () => {
   });
   const explicit = cases.filter((item) => item.requiredPropositionGroups.length > 0);
 
-  assert.equal(explicit.length, 85);
+  assert.equal(cases.length, 1003);
+  assert.equal(explicit.length, 89);
   assert.equal(explicit.every((item) => item.answerVerificationRequired === true), true);
   assert.equal(explicit.every((item) => item.forbiddenAnswerTerms.length > 0), true);
+  assert.deepEqual(
+    explicit
+      .filter((item) => item.id.startsWith('contract-completion-'))
+      .map((item) => item.id)
+      .sort(),
+    [
+      'contract-completion-actual-finished',
+      'contract-completion-before-period',
+      'contract-completion-before-period-paraphrase',
+      'contract-completion-work-remaining-control',
+    ],
+  );
 });
 
 test('case selection rejects every requested ID that is missing', () => {
@@ -237,6 +301,35 @@ test('retrieval metrics find a first downstream drop after vector or lexical ent
   assert.equal(measured.candidateEntryHit, true);
   assert.equal(measured.firstDropStage, 'intentFiltered');
   assert.equal(measured.stages.intentFiltered.directHit, false);
+});
+
+test('retrieval metrics preserve BM25 and fused shadow ranks for deterministic acceptance', () => {
+  const evalCase = {
+    id: 'shadow-rank',
+    expectedTitleTerms: ['정답 문서'],
+    expectedDocumentTerms: [],
+    expectedSectionTypes: [],
+    expectedParentTerms: [],
+    expectedResultMsgs: ['OK'],
+  };
+  const direct = { chunkId: 7, target: 'law', title: '정답 문서' };
+  const wrong = { chunkId: 8, target: 'law', title: '오답 문서' };
+  const response = Object.fromEntries(retrievalMetrics.STAGE_NAMES.map((stage) => [stage, [direct]]));
+  response.resultMsg = 'OK';
+  response.bm25Hits = [wrong, direct];
+  response.fused = [direct, wrong];
+
+  const measured = retrievalMetrics.measureRetrievalCase(evalCase, response, 30);
+  const summary = retrievalMetrics.summarizeRetrievalCases([measured], 30);
+
+  assert.equal(measured.stages.bm25Hits.directHit, true);
+  assert.equal(measured.stages.fused.directHit, true);
+  assert.deepEqual(measured.shadowRanks, {
+    bm25Hits: ['law:8', 'law:7'],
+    fused: ['law:7', 'law:8'],
+  });
+  assert.equal(summary.shadowStages.bm25Hits.directHitRate, 1);
+  assert.equal(summary.shadowStages.fused.directHitRate, 1);
 });
 
 test('retrieval metrics honor K and report no-ground false grounds outside recall denominators', () => {
@@ -389,21 +482,128 @@ test('section type matching uses the indexed section type instead of body infere
   assert.equal(measured.stages.vectorHits.directHit, false);
 });
 
-test('retrieval runner accepts explicit case IDs, case limit, K, and output path', () => {
+test('retrieval runner accepts explicit case IDs, case limit, K, output path, and bounded rank capture', () => {
   assert.equal(typeof retrievalRunner.parseOptions, 'function');
 
   const options = retrievalRunner.parseOptions([
     '--case-ids', 'guide-a,guide-b',
     '--limit', '12',
     '--k', '7',
+    '--capture-rank-limit', '3',
+    '--training-manifest', 'src/main/resources/training.json',
     '--output', 'logs/custom-retrieval.json',
   ], {});
 
   assert.deepEqual(options.caseIds, ['guide-a', 'guide-b']);
   assert.equal(options.caseLimit, 12);
   assert.equal(options.k, 7);
+  assert.equal(options.captureRankLimit, 3);
+  assert.equal(options.trainingManifestPath, 'src/main/resources/training.json');
   assert.equal(options.outputPath, 'logs/custom-retrieval.json');
   assert.equal(options.reportPath, 'logs/custom-retrieval.md');
+});
+
+test('training capture requires the exact manifest order', () => {
+  const manifestInfo = {
+    trainingCases: [{ id: 'case-a' }, { id: 'case-b' }],
+  };
+
+  assert.doesNotThrow(() => retrievalRunner.assertTrainingSelection(
+    manifestInfo,
+    [{ id: 'case-a' }, { id: 'case-b' }],
+  ));
+  assert.throws(
+    () => retrievalRunner.assertTrainingSelection(
+      manifestInfo,
+      [{ id: 'case-b' }, { id: 'case-a' }],
+    ),
+    /training selection does not match manifest order/i,
+  );
+});
+
+test('retrieval rank capture defaults off and rejects limits above 100', () => {
+  assert.equal(retrievalRunner.parseOptions([], {}).captureRankLimit, 0);
+  assert.throws(
+    () => retrievalRunner.parseOptions(['--capture-rank-limit', '101'], {}),
+    /capture rank limit must be between 0 and 100/i,
+  );
+});
+
+test('source rank snapshot is bounded, ordered, audit-only, and excludes candidate text', () => {
+  const response = {
+    vectorHits: [
+      {
+        target: 'law',
+        chunkId: 9,
+        matchedAuditGroupIndexes: [2, 0, 2, -1, '1'],
+        chunkText: 'secret chunk',
+        body: 'secret body',
+        snippet: 'secret snippet',
+      },
+      { candidateKey: 'official_doc:7', matchedAuditGroupIndexes: [1] },
+      { candidateKey: 'law:8', matchedAuditGroupIndexes: [] },
+    ],
+    bm25Hits: [
+      { candidateKey: 'internal_doc:4', matchedAuditGroupIndexes: [3, 1] },
+    ],
+  };
+
+  const snapshot = retrievalRunner.captureSourceRankSnapshot(response, 2);
+
+  assert.deepEqual(snapshot, {
+    vector: [
+      { candidateKey: 'law:9', rank: 1, matchedAuditGroupIndexes: [0, 2] },
+      { candidateKey: 'official_doc:7', rank: 2, matchedAuditGroupIndexes: [1] },
+    ],
+    bm25: [
+      { candidateKey: 'internal_doc:4', rank: 1, matchedAuditGroupIndexes: [1, 3] },
+    ],
+  });
+  const serialized = JSON.stringify(snapshot);
+  assert.equal(serialized.includes('secret'), false);
+  assert.equal(serialized.includes('chunkText'), false);
+  assert.equal(serialized.includes('body'), false);
+  assert.equal(serialized.includes('snippet'), false);
+});
+
+test('runtime verification retries one read-only transport timeout and preserves attempt count', async () => {
+  assert.equal(typeof retrievalRunner.loadRuntimeInfo, 'function');
+  let calls = 0;
+  const runtime = await retrievalRunner.loadRuntimeInfo('http://runtime.test', 50, {
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls === 1) {
+        const error = new Error('timed out');
+        error.name = 'AbortError';
+        throw error;
+      }
+      return {
+        ok: true,
+        json: async () => ({ runtimeInstanceId: 'runtime-a', indexRevision: 'revision-a' }),
+      };
+    },
+    delayImpl: async () => {},
+  });
+
+  assert.equal(calls, 2);
+  assert.equal(runtime.readAttempts, 2);
+  assert.equal(runtime.runtimeInstanceId, 'runtime-a');
+});
+
+test('runtime verification never retries a completed HTTP rejection', async () => {
+  assert.equal(typeof retrievalRunner.loadRuntimeInfo, 'function');
+  let calls = 0;
+  await assert.rejects(
+    retrievalRunner.loadRuntimeInfo('http://runtime.test', 50, {
+      fetchImpl: async () => {
+        calls += 1;
+        return { ok: false, status: 503 };
+      },
+      delayImpl: async () => {},
+    }),
+    /HTTP 503/,
+  );
+  assert.equal(calls, 1);
 });
 
 test('debug response validator requires resultMsg and every retrieval stage array', () => {
@@ -431,6 +631,243 @@ test('debug response validator requires resultMsg and every retrieval stage arra
     }),
     /vectorHits.*parentSectionTitle.*sectionType/i,
   );
+	assert.throws(
+		() => retrievalRunner.assertDebugResponse({
+			...valid,
+			candidateTraces: [{ candidateKey: 'law:1', chunkText: 'must not escape' }],
+		}),
+		/candidateTraces.*chunkText/i,
+	);
+});
+
+test('release coverage rejects no-ground controls without distractors and too few controls', () => {
+  const cases = [{
+    id: 'no-weak',
+    question: 'unsupported',
+    expectedResultMsgs: ['NO_GROUNDS'],
+    forbiddenTerms: [],
+  }];
+
+  assert.throws(
+    () => caseParser.assertReleaseCoverage(cases, { minimumNoGround: 2 }),
+    /NO_GROUNDS_DISTRACTOR_MISSING.*NO_GROUNDS_MINIMUM/i,
+  );
+});
+
+test('release coverage rejects answer-required rows without proposition groups', () => {
+  assert.throws(
+    () => caseParser.assertReleaseCoverage([{
+      id: 'answer-without-proposition',
+      question: 'answer me',
+      answerVerificationRequired: true,
+      requiredPropositionGroups: [],
+    }], { minimumNoGround: 0 }),
+    /ANSWER_PROPOSITION_MISSING/i,
+  );
+});
+
+test('release coverage rejects duplicate normalized question and oracle combinations', () => {
+  const oracle = {
+    requiredPropositionGroups: [['must notify']],
+    requiredConditionGroups: [],
+    forbiddenAnswerTerms: ['no notice'],
+  };
+
+  assert.throws(
+    () => caseParser.assertReleaseCoverage([
+      { id: 'one', question: 'Must notify?', ...oracle },
+      { id: 'two', question: 'must-notify!', ...oracle },
+    ], { minimumNoGround: 0 }),
+    /DUPLICATE_QUESTION_ORACLE/i,
+  );
+});
+
+test('release coverage permits the same generated question with different retrieval oracles', () => {
+  const coverage = caseParser.assertReleaseCoverage([
+    {
+      id: 'gen-one',
+      question: '이 공식문서를 찾아줘',
+      targets: ['official_doc'],
+      expectedDocumentTerms: ['문서 A'],
+    },
+    {
+      id: 'gen-two',
+      question: '이 공식문서를 찾아줘',
+      targets: ['official_doc'],
+      expectedDocumentTerms: ['문서 B'],
+    },
+  ], { minimumNoGround: 0 });
+
+  assert.equal(coverage.passed, true);
+});
+
+test('release coverage rejects reviewed failures classified only as generic other', () => {
+  assert.throws(
+    () => caseParser.assertReleaseCoverage([{
+      id: 'reviewed-failure-generic',
+      question: 'failure',
+      failureTaxonomy: '기타',
+    }], { minimumNoGround: 0 }),
+    /GENERIC_FAILURE_TAXONOMY/i,
+  );
+});
+
+test('coverage report exposes named gates, unsafe semantic disagreement, and first-loss coverage', () => {
+  const cases = [
+    {
+      id: 'curated-answer',
+      question: 'answer',
+      answerVerificationRequired: true,
+      requiredPropositionGroups: [['must notify']],
+      requiredConditionGroups: [['within 30 days']],
+      forbiddenAnswerTerms: ['never notify'],
+      forbiddenTerms: [],
+      expectedResultMsgs: [],
+    },
+    {
+      id: 'gen-control',
+      question: 'unsupported',
+      answerVerificationRequired: false,
+      requiredPropositionGroups: [],
+      requiredConditionGroups: [],
+      forbiddenAnswerTerms: [],
+      forbiddenTerms: ['unrelated title'],
+      expectedResultMsgs: ['NO_GROUNDS'],
+      failureTaxonomy: 'unrelated-domain',
+    },
+  ];
+  const gate = {
+    unsafeSemanticShadowDisagreementCount: 2,
+    results: [],
+  };
+  const failurePresence = {
+    results: [
+      {
+        id: 'lost',
+        presenceClassification: 'DROPPED_BEFORE_SELECTED',
+        candidateFirstLossStage: 'judgeCandidates',
+      },
+      {
+        id: 'selected',
+        presenceClassification: 'PRESENT_IN_SELECTED',
+        candidateFirstLossStage: null,
+      },
+    ],
+  };
+
+  const report = coverageReporter.buildCoverageReport(cases, gate, failurePresence, {
+    minimumNoGround: 1,
+    gateFile: 'logs/gate.json',
+    failurePresenceFile: 'logs/presence.json',
+  });
+
+  assert.equal(report.namedGates.releaseTotal, 2);
+  assert.equal(report.namedGates.curatedTotal, 1);
+  assert.equal(report.namedGates.answerOracleTotal, 1);
+  assert.equal(report.namedGates.noGroundTotal, 1);
+  assert.equal(report.namedGates.explicitConditionTotal, 1);
+  assert.equal(report.namedGates.unsafeSemanticDisagreementCount, 2);
+  assert.deepEqual(report.namedGates.candidatePresentFirstLossCoverage, {
+    candidatePresentFailures: 2,
+    firstLossRecorded: 1,
+    selectedWithoutLoss: 1,
+    covered: 2,
+    rate: 1,
+    uncoveredIds: [],
+  });
+});
+
+test('generated supplement rejects duplicate question and retrieval oracle rows', () => {
+  const keys = new Set();
+  const row = {
+    id: 'gen-one',
+    question: '문서에서 근거를 찾아줘',
+    targets: 'official_doc',
+    expectedTerms: '근거|문서',
+    requiredMatches: 2,
+    expectedTitleTerms: '문서',
+    expectedSectionTypes: '',
+    forbiddenTerms: '',
+    expectedDocumentTerms: '문서',
+    expectedPageNumbers: '',
+    expectedParentTerms: '',
+    answerDirection: 'generated',
+    expectedResultMsgs: '',
+  };
+
+  assert.equal(supplementGenerator.rememberUniqueCase(row, keys), true);
+  assert.equal(supplementGenerator.rememberUniqueCase({ ...row, id: 'gen-two' }, keys), false);
+  assert.equal(supplementGenerator.rememberUniqueCase({
+    ...row,
+    id: 'gen-three',
+    expectedDocumentTerms: '다른 문서',
+  }, keys), true);
+});
+
+test('candidate loss analysis joins audit-matched candidates to their first server-side loss', () => {
+	assert.equal(typeof retrievalRunner.extractCandidateLossAnalysis, 'function');
+	const response = Object.fromEntries(retrievalMetrics.STAGE_NAMES.map((stage) => [stage, []]));
+	response.resultMsg = 'NO_GROUNDS';
+	response.vectorHits = [{
+		candidateKey: 'law:10',
+		target: 'law',
+		chunkId: 10,
+		matchedAuditGroupIndexes: [0, 2],
+	}];
+	response.candidateTraces = [{
+		candidateKey: 'law:10',
+		target: 'law',
+		chunkId: 10,
+		sourceRanks: { vector: 3, bm25: 1 },
+		enteredStages: ['loaded', 'merged', 'reranked', 'intent'],
+		firstLossStage: 'judgeCandidates',
+		reasonCodes: ['JUDGE_CANDIDATE_LIMIT'],
+		selected: false,
+	}];
+
+	const analysis = retrievalRunner.extractCandidateLossAnalysis(response);
+
+	assert.deepEqual(analysis.firstLossStageCounts, { judgeCandidates: 1 });
+	assert.deepEqual(analysis.reasonCodeCounts, { JUDGE_CANDIDATE_LIMIT: 1 });
+	assert.deepEqual(analysis.oracleCandidateTraces, [{
+		candidateKey: 'law:10',
+		oraclePresenceStage: 'intent',
+		matchedAuditGroupIndexes: [0, 2],
+		firstLossStage: 'judgeCandidates',
+		reasonCodes: ['JUDGE_CANDIDATE_LIMIT'],
+	}]);
+});
+
+test('candidate loss analysis includes audit matches found only by shadow retrieval', () => {
+	const response = Object.fromEntries(retrievalMetrics.STAGE_NAMES.map((stage) => [stage, []]));
+	response.resultMsg = 'NO_GROUNDS';
+	response.bm25Hits = [{
+		candidateKey: 'official_doc:23',
+		target: 'official_doc',
+		chunkId: 23,
+		matchedAuditGroupIndexes: [0],
+	}];
+	response.fused = [];
+	response.candidateTraces = [{
+		candidateKey: 'official_doc:23',
+		target: 'official_doc',
+		chunkId: 23,
+		sourceRanks: { bm25: 23 },
+		enteredStages: ['loaded'],
+		firstLossStage: 'merged',
+		reasonCodes: ['MERGE_NOT_SELECTED'],
+		selected: false,
+	}];
+
+	const analysis = retrievalRunner.extractCandidateLossAnalysis(response);
+
+	assert.deepEqual(analysis.oracleCandidateTraces, [{
+		candidateKey: 'official_doc:23',
+		oraclePresenceStage: 'loaded',
+		matchedAuditGroupIndexes: [0],
+		firstLossStage: 'merged',
+		reasonCodes: ['MERGE_NOT_SELECTED'],
+	}]);
 });
 
 test('judged and selected stages distinguish judge rejection from ground rejection', () => {
@@ -454,6 +891,124 @@ test('judged and selected stages distinguish judge rejection from ground rejecti
 
   assert.equal(retrievalMetrics.measureRetrievalCase(evalCase, judgeRejected, 10).firstDropStage, 'judged');
   assert.equal(retrievalMetrics.measureRetrievalCase(evalCase, groundRejected, 10).firstDropStage, 'selected');
+});
+
+test('oracle presence aggregates server-confirmed body groups and records first loss', () => {
+  const evalCase = {
+    id: 'oracle-drop',
+    expectedTitleTerms: ['정답 문서'],
+    expectedDocumentTerms: [],
+    expectedSectionTypes: [],
+    expectedParentTerms: [],
+    expectedResultMsgs: ['OK'],
+    requiredPropositionGroups: [
+      ['직접 결론', '결론 별칭'],
+      ['절차 결과'],
+    ],
+    requiredConditionGroups: [
+      ['적용 조건'],
+    ],
+  };
+  const complete = {
+    chunkId: 1,
+    target: 'official_doc',
+    title: '정답 문서',
+    parentSectionTitle: '',
+    sectionType: '',
+    matchedAuditGroupIndexes: [0, 1, 2],
+    matchedAuditAliases: ['직접 결론', '절차 결과', '적용 조건'],
+  };
+  const partial = {
+    ...complete,
+    matchedAuditGroupIndexes: [0, 2],
+    matchedAuditAliases: ['직접 결론', '적용 조건'],
+  };
+  const response = Object.fromEntries(retrievalMetrics.STAGE_NAMES.map((stage) => [stage, [complete]]));
+  response.resultMsg = 'OK';
+  response.intentFiltered = [partial];
+  response.judgeCandidates = [partial];
+  response.judged = [partial];
+  response.selected = [partial];
+
+  const measured = retrievalMetrics.measureRetrievalCase(evalCase, response, 10);
+
+  assert.equal(measured.oraclePresence.auditable, true);
+  assert.equal(measured.oraclePresence.propositionGroupCount, 2);
+  assert.equal(measured.oraclePresence.conditionGroupCount, 1);
+  assert.deepEqual(measured.oraclePresence.stages.candidateSources.matchedGroupIndexes, [0, 1, 2]);
+  assert.deepEqual(measured.oraclePresence.stages.selected.missingGroupIndexes, [1]);
+  assert.equal(measured.oraclePresence.firstLossStage, 'intentFiltered');
+  assert.equal(measured.oraclePresence.classification, 'DROPPED_BEFORE_SELECTED');
+});
+
+test('oracle presence distinguishes partial, absent, selected, and no-oracle cases', () => {
+  const baseCase = {
+    id: 'presence',
+    expectedTitleTerms: [],
+    expectedDocumentTerms: [],
+    expectedSectionTypes: [],
+    expectedParentTerms: [],
+    expectedResultMsgs: ['OK'],
+    requiredPropositionGroups: [['first'], ['second']],
+    requiredConditionGroups: [],
+  };
+  const item = (indexes) => ({
+    chunkId: indexes.join('-') || 0,
+    target: 'law',
+    title: 'law',
+    parentSectionTitle: '',
+    sectionType: '',
+    matchedAuditGroupIndexes: indexes,
+    matchedAuditAliases: indexes.map((index) => index === 0 ? 'first' : 'second'),
+  });
+  const response = (candidate, selected) => {
+    const value = Object.fromEntries(retrievalMetrics.STAGE_NAMES.map((stage) => [stage, selected]));
+    value.resultMsg = 'OK';
+    value.vectorHits = candidate;
+    value.lexicalHits = [];
+    return value;
+  };
+
+  assert.equal(
+    retrievalMetrics.measureRetrievalCase(baseCase, response([item([0])], []), 10)
+      .oraclePresence.classification,
+    'PARTIAL_IN_CANDIDATES',
+  );
+  assert.equal(
+    retrievalMetrics.measureRetrievalCase(baseCase, response([item([])], []), 10)
+      .oraclePresence.classification,
+    'ABSENT_FROM_TOP_K_CANDIDATES',
+  );
+  assert.equal(
+    retrievalMetrics.measureRetrievalCase(baseCase, response([item([0, 1])], [item([0, 1])]), 10)
+      .oraclePresence.classification,
+    'PRESENT_IN_SELECTED',
+  );
+  assert.equal(
+    retrievalMetrics.measureRetrievalCase({
+      ...baseCase,
+      requiredPropositionGroups: [],
+    }, response([], []), 10).oraclePresence.classification,
+    'NO_EXPLICIT_ORACLE',
+  );
+});
+
+test('debug request sends proposition groups before condition groups', () => {
+  assert.equal(typeof retrievalRunner.buildDebugRequest, 'function');
+  const request = retrievalRunner.buildDebugRequest({
+    targets: ['law'],
+    question: 'question',
+    requiredPropositionGroups: [['p1', 'p1 alias'], ['p2']],
+    requiredConditionGroups: [['c1']],
+  }, 30);
+
+  assert.deepEqual(request, {
+    targets: ['law'],
+    question: 'question',
+    limit: 30,
+    includeFuture: true,
+    auditTermGroups: [['p1', 'p1 alias'], ['p2'], ['c1']],
+  });
 });
 
 test('downstream survival excludes cases that were absent from candidate sources', () => {

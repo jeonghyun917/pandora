@@ -1,24 +1,38 @@
 package com.kaces.pandora.ai.answer;
 
+import com.kaces.pandora.semantic.config.LawAiLexicalProperties;
 import com.kaces.pandora.semantic.config.LawAiProperties;
+import com.kaces.pandora.semantic.config.LawAiRrfProperties;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.UUID;
 
-final class RuntimeConfigurationIdentity {
+public final class RuntimeConfigurationIdentity {
 
 	private static final String INSTANCE_ID = UUID.randomUUID().toString();
 
 	private RuntimeConfigurationIdentity() {
 	}
 
-	static String instanceId() {
+	public static String instanceId() {
 		return INSTANCE_ID;
 	}
 
 	static String sha256(LawAiProperties properties) {
+		return sha256(
+			properties,
+			new LawAiLexicalProperties(1.2, 0.75, 8, 6, 7, 1, 24, 100),
+			new LawAiRrfProperties(false, false, 60, 1.0, 1.0, 100)
+		);
+	}
+
+	static String sha256(
+		LawAiProperties properties,
+		LawAiLexicalProperties lexical,
+		LawAiRrfProperties rrf
+	) {
 		LawAiProperties.OpenAi openAi = properties.openai();
 		LawAiProperties.Qdrant qdrant = properties.qdrant();
 		String canonical = String.join("\n",
@@ -30,7 +44,21 @@ final class RuntimeConfigurationIdentity {
 			"qdrant.baseUrl=" + value(qdrant.baseUrl()),
 			"qdrant.collection=" + value(qdrant.collection()),
 			"qdrant.ragCollection=" + value(qdrant.ragCollection()),
-			"qdrant.vectorSize=" + qdrant.vectorSize()
+			"qdrant.vectorSize=" + qdrant.vectorSize(),
+			"lexical.k1=" + lexical.k1(),
+			"lexical.b=" + lexical.b(),
+			"lexical.documentTitleWeight=" + lexical.documentTitleWeight(),
+			"lexical.parentTitleWeight=" + lexical.parentTitleWeight(),
+			"lexical.chunkTitleWeight=" + lexical.chunkTitleWeight(),
+			"lexical.bodyWeight=" + lexical.bodyWeight(),
+			"lexical.maxQueryTerms=" + lexical.maxQueryTerms(),
+			"lexical.maxResultLimit=" + lexical.maxResultLimit(),
+			"rrf.shadowEnabled=" + rrf.rrfShadowEnabled(),
+			"rrf.authoritative=" + rrf.rrfAuthoritative(),
+			"rrf.k=" + rrf.rrfK(),
+			"rrf.vectorWeight=" + rrf.rrfVectorWeight(),
+			"rrf.lexicalWeight=" + rrf.rrfLexicalWeight(),
+			"rrf.fusedLimit=" + rrf.rrfFusedLimit()
 		);
 		try {
 			MessageDigest digest = MessageDigest.getInstance("SHA-256");

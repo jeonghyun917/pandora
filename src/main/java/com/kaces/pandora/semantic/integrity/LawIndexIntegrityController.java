@@ -1,0 +1,102 @@
+package com.kaces.pandora.semantic.integrity;
+
+import java.util.List;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.beans.factory.annotation.Autowired;
+
+@RestController
+@RequestMapping("/api/admin/law-index-integrity")
+public class LawIndexIntegrityController {
+	private final LawIndexIntegrityService integrityService;
+	private final LawIndexIntegrityRuntimeInfoProvider runtimeInfoProvider;
+	private final LawMissingEmbeddingRepairService missingEmbeddingRepairService;
+
+	@Autowired
+	public LawIndexIntegrityController(
+		LawIndexIntegrityService integrityService,
+		LawIndexIntegrityRuntimeInfoProvider runtimeInfoProvider,
+		LawMissingEmbeddingRepairService missingEmbeddingRepairService
+	) {
+		this.integrityService = integrityService;
+		this.runtimeInfoProvider = runtimeInfoProvider;
+		this.missingEmbeddingRepairService = missingEmbeddingRepairService;
+	}
+
+	public LawIndexIntegrityController(
+		LawIndexIntegrityService integrityService,
+		LawIndexIntegrityRuntimeInfoProvider runtimeInfoProvider
+	) {
+		this(integrityService, runtimeInfoProvider, null);
+	}
+
+	@PostMapping("/missing-embedding-repair")
+	public ResponseEntity<LawMissingEmbeddingRepairService.RepairResult> repairMissingEmbedding(
+		@RequestBody LawMissingEmbeddingRepairService.RepairRequest request
+	) {
+		if (missingEmbeddingRepairService == null) {
+			throw new IllegalStateException("Law missing-embedding repair service is unavailable.");
+		}
+		return ResponseEntity.ok(missingEmbeddingRepairService.repair(request));
+	}
+
+	@GetMapping("/audit")
+	public ResponseEntity<LawIndexIntegrityAuditResponse> audit(
+		@RequestParam(defaultValue = "") String target,
+		@RequestParam(defaultValue = "1000") int limit,
+		@RequestParam(defaultValue = "0") long afterChunkId
+	) {
+		LawIndexIntegrityRuntimeInfo before = currentRuntimeInfo();
+		LawIndexIntegrityReport report = integrityService.audit(target, limit, afterChunkId);
+		LawIndexIntegrityRuntimeInfo after = currentRuntimeInfo();
+		if (!before.equals(after)) {
+			throw new IllegalStateException("Law index integrity runtime identity drifted during the audit request.");
+		}
+		return ResponseEntity.ok(new LawIndexIntegrityAuditResponse(
+			report.target(), report.limit(), report.scannedRows(), report.lastScannedChunkId(),
+			report.issues(), report.causeCounts(),
+			before.runtimeInstanceId(), before.indexRevision()
+		));
+	}
+
+	private LawIndexIntegrityRuntimeInfo currentRuntimeInfo() {
+		LawIndexIntegrityRuntimeInfo runtimeInfo = runtimeInfoProvider.current();
+		if (runtimeInfo == null || !runtimeInfo.isComplete()) {
+			throw new IllegalStateException("Law index integrity runtime identity is unavailable.");
+		}
+		return runtimeInfo;
+	}
+
+	@PostMapping("/repair")
+	public ResponseEntity<LawIndexIntegrityService.RepairPreview> repair(@RequestBody RepairRequest request) {
+		if (request == null || request.cause() == null || request.issues() == null || request.issues().isEmpty()) {
+			throw new IllegalArgumentException("Repair requires a cause and explicit issue IDs with content hashes.");
+		}
+		if (!request.isPreview()) {
+			throw new IllegalArgumentException("No mutation policy is configured; repair remains an explicit preview.");
+		}
+		LawIndexIntegrityService.RepairPreview preview = integrityService.previewRepair(
+			request.target(), request.cause(), request.issues()
+		);
+		return preview.rejectedIssueIds().isEmpty()
+			? ResponseEntity.ok(preview)
+			: ResponseEntity.status(HttpStatus.CONFLICT).body(preview);
+	}
+
+	public record RepairRequest(
+		String target,
+		LawIndexIntegrityIssue.Cause cause,
+		List<LawIndexIntegrityService.RepairCandidate> issues,
+		Boolean preview
+	) {
+		public boolean isPreview() {
+			return preview == null || preview;
+		}
+	}
+}

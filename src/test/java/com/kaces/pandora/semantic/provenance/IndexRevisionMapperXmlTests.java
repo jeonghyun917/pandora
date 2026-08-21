@@ -30,6 +30,16 @@ class IndexRevisionMapperXmlTests {
 	}
 
 	@Test
+	void lawEmbeddingUpsertMaintainsMaterializedRevisionHash() throws Exception {
+		String sql = sql(
+			LAW_RESOURCE,
+			"com.kaces.pandora.lawdata.persistence.LawChunkMapper.upsertEmbeddingStatus"
+		);
+
+		assertRevisionHashUpsert(sql, "law_api_chunk_embeddings");
+	}
+
+	@Test
 	void ragSnapshotAggregatesOnlyLatestSearchableCurrentIndexedHashes() throws Exception {
 		String sql = sql(
 			RAG_RESOURCE,
@@ -46,10 +56,23 @@ class IndexRevisionMapperXmlTests {
 			.contains("c.chunk_version = ( SELECT MAX(c2.chunk_version)");
 	}
 
+	@Test
+	void ragEmbeddingUpsertMaintainsMaterializedRevisionHash() throws Exception {
+		String sql = sql(
+			RAG_RESOURCE,
+			"com.kaces.pandora.rag.persistence.RagDocumentMapper.upsertEmbeddingStatus"
+		);
+
+		assertRevisionHashUpsert(sql, "rag_chunk_embeddings");
+	}
+
 	private void assertCommonAggregate(String sql, String embeddingTable) {
 		assertThat(sql)
 			.contains("COUNT(*) AS currentIndexedCount")
-			.contains("SHA2(CONCAT(CAST(c.chunk_id AS CHAR), ':', c.content_hash), 256)")
+			.contains("SUBSTRING(e.revision_hash, 1, 16)")
+			.contains("SUBSTRING(e.revision_hash, 17, 16)")
+			.contains("SUBSTRING(e.revision_hash, 33, 16)")
+			.contains("SUBSTRING(e.revision_hash, 49, 16)")
 			.contains("HEX(BIT_XOR")
 			.contains("AS contentFingerprint")
 			.contains("MAX(GREATEST(doc.updated_at, c.updated_at, e.updated_at))")
@@ -59,10 +82,20 @@ class IndexRevisionMapperXmlTests {
 			.contains("e.vector_store = ?")
 			.contains("e.status = 'INDEXED'")
 			.contains("e.content_hash = c.content_hash")
+			.contains("e.revision_hash IS NOT NULL")
 			.contains("c.content_hash REGEXP '^[0-9A-Fa-f]{64}$'")
+			.doesNotContain("SHA2(CONCAT(CAST(c.chunk_id AS CHAR), ':', c.content_hash), 256)")
 			.doesNotContain("GROUP_CONCAT")
 			.doesNotContain("indexed_vectors_count")
 			.doesNotContain("segments_count");
+	}
+
+	private void assertRevisionHashUpsert(String sql, String embeddingTable) {
+		assertThat(sql)
+			.contains("INSERT INTO " + embeddingTable)
+			.contains("content_hash, revision_hash")
+			.contains("SHA2(CONCAT(CAST(? AS CHAR), ':', ?), 256)")
+			.contains("revision_hash = VALUES(revision_hash)");
 	}
 
 	private String sql(String resource, String statementId) throws Exception {

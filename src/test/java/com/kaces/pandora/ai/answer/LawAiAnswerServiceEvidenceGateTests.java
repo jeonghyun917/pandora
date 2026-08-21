@@ -17,12 +17,60 @@ import org.mockito.ArgumentCaptor;
 class LawAiAnswerServiceEvidenceGateTests {
 
 	@Test
+	void shadowModePreservesTheExistingControlCandidateOrder() throws Exception {
+		LawSemanticChunkRow first = chunk(10L, "law", "첫째", "제1조", "첫째 본문");
+		LawSemanticChunkRow second = chunk(20L, "law", "둘째", "제2조", "둘째 본문");
+		Method method = LawAiAnswerService.class.getDeclaredMethod(
+			"selectCandidateOrder",
+			List.class,
+			List.class,
+			boolean.class
+		);
+		method.setAccessible(true);
+
+		@SuppressWarnings("unchecked")
+		List<LawSemanticChunkRow> selected = (List<LawSemanticChunkRow>) method.invoke(
+			null,
+			List.of(first, second),
+			List.of(second, first),
+			false
+		);
+
+		assertThat(selected).containsExactly(first, second);
+	}
+
+	@Test
+	void authoritativeModeCanPassTheFusedCandidateOrderForward() throws Exception {
+		LawSemanticChunkRow first = chunk(10L, "law", "첫째", "제1조", "첫째 본문");
+		LawSemanticChunkRow second = chunk(20L, "law", "둘째", "제2조", "둘째 본문");
+		Method method = LawAiAnswerService.class.getDeclaredMethod(
+			"selectCandidateOrder",
+			List.class,
+			List.class,
+			boolean.class
+		);
+		method.setAccessible(true);
+
+		@SuppressWarnings("unchecked")
+		List<LawSemanticChunkRow> selected = (List<LawSemanticChunkRow>) method.invoke(
+			null,
+			List.of(first, second),
+			List.of(second, first),
+			true
+		);
+
+		assertThat(selected).containsExactly(second, first);
+	}
+
+	@Test
 	void runtimeInfoUsesArtifactIdentityCapturedByTheService() throws Exception {
 		LawAiAnswerService service = service();
 		try {
 			java.lang.reflect.Field field = LawAiAnswerService.class.getDeclaredField("runtimeArtifactIdentity");
 			field.setAccessible(true);
-			RuntimeArtifactIdentity snapshot = new RuntimeArtifactIdentity("jar", "startup-sha256", 123L);
+			RuntimeArtifactIdentity snapshot = new RuntimeArtifactIdentity(
+				"jar", "startup-sha256", 123L, "C:/runtime/pandora.jar", "2026-07-31T00:00:00Z"
+			);
 			field.set(service, snapshot);
 
 			LawAiRuntimeInfo runtimeInfo = service.runtimeInfo();
@@ -30,6 +78,8 @@ class LawAiAnswerServiceEvidenceGateTests {
 			assertThat(runtimeInfo.runtimeArtifactKind()).isEqualTo("jar");
 			assertThat(runtimeInfo.runtimeArtifactSha256()).isEqualTo("startup-sha256");
 			assertThat(runtimeInfo.runtimeArtifactSize()).isEqualTo(123L);
+			assertThat(runtimeInfo.runtimeArtifactPath()).isEqualTo("C:/runtime/pandora.jar");
+			assertThat(runtimeInfo.runtimeArtifactModifiedAt()).isEqualTo("2026-07-31T00:00:00Z");
 		} finally {
 			service.shutdownExecutors();
 		}
@@ -1390,6 +1440,72 @@ class LawAiAnswerServiceEvidenceGateTests {
 
 	@Test
 	@SuppressWarnings("unchecked")
+	void documentDiscoveryUsesEntityAliasesForBoundedLawHeadingRecall() throws Exception {
+		String query = "CCTV 관련 법령";
+		LawSemanticChunkRow privacyLaw = chunk(
+			2251L,
+			"law",
+			"개인정보 보호법",
+			"제25조 고정형 영상정보처리기기의 설치·운영 제한",
+			"누구든지 공개된 장소에 고정형 영상정보처리기기를 설치·운영하여서는 아니 된다.",
+			null
+		);
+		java.util.concurrent.atomic.AtomicReference<List<String>> capturedKeywords =
+			new java.util.concurrent.atomic.AtomicReference<>(List.of());
+		java.util.ArrayList<String> calls = new java.util.ArrayList<>();
+		LawChunkMapper mapper = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
+			LawChunkMapper.class.getClassLoader(),
+			new Class<?>[] {LawChunkMapper.class},
+			(proxy, method, arguments) -> {
+				calls.add(method.getName());
+				if ("findSemanticChunksByHeadingOrDocumentTitle".equals(method.getName())) {
+					List<String> keywords = List.copyOf((List<String>) arguments[1]);
+					capturedKeywords.set(keywords);
+					return keywords.stream().anyMatch(keyword -> keyword.contains("고정형 영상정보처리기기"))
+						? List.of(privacyLaw)
+						: List.of();
+				}
+				return List.of();
+			}
+		);
+		LawAiAnswerService service = service(mapper);
+		try {
+			List<LawSemanticChunkRow> chunks = findLexicalChunks(
+				service,
+				QuestionSearchPlan.from(query),
+				List.of("law"),
+				false
+			);
+
+			assertThat(capturedKeywords.get()).anyMatch(keyword -> keyword.contains("고정형 영상정보처리기기"));
+			assertThat(capturedKeywords.get()).hasSizeLessThanOrEqualTo(3);
+			assertThat(calls).contains("findSemanticChunksByHeadingOrDocumentTitle");
+			assertThat(calls).doesNotContain("findSemanticChunksByText");
+			assertThat(chunks).contains(privacyLaw);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void documentDiscoveryWaitsForItsBoundedLexicalHeadingLookup() throws Exception {
+		LawAiAnswerService service = service();
+		try {
+			Method method = LawAiAnswerService.class.getDeclaredMethod(
+				"shouldWaitForFocusedLexicalSearch",
+				String.class
+			);
+			method.setAccessible(true);
+
+			assertThat(method.invoke(service, "CCTV 관련 법령")).isEqualTo(true);
+			assertThat(method.invoke(service, "근로기준법상 연차휴가 일수는?")).isEqualTo(false);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
 	void strictLawTitleOnlyHitDoesNotSkipEvidenceTextFallback() throws Exception {
 		String query = "근로기준법에서 연차휴가 산정일수의 근거 조항을 찾아줘";
 		LawSemanticChunkRow titleOverview = chunk(
@@ -1492,6 +1608,361 @@ class LawAiAnswerServiceEvidenceGateTests {
 			assertThat(captured.get()).isNotNull();
 			assertThat(captured.get()).doesNotContain("period", "procedure", "target_scope");
 			assertThat(captured.get()).anyMatch(keyword -> keyword.contains("공익신고자") || keyword.contains("신고자 보호"));
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void contractCompletionFallbackUsesMaintainedProcedureConcepts() throws Exception {
+		LawSemanticChunkRow inspection = chunk(
+			5101L,
+			"law",
+			"\uAD6D\uAC00\uB97C \uB2F9\uC0AC\uC790\uB85C \uD558\uB294 \uACC4\uC57D\uC5D0 \uAD00\uD55C \uBC95\uB960 \uC2DC\uD589\uB839",
+			"\uC81C55\uC870(\uAC80\uC0AC)",
+			"\uACC4\uC57D\uC0C1\uB300\uC790\uAC00 \uACC4\uC57D\uC758 \uC774\uD589\uC744 \uC644\uB8CC\uD55C \uD6C4 \uC644\uB8CC\uD1B5\uC9C0\uB97C \uD558\uBA74 \uACC4\uC57D\uB2F4\uB2F9\uACF5\uBB34\uC6D0\uC740 \uAC80\uC0AC\uD558\uC5EC\uC57C \uD55C\uB2E4.",
+			null
+		);
+		LawSemanticChunkRow payment = chunk(
+			5102L,
+			"admrul",
+			"(\uACC4\uC57D\uC608\uADDC) \uC6A9\uC5ED\uACC4\uC57D\uC77C\uBC18\uC870\uAC74",
+			"\uC81C27\uC870(\uB300\uAC00\uC758 \uC9C0\uAE09)",
+			"\uACC4\uC57D\uC0C1\uB300\uC790\uB294 \uC6A9\uC5ED\uC744 \uC644\uB8CC\uD558\uACE0 \uAC80\uC0AC\uC5D0 \uD569\uACA9\uD55C \uD6C4 \uB300\uAC00\uC9C0\uAE09\uC744 \uCCAD\uAD6C\uD560 \uC218 \uC788\uB2E4.",
+			null
+		);
+		java.util.concurrent.atomic.AtomicReference<List<String>> captured = new java.util.concurrent.atomic.AtomicReference<>();
+		LawChunkMapper mapper = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
+			LawChunkMapper.class.getClassLoader(),
+			new Class<?>[] {LawChunkMapper.class},
+			(proxy, method, arguments) -> {
+				if ("findSemanticChunksByText".equals(method.getName())) {
+					List<String> keywords = List.copyOf((List<String>) arguments[1]);
+					captured.set(keywords);
+					if (keywords.contains("\uC644\uB8CC\uD1B5\uC9C0")
+						&& keywords.contains("\uAC80\uC0AC")
+						&& keywords.contains("\uB300\uAC00\uC758 \uC9C0\uAE09")) {
+						return List.of(inspection, payment);
+					}
+					return List.of();
+				}
+				throw new UnsupportedOperationException(method.getName());
+			}
+		);
+		LawAiAnswerService service = service(mapper);
+		try {
+			List<LawSemanticChunkRow> recovered = findDirectEvidenceFallbackChunks(
+				service,
+				QuestionSearchPlan.from(
+					"\uACFC\uC5C5\uC9C0\uC2DC\uC11C \uC6A9\uC5ED\uAE30\uAC04\uC774 \uC548 \uB05D\uB0AC\uB294\uB370 \uACB0\uACFC\uBCF4\uACE0\uD574\uB3C4 \uB418\uB098?"
+				),
+				List.of("law", "admrul"),
+				false
+			);
+
+			assertThat(captured.get()).contains(
+				"\uC6A9\uC5ED\uACC4\uC57D\uC77C\uBC18\uC870\uAC74",
+				"\uC644\uB8CC\uD1B5\uC9C0",
+				"\uAC80\uC0AC",
+				"\uB300\uAC00\uC758 \uC9C0\uAE09"
+			);
+			assertThat(recovered).contains(inspection, payment);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void contractCompletionFocusedTermsSearchLawTitlesAndTextBeforeJudge() throws Exception {
+		java.util.LinkedHashSet<String> titleKeywords = new java.util.LinkedHashSet<>();
+		java.util.LinkedHashSet<String> textKeywords = new java.util.LinkedHashSet<>();
+		LawChunkMapper mapper = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
+			LawChunkMapper.class.getClassLoader(),
+			new Class<?>[] {LawChunkMapper.class},
+			(proxy, method, arguments) -> {
+				if ("findSemanticChunksByDocumentTitleAndText".equals(method.getName())) {
+					titleKeywords.addAll((List<String>) arguments[1]);
+					textKeywords.addAll((List<String>) arguments[2]);
+					return List.of();
+				}
+				return List.of();
+			}
+		);
+		LawAiAnswerService service = service(mapper);
+		try {
+			findLexicalChunks(
+				service,
+				QuestionSearchPlan.from(
+					"\uACFC\uC5C5\uC9C0\uC2DC\uC11C \uC6A9\uC5ED\uAE30\uAC04\uC774 \uC548 \uB05D\uB0AC\uB294\uB370 \uACB0\uACFC\uBCF4\uACE0\uD574\uB3C4 \uB418\uB098?"
+				),
+				List.of("law", "admrul"),
+				false
+			);
+
+			assertThat(titleKeywords).contains(
+				"\uC6A9\uC5ED\uACC4\uC57D\uC77C\uBC18\uC870\uAC74",
+				"\uAD6D\uAC00\uB97C \uB2F9\uC0AC\uC790\uB85C \uD558\uB294 \uACC4\uC57D\uC5D0 \uAD00\uD55C \uBC95\uB960 \uC2DC\uD589\uB839"
+			);
+			assertThat(titleKeywords).doesNotContain(
+				"\uC6A9\uC5ED\uACC4\uC57D",
+				"\uACC4\uC57D\uC0C1\uB300\uC790",
+				"\uAC80\uC0AC",
+				"\uC9C0\uCCB4\uC0C1\uAE08"
+			);
+			assertThat(textKeywords).contains(
+				"\uC644\uB8CC\uD1B5\uC9C0",
+				"\uAC80\uC0AC",
+				"\uB300\uAC00\uC758 \uC9C0\uAE09"
+			);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void contractCompletionLawLookupPrecedesUnrelatedFastRagMatches() throws Exception {
+		LawSemanticChunkRow inspection = chunk(
+			5201L,
+			"law",
+			"\uAD6D\uAC00\uB97C \uB2F9\uC0AC\uC790\uB85C \uD558\uB294 \uACC4\uC57D\uC5D0 \uAD00\uD55C \uBC95\uB960 \uC2DC\uD589\uB839",
+			"\uC81C55\uC870(\uAC80\uC0AC)",
+			"\uACC4\uC57D\uC0C1\uB300\uC790\uAC00 \uACC4\uC57D\uC758 \uC774\uD589\uC744 \uC644\uB8CC\uD558\uBA74 \uAC80\uC0AC\uB97C \uD558\uC5EC\uC57C \uD55C\uB2E4.",
+			null
+		);
+		LawSemanticChunkRow unrelatedGuide = chunk(
+			5202L,
+			"official_doc",
+			"\uD589\uC815\uC5C5\uBB34\uC6B4\uC601 \uD3B8\uB78C",
+			"\uC77C\uBC18 \uACC4\uC57D \uC808\uCC28",
+			"\uC77C\uBC18\uC801\uC778 \uACC4\uC57D \uC808\uCC28\uB97C \uC124\uBA85\uD55C\uB2E4.",
+			null
+		);
+		LawChunkMapper lawMapper = org.mockito.Mockito.mock(LawChunkMapper.class);
+		RagDocumentMapper ragMapper = org.mockito.Mockito.mock(RagDocumentMapper.class);
+		org.mockito.Mockito.when(lawMapper.findSemanticChunksByDocumentTitleAndText(
+			org.mockito.ArgumentMatchers.anyList(),
+			org.mockito.ArgumentMatchers.anyList(),
+			org.mockito.ArgumentMatchers.anyList(),
+			org.mockito.ArgumentMatchers.anyBoolean(),
+			org.mockito.ArgumentMatchers.anyInt()
+		)).thenReturn(List.of(inspection));
+		org.mockito.Mockito.when(ragMapper.findSemanticChunksByText(
+			org.mockito.ArgumentMatchers.anyList(),
+			org.mockito.ArgumentMatchers.anyList(),
+			org.mockito.ArgumentMatchers.anyInt()
+		)).thenReturn(List.of(unrelatedGuide));
+		LawAiAnswerService service = service(lawMapper, ragMapper);
+		try {
+			List<LawSemanticChunkRow> recovered = findLexicalChunks(
+				service,
+				QuestionSearchPlan.from(
+					"\uACFC\uC5C5\uC9C0\uC2DC\uC11C \uC6A9\uC5ED\uAE30\uAC04\uC774 \uC548 \uB05D\uB0AC\uB294\uB370 \uACB0\uACFC\uBCF4\uACE0\uD574\uB3C4 \uB418\uB098?"
+				),
+				List.of("law", "admrul", "official_doc", "internal_doc"),
+				false
+			);
+
+			assertThat(recovered).contains(inspection);
+			org.mockito.Mockito.verify(lawMapper).findSemanticChunksByDocumentTitleAndText(
+				org.mockito.ArgumentMatchers.anyList(),
+				org.mockito.ArgumentMatchers.anyList(),
+				org.mockito.ArgumentMatchers.anyList(),
+				org.mockito.ArgumentMatchers.eq(false),
+				org.mockito.ArgumentMatchers.anyInt()
+			);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void mixedTargetPolicyLawLookupPrecedesUnrelatedFastRagMatches() throws Exception {
+		String query = "\uC9C0\uB2A5\uC815\uBCF4\uC0AC\uD68C \uC2E4\uD589\uACC4\uD68D\uC758 \uC608\uBE44\uAC80\uD1A0\uB294 \uC5B4\uB5A4 \uC0AC\uC5C5\uC744 \uB300\uC0C1\uC73C\uB85C \uD558\uB294\uAC70\uC57C?";
+		LawSemanticChunkRow directArticle = chunk(
+			5251L,
+			"admrul",
+			"\uC804\uC790\uC815\uBD80 \uC131\uACFC\uAD00\uB9AC \uC9C0\uCE68",
+			"\uC81C12\uC870(\uC608\uBE44\uAC80\uD1A0)",
+			"\uB2E4\uC74C \uD574\uC5D0 \uC815\uBCF4\uD654\uC0AC\uC5C5\uC744 \uCD94\uC9C4\uD558\uACE0\uC790 \uD558\uB294 \uC911\uC559\uD589\uC815\uAE30\uAD00\uC758 \uC7A5, \uC2DC\uB3C4\uC9C0\uC0AC \uBC0F \uC2DC\uB3C4 \uAD50\uC721\uAC10\uC740 \uC608\uBE44\uAC80\uD1A0\uB97C \uC2E0\uCCAD\uD558\uC5EC\uC57C \uD55C\uB2E4.",
+			null
+		);
+		LawSemanticChunkRow unrelatedGuide = chunk(
+			5252L,
+			"official_doc",
+			"\uC815\uBCF4\uD654\uC0AC\uC5C5 \uC6B4\uC601 \uD3B8\uB78C",
+			"\uC2E4\uD589\uACC4\uD68D \uAC1C\uC694",
+			"\uC2E4\uD589\uACC4\uD68D\uC758 \uC77C\uBC18\uC801\uC778 \uC791\uC131 \uBC29\uBC95\uC744 \uC124\uBA85\uD55C\uB2E4.",
+			null
+		);
+		LawChunkMapper lawMapper = org.mockito.Mockito.mock(LawChunkMapper.class);
+		RagDocumentMapper ragMapper = org.mockito.Mockito.mock(RagDocumentMapper.class);
+		org.mockito.Mockito.when(lawMapper.findSemanticChunksByDocumentTitleAndText(
+			org.mockito.ArgumentMatchers.anyList(),
+			org.mockito.ArgumentMatchers.anyList(),
+			org.mockito.ArgumentMatchers.anyList(),
+			org.mockito.ArgumentMatchers.anyBoolean(),
+			org.mockito.ArgumentMatchers.anyInt()
+		)).thenReturn(List.of(directArticle));
+		org.mockito.Mockito.when(ragMapper.findSemanticChunksByText(
+			org.mockito.ArgumentMatchers.anyList(),
+			org.mockito.ArgumentMatchers.anyList(),
+			org.mockito.ArgumentMatchers.anyInt()
+		)).thenReturn(List.of(unrelatedGuide));
+		LawAiAnswerService service = service(lawMapper, ragMapper);
+		try {
+			List<LawSemanticChunkRow> recovered = findLexicalChunks(
+				service,
+				QuestionSearchPlan.from(query),
+				List.of("admrul", "official_doc", "internal_doc", "law"),
+				false
+			);
+
+			assertThat(recovered).contains(directArticle);
+			org.mockito.Mockito.verify(lawMapper).findSemanticChunksByDocumentTitleAndText(
+				org.mockito.ArgumentMatchers.anyList(),
+				org.mockito.ArgumentMatchers.argThat(
+					titles -> titles.contains("\uC804\uC790\uC815\uBD80 \uC131\uACFC\uAD00\uB9AC \uC9C0\uCE68")
+				),
+				org.mockito.ArgumentMatchers.argThat(
+					keywords -> keywords.contains("\uB2E4\uC74C \uD574\uC5D0 \uC815\uBCF4\uD654\uC0AC\uC5C5\uC744 \uCD94\uC9C4")
+						|| keywords.contains("\uC911\uC559\uD589\uC815\uAE30\uAD00\uC758 \uC7A5")
+				),
+				org.mockito.ArgumentMatchers.eq(false),
+				org.mockito.ArgumentMatchers.anyInt()
+			);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void contractCompletionPreservesDirectArticlesFromConfiguredLawDocuments() throws Exception {
+		LawSemanticChunkRow inspection = chunk(
+			5301L,
+			"law",
+			"\uAD6D\uAC00\uB97C \uB2F9\uC0AC\uC790\uB85C \uD558\uB294 \uACC4\uC57D\uC5D0 \uAD00\uD55C \uBC95\uB960 \uC2DC\uD589\uB839",
+			"\uC81C55\uC870(\uAC80\uC0AC)",
+			"\uACC4\uC57D\uC0C1\uB300\uC790\uB85C\uBD80\uD130 \uACC4\uC57D\uC758 \uC774\uD589\uC744 \uC644\uB8CC\uD55C \uC0AC\uC2E4\uC744 \uD1B5\uC9C0\uBC1B\uC740 \uB0A0\uBD80\uD130 \uAC80\uC0AC\uD55C\uB2E4."
+		);
+		LawSemanticChunkRow payment = chunk(
+			5302L,
+			"admrul",
+			"(\uACC4\uC57D\uC608\uADDC) \uC6A9\uC5ED\uACC4\uC57D\uC77C\uBC18\uC870\uAC74",
+			"\uC81C27\uC870(\uB300\uAC00\uC758 \uC9C0\uAE09)",
+			"\uACC4\uC57D\uC0C1\uB300\uC790\uB294 \uC6A9\uC5ED\uC744 \uC644\uC131\uD55C \uD6C4 \uAC80\uC0AC\uC5D0 \uD569\uACA9\uD558\uBA74 \uB300\uAC00\uC758 \uC9C0\uAE09\uC744 \uCCAD\uAD6C\uD560 \uC218 \uC788\uB2E4."
+		);
+		LawSemanticChunkRow unrelated = chunk(
+			5303L,
+			"official_doc",
+			"\uD589\uC815\uC5C5\uBB34\uC6B4\uC601 \uD3B8\uB78C",
+			"\uC77C\uBC18 \uACC4\uC57D \uC808\uCC28",
+			"\uACC4\uC57D\uC5C5\uBB34\uC758 \uC77C\uBC18\uC801\uC778 \uC808\uCC28\uB97C \uC124\uBA85\uD55C\uB2E4."
+		);
+		LawAiAnswerService service = service();
+		try {
+			List<LawSemanticChunkRow> direct = intentDirectEvidenceChunks(
+				service,
+				List.of(unrelated, inspection, payment),
+				"\uACFC\uC5C5\uC9C0\uC2DC\uC11C \uC6A9\uC5ED\uAE30\uAC04\uC774 \uC548 \uB05D\uB0AC\uB294\uB370 \uACB0\uACFC\uBCF4\uACE0\uD574\uB3C4 \uB418\uB098?"
+			);
+
+			assertThat(direct).contains(inspection, payment);
+			assertThat(direct).doesNotContain(unrelated);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void contractCompletionPreserveUsesScoresWithinConfiguredDocuments() throws Exception {
+		String decree = "\uAD6D\uAC00\uB97C \uB2F9\uC0AC\uC790\uB85C \uD558\uB294 \uACC4\uC57D\uC5D0 \uAD00\uD55C \uBC95\uB960 \uC2DC\uD589\uB839";
+		String conditions = "(\uACC4\uC57D\uC608\uADDC) \uC6A9\uC5ED\uACC4\uC57D\uC77C\uBC18\uC870\uAC74";
+		LawSemanticChunkRow lowerProgress = chunk(
+			5401L,
+			"admrul",
+			conditions,
+			"\uC81C26\uC870(\uAE30\uC131\uB300\uAC00\uC758 \uC9C0\uAE09)",
+			"\uACC4\uC57D\uC0C1\uB300\uC790\uB294 \uAC80\uC0AC\uC5D0 \uD569\uACA9\uD55C \uAE30\uC131\uBD80\uBD84\uC758 \uB300\uAC00\uB97C \uCCAD\uAD6C\uD560 \uC218 \uC788\uB2E4."
+		);
+		LawSemanticChunkRow lowerPayment = chunk(
+			5402L,
+			"law",
+			decree,
+			"\uC81C58\uC870(\uB300\uAC00\uC758 \uC9C0\uAE09)",
+			"\uACC4\uC57D\uC0C1\uB300\uC790\uAC00 \uAC80\uC0AC\uC5D0 \uD569\uACA9\uD55C \uD6C4 \uB300\uAC00\uB97C \uC9C0\uAE09\uD55C\uB2E4."
+		);
+		LawSemanticChunkRow inspection = chunk(
+			5404L,
+			"law",
+			decree,
+			"\uC81C55\uC870(\uAC80\uC0AC)",
+			"\uACC4\uC57D\uC0C1\uB300\uC790\uB85C\uBD80\uD130 \uACC4\uC57D\uC758 \uC774\uD589\uC744 \uC644\uB8CC\uD55C \uC0AC\uC2E4\uC744 \uD1B5\uC9C0\uBC1B\uC740 \uB0A0\uBD80\uD130 \uAC80\uC0AC\uD55C\uB2E4."
+		);
+		LawSemanticChunkRow payment = chunk(
+			5405L,
+			"admrul",
+			conditions,
+			"\uC81C27\uC870(\uB300\uAC00\uC758 \uC9C0\uAE09)",
+			"\uACC4\uC57D\uC0C1\uB300\uC790\uB294 \uC6A9\uC5ED\uC744 \uC644\uC131\uD55C \uD6C4 \uAC80\uC0AC\uC5D0 \uD569\uACA9\uD558\uBA74 \uB300\uAC00\uC758 \uC9C0\uAE09\uC744 \uCCAD\uAD6C\uD560 \uC218 \uC788\uB2E4."
+		);
+		LawSemanticChunkRow scatteredTerms = chunk(
+			5406L,
+			"admrul",
+			conditions,
+			"\uC81C61\uC870(\uACC4\uC57D\uC815\uBCF4 \uACF5\uAC1C)",
+			"\uACC4\uC57D\uB2F4\uB2F9\uACF5\uBB34\uC6D0\uC740 \uACC4\uC57D\uC0C1\uB300\uC790\uC758 \uC774\uD589\uC644\uB8CC \uBC0F \uB300\uAC00\uC758 \uC9C0\uAE09 \uC815\uBCF4\uB97C \uD648\uD398\uC774\uC9C0\uC5D0 \uACF5\uAC1C\uD55C\uB2E4."
+		);
+		LawSemanticChunkRow paymentDelay = chunk(
+			5407L,
+			"law",
+			decree,
+			"\uC81C59\uC870(\uB300\uAC00\uC9C0\uAE09\uC9C0\uC5F0\uC5D0 \uB300\uD55C \uC774\uC790)",
+			"\uACC4\uC57D\uB2F4\uB2F9\uACF5\uBB34\uC6D0\uC740 \uB300\uAC00\uC9C0\uAE09\uAE30\uD55C\uAE4C\uC9C0 \uB300\uAC00\uB97C \uC9C0\uAE09\uD558\uC9C0 \uBABB\uD558\uBA74 \uC9C0\uC5F0\uC774\uC790\uB97C \uC9C0\uAE09\uD574\uC57C \uD55C\uB2E4."
+		);
+		LawSemanticChunkRow unrelated = chunk(
+			5403L,
+			"official_doc",
+			"\uD589\uC815\uC5C5\uBB34\uC6B4\uC601 \uD3B8\uB78C",
+			"\uC77C\uBC18 \uACC4\uC57D \uC808\uCC28",
+			"\uACC4\uC57D\uC5C5\uBB34\uC758 \uC77C\uBC18\uC801\uC778 \uC808\uCC28\uB97C \uC124\uBA85\uD55C\uB2E4."
+		);
+		EvidenceJudge.Result initiallyJudged = result(
+			List.of(scatteredTerms, unrelated),
+			true,
+			true,
+			true,
+			true,
+			1,
+			1,
+			1,
+			"direct"
+		);
+		Map<String, Double> combinedScores = Map.of(
+			"admrul:5401", 5.0,
+			"law:5402", 4.0,
+			"law:5404", 10.0,
+			"admrul:5405", 9.0,
+			"admrul:5406", 100.0,
+			"law:5407", 200.0
+		);
+		LawAiAnswerService service = service();
+		try {
+			EvidenceJudge.Result preserved = preserveIntentDirectEvidenceChunks(
+				service,
+				initiallyJudged,
+				List.of(lowerProgress, lowerPayment, unrelated, inspection, payment, scatteredTerms, paymentDelay),
+				"\uACFC\uC5C5\uC9C0\uC2DC\uC11C \uC6A9\uC5ED\uAE30\uAC04\uC774 \uC548 \uB05D\uB0AC\uB294\uB370 \uACB0\uACFC\uBCF4\uACE0\uD574\uB3C4 \uB418\uB098?",
+				combinedScores
+			);
+
+			assertThat(preserved.chunks()).contains(inspection, payment);
+			assertThat(preserved.chunks()).startsWith(inspection, payment);
+			assertThat(preserved.chunks()).doesNotContain(lowerProgress, lowerPayment);
+			assertThat(preserved.chunks()).doesNotContain(scatteredTerms);
+			assertThat(preserved.chunks()).doesNotContain(paymentDelay);
+			assertThat(preserved.chunks()).doesNotContain(unrelated);
 		} finally {
 			service.shutdownExecutors();
 		}
@@ -1784,6 +2255,16 @@ class LawAiAnswerServiceEvidenceGateTests {
 		List<LawSemanticChunkRow> chunks,
 		String query
 	) throws Exception {
+		return preserveIntentDirectEvidenceChunks(service, judged, chunks, query, Map.of());
+	}
+
+	private EvidenceJudge.Result preserveIntentDirectEvidenceChunks(
+		LawAiAnswerService service,
+		EvidenceJudge.Result judged,
+		List<LawSemanticChunkRow> chunks,
+		String query,
+		Map<String, Double> combinedScores
+	) throws Exception {
 		Method method = LawAiAnswerService.class.getDeclaredMethod(
 			"preserveIntentDirectEvidenceChunks",
 			EvidenceJudge.Result.class,
@@ -1799,7 +2280,7 @@ class LawAiAnswerServiceEvidenceGateTests {
 			chunks,
 			query,
 			Map.of(),
-			Map.of()
+			combinedScores
 		);
 	}
 

@@ -1,6 +1,7 @@
 package com.kaces.pandora.lawdata.sync;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static com.kaces.pandora.common.text.LawHashUtils.sha256;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -8,6 +9,82 @@ import org.junit.jupiter.api.Test;
 class LawSemanticChunkPlannerTests {
 
 	private final LawSemanticChunkPlanner planner = new LawSemanticChunkPlanner();
+	private final ChunkPlanningContext planningContext = new ChunkPlanningContext("law", 41L, "Personal Information Protection Act");
+
+	@Test
+	void planAssignsVersionedParentChildMetadataForSplitProvision() {
+		String article = "Article 9 (Exception) "
+			+ "A controller may retain information only when the statutory exception applies. ".repeat(110);
+
+		List<PlannedLawChunk> chunks = planner.plan(planningContext, List.of(
+			new SyncDetailSection(
+				"article",
+				"Article 9",
+				"Article 9 (Exception)",
+				article,
+				"$.law.articles[8].body",
+				9,
+				1
+			)
+		));
+
+		assertThat(chunks).hasSizeGreaterThan(1);
+		assertThat(chunks).allSatisfy(chunk -> {
+			assertThat(chunk.chunkSchemaVersion()).isEqualTo(2);
+			assertThat(chunk.parentKey()).matches("[0-9a-f]{64}");
+			assertThat(chunk.parentTitle()).isNotBlank();
+			assertThat(chunk.childOrder()).isGreaterThanOrEqualTo(0);
+			assertThat(chunk.qualityStatus()).isIn("PASS", "CONTEXT_ONLY", "REVIEW", "REJECT");
+			assertThat(chunk.embeddingText()).contains(
+				"Personal Information Protection Act",
+				"Article 9",
+				"Article 9 (Exception)",
+				"article",
+				chunk.text()
+			);
+		});
+		assertThat(chunks).extracting(PlannedLawChunk::parentKey).containsOnly(chunks.get(0).parentKey());
+		assertThat(chunks).extracting(PlannedLawChunk::childOrder).containsExactly(0, 1, 2, 3);
+	}
+
+	@Test
+	void planUsesDistinctDocumentScopedParentKeysForAdjacentArticles() {
+		List<PlannedLawChunk> chunks = planner.plan(planningContext, List.of(
+			new SyncDetailSection("article", "Article 1", "Article 1 (Purpose)", "Purpose ".repeat(130), "$.law.articles[0].body", 1, 1),
+			new SyncDetailSection("article", "Article 2", "Article 2 (Scope)", "Scope ".repeat(130), "$.law.articles[1].body", 2, 1)
+		));
+
+		assertThat(chunks).hasSize(2);
+		assertThat(chunks).extracting(PlannedLawChunk::parentKey).doesNotHaveDuplicates();
+	}
+
+	@Test
+	void planSeparatesAdjacentArticlesWithTheSameTitleByCanonicalPathAndNumber() {
+		List<PlannedLawChunk> chunks = planner.plan(planningContext, List.of(
+			new SyncDetailSection("article", "Article 1", "Article (General)", "First provision ".repeat(80), "$.law.articles[0].body", 1, 1),
+			new SyncDetailSection("article", "Article 2", "Article (General)", "Second provision ".repeat(80), "$.law.articles[1].body", 2, 1)
+		));
+
+		assertThat(chunks).hasSize(2);
+		assertThat(chunks).extracting(PlannedLawChunk::parentKey).doesNotHaveDuplicates();
+		assertThat(chunks.get(0).parentKey()).isEqualTo(sha256("law\n41\n$.law.articles\nArticle 1"));
+		assertThat(chunks.get(0).parentSourcePath()).isEqualTo("$.law.articles");
+	}
+
+	@Test
+	void planKeepsMeaningfulShortExceptionWithVersionedMetadata() {
+		List<PlannedLawChunk> chunks = planner.plan(planningContext, List.of(
+			new SyncDetailSection("article", "Article 12", "Article 12 (Exception)",
+				"Exception: retention remains permitted when an applicable statute requires it.",
+				"$.law.articles[11].body", 12, 1)
+		));
+
+		assertThat(chunks).singleElement().satisfies(chunk -> {
+			assertThat(chunk.text()).contains("Exception:");
+			assertThat(chunk.chunkSchemaVersion()).isEqualTo(2);
+			assertThat(chunk.qualityStatus()).isEqualTo("PASS");
+		});
+	}
 
 	@Test
 	void planMergesLineLevelLawFragmentsUnderSameProvision() {
@@ -430,6 +507,70 @@ class LawSemanticChunkPlannerTests {
 		assertThat(chunks.get(0).sourcePath()).isEqualTo("$.법령.조문.조문단위[9]");
 		assertThat(chunks.get(0).text()).contains("① 기관장은 필요한 계획을 수립하여야 한다.");
 		assertThat(chunks.get(0).text()).contains("1. 세부 추진계획");
+	}
+
+	@Test
+	void planKeepsAdministrativeRuleArticleIdentityAcrossSizeSplits() {
+		String article = "\uC81C27\uC870(\uB300\uAC00\uC758 \uC9C0\uAE09) "
+			+ "\uC6A9\uC5ED \uC644\uB8CC\uC640 \uAC80\uC0AC \uD6C4 \uB300\uAC00\uB97C \uC9C0\uAE09\uD55C\uB2E4. ".repeat(180);
+
+		List<PlannedLawChunk> chunks = planner.plan(List.of(
+			new SyncDetailSection(
+				"admin-rule-article",
+				"\uC81C27\uC870",
+				"\uC81C27\uC870(\uB300\uAC00\uC758 \uC9C0\uAE09)",
+				article,
+				"$.AdmRulService.\uC870\uBB38\uB0B4\uC6A9[26]",
+				27,
+				1
+			)
+		));
+
+		assertThat(chunks).hasSizeGreaterThan(1);
+		assertThat(chunks).allSatisfy(chunk -> {
+			assertThat(chunk.no()).startsWith("\uC81C27\uC870");
+			assertThat(chunk.title()).startsWith("\uC81C27\uC870(\uB300\uAC00\uC758 \uC9C0\uAE09)");
+			assertThat(chunk.no()).doesNotStartWith("\uC81C1\uC870");
+			assertThat(chunk.sourcePath()).isEqualTo("$.AdmRulService.\uC870\uBB38\uB0B4\uC6A9");
+			assertThat(chunk.text()).hasSizeLessThanOrEqualTo(2_500);
+		});
+	}
+
+	@Test
+	void planDoesNotMergeAdjacentAdministrativeRuleArticles() {
+		List<PlannedLawChunk> chunks = planner.plan(List.of(
+			new SyncDetailSection(
+				"admin-rule-article",
+				"\uC81C1\uC870",
+				"\uC81C1\uC870(\uBAA9\uC801)",
+				"\uC81C1\uC870(\uBAA9\uC801) \uC6A9\uC5ED\uACC4\uC57D\uC758 \uBAA9\uC801\uC744 \uC815\uD55C\uB2E4.",
+				"$.AdmRulService.\uC870\uBB38\uB0B4\uC6A9[0]",
+				1,
+				1
+			),
+			new SyncDetailSection(
+				"admin-rule-article",
+				"\uC81C20\uC870",
+				"\uC81C20\uC870(\uAC80\uC0AC)",
+				"\uC81C20\uC870(\uAC80\uC0AC) \uC644\uB8CC\uB41C \uC6A9\uC5ED\uC744 \uAC80\uC0AC\uD55C\uB2E4.",
+				"$.AdmRulService.\uC870\uBB38\uB0B4\uC6A9[1]",
+				20,
+				1
+			),
+			new SyncDetailSection(
+				"admin-rule-article",
+				"\uC81C27\uC870",
+				"\uC81C27\uC870(\uB300\uAC00\uC758 \uC9C0\uAE09)",
+				"\uC81C27\uC870(\uB300\uAC00\uC758 \uC9C0\uAE09) \uAC80\uC0AC \uD6C4 \uB300\uAC00\uB97C \uC9C0\uAE09\uD55C\uB2E4.",
+				"$.AdmRulService.\uC870\uBB38\uB0B4\uC6A9[2]",
+				27,
+				1
+			)
+		));
+
+		assertThat(chunks).hasSize(3);
+		assertThat(chunks).extracting(PlannedLawChunk::no)
+			.containsExactly("\uC81C1\uC870", "\uC81C20\uC870", "\uC81C27\uC870");
 	}
 
 	@Test

@@ -1,10 +1,13 @@
 package com.kaces.pandora.infra.qdrant;
 
 
+import com.kaces.pandora.infra.transport.RequestBodyTransportFailureClassifier;
 import com.kaces.pandora.semantic.config.LawAiProperties;
 import com.kaces.pandora.semantic.search.QdrantSearchHit;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import jakarta.annotation.PreDestroy;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -13,6 +16,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.LinkedHashSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
@@ -21,6 +26,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,6 +77,162 @@ public class QdrantClient {
 
 	public long searchFailureCount() {
 		return searchFailureCount.get();
+	}
+
+	public Set<Long> findExistingLawPointIds(List<Long> pointIds) {
+		return findExistingLawPointIds(pointIds, properties.qdrant().collection());
+	}
+
+	public Set<Long> findExistingLawCandidatePointIds(List<Long> pointIds) {
+		return findExistingLawPointIds(pointIds, lawCandidateCollection());
+	}
+
+	public void promoteLawCandidatePoints(List<Long> pointIds) {
+		List<Long> ids = pointIds == null ? List.of() : pointIds.stream().filter(id -> id != null && id > 0).distinct().toList();
+		if (ids.isEmpty()) {
+			throw new IllegalArgumentException("Candidate point promotion requires at least one point.");
+		}
+		byte[] response = restClient.post()
+			.uri("/collections/{collection}/points", lawCandidateCollection())
+			.body(Map.of("ids", ids, "with_payload", true, "with_vector", true))
+			.retrieve()
+			.body(byte[].class);
+		try {
+			Map<?, ?> envelope = objectMapper.readValue(response, Map.class);
+			if (!(envelope.get("result") instanceof List<?> points) || points.size() != ids.size()) {
+				throw new IllegalStateException("Candidate points are incomplete.");
+			}
+			List<Map<String, Object>> activePoints = new ArrayList<>();
+			for (Object value : points) {
+				if (!(value instanceof Map<?, ?> point) || point.get("id") == null || point.get("vector") == null) {
+					throw new IllegalStateException("Candidate point is malformed.");
+				}
+				Map<String, Object> payload = new LinkedHashMap<>();
+				if (point.get("payload") instanceof Map<?, ?> sourcePayload) {
+					sourcePayload.forEach((key, item) -> payload.put(String.valueOf(key), item));
+				}
+				payload.put("activationStatus", "CANDIDATE");
+				activePoints.add(Map.of("id", point.get("id"), "vector", point.get("vector"), "payload", payload));
+			}
+			restClient.put().uri("/collections/{collection}/points?wait=true", properties.qdrant().collection())
+				.body(Map.of("points", activePoints)).retrieve().toBodilessEntity();
+		} catch (RuntimeException exception) {
+			throw exception;
+		} catch (Exception exception) {
+			throw new IllegalStateException("Candidate point promotion response was not valid JSON.", exception);
+		}
+	}
+
+	public void markLawPointsActive(List<Long> pointIds) {
+		setLawPointActivationStatus(pointIds, "ACTIVE");
+	}
+
+	public void markLawPointsRetired(List<Long> pointIds) {
+		setLawPointActivationStatus(pointIds, "RETIRED");
+	}
+
+	public void markLawPointsCandidate(List<Long> pointIds) {
+		setLawPointActivationStatus(pointIds, "CANDIDATE");
+	}
+
+	public Set<Long> findLawPointIdsWithActivationStatus(List<Long> pointIds, String activationStatus) {
+		List<Long> ids = pointIds == null ? List.of() : pointIds.stream().filter(id -> id != null && id > 0).distinct().toList();
+		if (ids.isEmpty()) return Set.of();
+		Set<Long> matching = new LinkedHashSet<>();
+		for (int start = 0; start < ids.size(); start += 256) {
+			matching.addAll(findLawPointIdsWithActivationStatusBatch(ids.subList(start, Math.min(start + 256, ids.size())), activationStatus));
+		}
+		return Set.copyOf(matching);
+	}
+
+	private Set<Long> findLawPointIdsWithActivationStatusBatch(List<Long> ids, String activationStatus) {
+		byte[] response = restClient.post().uri("/collections/{collection}/points", properties.qdrant().collection())
+			.body(Map.of("ids", ids, "with_payload", true, "with_vector", false)).retrieve().body(byte[].class);
+		try {
+			Map<?, ?> envelope = objectMapper.readValue(response, Map.class);
+			if (!(envelope.get("result") instanceof List<?> points)) throw new IllegalStateException("Qdrant point status response did not contain a result list.");
+			Set<Long> matching = new LinkedHashSet<>();
+			for (Object value : points) {
+				if (value instanceof Map<?, ?> point && point.get("payload") instanceof Map<?, ?> payload
+					&& activationStatus.equals(String.valueOf(payload.get("activationStatus")))) matching.add(strictPositivePointId(point.get("id")));
+			}
+			return Set.copyOf(matching);
+		} catch (RuntimeException exception) { throw exception;
+		} catch (Exception exception) { throw new IllegalStateException("Qdrant point status response was not valid JSON.", exception); }
+	}
+
+	private void setLawPointActivationStatus(List<Long> pointIds, String status) {
+		List<Long> ids = pointIds == null ? List.of() : pointIds.stream().filter(id -> id != null && id > 0).distinct().toList();
+		if (ids.isEmpty()) {
+			return;
+		}
+		restClient.put().uri("/collections/{collection}/points/payload?wait=true", properties.qdrant().collection())
+			.body(Map.of("payload", Map.of("activationStatus", status), "points", ids)).retrieve().toBodilessEntity();
+	}
+
+	private Set<Long> findExistingLawPointIds(List<Long> pointIds, String collection) {
+		List<Long> ids = pointIds == null ? List.of() : pointIds.stream()
+			.filter(id -> id != null && id > 0)
+			.distinct()
+			.toList();
+		if (ids.isEmpty()) {
+			return Set.of();
+		}
+		Set<Long> existing = new LinkedHashSet<>();
+		for (int start = 0; start < ids.size(); start += 256) {
+			existing.addAll(findExistingLawPointIdsBatch(ids.subList(start, Math.min(start + 256, ids.size())), collection));
+		}
+		return Set.copyOf(existing);
+	}
+
+	private Set<Long> findExistingLawPointIdsBatch(List<Long> ids, String collection) {
+		byte[] response = restClient.post()
+			.uri("/collections/{collection}/points", collection)
+			.body(Map.of("ids", ids, "with_payload", false, "with_vector", false))
+			.retrieve()
+			.body(byte[].class);
+		if (response == null || response.length == 0) {
+			throw new IllegalStateException("Qdrant point lookup response was empty.");
+		}
+		try {
+			Map<?, ?> envelope = objectMapper.readValue(response, Map.class);
+			if (!(envelope.get("result") instanceof List<?> result)) {
+				throw new IllegalStateException("Qdrant point lookup response did not contain a result list.");
+			}
+			Set<Long> existing = new LinkedHashSet<>();
+			for (Object item : result) {
+				if (!(item instanceof Map<?, ?> point)) {
+					throw new IllegalStateException("Qdrant point lookup response contained a malformed point.");
+				}
+				existing.add(strictPositivePointId(point.get("id")));
+			}
+			return Set.copyOf(existing);
+		} catch (RuntimeException exception) {
+			throw exception;
+		} catch (Exception exception) {
+			throw new IllegalStateException("Qdrant point lookup response was not valid JSON.", exception);
+		}
+	}
+
+	private long strictPositivePointId(Object value) {
+		if (!(value instanceof Number number)
+			|| number instanceof Float
+			|| number instanceof Double) {
+			throw new IllegalStateException("Qdrant point lookup response contained a malformed point.");
+		}
+		BigInteger id;
+		try {
+			id = number instanceof BigInteger bigInteger
+				? bigInteger
+				: number instanceof BigDecimal decimal ? decimal.toBigIntegerExact()
+				: BigInteger.valueOf(number.longValue());
+		} catch (RuntimeException exception) {
+			throw new IllegalStateException("Qdrant point lookup response contained a malformed point.", exception);
+		}
+		if (id.signum() <= 0 || id.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0) {
+			throw new IllegalStateException("Qdrant point lookup response contained a malformed point.");
+		}
+		return id.longValueExact();
 	}
 
 	public boolean isSearchReady() {
@@ -258,6 +420,10 @@ public class QdrantClient {
 		ensureCollection(properties.qdrant().collection());
 	}
 
+	public String lawCandidateCollection() {
+		return properties.qdrant().collection() + "_candidate";
+	}
+
 	public void ensureRagCollection() {
 		ensureCollection(ragCollection());
 	}
@@ -293,6 +459,11 @@ public class QdrantClient {
 		upsert(chunks, vectors, false);
 	}
 
+	public void upsertLawCandidates(List<LawSemanticChunkRow> chunks, List<List<Double>> vectors) {
+		ensureCollection(lawCandidateCollection());
+		upsert(chunks, vectors, false, lawCandidateCollection(), "CANDIDATE");
+	}
+
 	// 메소드 설명: upsertRag 처리 흐름을 수행합니다.
 	public void upsertRag(List<LawSemanticChunkRow> chunks, List<List<Double>> vectors) {
 		ensureRagCollection();
@@ -301,10 +472,14 @@ public class QdrantClient {
 
 	// 메소드 설명: upsert 처리 흐름을 수행합니다.
 	private void upsert(List<LawSemanticChunkRow> chunks, List<List<Double>> vectors, boolean stringPointId) {
-		upsert(chunks, vectors, stringPointId, properties.qdrant().collection());
+		upsert(chunks, vectors, stringPointId, properties.qdrant().collection(), "ACTIVE");
 	}
 
 	private void upsert(List<LawSemanticChunkRow> chunks, List<List<Double>> vectors, boolean stringPointId, String collection) {
+		upsert(chunks, vectors, stringPointId, collection, "ACTIVE");
+	}
+
+	private void upsert(List<LawSemanticChunkRow> chunks, List<List<Double>> vectors, boolean stringPointId, String collection, String activationStatus) {
 		if (chunks.size() != vectors.size()) {
 			throw new IllegalArgumentException("Chunk and vector counts must match.");
 		}
@@ -326,6 +501,7 @@ public class QdrantClient {
 			payload.put("effectiveStatus", blankIfNull(chunk.effectiveStatus()));
 			payload.put("chunkNo", blankIfNull(chunk.chunkNo()));
 			payload.put("chunkVersion", chunkVersion(chunk));
+			payload.put("activationStatus", activationStatus);
 			payload.put("sourcePath", blankIfNull(chunk.sourcePath()));
 			points.add(Map.of(
 				"id", stringPointId ? ragPointId(chunk.chunkId()) : chunk.chunkId(),
@@ -348,6 +524,9 @@ public class QdrantClient {
 	}
 
 	private int chunkVersion(LawSemanticChunkRow chunk) {
+		if (chunk.chunkVersion() != null && chunk.chunkVersion() > 0) {
+			return chunk.chunkVersion();
+		}
 		String sourcePath = chunk.sourcePath() == null ? "" : chunk.sourcePath();
 		if (sourcePath.contains("$.v4.")) {
 			return 4;
@@ -508,7 +687,8 @@ public class QdrantClient {
 				"vector", vector,
 				"limit", limit,
 				"with_payload", SEARCH_PAYLOAD_FIELDS,
-				"with_vector", false
+				"with_vector", false,
+				"filter", Map.of("must_not", List.of(Map.of("key", "activationStatus", "match", Map.of("any", List.of("CANDIDATE", "RETIRED")))))
 			)
 			: Map.of(
 			"vector", vector,
@@ -519,7 +699,8 @@ public class QdrantClient {
 				"must", List.of(Map.of(
 					"key", "target",
 					"match", Map.of("value", target)
-				))
+				)),
+				"must_not", List.of(Map.of("key", "activationStatus", "match", Map.of("any", List.of("CANDIDATE", "RETIRED"))))
 			)
 		);
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
@@ -550,12 +731,30 @@ public class QdrantClient {
 					exception.getMessage()
 				);
 				sleepBeforeRetry(attempt);
+			} catch (HttpMessageNotWritableException exception) {
+				if (!RequestBodyTransportFailureClassifier.isExactTransientFailure(exception)) {
+					throw exception;
+				}
+				lastException = exception;
+				log.warn("Qdrant search request failed. attempt={} collection={} failureType={}",
+					attempt,
+					collection,
+					exception.getClass().getSimpleName()
+				);
+				sleepBeforeRetry(attempt);
 			}
 		}
-		log.warn("Qdrant search request abandoned after retry. collection={} message={}",
-			collection,
-			lastException == null ? "" : lastException.getMessage()
-		);
+		if (lastException != null && RequestBodyTransportFailureClassifier.isExactTransientFailure(lastException)) {
+			log.warn("Qdrant search request abandoned after retry. collection={} failureType={}",
+				collection,
+				lastException.getClass().getSimpleName()
+			);
+		} else {
+			log.warn("Qdrant search request abandoned after retry. collection={} message={}",
+				collection,
+				lastException == null ? "" : lastException.getMessage()
+			);
+		}
 		searchFailureCount.incrementAndGet();
 		return Map.of();
 	}

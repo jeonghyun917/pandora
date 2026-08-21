@@ -5,8 +5,10 @@ import com.kaces.pandora.common.text.QuestionEntity;
 import com.kaces.pandora.common.text.QuestionIntentProfile;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
@@ -19,6 +21,7 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final String RELATION = "RELATION";
 	private static final String CONDITION = "CONDITION";
 	private static final String DIRECT_CONCLUSION = "DIRECT_CONCLUSION";
+	private static final String ANSWER_COVERAGE = "ANSWER_COVERAGE";
 	private static final Pattern DIRECT_CONCLUSION_PATTERN = Pattern.compile(
 		"(?:입니다|합니다|한다|된다|됩니다|아니다|없습니다|있습니다|"
 			+ "하여야\s*한다|해야\s*한다|할\s*수\s*있다|할\s*수\s*없다|"
@@ -54,7 +57,7 @@ public class AnswerQuestionAlignmentVerifier {
 			+ "(?=(?:은|는|이|가|을|를|으로|에서|부터|까지|입니다|이다|이고|이며|[\\s,.!?]|$))"
 	);
 	private static final Pattern PERIOD_VALUE_PATTERN = Pattern.compile(
-		"(?:(?<![\\p{Alnum}제])\\d{4}(?:[./-]\\d{1,2}){1,2}|"
+		"(?:(?<![\\p{Alnum}제])\\d{4}(?:\\s*[./-]\\s*\\d{1,2}){1,2}|"
 			+ "(?<![\\p{Alnum}제])\\d+(?:년|개월|월|일|주|시간|분|초))"
 			+ "(?=(?:은|는|이|가|을|를|부터|까지|입니다|이다|이고|이며|[\\s,.!?]|$))|"
 			+ "(?:(?:[\\p{IsHangul}A-Za-z0-9]{2,20}\\s+){0,2}"
@@ -65,6 +68,9 @@ public class AnswerQuestionAlignmentVerifier {
 	);
 	private static final Pattern PROPOSITION_BOUNDARY = Pattern.compile(
 		"(?:별개로|무관하게|관계없이|반면(?:에)?|한편|다만|그러나|하지만)[,，]?\\s*"
+	);
+	private static final Pattern CONFIGURED_POLICY_CONDITION_FRAME = Pattern.compile(
+		"[\\p{IsHangul}]+(?:으면|면|는데|인데)(?=\\s|[,.!?？]|$)"
 	);
 	private static final List<Pattern> CLASSIFICATION_RELATION_PATTERNS = List.of(
 		Pattern.compile("(?<![\\p{IsHangul}\\p{Alnum}])([\\p{IsHangul}\\p{Alnum}]{2,})(?:이라고|라고)\\s*볼\\s*수\\s*(?:있|없)"),
@@ -85,6 +91,14 @@ public class AnswerQuestionAlignmentVerifier {
 	private final ClaimEvidenceAtomizer atomizer = new ClaimEvidenceAtomizer();
 
 	public AlignmentResult verify(String question, ClaimVerifier.VerificationResult claimResult) {
+		return verify(question, claimResult, List.of());
+	}
+
+	public AlignmentResult verify(
+		String question,
+		ClaimVerifier.VerificationResult claimResult,
+		List<LawAiAnswerGround> grounds
+	) {
 		AlignmentProfile alignmentProfile = AlignmentProfile.from(question);
 		if (!alignmentProfile.usable()) {
 			return AlignmentResult.failed(
@@ -100,12 +114,24 @@ public class AnswerQuestionAlignmentVerifier {
 		if (supportedLinks.isEmpty()) {
 			return AlignmentResult.failed("NO_SUPPORTED_CLAIMS", List.of(SUBJECT, RELATION));
 		}
-
+		boolean completeAnswerCoverage = hasCompleteAnswerCoverage(supportedLinks, alignmentProfile);
+		Map<Integer, String> subjectContextByGround = subjectContextByGround(grounds);
 		List<CandidateResult> candidates = supportedLinks.stream()
-			.flatMap(link -> assess(link, alignmentProfile).stream())
+			.flatMap(link -> assess(
+				link,
+				alignmentProfile,
+				subjectContextByGround.getOrDefault(link.groundNumber(), ""),
+				completeAnswerCoverage
+			).stream())
 			.toList();
 		for (CandidateResult candidate : candidates) {
 			if (candidate.missingGroups().isEmpty()) {
+				if (!completeAnswerCoverage) {
+					return AlignmentResult.failed(
+						"MISSING_ANSWER_COVERAGE",
+						List.of(ANSWER_COVERAGE)
+					);
+				}
 				return AlignmentResult.aligned(candidate.claim());
 			}
 		}
@@ -117,9 +143,47 @@ public class AnswerQuestionAlignmentVerifier {
 		return AlignmentResult.failed(reasonCode(best.missingGroups()), best.missingGroups());
 	}
 
+	private Map<Integer, String> subjectContextByGround(List<LawAiAnswerGround> grounds) {
+		if (grounds == null || grounds.isEmpty()) {
+			return Map.of();
+		}
+		Map<Integer, String> contexts = new LinkedHashMap<>();
+		for (LawAiAnswerGround ground : grounds) {
+			if (ground == null) {
+				continue;
+			}
+			String context = normalize(String.join(
+				" ",
+				String.valueOf(ground.title()),
+				String.valueOf(ground.chunkTitle()),
+				String.valueOf(ground.categoryName())
+			));
+			if (!context.isBlank()) {
+				contexts.putIfAbsent(ground.number(), context);
+			}
+		}
+		return Map.copyOf(contexts);
+	}
+
+	private boolean hasCompleteAnswerCoverage(
+		List<ClaimVerifier.ClaimEvidenceLink> supportedLinks,
+		AlignmentProfile profile
+	) {
+		if (profile.answerCoverageGroups().isEmpty()) {
+			return true;
+		}
+		String supportedAnswer = normalize(supportedLinks.stream()
+			.map(ClaimVerifier.ClaimEvidenceLink::claim)
+			.reduce("", (left, right) -> left + " " + String.valueOf(right)));
+		return profile.answerCoverageGroups().stream()
+			.allMatch(group -> group.stream().anyMatch(supportedAnswer::contains));
+	}
+
 	private List<CandidateResult> assess(
 		ClaimVerifier.ClaimEvidenceLink link,
-		AlignmentProfile profile
+		AlignmentProfile profile,
+		String subjectContext,
+		boolean completeAnswerCoverage
 	) {
 		List<String> claimAtoms = atomizer.atomizeForAlignment(link.claim());
 		if (claimAtoms.isEmpty()) {
@@ -127,23 +191,58 @@ public class AnswerQuestionAlignmentVerifier {
 		}
 		String evidenceProposition = directProposition(link.evidenceSentence());
 		return claimAtoms.stream()
-			.map(claimAtom -> assessAtom(claimAtom, evidenceProposition, profile))
+			.map(claimAtom -> assessAtom(
+				claimAtom,
+				evidenceProposition,
+				profile,
+				subjectContext,
+				completeAnswerCoverage
+			))
 			.toList();
 	}
 
 	private CandidateResult assessAtom(
 		String claimAtom,
 		String evidenceProposition,
-		AlignmentProfile profile
+		AlignmentProfile profile,
+		String subjectContext,
+		boolean completeAnswerCoverage
 	) {
 		String claimProposition = directProposition(claimAtom);
 		String normalizedClaimProposition = normalize(claimProposition);
+		boolean configuredAnswerCoverageBridgeMatched = completeAnswerCoverage
+			&& profile.answerCoverageGroups().stream()
+				.anyMatch(group -> group.stream().anyMatch(normalizedClaimProposition::contains));
+		boolean configuredPolicyBridgeMatched = matchesAllGroups(
+			normalizedClaimProposition,
+			profile.configuredPolicyBridgeGroups()
+		);
+		boolean documentIdentityBridgeMatched = profile.documentIdentityQuestion()
+			&& DocumentIdentityAnswerComposer.titleMatchesAnchors(
+				evidenceProposition,
+				profile.documentIdentityTitleAnchors()
+			)
+			&& ClaimEvidenceMatcher.isDocumentIdentityClaim(
+				claimProposition,
+				evidenceProposition,
+				subjectContext
+			);
 		LinkedHashSet<String> missing = new LinkedHashSet<>();
-		if (!matchesAllGroups(normalizedClaimProposition, profile.subjectGroups())) {
+		boolean subjectMatched = matchesAllGroups(
+			normalizedClaimProposition,
+			profile.subjectGroups()
+		) || matchesAllGroups(subjectContext, profile.subjectGroups())
+			|| documentIdentityBridgeMatched;
+		if (!configuredPolicyBridgeMatched
+			&& !configuredAnswerCoverageBridgeMatched
+			&& !subjectMatched) {
 			missing.add(SUBJECT);
 		}
-		boolean claimHasRelation = profile.relationRequirements().stream()
-			.allMatch(requirement -> requirement.matches(claimProposition));
+		boolean claimHasRelation = documentIdentityBridgeMatched
+			|| configuredPolicyBridgeMatched
+			|| configuredAnswerCoverageBridgeMatched
+			|| profile.relationRequirements().stream()
+				.allMatch(requirement -> requirement.matches(claimProposition));
 		if (!claimHasRelation) {
 			missing.add(RELATION);
 			if (profile.relationRequirements().stream()
@@ -151,11 +250,16 @@ public class AnswerQuestionAlignmentVerifier {
 				missing.add(DIRECT_CONCLUSION);
 			}
 		}
-		if (!profile.conditionGroups().stream()
+		if (!configuredPolicyBridgeMatched
+			&& !configuredAnswerCoverageBridgeMatched
+			&& !profile.conditionGroups().stream()
 			.allMatch(group -> group.stream().allMatch(normalizedClaimProposition::contains))) {
 			missing.add(CONDITION);
 		}
-		if (claimHasRelation && !hasDirectConclusion(claimProposition, profile.relationRequirements())) {
+		if (claimHasRelation
+			&& !hasDirectConclusion(claimProposition, profile.relationRequirements())
+			&& (!configuredAnswerCoverageBridgeMatched
+				|| isExplicitlyNonConclusive(claimProposition, profile.relationRequirements()))) {
 			missing.add(DIRECT_CONCLUSION);
 		}
 		return new CandidateResult(claimAtom, List.copyOf(missing));
@@ -174,21 +278,39 @@ public class AnswerQuestionAlignmentVerifier {
 		}
 		String trimmed = proposition.trim();
 		String normalized = normalize(trimmed);
-		String terminalMetaPredicateStem = terminalMetaPredicateStem(normalized);
-		if (trimmed.endsWith("?")
-			|| trimmed.endsWith("？")
-			|| (terminalMetaPredicateStem != null
-				&& !requestsLexicalPredicate(terminalMetaPredicateStem, relationRequirements))
-			|| NON_CONCLUSION_INTERROGATIVE_ENDINGS.stream().anyMatch(normalized::endsWith)) {
+		if (isExplicitlyNonConclusive(trimmed, relationRequirements)) {
 			return false;
 		}
 		if (DIRECT_CONCLUSION_PATTERN.matcher(trimmed).find()) {
+			return true;
+		}
+		boolean hasRequestedValue = relationRequirements.stream()
+			.anyMatch(requirement ->
+				requirement.kind() == RelationKind.PERIOD_VALUE
+					|| requirement.kind() == RelationKind.AMOUNT_VALUE
+			);
+		if (hasRequestedValue
+			&& relationRequirements.stream().allMatch(requirement -> requirement.matches(trimmed))) {
 			return true;
 		}
 		return relationRequirements.stream().allMatch(requirement -> requirement.matches(normalized))
 			&& List.of("대상", "비대상", "제외", "면제", "금지", "허용", "가능", "불가능")
 				.stream()
 				.anyMatch(normalized::endsWith);
+	}
+
+	private boolean isExplicitlyNonConclusive(
+		String proposition,
+		List<RelationRequirement> relationRequirements
+	) {
+		String trimmed = String.valueOf(proposition == null ? "" : proposition).trim();
+		String normalized = normalize(trimmed);
+		String terminalMetaPredicateStem = terminalMetaPredicateStem(normalized);
+		return trimmed.endsWith("?")
+			|| trimmed.endsWith("？")
+			|| (terminalMetaPredicateStem != null
+				&& !requestsLexicalPredicate(terminalMetaPredicateStem, relationRequirements))
+			|| NON_CONCLUSION_INTERROGATIVE_ENDINGS.stream().anyMatch(normalized::endsWith);
 	}
 
 	private static String terminalMetaPredicateStem(String normalizedProposition) {
@@ -323,7 +445,11 @@ public class AnswerQuestionAlignmentVerifier {
 	private record AlignmentProfile(
 		List<List<String>> subjectGroups,
 		List<RelationRequirement> relationRequirements,
-		List<List<String>> conditionGroups
+		List<List<String>> conditionGroups,
+		List<List<String>> configuredPolicyBridgeGroups,
+		List<List<String>> answerCoverageGroups,
+		List<String> documentIdentityTitleAnchors,
+		boolean documentIdentityQuestion
 	) {
 		private static AlignmentProfile from(String question) {
 			QuestionIntentProfile questionProfile = QuestionIntentProfile.from(question);
@@ -344,15 +470,74 @@ public class AnswerQuestionAlignmentVerifier {
 					? classificationFrame
 					: ClassificationFrame.empty()
 			);
+			List<List<String>> policyBridgeGroups = configuredPolicyBridgeGroups(
+				questionProfile,
+				question,
+				conditionGroups
+			);
 			return new AlignmentProfile(
 				subjectGroups,
 				relationRequirements,
-				conditionGroups
+				conditionGroups,
+				policyBridgeGroups,
+				questionProfile.configuredAnswerCoverageGroups().stream()
+					.map(AlignmentProfile::normalizedValues)
+					.filter(group -> !group.isEmpty())
+					.toList(),
+				DocumentIdentityAnswerComposer.titleAnchors(questionProfile),
+				questionProfile.documentIdentityQuestion()
 			);
 		}
 
+		private static List<List<String>> configuredPolicyBridgeGroups(
+			QuestionIntentProfile profile,
+			String question,
+			List<List<String>> conditionGroups
+		) {
+			String normalizedQuestion = normalize(question);
+			boolean asksPermissionOrWhether = containsAny(
+				normalizedQuestion,
+				"되나",
+				"되는지",
+				"가능",
+				"해도",
+				"할수"
+			);
+			boolean asksExplicitValue = containsAny(
+				normalizedQuestion,
+				"언제",
+				"며칠",
+				"몇일",
+				"얼마동안",
+				"기간은",
+				"기한은"
+			);
+			boolean hasMappedConditionFrame = !conditionGroups.isEmpty()
+				|| CONFIGURED_POLICY_CONDITION_FRAME.matcher(
+					String.valueOf(question == null ? "" : question)
+				).find();
+			if (profile.matchedPolicyIds().isEmpty()
+				|| profile.preferredTargets().isEmpty()
+				|| !profile.preferredTargets().stream().allMatch(AlignmentProfile::isLawTarget)
+				|| profile.directEvidenceGroups().size() < 2
+				|| !hasMappedConditionFrame
+				|| !asksPermissionOrWhether
+				|| asksExplicitValue) {
+				return List.of();
+			}
+			return profile.directEvidenceGroups().stream()
+				.map(AlignmentProfile::normalizedValues)
+				.filter(group -> !group.isEmpty())
+				.toList();
+		}
+
+		private static boolean isLawTarget(String target) {
+			return "law".equals(target) || "admrul".equals(target);
+		}
+
 		private boolean usable() {
-			return !subjectGroups.isEmpty() && !relationRequirements.isEmpty();
+			return (!subjectGroups.isEmpty() && !relationRequirements.isEmpty())
+				|| !answerCoverageGroups.isEmpty();
 		}
 
 		private static List<List<String>> subjectGroups(
@@ -371,11 +556,11 @@ public class AnswerQuestionAlignmentVerifier {
 			else {
 				String question = profile.normalizedQuestion();
 				for (QuestionEntity entity : profile.entities()) {
-					List<String> explicitAliases = minimalAliases(normalizedValues(entity.aliases()).stream()
+					List<String> normalizedAliases = normalizedValues(entity.aliases()).stream()
 						.filter(alias -> alias.length() >= 2 && question.contains(alias))
 						.filter(alias -> !isSubjectStopTerm(alias))
-						.filter(alias -> belongsToEntityLabel(alias, entity.label()))
-						.toList());
+						.toList();
+					List<String> explicitAliases = minimalAliases(normalizedAliases);
 					List<List<String>> configuredSubjectGroups = entity.directEvidenceGroups().stream()
 						.map(AlignmentProfile::normalizedValues)
 						.filter(group -> group.stream().anyMatch(value -> explicitAliases.stream()
@@ -384,8 +569,12 @@ public class AnswerQuestionAlignmentVerifier {
 					if (!configuredSubjectGroups.isEmpty()) {
 						groups.addAll(configuredSubjectGroups);
 					}
-					else {
-						explicitAliases.forEach(alias -> groups.add(List.of(alias)));
+					else if (!explicitAliases.isEmpty()) {
+						List<String> equivalentAliases = minimalAliases(normalizedValues(entity.aliases()).stream()
+							.filter(alias -> alias.length() >= 2)
+							.filter(alias -> !isSubjectStopTerm(alias))
+							.toList());
+						groups.add(equivalentAliases.isEmpty() ? explicitAliases : equivalentAliases);
 					}
 				}
 			}
@@ -396,7 +585,8 @@ public class AnswerQuestionAlignmentVerifier {
 					|| isSubjectStopTerm(normalized)
 					|| coveredByConditions(normalized, conditionGroups)
 					|| coveredBySubjectGroups(normalized, groups)
-					|| coveredByIntent(normalized, profile.intentGroups())) {
+					|| coveredByIntent(normalized, profile.intentGroups())
+					|| coveredByDirectEvidence(normalized, profile.directEvidenceGroups())) {
 					continue;
 				}
 				groups.add(List.of(normalized));
@@ -417,12 +607,6 @@ public class AnswerQuestionAlignmentVerifier {
 			return groups.stream()
 				.flatMap(List::stream)
 				.anyMatch(anchor -> anchor.contains(term) || term.contains(anchor));
-		}
-
-		private static boolean belongsToEntityLabel(String alias, String label) {
-			String normalizedLabel = normalize(label);
-			return !normalizedLabel.isBlank()
-				&& (normalizedLabel.contains(alias) || alias.contains(normalizedLabel));
 		}
 
 		private static boolean sameConcept(String left, String right) {
@@ -447,6 +631,18 @@ public class AnswerQuestionAlignmentVerifier {
 				.flatMap(List::stream)
 				.map(AnswerQuestionAlignmentVerifier::normalize)
 				.anyMatch(intent -> intent.equals(term) || intent.contains(term));
+		}
+
+		private static boolean coveredByDirectEvidence(
+			String term,
+			List<List<String>> directEvidenceGroups
+		) {
+			return directEvidenceGroups.stream()
+				.flatMap(List::stream)
+				.map(AnswerQuestionAlignmentVerifier::normalize)
+				.anyMatch(anchor ->
+					anchor.equals(term) || anchor.contains(term) || term.contains(anchor)
+				);
 		}
 
 		private static boolean isSubjectStopTerm(String term) {

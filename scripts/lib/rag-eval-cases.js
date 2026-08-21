@@ -86,6 +86,10 @@ const CANONICAL_ANSWER_ORACLE_IDS = new Set([
   'admrul-notice-exception',
   'no-unrelated-privacy-for-sw',
   'public-data-obligation-system',
+  'contract-completion-before-period',
+  'contract-completion-before-period-paraphrase',
+  'contract-completion-actual-finished',
+  'contract-completion-work-remaining-control',
 ]);
 
 function parseEvalCasesTsv(text, source = 'evaluation TSV') {
@@ -225,6 +229,7 @@ function toEvalCase(columns) {
     answerVerificationRequired: parseOptionalBoolean(columns[13]),
     expectedAnswerTerms: splitList(columns[14]),
     forbiddenAnswerTerms: splitList(columns[15]),
+    failureTaxonomy: String(columns[16] ?? '').trim(),
     requiredPropositionGroups: [],
     requiredConditionGroups: [],
   };
@@ -396,11 +401,130 @@ function expectedResultMsgs(id, value) {
   return String(id ?? '').trim().startsWith('no-') ? ['NO_GROUNDS'] : [];
 }
 
+function releaseCoverage(cases, options = {}) {
+  const minimumNoGround = Number(options.minimumNoGround ?? 30);
+  const rows = cases ?? [];
+  const risks = [];
+  const noGround = rows.filter((item) => item.expectedResultMsgs?.includes('NO_GROUNDS'));
+  for (const item of noGround) {
+    if ((item.forbiddenTerms?.length ?? 0) === 0) {
+      risks.push({ code: 'NO_GROUNDS_DISTRACTOR_MISSING', id: item.id });
+    }
+  }
+  for (const item of rows.filter((row) => row.answerVerificationRequired === true)) {
+    if ((item.requiredPropositionGroups?.length ?? 0) === 0) {
+      risks.push({ code: 'ANSWER_PROPOSITION_MISSING', id: item.id });
+    }
+  }
+  const combinations = new Map();
+  for (const item of rows) {
+    const question = normalizeCoverageText(item.question);
+    const oracle = JSON.stringify(coverageOracle(item));
+    const key = `${question}\u0000${oracle}`;
+    const previous = combinations.get(key);
+    if (question && previous) {
+      risks.push({ code: 'DUPLICATE_QUESTION_ORACLE', id: item.id, duplicateOf: previous });
+    } else if (question) {
+      combinations.set(key, item.id);
+    }
+  }
+  for (const item of rows.filter((row) => String(row.id ?? '').startsWith('reviewed-failure-'))) {
+    const taxonomy = String(item.failureTaxonomy ?? '').trim();
+    if (!taxonomy || taxonomy === '기타' || taxonomy.toLowerCase() === 'other') {
+      risks.push({ code: 'GENERIC_FAILURE_TAXONOMY', id: item.id });
+    }
+  }
+  if (noGround.length < minimumNoGround) {
+    risks.push({
+      code: 'NO_GROUNDS_MINIMUM',
+      actual: noGround.length,
+      required: minimumNoGround,
+    });
+  }
+  return {
+    releaseTotal: rows.length,
+    curatedTotal: rows.filter((item) => !String(item.id ?? '').startsWith('gen-')).length,
+    generatedTotal: rows.filter((item) => String(item.id ?? '').startsWith('gen-')).length,
+    answerOracleTotal: rows.filter((item) => item.answerVerificationRequired === true).length,
+    noGroundTotal: noGround.length,
+    explicitConditionTotal: rows.filter((item) => (item.requiredConditionGroups?.length ?? 0) > 0).length,
+    failureTaxonomyCounts: countStrings(rows
+      .map((item) => String(item.failureTaxonomy ?? '').trim())
+      .filter(Boolean)),
+    risks,
+    passed: risks.length === 0,
+  };
+}
+
+function assertReleaseCoverage(cases, options = {}) {
+  const coverage = releaseCoverage(cases, options);
+  if (!coverage.passed) {
+    const details = coverage.risks.map((risk) => {
+      if (risk.code === 'NO_GROUNDS_MINIMUM') {
+        return `${risk.code}:${risk.actual}/${risk.required}`;
+      }
+      return `${risk.code}:${risk.id ?? 'release'}`;
+    });
+    throw new Error(`RAG release coverage rejected: ${details.join(', ')}`);
+  }
+  return coverage;
+}
+
+function normalizeCoverageText(value) {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+function coverageOracle(item) {
+  return {
+    targets: normalizeCoverageList(item.targets),
+    expectedTerms: normalizeCoverageList(item.expectedTerms),
+    requiredMatches: item.requiredMatches ?? null,
+    expectedTitleTerms: normalizeCoverageList(item.expectedTitleTerms),
+    expectedSectionTypes: normalizeCoverageList(item.expectedSectionTypes),
+    forbiddenTerms: normalizeCoverageList(item.forbiddenTerms),
+    expectedDocumentTerms: normalizeCoverageList(item.expectedDocumentTerms),
+    expectedPageNumbers: normalizeCoverageList(item.expectedPageNumbers),
+    expectedParentTerms: normalizeCoverageList(item.expectedParentTerms),
+    expectedResultMsgs: normalizeCoverageList(item.expectedResultMsgs),
+    propositions: normalizeCoverageGroups(item.requiredPropositionGroups),
+    conditions: normalizeCoverageGroups(item.requiredConditionGroups),
+    expectedAnswerTerms: normalizeCoverageList(item.expectedAnswerTerms),
+    forbiddenAnswerTerms: normalizeCoverageList(item.forbiddenAnswerTerms),
+  };
+}
+
+function normalizeCoverageList(values) {
+  return (values ?? [])
+    .map(normalizeCoverageText)
+    .filter(Boolean)
+    .sort();
+}
+
+function normalizeCoverageGroups(groups) {
+  return (groups ?? [])
+    .map((group) => normalizeCoverageList(group).join('|'))
+    .filter(Boolean)
+    .sort();
+}
+
+function countStrings(values) {
+  const counts = {};
+  for (const value of values) {
+    counts[value] = (counts[value] ?? 0) + 1;
+  }
+  return counts;
+}
+
 module.exports = {
+  assertReleaseCoverage,
   loadEvalCases,
   mergeAnswerOracles,
   parseAnswerOraclesTsv,
   parseEvalCasesTsv,
   selectEvalCases,
+  releaseCoverage,
   splitCaseIds,
 };

@@ -28,6 +28,13 @@ public class LawOpenApiPayloadParser {
 	private static final Pattern ARTICLE_NO_PREFIX = Pattern.compile("^(제\\d+조(?:의\\d+)?)");
 
 	private static final Pattern ARTICLE_HEADING_PREFIX = Pattern.compile("^(\\uC81C\\d+\\uC870(?:\\uC758\\d+)?\\([^\\n]{1,120}?\\))");
+	private static final Pattern ADMIN_RULE_ARTICLE_HEADING_PREFIX = Pattern.compile(
+		"^(\\uC81C\\d+\\uC870(?:\\uC758\\d+)?)(?![\\p{L}\\p{N}])(\\([^\\n]{1,120}?\\))?"
+	);
+	private static final Pattern ADMIN_RULE_CHAPTER_HEADING = Pattern.compile(
+		"^(\\uC81C\\d+\\uC7A5(?:\\uC758\\d+)?(?:\\s+[^\\n]{1,120})?)$"
+	);
+	private static final String ADMIN_RULE_ARTICLE_CONTENT_PATH = "$.AdmRulService.\uC870\uBB38\uB0B4\uC6A9";
 	private static final String ARTICLE_EFFECTIVE_DATE_TEXT_KEY = "\uC870\uBB38\uC2DC\uD589\uC77C\uC790\uBB38\uC790\uC5F4";
 	private static final String REVISION_TEXT_PATH_TOKEN = ".\uAC1C\uC815\uBB38.";
 	private static final String REVISION_REASON_PATH_TOKEN = ".\uC81C\uAC1C\uC815\uC774\uC720.";
@@ -169,6 +176,10 @@ public class LawOpenApiPayloadParser {
 		if (node == null || node.isNull()) {
 			return;
 		}
+		if (node.isArray() && ADMIN_RULE_ARTICLE_CONTENT_PATH.equals(path) && hasAdministrativeRuleArticles(node)) {
+			collectAdministrativeRuleSections(node, path, sections);
+			return;
+		}
 		if (node.isObject() && LAW_ARTICLE_NODE_PATH.matcher(path).matches()) {
 			collectLawArticleSections(node, path, sections);
 			return;
@@ -192,6 +203,53 @@ public class LawOpenApiPayloadParser {
 			String nextPath = "$".equals(path) ? "$." + entry.getKey() : path + "." + entry.getKey();
 			collectLongTextSections(entry.getValue(), nextPath, sections);
 		});
+	}
+
+	private boolean hasAdministrativeRuleArticles(JsonNode node) {
+		for (JsonNode item : node) {
+			if (item.isTextual()
+				&& ADMIN_RULE_ARTICLE_HEADING_PREFIX.matcher(stripHtmlTags(item.asText()).stripLeading()).find()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private void collectAdministrativeRuleSections(JsonNode node, String path, List<SyncDetailSection> sections) {
+		for (int index = 0; index < node.size(); index++) {
+			JsonNode item = node.get(index);
+			String itemPath = path + "[" + index + "]";
+			if (!item.isTextual()) {
+				collectLongTextSections(item, itemPath, sections);
+				continue;
+			}
+			String body = stripHtmlTags(item.asText());
+			if (!StringUtils.hasText(body)) {
+				continue;
+			}
+			String leading = body.strip();
+			var article = ADMIN_RULE_ARTICLE_HEADING_PREFIX.matcher(leading);
+			if (article.find()) {
+				String no = article.group(1);
+				String suffix = article.group(2) == null ? "" : article.group(2);
+				addStructuredSection(
+					sections,
+					"admin-rule-article",
+					no,
+					no + suffix,
+					body,
+					itemPath,
+					index + 1,
+					1
+				);
+				continue;
+			}
+			var chapter = ADMIN_RULE_CHAPTER_HEADING.matcher(leading);
+			if (chapter.matches()) {
+				continue;
+			}
+			addTextSections(sections, "text", null, itemPath, body);
+		}
 	}
 
 	private boolean isExcludedLongTextPath(String path) {

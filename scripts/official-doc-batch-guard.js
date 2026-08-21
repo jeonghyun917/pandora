@@ -136,7 +136,7 @@ function reconcileNonSearchableMissingRows() {
   }
   db(`
 INSERT INTO rag_chunk_embeddings (
-  chunk_id, embedding_model, vector_store, vector_point_id, content_hash,
+  chunk_id, embedding_model, vector_store, vector_point_id, content_hash, revision_hash,
   status, embedded_at, last_error_message
 )
 SELECT
@@ -145,6 +145,11 @@ SELECT
   '${q(vectorStore)}',
   9000000000000000 + c.chunk_id,
   COALESCE(c.content_hash, SHA2(COALESCE(c.embedding_text, c.chunk_text, ''), 256)),
+  SHA2(CONCAT(
+    CAST(c.chunk_id AS CHAR),
+    ':',
+    COALESCE(c.content_hash, SHA2(COALESCE(c.embedding_text, c.chunk_text, ''), 256))
+  ), 256),
   'SUPERSEDED',
   NOW(),
   CONCAT(
@@ -165,6 +170,7 @@ AND e.chunk_id IS NULL
 ON DUPLICATE KEY UPDATE
   vector_point_id = VALUES(vector_point_id),
   content_hash = VALUES(content_hash),
+  revision_hash = VALUES(revision_hash),
   status = VALUES(status),
   embedded_at = VALUES(embedded_at),
   last_error_message = VALUES(last_error_message)`);

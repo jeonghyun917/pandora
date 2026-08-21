@@ -1,11 +1,15 @@
 package com.kaces.pandora.ai.answer;
 
 import com.kaces.pandora.common.text.KoreanQueryNormalizer;
+import com.kaces.pandora.common.text.QuestionIntentProfile;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -14,6 +18,14 @@ public class GroundedAnswerRepairService {
 	static final int MAX_SELECTED_ATOMS = 6;
 	static final int MAX_ATOM_CHARACTERS = 360;
 	static final int MAX_TOTAL_ATOM_CHARACTERS = 1_500;
+	private static final Pattern LEADING_ARTICLE_HEADINGS = Pattern.compile(
+		"^(?:\\s*\uC81C\\s*\\d+\\s*\uC870(?:\uC758\\s*\\d+)?\\s*\\([^\\r\\n)]{1,100}\\)"
+			+ "\\s*[.\u00B7:\uFF1A-]?\\s*)+"
+	);
+	private static final Pattern ARTICLE_HEADING_ONLY = Pattern.compile(
+		"^(?:\\s*\uC81C\\s*\\d+\\s*\uC870(?:\uC758\\s*\\d+)?\\s*\\([^\\r\\n)]{1,100}\\)"
+			+ "\\s*(?:\uB4F1)?\\s*[.\u00B7:\uFF1A-]?\\s*)+$"
+	);
 
 	private final AnswerVerificationService verificationService;
 	private final GroundedAnswerRewriter rewriter;
@@ -91,9 +103,45 @@ public class GroundedAnswerRepairService {
 			return result(initial, true, false, "REVERIFY_EXCEPTION", selectedAtoms.size());
 		}
 		if (reverified.insufficientEvidence()) {
+			AnswerVerificationService.Result atomFallback = verifyConfiguredLawPolicyAtomFallback(
+				question,
+				rewritten,
+				selectedAtoms,
+				safeGrounds
+			);
+			if (atomFallback != null && !atomFallback.insufficientEvidence()) {
+				return result(
+					atomFallback,
+					true,
+					true,
+					"ATOM_FALLBACK_ACCEPTED",
+					selectedAtoms.size()
+				);
+			}
 			return result(reverified, true, false, "REWRITE_VERIFICATION_FAILED", selectedAtoms.size());
 		}
 		return result(reverified, true, true, "REWRITE_ACCEPTED", selectedAtoms.size());
+	}
+
+	private AnswerVerificationService.Result verifyConfiguredLawPolicyAtomFallback(
+		String question,
+		String rewritten,
+		List<String> selectedAtoms,
+		List<LawAiAnswerGround> grounds
+	) {
+		if (!allowsConfiguredLawPolicyGroundFallback(question, grounds)
+			&& QuestionIntentProfile.from(question).configuredAnswerCoverageGroups().isEmpty()) {
+			return null;
+		}
+		String atomFallback = String.join("\n", selectedAtoms);
+		if (atomFallback.isBlank() || normalize(atomFallback).equals(normalize(rewritten))) {
+			return null;
+		}
+		try {
+			return verificationService.verify(question, atomFallback, grounds);
+		} catch (RuntimeException exception) {
+			return null;
+		}
 	}
 
 	private Result result(
@@ -182,20 +230,55 @@ public class GroundedAnswerRepairService {
 		if (grounds.isEmpty()) {
 			return List.of();
 		}
+		List<CandidateAtom> fallbackCandidates = fallbackCandidateAtoms(grounds);
+		List<String> configuredCoverageAtoms = selectConfiguredAnswerCoverageAtoms(
+			question,
+			normalizedRejectedDraft,
+			configuredCoverageCandidateAtoms(grounds, fallbackCandidates),
+			grounds
+		);
+		if (!configuredCoverageAtoms.isEmpty()) {
+			return configuredCoverageAtoms;
+		}
+		boolean configuredLawPolicyFallback = allowsConfiguredLawPolicyGroundFallback(question, grounds);
+		int selectionLimit = configuredLawPolicyFallback
+			? Math.min(MAX_SELECTED_ATOMS, grounds.size())
+			: MAX_SELECTED_ATOMS;
 		List<String> supportedAtoms = selectVerifiedAtoms(
 			question,
 			normalizedRejectedDraft,
 			supportedCandidateAtoms(initial, grounds),
-			grounds
+			grounds,
+			true,
+			selectionLimit,
+			configuredLawPolicyFallback
 		);
 		if (!supportedAtoms.isEmpty()) {
 			return supportedAtoms;
 		}
+		List<String> alignedFallback = selectVerifiedAtoms(
+			question,
+			normalizedRejectedDraft,
+			fallbackCandidates,
+			grounds,
+			true,
+			selectionLimit,
+			configuredLawPolicyFallback
+		);
+		if (!alignedFallback.isEmpty()) {
+			return alignedFallback;
+		}
+		if (!configuredLawPolicyFallback) {
+			return List.of();
+		}
 		return selectVerifiedAtoms(
 			question,
 			normalizedRejectedDraft,
-			fallbackCandidateAtoms(grounds),
-			grounds
+			fallbackCandidates,
+			grounds,
+			false,
+			selectionLimit,
+			configuredLawPolicyFallback
 		);
 	}
 
@@ -205,13 +288,137 @@ public class GroundedAnswerRepairService {
 		List<CandidateAtom> candidates,
 		List<LawAiAnswerGround> grounds
 	) {
+		return selectVerifiedAtoms(
+			question,
+			normalizedRejectedDraft,
+			candidates,
+			grounds,
+			true,
+			MAX_SELECTED_ATOMS,
+			false
+		);
+	}
+
+	private List<String> selectConfiguredAnswerCoverageAtoms(
+		String question,
+		String normalizedRejectedDraft,
+		List<CandidateAtom> candidates,
+		List<LawAiAnswerGround> grounds
+	) {
+		List<List<String>> coverageGroups = QuestionIntentProfile.from(question)
+			.configuredAnswerCoverageGroups()
+			.stream()
+			.map(group -> group.stream()
+				.map(this::normalize)
+				.filter(value -> !value.isBlank())
+				.toList())
+			.filter(group -> !group.isEmpty())
+			.toList();
+		if (coverageGroups.isEmpty()) {
+			return List.of();
+		}
+		List<CandidateAtom> rankedCandidates = candidates.stream()
+			.sorted(
+				Comparator.comparingInt(CandidateAtom::groundIndex)
+					.thenComparingInt(CandidateAtom::sourceOrder)
+			)
+			.toList();
+
 		LinkedHashMap<String, String> selectedByKey = new LinkedHashMap<>();
 		int totalCharacters = 0;
-		for (CandidateAtom candidate : candidates) {
-			if (selectedByKey.size() >= MAX_SELECTED_ATOMS) {
+		for (List<String> group : coverageGroups) {
+			boolean covered = false;
+			for (String selected : selectedByKey.values()) {
+				String normalizedSelected = normalize(selected);
+				if (group.stream().anyMatch(normalizedSelected::contains)) {
+					covered = true;
+					break;
+				}
+			}
+			if (covered) {
+				continue;
+			}
+			for (CandidateAtom candidate : rankedCandidates) {
+				String atom = clean(candidate.text());
+				String normalizedAtom = normalize(atom);
+				if (atom.isBlank()
+					|| atom.length() > MAX_ATOM_CHARACTERS
+					|| ARTICLE_HEADING_ONLY.matcher(atom).matches()
+					|| reusesRejectedDraft(normalizedAtom, normalizedRejectedDraft)
+					|| group.stream().noneMatch(normalizedAtom::contains)) {
+					continue;
+				}
+				AnswerVerificationService.Result verification;
+				try {
+					verification = verificationService.verify(question, atom, grounds);
+				} catch (RuntimeException exception) {
+					continue;
+				}
+				if (!isFullyClaimSupported(verification)) {
+					continue;
+				}
+				String verifiedAtom = clean(verification.claimResult().verifiedAnswer());
+				String key = normalize(verifiedAtom);
+				if (verifiedAtom.isBlank()
+					|| verifiedAtom.length() > MAX_ATOM_CHARACTERS
+					|| key.isBlank()) {
+					continue;
+				}
+				if (!selectedByKey.containsKey(key)) {
+					if (selectedByKey.size() >= MAX_SELECTED_ATOMS
+						|| totalCharacters + verifiedAtom.length() > MAX_TOTAL_ATOM_CHARACTERS) {
+						return List.of();
+					}
+					selectedByKey.put(key, verifiedAtom);
+					totalCharacters += verifiedAtom.length();
+				}
+				covered = true;
 				break;
 			}
+			if (!covered) {
+				return List.of();
+			}
+		}
+
+		List<String> selected = List.copyOf(selectedByKey.values());
+		if (selected.isEmpty()) {
+			return List.of();
+		}
+		try {
+			AnswerVerificationService.Result combined = verificationService.verify(
+				question,
+				String.join("\n", selected),
+				grounds
+			);
+			return isFullySupportedAndAligned(combined) ? selected : List.of();
+		} catch (RuntimeException exception) {
+			return List.of();
+		}
+	}
+
+	private List<String> selectVerifiedAtoms(
+		String question,
+		String normalizedRejectedDraft,
+		List<CandidateAtom> candidates,
+		List<LawAiAnswerGround> grounds,
+		boolean requireQuestionAlignment,
+		int selectionLimit,
+		boolean oneAtomPerGround
+	) {
+		LinkedHashMap<String, String> selectedByKey = new LinkedHashMap<>();
+		Set<Integer> selectedGroundIndexes = new LinkedHashSet<>();
+		int totalCharacters = 0;
+		for (CandidateAtom candidate : candidates) {
+			if (selectedByKey.size() >= selectionLimit) {
+				break;
+			}
+			if (oneAtomPerGround && selectedGroundIndexes.contains(candidate.groundIndex())) {
+				continue;
+			}
 			String atom = clean(candidate.text());
+			if (oneAtomPerGround) {
+				atom = stripLeadingArticleHeadings(atom);
+			}
 			if (atom.isBlank() || atom.length() > MAX_ATOM_CHARACTERS) {
 				continue;
 			}
@@ -225,10 +432,16 @@ public class GroundedAnswerRepairService {
 			} catch (RuntimeException exception) {
 				continue;
 			}
-			if (!isFullySupportedAndAligned(verification)) {
+			if (requireQuestionAlignment
+				? !isFullySupportedAndAligned(verification)
+				: !isFullyClaimSupported(verification)) {
 				continue;
 			}
-			String verifiedAtom = clean(verification.verifiedAnswer());
+			String verifiedAtom = clean(
+				requireQuestionAlignment
+					? verification.verifiedAnswer()
+					: verification.claimResult().verifiedAnswer()
+			);
 			if (verifiedAtom.isBlank()
 				|| verifiedAtom.length() > MAX_ATOM_CHARACTERS
 				|| answerVerificationServiceInsufficient(verifiedAtom)) {
@@ -242,9 +455,38 @@ public class GroundedAnswerRepairService {
 				continue;
 			}
 			selectedByKey.put(key, verifiedAtom);
+			selectedGroundIndexes.add(candidate.groundIndex());
 			totalCharacters += verifiedAtom.length();
 		}
 		return List.copyOf(selectedByKey.values());
+	}
+
+	private String stripLeadingArticleHeadings(String atom) {
+		return clean(LEADING_ARTICLE_HEADINGS.matcher(clean(atom)).replaceFirst(""));
+	}
+
+	private boolean allowsConfiguredLawPolicyGroundFallback(
+		String question,
+		List<LawAiAnswerGround> grounds
+	) {
+		QuestionIntentProfile profile = QuestionIntentProfile.from(question);
+		if (profile.matchedPolicyIds().isEmpty()
+			|| profile.directEvidenceGroups().isEmpty()
+			|| profile.preferredTargets().isEmpty()
+			|| !profile.preferredTargets().stream().allMatch(this::isLawTarget)) {
+			return false;
+		}
+		return grounds != null
+			&& !grounds.isEmpty()
+			&& grounds.stream().allMatch(ground ->
+				ground != null
+					&& isLawTarget(ground.target())
+					&& "direct".equalsIgnoreCase(String.valueOf(ground.evidenceRole()))
+			);
+	}
+
+	private boolean isLawTarget(String target) {
+		return "law".equals(target) || "admrul".equals(target);
 	}
 
 	private boolean reusesRejectedDraft(String normalizedAtom, String normalizedRejectedDraft) {
@@ -259,8 +501,20 @@ public class GroundedAnswerRepairService {
 	}
 
 	private boolean isFullySupportedAndAligned(AnswerVerificationService.Result verification) {
-		if (verification == null || verification.insufficientEvidence()) {
+		return isFullyClaimSupported(verification)
+			&& verification.alignmentResult() != null
+			&& verification.alignmentResult().evaluated()
+			&& verification.alignmentResult().aligned();
+	}
+
+	private boolean isFullyClaimSupported(AnswerVerificationService.Result verification) {
+		if (verification == null) {
 			return false;
+		}
+		if (verification.insufficientEvidence()) {
+			if (verification.claimResult() == null || verification.claimResult().insufficientEvidence()) {
+				return false;
+			}
 		}
 		ClaimVerifier.VerificationResult claimResult = verification.claimResult();
 		if (claimResult == null
@@ -271,8 +525,7 @@ public class GroundedAnswerRepairService {
 			|| !claimResult.contradictedClaims().isEmpty()) {
 			return false;
 		}
-		AnswerQuestionAlignmentVerifier.AlignmentResult alignment = verification.alignmentResult();
-		return alignment != null && alignment.evaluated() && alignment.aligned();
+		return true;
 	}
 
 	private List<CandidateAtom> supportedCandidateAtoms(
@@ -323,7 +576,36 @@ public class GroundedAnswerRepairService {
 				fallback.add(new CandidateAtom(groundIndex, atomIndex, atoms.get(atomIndex)));
 			}
 		}
+		fallback.sort(Comparator
+			.comparingInt(CandidateAtom::sourceOrder)
+			.thenComparingInt(CandidateAtom::groundIndex));
 		return deduplicate(fallback);
+	}
+
+	private List<CandidateAtom> configuredCoverageCandidateAtoms(
+		List<LawAiAnswerGround> grounds,
+		List<CandidateAtom> matchedChildCandidates
+	) {
+		List<CandidateAtom> candidates = new ArrayList<>(matchedChildCandidates);
+		for (int groundIndex = 0; groundIndex < grounds.size(); groundIndex++) {
+			LawAiAnswerGround ground = grounds.get(groundIndex);
+			if (ground == null
+				|| !"direct".equalsIgnoreCase(String.valueOf(ground.evidenceRole()))
+				|| !"parent_context_expanded".equals(ground.contextPolicy())
+				|| ground.parentContextText() == null
+				|| ground.parentContextText().isBlank()) {
+				continue;
+			}
+			List<String> parentAtoms = atomize(ground.parentContextText());
+			for (int atomIndex = 0; atomIndex < parentAtoms.size(); atomIndex++) {
+				candidates.add(new CandidateAtom(
+					groundIndex,
+					atomIndex,
+					parentAtoms.get(atomIndex)
+				));
+			}
+		}
+		return deduplicate(candidates);
 	}
 
 	private List<CandidateAtom> deduplicate(List<CandidateAtom> candidates) {

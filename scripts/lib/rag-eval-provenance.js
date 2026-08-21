@@ -2,6 +2,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
+const RELEASE_EVALUATION_CASE_COUNT = 1003;
+
 function determineRunScope(selectedCases, allCases, caseIds, caseLimit) {
   const explicitlyTargeted = (caseIds?.length ?? 0) > 0 || Number(caseLimit ?? 0) > 0;
   return !explicitlyTargeted && selectedCases.length === allCases.length ? 'full' : 'targeted';
@@ -55,20 +57,42 @@ function selectionHash(cases) {
   return hash.digest('hex');
 }
 
+function assertFullBaselineUniverse(allCases, selectedCases, {
+  caseIds = [],
+  caseLimit = 0,
+  gateProfile = 'release',
+} = {}) {
+  if ((caseIds?.length ?? 0) > 0 || Number(caseLimit ?? 0) > 0 || gateProfile !== 'release') {
+    throw new Error('baseline manifest requires the full release universe without case selectors');
+  }
+  if (allCases.length !== RELEASE_EVALUATION_CASE_COUNT) {
+    throw new Error(`baseline manifest requires the full release universe of ${RELEASE_EVALUATION_CASE_COUNT} cases`);
+  }
+  if (allCases.length !== selectedCases.length
+    || allCases.some((item, index) => item.id !== selectedCases[index]?.id)) {
+    throw new Error('baseline manifest requires the full release universe');
+  }
+  return true;
+}
+
 function buildCheckpointIdentity({
   scope,
   baseUrl,
   datasetHashValue,
   selectionHashValue,
   selectedCount,
+  gateProfile = 'release',
   runtimeInfo,
+  baselineManifestId = null,
 }) {
   return {
-    schemaVersion: 2,
+    schemaVersion: 4,
     runScope: scope,
+    gateProfile,
     baseUrl: String(baseUrl ?? '').replace(/\/$/, ''),
     datasetHash: datasetHashValue || null,
     selectionHash: selectionHashValue || null,
+    baselineManifestId,
     selectedCaseCount: Number(selectedCount ?? 0),
     indexVersion: runtimeInfo?.indexVersion || null,
     embeddingModel: runtimeInfo?.embeddingModel || null,
@@ -82,6 +106,7 @@ function buildCheckpointIdentity({
     runtimeInstanceId: runtimeInfo?.runtimeInstanceId || null,
     runtimeConfigSha256: runtimeInfo?.runtimeConfigSha256 || null,
     indexRevision: runtimeInfo?.indexRevision || null,
+    lexicalRevision: runtimeInfo?.lexicalRevision || null,
     qdrantReady: runtimeInfo?.qdrantReady === true,
     qdrantSearchFailureCount: normalizeFailureCount(runtimeInfo?.qdrantSearchFailureCount),
   };
@@ -101,10 +126,12 @@ function isCheckpointCompatible(checkpoint, expectedIdentity) {
     return false;
   }
   const requiredValues = [
+    'baselineManifestId',
     'runtimeArtifactSha256',
     'runtimeInstanceId',
     'runtimeConfigSha256',
     'indexRevision',
+    'lexicalRevision',
   ];
   if (actualIdentity.runtimeInfoSource !== 'server'
     || expectedIdentity.runtimeInfoSource !== 'server'
@@ -120,9 +147,11 @@ function isCheckpointCompatible(checkpoint, expectedIdentity) {
   const requiredKeys = [
     'schemaVersion',
     'runScope',
+    'gateProfile',
     'baseUrl',
     'datasetHash',
     'selectionHash',
+    'baselineManifestId',
     'selectedCaseCount',
     'indexVersion',
     'embeddingModel',
@@ -134,6 +163,7 @@ function isCheckpointCompatible(checkpoint, expectedIdentity) {
     'runtimeInstanceId',
     'runtimeConfigSha256',
     'indexRevision',
+    'lexicalRevision',
     'qdrantReady',
     'qdrantSearchFailureCount',
   ];
@@ -164,9 +194,18 @@ function isRuntimeStable(startRuntimeInfo, endRuntimeInfo) {
     'runtimeArtifactKind',
     'runtimeArtifactSha256',
     'runtimeArtifactSize',
+	'runtimeArtifactPath',
+	'runtimeArtifactModifiedAt',
     'runtimeInstanceId',
     'runtimeConfigSha256',
     'indexRevision',
+    'lexicalRevision',
+	'lawQdrantExactPointCount',
+	'ragQdrantExactPointCount',
+	'lawDatabaseIndexedCount',
+	'ragDatabaseIndexedCount',
+	'lawDatabaseContentFingerprint',
+	'ragDatabaseContentFingerprint',
     'qdrantReady',
     'qdrantSearchFailureCount',
   ];
@@ -220,14 +259,17 @@ function buildProvenance({
   selectionHashValue,
   selectedCount,
   totalCaseCount,
+  gateProfile = 'release',
   runtimeInfo,
+  baselineManifestId = null,
   generatedAt = new Date().toISOString(),
 }) {
   const parsedUrl = new URL(baseUrl);
   const defaultPort = parsedUrl.protocol === 'https:' ? '443' : '80';
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     runScope: scope,
+    gateProfile,
     generatedAt,
     baseUrl,
     executionPort: Number(parsedUrl.port || defaultPort),
@@ -235,6 +277,7 @@ function buildProvenance({
     gitDirty: Boolean(gitDirty),
     datasetHash: datasetHashValue,
     selectionHash: selectionHashValue,
+    baselineManifestId,
     selectedCaseCount: selectedCount,
     totalCaseCount,
     indexVersion: runtimeInfo?.indexVersion || null,
@@ -251,9 +294,13 @@ function buildProvenance({
     runtimeInstanceId: runtimeInfo?.runtimeInstanceId || null,
     runtimeConfigSha256: runtimeInfo?.runtimeConfigSha256 || null,
     indexRevision: runtimeInfo?.indexRevision || null,
+    lexicalRevision: runtimeInfo?.lexicalRevision || null,
     qdrantReady: runtimeInfo?.qdrantReady === true,
     qdrantSearchFailureCount: normalizeFailureCount(runtimeInfo?.qdrantSearchFailureCount),
     runtimeInfoSource: runtimeInfo?.source || 'unavailable',
+    runtimeInfoReadAttempts: Number.isSafeInteger(runtimeInfo?.readAttempts)
+      ? runtimeInfo.readAttempts
+      : null,
   };
 }
 
@@ -265,6 +312,8 @@ function archivePaths(scope, runId) {
 }
 
 module.exports = {
+  RELEASE_EVALUATION_CASE_COUNT,
+  assertFullBaselineUniverse,
   assertEvaluationRuntimeReady,
   archivePaths,
   buildCheckpointIdentity,

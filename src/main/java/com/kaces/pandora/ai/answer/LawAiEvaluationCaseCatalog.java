@@ -107,7 +107,11 @@ final class LawAiEvaluationCaseCatalog {
 		"law-effective-date-check",
 		"admrul-notice-exception",
 		"no-unrelated-privacy-for-sw",
-		"public-data-obligation-system"
+		"public-data-obligation-system",
+		"contract-completion-before-period",
+		"contract-completion-before-period-paraphrase",
+		"contract-completion-actual-finished",
+		"contract-completion-work-remaining-control"
 	);
 	private static final Path EXTERNAL_FAILURE_CASE_PATH = Path.of(
 		System.getProperty("pandora.rag.eval.failure-cases", "data/rag-evaluation/failure-cases.tsv")

@@ -10,6 +10,8 @@ public record LawAiEvalResponse(
 	boolean gatePassed,
 	int minimumPassed,
 	List<String> blockingFailureIds,
+	int semanticShadowDisagreementCount,
+	int unsafeSemanticShadowDisagreementCount,
 	List<CaseResult> results
 ) {
 	public record CaseResult(
@@ -45,6 +47,8 @@ public record LawAiEvalResponse(
 		List<String> unsupportedAnswerClaims,
 		List<String> contradictedAnswerClaims,
 		List<ClaimVerifier.ClaimEvidenceLink> claimEvidenceLinks,
+		List<ClaimMatcherShadowResult> semanticShadowDisagreements,
+		int unsafeSemanticShadowDisagreementCount,
 		String verifiedAnswer
 	) {
 	}

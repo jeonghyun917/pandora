@@ -19,6 +19,12 @@ const {
   resolveReportPaths,
   selectionHash,
 } = require('./lib/rag-eval-provenance');
+const {
+  assertManifestSelection,
+  assertSameManifest,
+  buildBaselineManifest,
+} = require('./lib/rag-baseline-manifest');
+const { buildBlockingGates } = require('./lib/rag-eval-gates');
 
 const baseUrl = process.env.RAG_EVAL_BASE_URL || 'http://127.0.0.1:8080';
 const endpoint = `${baseUrl.replace(/\/$/, '')}/api/law-data/ai/debug/evaluate/gate`;
@@ -35,28 +41,41 @@ const requestTimeoutMs = Number(process.env.RAG_EVAL_REQUEST_TIMEOUT_MS || 18000
 const interBatchSleepMs = Number(process.env.RAG_EVAL_INTER_BATCH_SLEEP_MS || 300);
 const caseLimit = Number(process.env.RAG_EVAL_CASE_LIMIT || 0);
 const caseIds = splitCaseIds(process.env.RAG_EVAL_CASE_IDS || '');
+const gateProfile = resolveGateProfile(process.env.RAG_EVAL_GATE_PROFILE);
 let checkpointPath = process.env.RAG_EVAL_CHECKPOINT || 'logs/rag-eval-gate-targeted-checkpoint.json';
 const resumeFromCheckpoint = ['1', 'true', 'yes', 'y'].includes(
   String(process.env.RAG_EVAL_RESUME || '').trim().toLowerCase(),
 );
+const baselineManifestPath = String(process.env.RAG_EVAL_BASELINE_MANIFEST || '').trim();
 
 async function main() {
-  const allCases = loadCases();
-  const cases = selectCases(allCases);
-  const scope = determineRunScope(cases, allCases, caseIds, caseLimit);
+  const evaluationState = loadEvaluationState();
+  const { allCases, cases, scope, datasetHashValue, selectionHashValue } = evaluationState;
   const reportPaths = resolveReportPaths(scope);
   checkpointPath = reportPaths.checkpointPath;
+  const suppliedBaselineManifest = loadBaselineManifest();
+  const baselineSelectionCases = suppliedBaselineManifest
+    ? selectBaselineManifestCases(allCases, suppliedBaselineManifest)
+    : null;
   const runtimeInfo = await loadRuntimeInfo();
   assertEvaluationRuntimeReady(runtimeInfo, scope);
-  const datasetHashValue = datasetHash(datasetPaths.filter((casePath) => fs.existsSync(casePath)));
-  const selectionHashValue = selectionHash(cases);
+  if (suppliedBaselineManifest) {
+    assertManifestSelection(suppliedBaselineManifest, cases.map((item) => item.id));
+    assertSameManifest(suppliedBaselineManifest, buildCurrentBaselineManifest(
+      runtimeInfo,
+      datasetHashValue,
+      baselineSelectionCases,
+    ));
+  }
   const checkpointIdentity = buildCheckpointIdentity({
     scope,
     baseUrl,
     datasetHashValue,
     selectionHashValue,
     selectedCount: cases.length,
+    gateProfile,
     runtimeInfo,
+    baselineManifestId: suppliedBaselineManifest?.manifestId || null,
   });
   if (resumeFromCheckpoint && !checkpointIdentity.indexRevision) {
     console.warn('[rag-eval-gate] resume disabled: server index revision is unavailable');
@@ -64,9 +83,22 @@ async function main() {
   const usesBatchCheckpoint = caseBatchSize > 0 && cases.length > caseBatchSize;
   let body = await runEvaluationForCases(cases, checkpointIdentity);
   body = await retryEvaluationErrors(body);
+  const finalEvaluationState = loadEvaluationState();
+  assertSameEvaluationState(evaluationState, finalEvaluationState);
   const finalRuntimeInfo = await loadRuntimeInfo();
   if (!isRuntimeStable(runtimeInfo, finalRuntimeInfo)) {
     throw new Error('[rag-eval-gate] runtime identity changed or became unavailable during evaluation');
+  }
+  if (suppliedBaselineManifest) {
+    const finalBaselineSelectionCases = selectBaselineManifestCases(
+      finalEvaluationState.allCases,
+      suppliedBaselineManifest,
+    );
+    assertSameManifest(suppliedBaselineManifest, buildCurrentBaselineManifest(
+      finalRuntimeInfo,
+      finalEvaluationState.datasetHashValue,
+      finalBaselineSelectionCases,
+    ));
   }
   if (usesBatchCheckpoint) {
     writeJson(checkpointPath, recomputeGate({
@@ -83,11 +115,13 @@ async function main() {
       baseUrl,
       gitCommit: gitOutput(['rev-parse', 'HEAD']),
       gitDirty: Boolean(gitOutput(['status', '--porcelain'])),
-      datasetHashValue,
-      selectionHashValue,
-      selectedCount: cases.length,
-      totalCaseCount: allCases.length,
+      datasetHashValue: finalEvaluationState.datasetHashValue,
+      selectionHashValue: finalEvaluationState.selectionHashValue,
+      selectedCount: finalEvaluationState.cases.length,
+      totalCaseCount: finalEvaluationState.allCases.length,
+      gateProfile,
       runtimeInfo,
+      baselineManifestId: suppliedBaselineManifest?.manifestId || null,
     }),
     breakdown: evaluationBreakdown(body.results ?? []),
   };
@@ -113,17 +147,27 @@ async function main() {
 }
 
 async function loadRuntimeInfo() {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5000);
-  try {
-    const response = await fetch(runtimeInfoEndpoint, { signal: controller.signal });
-    if (response.ok) {
-      return { ...(await response.json()), source: 'server' };
+  const attempts = 2;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    try {
+      const response = await fetch(runtimeInfoEndpoint, { signal: controller.signal });
+      if (!response.ok) {
+        console.warn(`[rag-eval-gate] runtime provenance unavailable: runtime info HTTP ${response.status}`);
+        break;
+      }
+      return { ...(await response.json()), source: 'server', readAttempts: attempt };
+    } catch (error) {
+      const retryable = error?.name === 'AbortError' || error instanceof TypeError;
+      if (!retryable || attempt === attempts) {
+        console.warn(`[rag-eval-gate] runtime provenance unavailable: ${error?.message ?? error}`);
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    } finally {
+      clearTimeout(timer);
     }
-  } catch (error) {
-    console.warn(`[rag-eval-gate] runtime provenance unavailable: ${error?.message ?? error}`);
-  } finally {
-    clearTimeout(timer);
   }
   const environmentInfo = {
     indexVersion: process.env.RAG_EVAL_INDEX_VERSION || null,
@@ -137,6 +181,7 @@ async function loadRuntimeInfo() {
     runtimeInstanceId: process.env.RAG_EVAL_RUNTIME_INSTANCE_ID || null,
     runtimeConfigSha256: process.env.RAG_EVAL_RUNTIME_CONFIG_SHA256 || null,
     indexRevision: process.env.RAG_EVAL_INDEX_REVISION || null,
+    lexicalRevision: process.env.RAG_EVAL_LEXICAL_REVISION || null,
     qdrantReady: false,
     qdrantSearchFailureCount: null,
   };
@@ -166,8 +211,11 @@ function runId(isoTimestamp) {
 }
 
 async function runEvaluationForCases(cases, expectedCheckpointIdentity = null) {
-  if (!cases.length || caseBatchSize <= 0 || cases.length <= caseBatchSize) {
-    return runEvaluation(cases.length ? { cases } : {}, "all");
+  if (!cases.length) {
+    return recomputeGate({ results: [] });
+  }
+  if (caseBatchSize <= 0 || cases.length <= caseBatchSize) {
+    return runEvaluation({ cases }, "all");
   }
   const batches = chunk(cases, caseBatchSize);
   const selectedIds = new Set(cases.map((item) => item.id));
@@ -179,7 +227,9 @@ async function runEvaluationForCases(cases, expectedCheckpointIdentity = null) {
   if (checkpointCompatible) {
     assertResultIds(Array.from(selectedIds), checkpoint?.results, 'checkpoint', { allowMissing: true });
   }
-  const results = checkpointCompatible ? checkpoint.results.slice() : [];
+  const results = checkpointCompatible
+    ? restoreCaseClassification(checkpoint.results, cases)
+    : [];
   const completedIds = new Set(results.map((result) => result.id));
   const attempts = [];
   for (let index = 0; index < batches.length; index += 1) {
@@ -229,9 +279,8 @@ async function runEvaluationForCases(cases, expectedCheckpointIdentity = null) {
 }
 
 async function runEvaluation(payload, label = "all") {
-  const requestedIds = Array.isArray(payload?.cases)
-    ? payload.cases.map((item) => item.id)
-    : loadCases().map((item) => item.id);
+  const requestedCases = Array.isArray(payload?.cases) ? payload.cases : loadCases();
+  const requestedIds = requestedCases.map((item) => item.id);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
   try {
@@ -246,7 +295,7 @@ async function runEvaluation(payload, label = "all") {
     if (!response.ok) {
       if (response.status === 409 && isCompletedFailingEvaluationResponse(body)) {
         assertResultIds(requestedIds, body.results, label);
-        return body;
+        return { ...body, results: restoreCaseClassification(body.results, requestedCases) };
       }
       const details = body
         ? JSON.stringify({
@@ -262,7 +311,7 @@ async function runEvaluation(payload, label = "all") {
       throw new Error(`evaluation ${label} HTTP ${response.status} ${response.statusText}: ${text.slice(0, 300)}`);
     }
     assertResultIds(requestedIds, body.results, label);
-    return body;
+    return { ...body, results: restoreCaseClassification(body.results, requestedCases) };
   } catch (error) {
     if (error?.name === "AbortError") {
       throw new Error(`evaluation ${label} timed out after ${requestTimeoutMs}ms`);
@@ -271,6 +320,52 @@ async function runEvaluation(payload, label = "all") {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function loadBaselineManifest() {
+  if (!baselineManifestPath) {
+    return null;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(baselineManifestPath, 'utf8'));
+  } catch (error) {
+    throw new Error(`[rag-eval-gate] unable to load baseline manifest: ${error?.message ?? error}`);
+  }
+  return parsed;
+}
+
+function buildCurrentBaselineManifest(runtimeInfo, datasetHashValue, baselineSelectionCases) {
+  return buildBaselineManifest({
+    gitCommit: gitOutput(['rev-parse', 'HEAD']),
+    gitDirty: Boolean(gitOutput(['status', '--porcelain'])),
+    runtimeInfo,
+    datasetHash: datasetHashValue,
+    selectionHash: selectionHash(baselineSelectionCases),
+    selectionCaseIds: baselineSelectionCases.map((item) => item.id),
+  });
+}
+
+function selectBaselineManifestCases(allCases, manifest) {
+  const byId = new Map(allCases.map((item) => [item.id, item]));
+  const cases = manifest.selectionCaseIds.map((id) => byId.get(id));
+  if (cases.some((item) => !item)) {
+    const unknown = manifest.selectionCaseIds.filter((id) => !byId.has(id));
+    throw new Error(`[rag-eval-gate] baseline manifest selection contains unknown case IDs: ${unknown.join(', ')}`);
+  }
+  return cases;
+}
+
+function restoreCaseClassification(results, cases) {
+  const casesById = new Map((cases ?? []).map((item) => [item.id, item]));
+  return (results ?? []).map((result) => {
+    const evalCase = casesById.get(result.id);
+    return {
+      ...result,
+      expectedResultMsgs: [...(evalCase?.expectedResultMsgs ?? [])],
+      answerVerificationRequired: evalCase?.answerVerificationRequired,
+    };
+  });
 }
 
 function assertResultIds(requestedIds, results, label, { allowMissing = false } = {}) {
@@ -372,17 +467,22 @@ function mergeResults(body, retryResults) {
 function recomputeGate(body) {
   const results = body?.results ?? [];
   const total = results.length;
-  const passed = results.filter((result) => result.passed).length;
+  const passed = results.filter((result) => result.passed === true).length;
   const failed = total - passed;
+  const blockingGates = buildBlockingGates(results);
+  const namedGatesPassed = Object.values(blockingGates)
+    .filter((gate) => gate.total > 0)
+    .every((gate) => gate.gatePassed);
   return {
     ...body,
     total,
     passed,
     failed,
     passRate: total === 0 ? 0 : passed / total,
-    gatePassed: total > 0 && failed === 0,
+    gatePassed: total > 0 && failed === 0 && namedGatesPassed,
     minimumPassed: total,
-    blockingFailureIds: results.filter((result) => !result.passed).map((result) => result.id),
+    blockingFailureIds: results.filter((result) => result.passed !== true).map((result) => result.id),
+    blockingGates,
   };
 }
 
@@ -416,16 +516,63 @@ function isCompletedFailingEvaluationResponse(body) {
   if (!isEvaluationResponse(body) || body.gatePassed !== false) {
     return false;
   }
-  const recomputed = recomputeGate(body);
-  return recomputed.failed > 0 && recomputed.gatePassed === false;
+  return body.results.some((result) => result.passed !== true);
 }
 
 function loadCases() {
   return loadEvalCases(casePaths, { answerOraclePath });
 }
 
+function loadEvaluationState() {
+  const allCases = loadCases();
+  const cases = selectCases(allCases);
+  return {
+    allCases,
+    cases,
+    scope: determineRunScope(cases, allCases, caseIds, caseLimit),
+    datasetHashValue: datasetHash(datasetPaths.filter((casePath) => fs.existsSync(casePath))),
+    allSelectionHashValue: selectionHash(allCases),
+    selectionHashValue: selectionHash(cases),
+  };
+}
+
+function assertSameEvaluationState(startState, endState) {
+  const stableKeys = [
+    'scope',
+    'datasetHashValue',
+    'allSelectionHashValue',
+    'selectionHashValue',
+  ];
+  if (stableKeys.some((key) => startState[key] !== endState[key])) {
+    throw new Error('[rag-eval-gate] evaluation dataset or selection changed during evaluation');
+  }
+}
+
 function selectCases(cases) {
-  return selectEvalCases(cases, { caseIds, caseLimit });
+  return selectEvalCases(filterCasesByGateProfile(cases, gateProfile), { caseIds, caseLimit });
+}
+
+function resolveGateProfile(value) {
+  const profile = String(value ?? 'release').trim().toLowerCase() || 'release';
+  if (!['release', 'curated', 'answer-oracle', 'no-grounds'].includes(profile)) {
+    throw new Error(`unsupported RAG_EVAL_GATE_PROFILE: ${profile}`);
+  }
+  return profile;
+}
+
+function filterCasesByGateProfile(cases, profile) {
+  if (profile === 'release') {
+    return cases;
+  }
+  if (profile === 'curated') {
+    return cases.filter((item) => !String(item.id ?? '').startsWith('gen-'));
+  }
+  if (profile === 'answer-oracle') {
+    return cases.filter((item) => item.answerVerificationRequired === true);
+  }
+  return cases.filter((item) =>
+    (item.expectedResultMsgs ?? []).includes('NO_GROUNDS')
+      || String(item.id ?? '').startsWith('no-'));
 }
 
 function chunk(values, size) {
@@ -492,6 +639,8 @@ function writeReport(filePath, body, baseUrl) {
     `- Runtime instance ID: ${body.provenance?.runtimeInstanceId ?? '-'}`,
     `- Runtime config SHA-256: ${body.provenance?.runtimeConfigSha256 ?? '-'}`,
     `- Index revision: ${body.provenance?.indexRevision ?? '-'}`,
+    `- Lexical revision: ${body.provenance?.lexicalRevision ?? '-'}`,
+    `- Baseline manifest ID: ${body.provenance?.baselineManifestId ?? '-'}`,
     `- Qdrant ready: ${body.provenance?.qdrantReady === true}`,
     `- Qdrant search failures at start: ${body.provenance?.qdrantSearchFailureCount ?? '-'}`,
     `- Execution port: ${body.provenance?.executionPort ?? '-'}`,

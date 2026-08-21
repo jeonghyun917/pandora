@@ -1,15 +1,29 @@
 const { execFileSync, spawnSync } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 
 const workspace = path.resolve(__dirname, "..");
 const mysql = process.env.MARIADB_EXE || "C:\\Program Files\\MariaDB 12.2\\bin\\mariadb.exe";
-const baseUrl = process.env.PANDORA_BATCH_RUNNER_URL || "http://127.0.0.1:18080";
+const baseUrl = process.env.PANDORA_APP_URL || "http://127.0.0.1:8080";
 const qdrantUrl = process.env.QDRANT_URL || "http://127.0.0.1:6333";
 const model = process.env.PANDORA_EMBEDDING_MODEL || "text-embedding-3-small";
 const vectorStore = process.env.PANDORA_LAW_VECTOR_STORE || "law_chunks";
 const outPath = path.resolve(workspace, "logs", "law-parent-child-rechunk-wave-latest.md");
 const jsonPath = path.resolve(workspace, "logs", "law-parent-child-rechunk-wave-latest.json");
+
+if (process.argv.includes("--help") || process.argv.includes("-h")) {
+  console.log(`
+Usage: node scripts/law-parent-child-rechunk-wave.js [options]
+
+Fail-closed workflow:
+  preview -> create-candidate -> index -> verify -> activate
+
+--apply=false is preview-only and never writes to MariaDB, Qdrant, or the app API.
+--apply=true creates a CANDIDATE version; it never deletes ACTIVE chunks before activation.
+  `.trim());
+  process.exit(0);
+}
 
 const args = parseArgs(process.argv.slice(2));
 const apply = boolArg("apply", false);
@@ -231,8 +245,8 @@ async function postJsonWithRetry(apiPath, params = {}, timeoutMs = 180000, attem
   throw lastError;
 }
 
-async function qdrantCount(documentId, target) {
-  const response = await fetch(`${qdrantUrl}/collections/${encodeURIComponent(vectorStore)}/points/count`, {
+async function qdrantCount(documentId, target, collection = vectorStore, activationStatus = "ACTIVE") {
+  const response = await fetch(`${qdrantUrl}/collections/${encodeURIComponent(collection)}/points/count`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     signal: AbortSignal.timeout(30000),
@@ -242,6 +256,7 @@ async function qdrantCount(documentId, target) {
         must: [
           { key: "documentId", match: { value: Number(documentId) } },
           { key: "target", match: { value: target } },
+          { key: "activationStatus", match: { value: activationStatus } },
         ],
       },
     }),
@@ -370,8 +385,11 @@ function comparePreviewItems(left, right) {
     || number(right.currentLongChunks) - number(left.currentLongChunks);
 }
 
-function postStatusRows(documentIds) {
+function postStatusRows(documentIds, activationStatus = "ACTIVE") {
   if (!documentIds.length) return [];
+  if (!["ACTIVE", "CANDIDATE"].includes(activationStatus)) {
+    throw new Error(`unsupported chunk activation status: ${activationStatus}`);
+  }
   const ids = documentIds.map((id) => Number(id)).filter((id) => id > 0).join(",");
   return table(`
 SELECT d.document_id, d.target, d.title,
@@ -395,9 +413,54 @@ LEFT JOIN law_api_chunk_embeddings e
 WHERE d.document_id IN (${ids})
   AND d.use_yn='Y'
   AND c.use_yn='Y'
+  AND c.activation_status='${activationStatus}'
 GROUP BY d.document_id, d.target, d.title
 ORDER BY d.target, d.document_id;
 `, ["documentId", "target", "title", "chunks", "tinyChunks", "shortChunks", "avgLen", "minLen", "maxLen", "indexed", "pending", "missingTitle", "missingChunkNo", "embeddingPending"]);
+}
+
+function activeVersionPointIds(documentId) {
+  const rows = table(`
+SELECT c.chunk_version, c.chunk_id
+FROM law_api_document_chunks c
+WHERE c.document_id=${Number(documentId)}
+  AND c.use_yn='Y'
+  AND c.activation_status='ACTIVE'
+ORDER BY c.chunk_version, c.chunk_id;
+`, ["chunkVersion", "chunkId"]);
+  const version = rows.length ? number(rows[0].chunkVersion) : 0;
+  if (rows.some((row) => number(row.chunkVersion) !== version)) {
+    throw new Error(`document ${documentId} has multiple active chunk versions`);
+  }
+  return { version, pointIds: rows.map((row) => number(row.chunkId)).filter((id) => id > 0) };
+}
+
+function manifestIdentityForSelection(selected) {
+  const stableSelection = (selected || []).map((item) => ({
+    documentId: number(item.documentId),
+    target: String(item.target || ""),
+    projectedChunks: number(item.projectedChunks),
+  })).sort((left, right) => left.documentId - right.documentId || left.target.localeCompare(right.target));
+  return `selection-fingerprint:${crypto.createHash("sha256").update(JSON.stringify(stableSelection)).digest("hex")}`;
+}
+
+function candidateArtifact(candidate, previous, manifestIdentity) {
+  const documentId = number(candidate.documentId);
+  const previousVersion = number(previous?.version);
+  const rollbackPath = previousVersion > 0
+    ? `/api/law-data/chunks/rollback-version?documentId=${documentId}&retiredVersion=${previousVersion}`
+    : null;
+  return {
+    documentId,
+    target: String(candidate.target || ""),
+    manifestIdentity,
+    oldChunkVersion: previousVersion || null,
+    oldPointIds: previous?.pointIds || [],
+    newChunkVersion: number(candidate.chunkVersion),
+    newPointIds: (candidate.chunkIds || []).map(number).filter((id) => id > 0),
+    rollbackApiPath: rollbackPath,
+    rollbackCommand: rollbackPath ? `Invoke-RestMethod -Method Post -Uri '${baseUrl}${rollbackPath}'` : null,
+  };
 }
 
 async function previewTarget(target, candidates) {
@@ -468,6 +531,14 @@ async function main() {
   const runnerStatus = await ensureRunner();
   const qdrantHealth = await qdrantCollectionInfo(vectorStore);
   const active = activeBatchJobs();
+	const baselineManifestId = String(process.env.RAG_BASELINE_MANIFEST_ID || "").trim();
+	if (apply && !baselineManifestId) {
+		const result = { generatedAt, mode: "apply", status: "BLOCKED_BASELINE_MANIFEST_REQUIRED", runnerStatus, active, qdrantHealth };
+		writeReports(result);
+		printResult(result);
+		process.exitCode = 5;
+		return;
+	}
   if (apply && requireQdrantGreen && !isQdrantGreen(qdrantHealth)) {
     const result = {
       generatedAt,
@@ -537,7 +608,11 @@ async function main() {
   }
 
   const documentIds = allSelected.map((item) => Number(item.documentId));
+	const selectionFingerprint = manifestIdentityForSelection(allSelected);
+	const manifestIdentity = apply ? baselineManifestId : null;
   let rebuildResults = [];
+  let candidateResults = [];
+  let candidateArtifacts = [];
   let indexResults = [];
   const indexFailures = [];
   let statusRows = [];
@@ -546,36 +621,48 @@ async function main() {
   const postApplyIssues = [];
 
   if (apply) {
+    const previousPointsByDocumentId = new Map(allSelected.map((item) => [
+      `${item.target}:${item.documentId}`,
+      activeVersionPointIds(item.documentId),
+    ]));
     for (const target of targets) {
       const ids = allSelected.filter((item) => item.target === target).map((item) => item.documentId);
       if (!ids.length) continue;
-      for (const idChunk of chunksOf(ids, applyRequestChunkSize)) {
-        const rebuild = await postJson("/api/law-data/chunks/rebuild-by-document-ids", {
+      for (const documentId of ids) {
+        const candidate = await postJson("/api/law-data/chunks/create-candidate", {
           target,
-          documentIds: idChunk,
+          documentId,
+			previewApprovalToken: allSelected.find((item) => item.target === target && String(item.documentId) === String(documentId))?.approvalToken || "",
         }, 300000);
-        rebuildResults.push(rebuild);
-        actions.push(`rebuild:${target}:${idChunk.join(",")}`);
+        const candidateWithTarget = { ...candidate, target };
+        candidateResults.push(candidateWithTarget);
+        candidateArtifacts.push(candidateArtifact(
+          candidateWithTarget,
+          previousPointsByDocumentId.get(`${target}:${documentId}`),
+          manifestIdentity,
+        ));
+        actions.push(`create-candidate:${target}:${documentId}:v${candidate.chunkVersion}`);
       }
     }
 
-    statusRows = postStatusRows(documentIds);
+    statusRows = postStatusRows(documentIds, "CANDIDATE");
 
     if (indexMode === "direct") {
       for (const target of targets) {
         const ids = allSelected.filter((item) => item.target === target).map((item) => item.documentId);
         if (!ids.length) continue;
         for (const id of ids) {
-          const pendingRow = statusRows.find((row) => row.target === target && String(row.documentId) === String(id));
-          const limit = number(pendingRow?.embeddingPending);
+          const candidate = candidateResults.find((item) => item.target === target && String(item.documentId) === String(id));
+          const limit = number(candidate?.expectedChunkCount);
           if (limit <= 0) {
             actions.push(`index-direct-skip:${target}:${id}`);
             continue;
           }
           try {
-            const indexed = await postJsonWithRetry("/api/law-data/semantic/index-documents", {
+            const indexed = await postJsonWithRetry("/api/law-data/semantic/index-candidate", {
               target,
-              documentIds: [id],
+              documentId: id,
+              candidateVersion: candidate.chunkVersion,
               limit,
             }, 600000, 2);
             indexResults.push({ ...indexed, target, documentId: id });
@@ -588,26 +675,9 @@ async function main() {
           }
         }
       }
-      statusRows = postStatusRows(documentIds);
+      statusRows = postStatusRows(documentIds, "CANDIDATE");
     } else if (indexMode === "batch") {
-      for (const target of targets) {
-        const ids = allSelected.filter((item) => item.target === target).map((item) => item.documentId);
-        if (!ids.length) continue;
-        for (const idChunk of chunksOf(ids, applyRequestChunkSize)) {
-          const idSet = new Set(idChunk.map((id) => String(id)));
-          const limit = Math.max(1, statusRows
-            .filter((row) => row.target === target && idSet.has(String(row.documentId)))
-            .reduce((sum, row) => sum + number(row.embeddingPending), 0));
-          const submitted = await postJson("/api/law-data/semantic/batches/submit-documents", {
-            target,
-            documentIds: idChunk,
-            limit,
-          }, 300000);
-          indexResults.push(submitted);
-          actions.push(`index-batch:${target}:${idChunk.join(",")}`);
-        }
-      }
-      statusRows = postStatusRows(documentIds);
+      throw new Error("Candidate activation requires direct index and verification; batch mode is not supported.");
     } else if (!["none", ""].includes(indexMode)) {
       throw new Error(`unsupported index mode: ${indexMode}`);
     }
@@ -623,7 +693,9 @@ async function main() {
             documentId: row.documentId,
             target: row.target,
             dbChunks: row.chunks,
-            qdrantPoints: await qdrantCount(row.documentId, row.target),
+            qdrantPoints: await qdrantCount(row.documentId, row.target, `${vectorStore}_candidate`, "CANDIDATE"),
+            collection: `${vectorStore}_candidate`,
+            activationStatus: "CANDIDATE",
           });
         }
         embeddingPending = statusRows.reduce((sum, row) => sum + number(row.embeddingPending), 0);
@@ -634,7 +706,7 @@ async function main() {
         if (settleAttempt < settleAttempts) {
           actions.push(`post-apply-settle-wait:${settleAttempt}:embeddingPending=${embeddingPending}:qdrantMismatches=${qdrantMismatches.length}`);
           await sleep(Math.max(250, postApplySettleDelayMs));
-          statusRows = postStatusRows(documentIds);
+          statusRows = postStatusRows(documentIds, "CANDIDATE");
         }
       }
       if (embeddingPending > 0) {
@@ -642,6 +714,36 @@ async function main() {
       }
       if (qdrantMismatches.length > 0) {
         postApplyIssues.push(`qdrant-mismatch:${qdrantMismatches.length}`);
+      }
+      if (indexFailures.length === 0 && postApplyIssues.length === 0) {
+        for (const candidate of candidateResults) {
+          const activated = await postJson("/api/law-data/chunks/activate-candidate", {
+            documentId: candidate.documentId,
+            candidateVersion: candidate.chunkVersion,
+          }, 300000);
+          rebuildResults.push(activated);
+          actions.push(`activate:${candidate.target}:${candidate.documentId}:v${candidate.chunkVersion}:${activated.activated}`);
+          if (!activated.activated) {
+            postApplyIssues.push(`candidate-activation-blocked:${candidate.target}:${candidate.documentId}:v${candidate.chunkVersion}`);
+          }
+        }
+		if (postApplyIssues.length === 0) {
+			statusRows = postStatusRows(documentIds, "ACTIVE");
+			qdrantRows = [];
+			for (const row of statusRows) {
+				qdrantRows.push({
+					documentId: row.documentId,
+					target: row.target,
+					dbChunks: row.chunks,
+					qdrantPoints: await qdrantCount(row.documentId, row.target, vectorStore, "ACTIVE"),
+					collection: vectorStore,
+					activationStatus: "ACTIVE",
+				});
+			}
+			if (qdrantRows.some((row) => number(row.dbChunks) !== number(row.qdrantPoints))) {
+				postApplyIssues.push("active-qdrant-mismatch-after-activation");
+			}
+		}
       }
     }
 
@@ -682,6 +784,8 @@ async function main() {
         : "APPLIED";
   const result = {
     generatedAt,
+    manifestIdentity,
+		selectionFingerprint,
     mode: apply ? "apply" : "dry-run",
     status: finalStatus,
     options: {
@@ -711,6 +815,8 @@ async function main() {
     targetResults,
     selected: allSelected,
     rebuildResults,
+    candidateResults,
+    candidateArtifacts,
     indexResults,
     indexFailures,
     statusRows,
@@ -830,7 +936,7 @@ function writeReports(result) {
   fs.writeFileSync(outPath, lines.join("\n"), "utf8");
 }
 
-main().catch((error) => {
+if (require.main === module) main().catch((error) => {
   const result = {
     generatedAt: new Date().toISOString(),
     mode: apply ? "apply" : "dry-run",
@@ -841,3 +947,5 @@ main().catch((error) => {
   console.error(error.stack || error.message);
   process.exitCode = 1;
 });
+
+module.exports = { candidateArtifact, manifestIdentityForSelection };

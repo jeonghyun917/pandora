@@ -9,9 +9,18 @@ public record LawAiRuntimeInfo(
 	String runtimeArtifactKind,
 	String runtimeArtifactSha256,
 	Long runtimeArtifactSize,
+	String runtimeArtifactPath,
+	String runtimeArtifactModifiedAt,
 	String runtimeInstanceId,
 	String runtimeConfigSha256,
 	String indexRevision,
+	String lexicalRevision,
+	Long lawQdrantExactPointCount,
+	Long ragQdrantExactPointCount,
+	Long lawDatabaseIndexedCount,
+	Long ragDatabaseIndexedCount,
+	String lawDatabaseContentFingerprint,
+	String ragDatabaseContentFingerprint,
 	boolean qdrantReady,
 	long qdrantSearchFailureCount
 ) {
