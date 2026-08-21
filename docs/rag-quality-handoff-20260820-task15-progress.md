@@ -112,3 +112,49 @@ The exact approved 12 questions were sent twice with `K=30` and concurrency `1`:
 ## Evaluation CLI incident
 
 `node scripts/rag-eval-gate.js --help` does not implement a help option and started the default full evaluation. It printed `batch 1/101 (10 cases)` before PID `24304` was identified and terminated. No later batch was allowed to run. Do not pass CLI flags to this script; it is configured only through `RAG_EVAL_*` environment variables.
+
+## Coverage-aware fusion implementation checkpoint (2026-08-21)
+
+- Feature branch: `codex/coverage-aware-fusion`; implementation commits through
+  `7d8d4b62`.
+- A bounded document-sibling rescue stage now runs after pure RRF using only the
+  already hydrated candidate union. It performs no additional OpenAI, Qdrant,
+  or MariaDB request.
+- The production ceiling is two global rescues and one rescue per
+  `target:documentId`. The fixed offline grid is baseline, `1/1/20`, `1/1/30`,
+  `2/1/20`, and `2/1/30` (`maxRescues/maxPerDocument/sourceRankLimit`).
+- The runtime keeps pure RRF and coverage-aware orders separately. Debug output
+  now includes `coverageFused`, pure and coverage ranks, rescue anchor/reason,
+  and `coverage-fused` candidate-loss reasons without exposing new candidate
+  text or secrets.
+- Runtime authority remains unchanged: `rrf-authoritative=false`,
+  `coverage-aware.enabled=false`, and both semantic authoritative flags are
+  false.
+- Full local verification on the exact implementation tree:
+  - Node selector/evaluator/provenance suite: `106/106` pass.
+  - Maven suite: `1236` tests, `0` failures, `0` errors, `18` environment-only
+    skips.
+  - Candidate JAR SHA-256:
+    `8c86337616de1c2c89baad8acc03019c47a46cc0c9529e483ee04e7f67761763`.
+- Existing app-dev runtime was inspected read-only and was not restarted:
+  runtime `4560c8c7-c75e-4cf0-bd82-67bb1063462e`, JAR
+  `f271876d994c6d8d8a97053b906c07d45f2c4519ecc652caf7c67c9be0c097a7`,
+  config `8674f478300aa0f2cf49213f00c7b27c8d29ee096f687b442e2b459cdff0d85d`,
+  index `4ec3206a7a954f56259ba19cb719444a1208635500cc37cefc7df35e041dd21b`,
+  lexical `da8d51cecea3bd10ce9ba7eb40c2a25015d2166e983d836018616377de9bb9aa`.
+  Law and RAG DB/Qdrant parity remain `211548/211548` and `84248/84248`;
+  Qdrant is ready with search failures `0`; no `18080` listener exists.
+- The current exact training-manifest byte hash is
+  `3c5cc394524389d9c05c0e72e602232a8eb98a297f25a55c4f0c71a85ae2b2db`.
+  This supersedes the older handoff hash because request provenance is locked to
+  the current exact file bytes.
+- Ignored dry-run execution manifest:
+  `logs/task15-coverage-training-execution-manifest.json`, SHA-256
+  `eb73c11363b09d05501f4c3f8d088b4ada6537c8d2faf4993b628c20a87ef9fe`.
+  It freezes the same ordered 24 training IDs, two runs, K `30`, rank capture
+  `100`, concurrency `1`, 48 total OpenAI Embedding requests, and read-only
+  Qdrant/MariaDB access. Difficult-12 overlap is zero.
+- External execution remains blocked until the exact 24-ID payload,
+  destination, request hash, candidate JAR/runtime fences, and artifact paths
+  receive explicit execution approval. No evaluation payload has been sent at
+  this checkpoint.
