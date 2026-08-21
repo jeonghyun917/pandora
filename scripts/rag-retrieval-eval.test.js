@@ -535,16 +535,17 @@ test('source rank snapshot is bounded, ordered, audit-only, and excludes candida
       {
         target: 'law',
         chunkId: 9,
+        documentId: 109,
         matchedAuditGroupIndexes: [2, 0, 2, -1, '1'],
         chunkText: 'secret chunk',
         body: 'secret body',
         snippet: 'secret snippet',
       },
-      { candidateKey: 'official_doc:7', matchedAuditGroupIndexes: [1] },
-      { candidateKey: 'law:8', matchedAuditGroupIndexes: [] },
+      { candidateKey: 'official_doc:7', documentId: 207, matchedAuditGroupIndexes: [1] },
+      { candidateKey: 'law:8', documentId: 108, matchedAuditGroupIndexes: [] },
     ],
     bm25Hits: [
-      { candidateKey: 'internal_doc:4', matchedAuditGroupIndexes: [3, 1] },
+      { candidateKey: 'internal_doc:4', documentId: 304, matchedAuditGroupIndexes: [3, 1] },
     ],
   };
 
@@ -552,11 +553,11 @@ test('source rank snapshot is bounded, ordered, audit-only, and excludes candida
 
   assert.deepEqual(snapshot, {
     vector: [
-      { candidateKey: 'law:9', rank: 1, matchedAuditGroupIndexes: [0, 2] },
-      { candidateKey: 'official_doc:7', rank: 2, matchedAuditGroupIndexes: [1] },
+      { candidateKey: 'law:9', documentId: 109, rank: 1, matchedAuditGroupIndexes: [0, 2] },
+      { candidateKey: 'official_doc:7', documentId: 207, rank: 2, matchedAuditGroupIndexes: [1] },
     ],
     bm25: [
-      { candidateKey: 'internal_doc:4', rank: 1, matchedAuditGroupIndexes: [1, 3] },
+      { candidateKey: 'internal_doc:4', documentId: 304, rank: 1, matchedAuditGroupIndexes: [1, 3] },
     ],
   });
   const serialized = JSON.stringify(snapshot);

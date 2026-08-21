@@ -388,6 +388,7 @@ function captureRankedItems(items, limit) {
 		.slice(0, limit)
 		.map((item, index) => ({
 			candidateKey: candidateKey(item),
+			documentId: Number(item?.documentId),
 			rank: index + 1,
 			matchedAuditGroupIndexes: Array.from(new Set(
 				(Array.isArray(item?.matchedAuditGroupIndexes) ? item.matchedAuditGroupIndexes : [])
