@@ -122,7 +122,7 @@ Expected: pure replay tests pass.
 
 - [ ] **Step 5: Write failing validation and selection tests**
 
-Cover provenance mismatch, reordered/missing cases, rank mismatch between runs, baseline regression rejection, any-required regression rejection, training improvement selection, deterministic ties, and `NO_TRAINING_IMPROVEMENT` fallback.
+Cover provenance mismatch, reordered/missing cases, bounded raw-rank drift, divergent guarded winners, baseline regression rejection, any-required regression rejection, training improvement selection, deterministic ties, and both no-improvement fallbacks.
 
 - [ ] **Step 6: Run tests and verify RED**
 
@@ -132,7 +132,7 @@ Expected: FAIL because validation and selection are absent.
 
 - [ ] **Step 7: Implement validation, grid selection, and CLI**
 
-Implement strict two-run comparison and the exact guardrail/tie rules from the spec. The CLI writes JSON atomically to the requested path and refuses an existing path unless its contents are byte-identical.
+Implement strict two-run provenance comparison, independent replay, stable-winner comparison, and the exact guardrail/tie rules from the spec. The CLI writes JSON atomically to the requested path and refuses an existing path unless its contents are byte-identical.
 
 - [ ] **Step 8: Run tests and verify GREEN**
 

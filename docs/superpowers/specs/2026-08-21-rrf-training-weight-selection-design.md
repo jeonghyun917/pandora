@@ -93,7 +93,13 @@ manifest. It rejects:
 - missing, duplicate, extra, or reordered training cases;
 - absent explicit oracle groups;
 - incomplete vector/BM25 rank snapshots; or
-- any candidate-key, rank, or matched-group difference between captures.
+- different guarded winning weights between captures.
+
+The two captures share exact provenance fences but are replayed independently.
+Qdrant approximate vector search may reorder near-tied candidates even when the
+runtime and indexes are unchanged. Raw rank drift is therefore recorded rather
+than rejected. It cannot authorize a recommendation: the same weight pair must
+win independently in both captures after every guardrail is applied.
 
 RRF remains:
 
@@ -118,7 +124,8 @@ A non-baseline pair is eligible only when:
 1. it improves training all-required top-30 count over `(1.0, 1.0)`;
 2. every case that passes all-required under baseline still passes;
 3. it has no reduction in any-required count; and
-4. both captures produce identical fused ranks and metrics.
+4. it is independently eligible in both captures; and
+5. both captures select that same pair as their guarded winner.
 
 Eligible pairs sort by:
 
@@ -128,9 +135,11 @@ Eligible pairs sort by:
 4. smallest absolute log weight ratio from baseline; and
 5. vector weight then lexical weight numerically.
 
-If no non-baseline pair is eligible, the output explicitly recommends the
-baseline and reports `NO_TRAINING_IMPROVEMENT`. The selector never edits
-runtime configuration.
+If neither capture has an eligible non-baseline pair, the output recommends the
+baseline and reports `NO_TRAINING_IMPROVEMENT`. If only one capture improves or
+their guarded winners differ, it recommends the baseline and reports
+`NO_STABLE_TRAINING_IMPROVEMENT`. The selector never edits runtime
+configuration.
 
 ## 7. Promotion Ladder
 

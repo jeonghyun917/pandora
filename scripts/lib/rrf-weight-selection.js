@@ -261,31 +261,66 @@ function selectWeights({ manifestInfo, run1, run2, topK = 30, rrfK = 60 }) {
   const trainingCases = validateTrainingRun(manifestInfo, run1, 'run1');
   validateTrainingRun(manifestInfo, run2, 'run2');
   assertMatchingProvenance(run1.provenance, run2.provenance);
-  for (let index = 0; index < trainingCases.length; index += 1) {
-    const left = run1.results[index];
-    const right = run2.results[index];
-    if (JSON.stringify(left.sourceRankSnapshot) !== JSON.stringify(right.sourceRankSnapshot)) {
-      throw new Error(`training rank snapshot mismatch: ${left.id}`);
-    }
-  }
-
-  const evaluated = WEIGHT_GRID.map((weights) => ({
+  const rankSnapshotsIdentical = trainingCases.every((_, index) =>
+    JSON.stringify(run1.results[index].sourceRankSnapshot)
+      === JSON.stringify(run2.results[index].sourceRankSnapshot));
+  const evaluateRun = (results) => WEIGHT_GRID.map((weights) => ({
     weights: { ...weights },
-    metrics: evaluateTrainingCases(trainingCases, run1.results, weights, topK, rrfK),
+    metrics: evaluateTrainingCases(trainingCases, results, weights, topK, rrfK),
     distanceFromBaseline: Math.abs(Math.log(weights.vectorWeight / weights.lexicalWeight)),
   }));
-  const baseline = evaluated.find((item) => sameWeights(item.weights, BASELINE_WEIGHTS));
-  const candidates = evaluated.map((item) => {
-    if (sameWeights(item.weights, BASELINE_WEIGHTS)) {
-      return { ...item, eligible: false, reasons: ['BASELINE'] };
-    }
-    return { ...item, ...selectionEligibility(item.metrics, baseline.metrics) };
+  const evaluatedByRun = { run1: evaluateRun(run1.results), run2: evaluateRun(run2.results) };
+  const baselines = Object.fromEntries(Object.entries(evaluatedByRun).map(([label, evaluated]) => [
+    label,
+    evaluated.find((item) => sameWeights(item.weights, BASELINE_WEIGHTS)),
+  ]));
+  const guardedByRun = Object.fromEntries(Object.entries(evaluatedByRun).map(([label, evaluated]) => [
+    label,
+    evaluated.map((item) => sameWeights(item.weights, BASELINE_WEIGHTS)
+      ? { ...item, eligible: false, reasons: ['BASELINE'] }
+      : { ...item, ...selectionEligibility(item.metrics, baselines[label].metrics) }),
+  ]));
+  const winners = Object.fromEntries(Object.entries(guardedByRun).map(([label, evaluated]) => [
+    label,
+    evaluated.filter((item) => item.eligible).sort(compareRecommendations)[0] ?? baselines[label],
+  ]));
+  const improvedByRun = Object.fromEntries(Object.entries(guardedByRun).map(([label, evaluated]) => [
+    label,
+    evaluated.some((item) => item.eligible),
+  ]));
+  const candidates = WEIGHT_GRID.map((weights, index) => {
+    const left = guardedByRun.run1[index];
+    const right = guardedByRun.run2[index];
+    return {
+      weights: { ...weights },
+      metrics: conservativeMetrics(left.metrics, right.metrics),
+      metricsByRun: { run1: left.metrics, run2: right.metrics },
+      distanceFromBaseline: left.distanceFromBaseline,
+      eligible: left.eligible && right.eligible,
+      eligibilityByRun: {
+        run1: { eligible: left.eligible, reasons: left.reasons },
+        run2: { eligible: right.eligible, reasons: right.reasons },
+      },
+      reasons: [
+        ...left.reasons.map((reason) => `RUN1:${reason}`),
+        ...right.reasons.map((reason) => `RUN2:${reason}`),
+      ],
+    };
   });
-  const eligible = candidates.filter((item) => item.eligible).sort(compareRecommendations);
-  const recommendation = eligible[0] ?? baseline;
+  const baseline = candidates.find((item) => sameWeights(item.weights, BASELINE_WEIGHTS));
+  const stableImprovement = improvedByRun.run1 && improvedByRun.run2
+    && sameWeights(winners.run1.weights, winners.run2.weights);
+  const recommendation = stableImprovement
+    ? candidates.find((item) => sameWeights(item.weights, winners.run1.weights))
+    : baseline;
+  const status = stableImprovement
+    ? 'RECOMMENDED'
+    : (improvedByRun.run1 || improvedByRun.run2)
+      ? 'NO_STABLE_TRAINING_IMPROVEMENT'
+      : 'NO_TRAINING_IMPROVEMENT';
   return {
-    schemaVersion: 1,
-    status: eligible.length > 0 ? 'RECOMMENDED' : 'NO_TRAINING_IMPROVEMENT',
+    schemaVersion: 2,
+    status,
     manifest: {
       splitName: manifestInfo.manifest.splitName,
       manifestHash: manifestInfo.manifestHash,
@@ -293,9 +328,28 @@ function selectWeights({ manifestInfo, run1, run2, topK = 30, rrfK = 60 }) {
     },
     parameters: { topK: positiveInteger(topK, 'top K'), rrfK: positiveInteger(rrfK, 'RRF k') },
     provenance: Object.fromEntries(PROVENANCE_FIELDS.map((field) => [field, run1.provenance[field]])),
+    rankSnapshotsIdentical,
+    winnersByRun: {
+      run1: { weights: winners.run1.weights, improved: improvedByRun.run1 },
+      run2: { weights: winners.run2.weights, improved: improvedByRun.run2 },
+    },
     baseline,
     recommendation,
     candidates,
+  };
+}
+
+function conservativeMetrics(left, right) {
+  const passedCaseIds = (left.passedCaseIds ?? []).filter((id) => (right.passedCaseIds ?? []).includes(id));
+  const anyRequiredCaseIds = (left.anyRequiredCaseIds ?? [])
+    .filter((id) => (right.anyRequiredCaseIds ?? []).includes(id));
+  return {
+    caseCount: Math.min(left.caseCount, right.caseCount),
+    allRequiredCount: passedCaseIds.length,
+    anyRequiredCount: anyRequiredCaseIds.length,
+    totalMatchedGroupCount: Math.min(left.totalMatchedGroupCount, right.totalMatchedGroupCount),
+    passedCaseIds,
+    anyRequiredCaseIds,
   };
 }
 

@@ -192,7 +192,36 @@ test('weight selection preserves baseline when no grid pair improves training', 
   assert.deepEqual(result.recommendation.weights, { vectorWeight: 1, lexicalWeight: 1 });
 });
 
-test('weight selection fails closed on provenance, order, or rank-repeatability drift', () => {
+test('weight selection accepts bounded rank drift when both runs select the same guarded weights', () => {
+  const manifestInfo = selectionManifestInfo();
+  const run1 = selectionRun(improvementSnapshots());
+  const run2 = structuredClone(run1);
+  run2.results[1].sourceRankSnapshot.vector.push(ranked('law:99', 2, []));
+
+  const result = selectWeights({ manifestInfo, run1, run2, topK: 2, rrfK: 60 });
+
+  assert.equal(result.status, 'RECOMMENDED');
+  assert.deepEqual(result.recommendation.weights, { vectorWeight: 0.75, lexicalWeight: 1 });
+  assert.equal(result.rankSnapshotsIdentical, false);
+});
+
+test('weight selection preserves baseline when rank drift produces different guarded winners', () => {
+  const manifestInfo = selectionManifestInfo();
+  const run1 = selectionRun(improvementSnapshots());
+  const inverted = improvementSnapshots();
+  [inverted['case-a'].vector, inverted['case-a'].bm25] = [
+    inverted['case-a'].bm25,
+    inverted['case-a'].vector,
+  ];
+  const run2 = selectionRun(inverted);
+
+  const result = selectWeights({ manifestInfo, run1, run2, topK: 2, rrfK: 60 });
+
+  assert.equal(result.status, 'NO_STABLE_TRAINING_IMPROVEMENT');
+  assert.deepEqual(result.recommendation.weights, { vectorWeight: 1, lexicalWeight: 1 });
+});
+
+test('weight selection fails closed on provenance or order drift', () => {
   const manifestInfo = selectionManifestInfo();
   const run1 = selectionRun(improvementSnapshots());
   const provenanceDrift = structuredClone(run1);
@@ -209,12 +238,6 @@ test('weight selection fails closed on provenance, order, or rank-repeatability 
     /training result order does not match manifest/i,
   );
 
-  const rankDrift = structuredClone(run1);
-  rankDrift.results[0].sourceRankSnapshot.vector[0].candidateKey = 'law:999';
-  assert.throws(
-    () => selectWeights({ manifestInfo, run1, run2: rankDrift, topK: 2, rrfK: 60 }),
-    /training rank snapshot mismatch: case-a/i,
-  );
 });
 
 test('weight selection rejects captures with missing provenance fences', () => {
