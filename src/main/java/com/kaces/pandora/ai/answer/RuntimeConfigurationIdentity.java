@@ -1,6 +1,7 @@
 package com.kaces.pandora.ai.answer;
 
 import com.kaces.pandora.semantic.config.LawAiLexicalProperties;
+import com.kaces.pandora.semantic.config.LawAiCoverageAwareProperties;
 import com.kaces.pandora.semantic.config.LawAiProperties;
 import com.kaces.pandora.semantic.config.LawAiRrfProperties;
 import java.nio.charset.StandardCharsets;
@@ -24,7 +25,8 @@ public final class RuntimeConfigurationIdentity {
 		return sha256(
 			properties,
 			new LawAiLexicalProperties(1.2, 0.75, 8, 6, 7, 1, 24, 100),
-			new LawAiRrfProperties(false, false, 60, 1.0, 1.0, 100)
+			new LawAiRrfProperties(false, false, 60, 1.0, 1.0, 100),
+			new LawAiCoverageAwareProperties(false, 0, 1, 30)
 		);
 	}
 
@@ -32,6 +34,15 @@ public final class RuntimeConfigurationIdentity {
 		LawAiProperties properties,
 		LawAiLexicalProperties lexical,
 		LawAiRrfProperties rrf
+	) {
+		return sha256(properties, lexical, rrf, new LawAiCoverageAwareProperties(false, 0, 1, 30));
+	}
+
+	static String sha256(
+		LawAiProperties properties,
+		LawAiLexicalProperties lexical,
+		LawAiRrfProperties rrf,
+		LawAiCoverageAwareProperties coverage
 	) {
 		LawAiProperties.OpenAi openAi = properties.openai();
 		LawAiProperties.Qdrant qdrant = properties.qdrant();
@@ -58,7 +69,11 @@ public final class RuntimeConfigurationIdentity {
 			"rrf.k=" + rrf.rrfK(),
 			"rrf.vectorWeight=" + rrf.rrfVectorWeight(),
 			"rrf.lexicalWeight=" + rrf.rrfLexicalWeight(),
-			"rrf.fusedLimit=" + rrf.rrfFusedLimit()
+			"rrf.fusedLimit=" + rrf.rrfFusedLimit(),
+			"coverage.enabled=" + coverage.enabled(),
+			"coverage.maxRescues=" + coverage.maxRescues(),
+			"coverage.maxRescuesPerDocument=" + coverage.maxRescuesPerDocument(),
+			"coverage.sourceRankLimit=" + coverage.sourceRankLimit()
 		);
 		try {
 			MessageDigest digest = MessageDigest.getInstance("SHA-256");

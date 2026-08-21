@@ -14,10 +14,12 @@ import com.kaces.pandora.rag.chunk.RagChunker;
 import com.kaces.pandora.rag.common.HwpxTextCleaner;
 import com.kaces.pandora.rag.persistence.RagDocumentMapper;
 import com.kaces.pandora.rag.search.RagChunkSearchIndexService;
+import com.kaces.pandora.semantic.config.LawAiCoverageAwareProperties;
 import com.kaces.pandora.semantic.config.LawAiLexicalProperties;
 import com.kaces.pandora.semantic.config.LawAiProperties;
 import com.kaces.pandora.semantic.config.LawAiRrfProperties;
 import com.kaces.pandora.semantic.config.LawAiSemanticSelectionProperties;
+import com.kaces.pandora.semantic.lexical.CoverageAwareFusion;
 import com.kaces.pandora.semantic.lexical.KoreanBm25SearchService;
 import com.kaces.pandora.semantic.lexical.LexicalSearchHit;
 import com.kaces.pandora.semantic.lexical.ReciprocalRankFusion;
@@ -141,9 +143,11 @@ public class LawAiAnswerService {
 	private final SemanticLexicalIndexService semanticLexicalIndexService;
 	private final KoreanBm25SearchService koreanBm25SearchService;
 	private final ReciprocalRankFusion reciprocalRankFusion;
+	private final CoverageAwareFusion coverageAwareFusion;
 	private final LawAiLexicalProperties lexicalProperties;
 	private final LawAiRrfProperties rrfProperties;
 	private final LawAiSemanticSelectionProperties semanticSelectionProperties;
+	private final LawAiCoverageAwareProperties coverageAwareProperties;
 	private final Map<String, CachedAnswer> answerCache = new ConcurrentHashMap<>();
 	private final ExecutorService streamExecutor;
 	private final ExecutorService searchExecutor;
@@ -271,7 +275,7 @@ public class LawAiAnswerService {
 			evidenceJudge, answerGuard, claimVerifier, answerVerificationService,
 			parentContextAssembler, evidenceCandidateDiversifier, failureLoggingService,
 			searchFailureMapper, properties, groundedAnswerRepairService,
-			ragChunkSearchIndexService, semanticLexicalIndexService, null, null, null, null, null
+			ragChunkSearchIndexService, semanticLexicalIndexService, null, null, null, null, null, null, null
 		);
 	}
 
@@ -298,7 +302,9 @@ public class LawAiAnswerService {
 		ReciprocalRankFusion reciprocalRankFusion,
 		LawAiLexicalProperties lexicalProperties,
 		LawAiRrfProperties rrfProperties,
-		LawAiSemanticSelectionProperties semanticSelectionProperties
+		LawAiSemanticSelectionProperties semanticSelectionProperties,
+		CoverageAwareFusion coverageAwareFusion,
+		LawAiCoverageAwareProperties coverageAwareProperties
 	) {
 		this.lawChunkMapper = lawChunkMapper;
 		this.ragDocumentMapper = ragDocumentMapper;
@@ -327,6 +333,7 @@ public class LawAiAnswerService {
 		this.semanticLexicalIndexService = semanticLexicalIndexService;
 		this.koreanBm25SearchService = koreanBm25SearchService;
 		this.reciprocalRankFusion = reciprocalRankFusion == null ? new ReciprocalRankFusion() : reciprocalRankFusion;
+		this.coverageAwareFusion = coverageAwareFusion == null ? new CoverageAwareFusion() : coverageAwareFusion;
 		this.lexicalProperties = lexicalProperties == null
 			? new LawAiLexicalProperties(1.2, 0.75, 8, 6, 7, 1, 24, 100)
 			: lexicalProperties;
@@ -336,6 +343,9 @@ public class LawAiAnswerService {
 		this.semanticSelectionProperties = semanticSelectionProperties == null
 			? new LawAiSemanticSelectionProperties(false, false, 4)
 			: semanticSelectionProperties;
+		this.coverageAwareProperties = coverageAwareProperties == null
+			? new LawAiCoverageAwareProperties(false, 0, 1, 30)
+			: coverageAwareProperties;
 		this.runtimeArtifactIdentity = RuntimeArtifactIdentity.from(LawAiAnswerService.class);
 		this.streamExecutor = Executors.newFixedThreadPool(4, namedThreadFactory("law-ai-stream-"));
 		this.searchExecutor = Executors.newFixedThreadPool(8, namedThreadFactory("law-ai-search-"));
@@ -369,7 +379,7 @@ public class LawAiAnswerService {
 			artifact.path(),
 			artifact.modifiedAt(),
 			RuntimeConfigurationIdentity.instanceId(),
-			RuntimeConfigurationIdentity.sha256(properties, lexicalProperties, rrfProperties),
+			RuntimeConfigurationIdentity.sha256(properties, lexicalProperties, rrfProperties, coverageAwareProperties),
 			indexIdentity == null ? null : indexIdentity.revision(),
 			lexicalRevision(),
 			indexIdentity == null ? null : pointCount(indexIdentity.lawQdrant()),
@@ -1142,9 +1152,26 @@ public class LawAiAnswerService {
 			.map(hit -> chunkById.get(hit.candidateKey()))
 			.filter(chunk -> chunk != null)
 			.toList();
-		HybridRetrieval hybrid = new HybridRetrieval(bm25Hits, fusedHits, bm25Chunks, fusedChunks);
+		CoverageAwareFusion.Result coverage = coverageAwareRerank(fusedHits, chunkById);
+		List<LawSemanticChunkRow> coverageChunks = coverage.ranking().stream()
+			.map(hit -> chunkById.get(hit.candidateKey()))
+			.filter(chunk -> chunk != null)
+			.toList();
+		HybridRetrieval hybrid = new HybridRetrieval(
+			bm25Hits,
+			fusedHits,
+			bm25Chunks,
+			fusedChunks,
+			coverage.ranking(),
+			coverageChunks,
+			coverage.rescues(),
+			coverage.status()
+		);
 		List<LawSemanticChunkRow> controlChunks = searchedChunks;
-		List<LawSemanticChunkRow> authoritativeChunks = mergeChunks(fusedChunks, lexicalChunks);
+		List<LawSemanticChunkRow> rrfCandidateChunks = coverageAwareProperties.enabled()
+			? coverageChunks
+			: fusedChunks;
+		List<LawSemanticChunkRow> authoritativeChunks = mergeChunks(rrfCandidateChunks, lexicalChunks);
 		searchedChunks = selectCandidateOrder(
 			controlChunks,
 			authoritativeChunks,
@@ -5090,12 +5117,30 @@ public class LawAiAnswerService {
 		return merged.values().stream().toList();
 	}
 
-	private static List<LawSemanticChunkRow> selectCandidateOrder(
+	static List<LawSemanticChunkRow> selectCandidateOrder(
 		List<LawSemanticChunkRow> controlOrder,
 		List<LawSemanticChunkRow> fusedOrder,
 		boolean authoritative
 	) {
 		return authoritative ? List.copyOf(fusedOrder) : List.copyOf(controlOrder);
+	}
+
+	CoverageAwareFusion.Result coverageAwareRerank(
+		List<ReciprocalRankFusion.RrfHit> fusedHits,
+		Map<String, LawSemanticChunkRow> chunkById
+	) {
+		Map<String, Long> documentIds = new HashMap<>();
+		for (Map.Entry<String, LawSemanticChunkRow> entry : chunkById.entrySet()) {
+			if (entry.getValue() != null) {
+				documentIds.put(entry.getKey(), entry.getValue().documentId());
+			}
+		}
+		return coverageAwareFusion.rerank(
+			fusedHits,
+			Map.copyOf(documentIds),
+			coverageAwareProperties.policy(),
+			JUDGE_CANDIDATE_LIMIT
+		);
 	}
 
 	private Map<String, Double> applyAuthoritativeRrfScores(
@@ -10338,17 +10383,28 @@ public class LawAiAnswerService {
 		List<LexicalSearchHit> bm25Hits,
 		List<ReciprocalRankFusion.RrfHit> fusedHits,
 		List<LawSemanticChunkRow> bm25Chunks,
-		List<LawSemanticChunkRow> fusedChunks
+		List<LawSemanticChunkRow> fusedChunks,
+		List<ReciprocalRankFusion.RrfHit> coverageHits,
+		List<LawSemanticChunkRow> coverageChunks,
+		List<CoverageAwareFusion.Rescue> coverageRescues,
+		CoverageAwareFusion.Status coverageStatus
 	) {
 		private HybridRetrieval {
 			bm25Hits = bm25Hits == null ? List.of() : List.copyOf(bm25Hits);
 			fusedHits = fusedHits == null ? List.of() : List.copyOf(fusedHits);
 			bm25Chunks = bm25Chunks == null ? List.of() : List.copyOf(bm25Chunks);
 			fusedChunks = fusedChunks == null ? List.of() : List.copyOf(fusedChunks);
+			coverageHits = coverageHits == null ? List.of() : List.copyOf(coverageHits);
+			coverageChunks = coverageChunks == null ? List.of() : List.copyOf(coverageChunks);
+			coverageRescues = coverageRescues == null ? List.of() : List.copyOf(coverageRescues);
+			coverageStatus = coverageStatus == null ? CoverageAwareFusion.Status.DISABLED : coverageStatus;
 		}
 
 		private static HybridRetrieval empty() {
-			return new HybridRetrieval(List.of(), List.of(), List.of(), List.of());
+			return new HybridRetrieval(
+				List.of(), List.of(), List.of(), List.of(),
+				List.of(), List.of(), List.of(), CoverageAwareFusion.Status.DISABLED
+			);
 		}
 
 		private LexicalSearchHit bm25Hit(String candidateKey) {

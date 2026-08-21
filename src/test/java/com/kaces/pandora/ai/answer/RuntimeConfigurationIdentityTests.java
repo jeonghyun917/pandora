@@ -2,6 +2,7 @@ package com.kaces.pandora.ai.answer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.kaces.pandora.semantic.config.LawAiCoverageAwareProperties;
 import com.kaces.pandora.semantic.config.LawAiLexicalProperties;
 import com.kaces.pandora.semantic.config.LawAiProperties;
 import com.kaces.pandora.semantic.config.LawAiRrfProperties;
@@ -44,6 +45,28 @@ class RuntimeConfigurationIdentityTests {
 				new LawAiLexicalProperties(1.6, 0.75, 8, 6, 7, 1, 24, 100),
 				shadow
 			));
+	}
+
+	@Test
+	void fingerprintsEveryCoverageAwarePolicyField() {
+		LawAiProperties base = properties("secret", "http://127.0.0.1:6333");
+		LawAiLexicalProperties lexical = new LawAiLexicalProperties(1.2, 0.75, 8, 6, 7, 1, 24, 100);
+		LawAiRrfProperties rrf = new LawAiRrfProperties(true, false, 60, 1.0, 1.0, 100);
+		LawAiCoverageAwareProperties disabled = new LawAiCoverageAwareProperties(false, 0, 1, 30);
+		String fingerprint = RuntimeConfigurationIdentity.sha256(base, lexical, rrf, disabled);
+
+		assertThat(RuntimeConfigurationIdentity.sha256(
+			base, lexical, rrf, new LawAiCoverageAwareProperties(true, 0, 1, 30)
+		)).isNotEqualTo(fingerprint);
+		assertThat(RuntimeConfigurationIdentity.sha256(
+			base, lexical, rrf, new LawAiCoverageAwareProperties(true, 1, 1, 30)
+		)).isNotEqualTo(fingerprint);
+		assertThat(RuntimeConfigurationIdentity.sha256(
+			base, lexical, rrf, new LawAiCoverageAwareProperties(true, 2, 1, 30)
+		)).isNotEqualTo(fingerprint);
+		assertThat(RuntimeConfigurationIdentity.sha256(
+			base, lexical, rrf, new LawAiCoverageAwareProperties(true, 2, 1, 20)
+		)).isNotEqualTo(fingerprint);
 	}
 
 	private LawAiProperties properties(String apiKey, String qdrantBaseUrl) {
