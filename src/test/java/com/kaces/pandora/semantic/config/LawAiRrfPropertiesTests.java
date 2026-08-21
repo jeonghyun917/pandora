@@ -22,13 +22,13 @@ class LawAiRrfPropertiesTests {
 	}
 
 	@Test
-	void configuresTheSelectedShadowLexicalWeight() throws Exception {
+	void configuresTheVerifiedBaselineShadowLexicalWeight() throws Exception {
 		Properties properties = new Properties();
 		try (InputStream input = getClass().getResourceAsStream("/application.properties")) {
 			properties.load(input);
 		}
 
 		assertThat(properties.getProperty("law-ai.retrieval.rrf-vector-weight")).isEqualTo("1.0");
-		assertThat(properties.getProperty("law-ai.retrieval.rrf-lexical-weight")).isEqualTo("0.75");
+		assertThat(properties.getProperty("law-ai.retrieval.rrf-lexical-weight")).isEqualTo("1.0");
 	}
 }
