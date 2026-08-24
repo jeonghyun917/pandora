@@ -1244,7 +1244,13 @@ public class LawAiAnswerService {
 			documentExpansionChunkById.putIfAbsent(scoreKey(chunk.target(), chunk.chunkId()), chunk);
 		}
 		List<ReciprocalRankFusion.RrfHit> documentExpansionFusedHits = rrfProperties.enabled()
-			? fuseDocumentExpansion(fusedHits, documentExpansion.hits(), documentExpansionChunkById)
+			? fuseDocumentExpansion(
+				hits,
+				bm25Hits,
+				fusedHits,
+				documentExpansion.hits(),
+				documentExpansionChunkById
+			)
 			: List.of();
 		List<LawSemanticChunkRow> documentExpansionFusedChunks = documentExpansionFusedHits.stream()
 			.map(hit -> documentExpansionChunkById.get(hit.candidateKey()))
@@ -5420,16 +5426,21 @@ public class LawAiAnswerService {
 			}
 		}
 		int limit = Math.min(MAX_DOCUMENT_EXPANSION_HITS, documentExpansionProperties.maxTotalChunks());
-		if (limit <= 0) {
+		Map<String, Long> chunksPerDocument = chunks.stream().collect(java.util.stream.Collectors.groupingBy(
+			chunk -> chunk.target() + ':' + chunk.documentId(),
+			LinkedHashMap::new,
+			java.util.stream.Collectors.counting()
+		));
+		if (limit <= 0 || chunks.size() > limit
+			|| chunksPerDocument.size() > documentExpansionProperties.maxDocuments()
+			|| chunksPerDocument.values().stream().anyMatch(
+				count -> count > documentExpansionProperties.maxChunksPerDocument()
+			)) {
 			return fallbackDocumentExpansionResult();
 		}
 		Set<String> existingKeys = finalControlCandidateKeys == null ? Set.of() : finalControlCandidateKeys;
-		List<LawSemanticChunkRow> boundedChunks = new java.util.ArrayList<>();
 		List<DocumentCandidateExpansion.Hit> reannotatedHits = new java.util.ArrayList<>();
-		for (int index = 0; index < chunks.size() && boundedChunks.size() < limit; index++) {
-			LawSemanticChunkRow chunk = chunks.get(index);
-			DocumentCandidateExpansion.Hit hit = hits.get(index);
-			boundedChunks.add(chunk);
+		for (DocumentCandidateExpansion.Hit hit : hits) {
 			reannotatedHits.add(new DocumentCandidateExpansion.Hit(
 				hit.candidateKey(),
 				hit.sourceRank(),
@@ -5438,19 +5449,8 @@ public class LawAiAnswerService {
 				hit.reason()
 			));
 		}
-		Map<String, Long> chunksPerDocument = boundedChunks.stream().collect(java.util.stream.Collectors.groupingBy(
-			chunk -> chunk.target() + ':' + chunk.documentId(),
-			LinkedHashMap::new,
-			java.util.stream.Collectors.counting()
-		));
-		if (chunksPerDocument.size() > documentExpansionProperties.maxDocuments()
-			|| chunksPerDocument.values().stream().anyMatch(
-				count -> count > documentExpansionProperties.maxChunksPerDocument()
-			)) {
-			return fallbackDocumentExpansionResult();
-		}
 		return new DocumentCandidateExpansion.Result(
-			boundedChunks,
+			chunks,
 			reannotatedHits,
 			DocumentCandidateExpansion.Status.APPLIED,
 			boundedDocumentExpansionReasonCodes(result.reasonCodes())
@@ -5501,6 +5501,8 @@ public class LawAiAnswerService {
 	}
 
 	private List<ReciprocalRankFusion.RrfHit> fuseDocumentExpansion(
+		List<QdrantSearchHit> vectorHits,
+		List<LexicalSearchHit> bm25Hits,
 		List<ReciprocalRankFusion.RrfHit> controlFusedHits,
 		List<DocumentCandidateExpansion.Hit> expansionHits,
 		Map<String, LawSemanticChunkRow> chunkById
@@ -5511,7 +5513,19 @@ public class LawAiAnswerService {
 		if (expansionHits == null || expansionHits.isEmpty()) {
 			return baseline;
 		}
-		Map<String, ReciprocalRankFusion.RrfHit> combined = baseline.stream().collect(
+		int rawSourceLimit = Math.max(
+			1,
+			(vectorHits == null ? 0 : vectorHits.size()) + (bm25Hits == null ? 0 : bm25Hits.size())
+		);
+		List<ReciprocalRankFusion.RrfHit> rawSourceHits = reciprocalRankFusion.fuse(
+			vectorHits,
+			bm25Hits,
+			rrfProperties.rrfK(),
+			rrfProperties.rrfVectorWeight(),
+			rrfProperties.rrfLexicalWeight(),
+			rawSourceLimit
+		);
+		Map<String, ReciprocalRankFusion.RrfHit> combined = rawSourceHits.stream().collect(
 			java.util.stream.Collectors.toMap(
 				ReciprocalRankFusion.RrfHit::candidateKey,
 				hit -> hit,

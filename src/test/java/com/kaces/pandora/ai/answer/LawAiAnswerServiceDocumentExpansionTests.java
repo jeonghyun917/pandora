@@ -1,6 +1,7 @@
 package com.kaces.pandora.ai.answer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -166,6 +167,39 @@ class LawAiAnswerServiceDocumentExpansionTests {
 	}
 
 	@Test
+	void shadowFusionRetainsRawVectorAndBm25ContributionsBeyondThePureRrfLimit() {
+		List<QdrantSearchHit> vectorHits = List.of(
+			new QdrantSearchHit("law", 101, 0.93),
+			new QdrantSearchHit("law", 201, 0.92),
+			new QdrantSearchHit("law", 901, 0.91)
+		);
+		List<LexicalSearchHit> bm25Hits = List.of(
+			new LexicalSearchHit("law", 101, 10, 9.0, 1, List.of("전자정부법")),
+			new LexicalSearchHit("law", 201, 20, 8.0, 2, List.of("전자정부법")),
+			new LexicalSearchHit("law", 901, 90, 7.0, 3, List.of("전자정부법"))
+		);
+		DocumentCandidateExpansion.Result expansion = appliedExpansion(
+			List.of(chunk(901, 90, 1, "raw-source contribution candidate")),
+			List.of(new DocumentCandidateExpansion.Hit(
+				"law:901", 1, "EXPLICIT_TITLE", false, "DOCUMENT_ORDER"
+			))
+		);
+		try (Harness harness = Harness.mockedWithSources(
+			properties(true, false), expansion, vectorHits, bm25Hits, 2
+		)) {
+			LawAiDebugResponse result = harness.debug(QUESTION);
+
+			assertThat(ids(result.fused())).containsExactly(101L, 201L);
+			assertThat(ids(result.documentExpansionFused())).containsExactly(901L, 101L);
+			LawAiDebugResponse.Item candidate = result.documentExpansionFused().get(0);
+			assertThat(candidate.vectorRank()).isEqualTo(3);
+			assertThat(candidate.lexicalRank()).isEqualTo(3);
+			assertThat(candidate.documentExpansionRank()).isEqualTo(1);
+			assertThat(candidate.rrfScore()).isCloseTo(0.0481394743689826, within(1.0e-12));
+		}
+	}
+
+	@Test
 	void genericQuestionPerformsNoDocumentExpansionDatabaseQuery() {
 		try (Harness harness = Harness.real(properties(true, false), false, false)) {
 			LawAiDebugResponse result = harness.debug("사전협의는 언제 하나요?");
@@ -293,7 +327,7 @@ class LawAiAnswerServiceDocumentExpansionTests {
 	}
 
 	@Test
-	void truncatesExpansionDeterministicallyAtTheConfiguredTwentyFourHitCeiling() {
+	void expansionThatExceedsTheTotalBoundFailsClosed() {
 		List<LawSemanticChunkRow> chunks = new ArrayList<>();
 		List<DocumentCandidateExpansion.Hit> hits = new ArrayList<>();
 		for (int index = 0; index < 25; index++) {
@@ -303,18 +337,27 @@ class LawAiAnswerServiceDocumentExpansionTests {
 				"law:" + chunkId, index + 1, "EXPLICIT_TITLE", false, "DOCUMENT_ORDER"
 			));
 		}
-		try (Harness harness = Harness.mocked(
-			properties(true, false), false, false, appliedExpansion(chunks, hits), false
-		)) {
-			LawAiDebugResponse result = harness.debug(QUESTION);
+		assertFailClosedBaseline(
+			appliedExpansion(chunks, hits),
+			DocumentCandidateExpansion.Status.FALLBACK_BASELINE
+		);
+	}
 
-			assertThat(result.documentExpansionHits()).hasSize(24);
-			assertThat(ids(result.documentExpansionHits()))
-				.containsExactlyElementsOf(java.util.stream.LongStream.rangeClosed(901, 924).boxed().toList());
-			assertThat(result.documentExpansionHits())
-				.extracting(LawAiDebugResponse.Item::documentExpansionRank)
-				.containsExactlyElementsOf(java.util.stream.IntStream.rangeClosed(1, 24).boxed().toList());
+	@Test
+	void expansionThatExceedsTheDocumentBoundFailsClosed() {
+		List<LawSemanticChunkRow> chunks = new ArrayList<>();
+		List<DocumentCandidateExpansion.Hit> hits = new ArrayList<>();
+		for (int index = 0; index < 4; index++) {
+			long chunkId = 901L + index;
+			chunks.add(chunk(chunkId, 90 + index, index + 1, "invalid document bound " + index));
+			hits.add(new DocumentCandidateExpansion.Hit(
+				"law:" + chunkId, index + 1, "EXPLICIT_TITLE", false, "DOCUMENT_ORDER"
+			));
 		}
+		assertFailClosedBaseline(
+			appliedExpansion(chunks, hits),
+			DocumentCandidateExpansion.Status.FALLBACK_BASELINE
+		);
 	}
 
 	@ParameterizedTest(name = "documentAuthority={0}, rrfAuthority={1}, semanticAuthority={2}")
@@ -464,7 +507,23 @@ class LawAiAnswerServiceDocumentExpansionTests {
 			Supplier<DocumentCandidateExpansion.Result> result,
 			boolean requireParallelStart
 		) {
-			return new Harness(properties, rrfAuthority, semanticAuthority, result, requireParallelStart, false);
+			return new Harness(
+				properties, rrfAuthority, semanticAuthority, result, requireParallelStart, false,
+				VECTOR_HITS, BM25_HITS, 100
+			);
+		}
+
+		private static Harness mockedWithSources(
+			LawAiDocumentExpansionProperties properties,
+			DocumentCandidateExpansion.Result result,
+			List<QdrantSearchHit> vectorHits,
+			List<LexicalSearchHit> bm25Hits,
+			int rrfFusedLimit
+		) {
+			return new Harness(
+				properties, false, false, () -> result, false, false,
+				vectorHits, bm25Hits, rrfFusedLimit
+			);
 		}
 
 		private static Harness real(
@@ -478,7 +537,10 @@ class LawAiAnswerServiceDocumentExpansionTests {
 				semanticAuthority,
 				LawAiAnswerServiceDocumentExpansionTests::disabled,
 				false,
-				true
+				true,
+				VECTOR_HITS,
+				BM25_HITS,
+				100
 			);
 		}
 
@@ -489,7 +551,10 @@ class LawAiAnswerServiceDocumentExpansionTests {
 			boolean semanticAuthority,
 			Supplier<DocumentCandidateExpansion.Result> expansionResult,
 			boolean requireParallelStart,
-			boolean realExpansionService
+			boolean realExpansionService,
+			List<QdrantSearchHit> vectorHits,
+			List<LexicalSearchHit> bm25Hits,
+			int rrfFusedLimit
 		) {
 			lawMapper = mock(LawChunkMapper.class, invocation -> {
 				String method = invocation.getMethod().getName();
@@ -530,10 +595,10 @@ class LawAiAnswerServiceDocumentExpansionTests {
 			qdrantClient = mock(QdrantClient.class);
 			when(qdrantClient.searchBalanced(anyList(), anyList(), anyInt(), anyInt())).thenAnswer(invocation -> {
 				qdrantSearchRequests.incrementAndGet();
-				return VECTOR_HITS;
+				return vectorHits;
 			});
 			KoreanBm25SearchService bm25 = mock(KoreanBm25SearchService.class);
-			when(bm25.search(anyString(), anyList(), anyList(), anyInt())).thenReturn(BM25_HITS);
+			when(bm25.search(anyString(), anyList(), anyList(), anyInt())).thenReturn(bm25Hits);
 			DocumentExpansionSearchService expansionService;
 			if (realExpansionService) {
 				expansionService = new DocumentExpansionSearchService(
@@ -592,7 +657,7 @@ class LawAiAnswerServiceDocumentExpansionTests {
 				bm25,
 				new ReciprocalRankFusion(),
 				new LawAiLexicalProperties(1.2, 0.75, 8, 6, 7, 1, 24, 100),
-				new LawAiRrfProperties(true, rrfAuthority, 60, 1.0, 1.0, 100),
+				new LawAiRrfProperties(true, rrfAuthority, 60, 1.0, 1.0, rrfFusedLimit),
 				new LawAiSemanticSelectionProperties(true, semanticAuthority, 4),
 				new CoverageAwareFusion(),
 				new LawAiCoverageAwareProperties(false, 0, 1, 30),
