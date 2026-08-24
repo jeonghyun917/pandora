@@ -363,14 +363,12 @@ function assertDocumentExpansionCapture(response) {
 }
 
 function hasDocumentExpansionMetadata(item) {
-	return item?.documentExpansionRank != null
-		|| nonBlankString(item?.documentExpansionAnchorType)
-		|| nonBlankString(item?.documentExpansionReason)
-		|| typeof item?.documentExpansionOverlap === 'boolean';
-}
-
-function nonBlankString(value) {
-	return typeof value === 'string' && value.trim().length > 0;
+	return [
+		item?.documentExpansionRank,
+		item?.documentExpansionAnchorType,
+		item?.documentExpansionReason,
+		item?.documentExpansionOverlap,
+	].some((value) => value !== null && value !== undefined);
 }
 
 function captureDocumentExpansionItems(items, label, options = {}) {

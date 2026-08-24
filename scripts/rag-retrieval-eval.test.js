@@ -833,7 +833,7 @@ test('document expansion capture ignores nullable fused control metadata but rej
     chunkId: index + 1,
     documentId: index + 1,
     documentExpansionRank: null,
-    documentExpansionAnchorType: '',
+    documentExpansionAnchorType: null,
     documentExpansionReason: null,
     documentExpansionOverlap: null,
     matchedAuditGroupIndexes: [],
@@ -859,6 +859,30 @@ test('document expansion capture ignores nullable fused control metadata but rej
     }),
     /invalid document expansion anchor type/i,
   );
+
+  for (const malformed of [
+    { documentExpansionAnchorType: 42 },
+    { documentExpansionReason: {} },
+    { documentExpansionOverlap: 'false' },
+  ]) {
+    assert.throws(
+      () => retrievalRunner.assertDocumentExpansionCapture({
+        documentExpansionHits: [expansion],
+        documentExpansionFused: [{
+          target: 'law',
+          chunkId: 99,
+          documentId: 99,
+          documentExpansionRank: null,
+          documentExpansionAnchorType: null,
+          documentExpansionReason: null,
+          documentExpansionOverlap: null,
+          matchedAuditGroupIndexes: [],
+          ...malformed,
+        }],
+      }),
+      /invalid document expansion rank/i,
+    );
+  }
 });
 
 test('release coverage rejects no-ground controls without distractors and too few controls', () => {
