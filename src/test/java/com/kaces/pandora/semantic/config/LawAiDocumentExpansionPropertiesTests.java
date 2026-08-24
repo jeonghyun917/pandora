@@ -31,6 +31,9 @@ class LawAiDocumentExpansionPropertiesTests {
 		assertThat(new LawAiDocumentExpansionProperties(true, false, 0, 8, 24).validBounds()).isFalse();
 		assertThat(new LawAiDocumentExpansionProperties(true, false, 3, 0, 24).validBounds()).isFalse();
 		assertThat(new LawAiDocumentExpansionProperties(true, false, 3, 8, 0).validBounds()).isFalse();
+		assertThat(new LawAiDocumentExpansionProperties(true, false, -1, 8, 24).validBounds()).isFalse();
+		assertThat(new LawAiDocumentExpansionProperties(true, false, 3, -1, 24).validBounds()).isFalse();
+		assertThat(new LawAiDocumentExpansionProperties(true, false, 3, 8, -1).validBounds()).isFalse();
 	}
 
 	@Test
