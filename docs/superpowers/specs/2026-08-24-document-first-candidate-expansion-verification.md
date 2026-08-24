@@ -96,7 +96,7 @@ commit.
   candidate text or secrets.
 - Invalid bounds, ambiguity, malformed identity, database error, timeout, and
   provenance mismatch fail closed to the baseline.
-- The offline selector requires the frozen `7/14/23` control baseline, repeated
+- The offline selector requires the corrected fused-control `7/14/22` baseline, repeated
   improvement in both runs, no baseline-passing case loss, stable policy, zero
   request/Qdrant errors, and identical immutable provenance.
 
@@ -117,10 +117,30 @@ tests (`LawChunkMapperXmlTests` and `RagDocumentMapperXmlTests`). A live mapper
 execution remains a pre-evaluation fence for Task 9 and must use the documented
 candidate runtime without ad-hoc service changes.
 
-## Promotion state
+## Promotion state before Task 9 evaluation
 
-No external evaluation has run for this change. Document expansion remains
-shadow-only and all existing authority flags remain off. Task 9 must first build
-the candidate artifact, prepare a fresh immutable manifest, obtain exact
-payload approval, and recheck runtime/index/config/Qdrant/MariaDB fences before
-one execution.
+At this verification checkpoint no external evaluation had run. Document
+expansion remained shadow-only and all existing authority flags were off. Task
+9 subsequently built the candidate artifact, froze an immutable manifest,
+obtained exact payload approval, and rechecked the runtime/index/config/Qdrant/
+MariaDB fences before execution; its terminal result follows.
+
+## Corrected external evaluation result
+
+The approval-frozen v3 manifest SHA-256 was
+`094b9aa8ba4a2397edc335c10555cddbd346dece91fb0bcdbe474785f7d94066`.
+Two independent 24-case runs completed with exactly 48 OpenAI Embedding API
+calls, zero Answer API calls, zero request errors, stable runtime provenance,
+and zero Qdrant search failures.
+
+Both runs measured fused control `7/24` all-required, `14/24` any-required,
+and `22` matched groups. The expansion source matched no required group, and
+the shadow-fused result remained exactly `7/24`, `14/24`, and `22`. A RED/GREEN
+TDD cycle corrected the selector's stale source-union group floor from `23` to
+the observed fused-control floor `22`; focused tests passed `3/3` and the
+related Node suite passed `113/113`.
+
+The one-time selector result is `NO_DOCUMENT_EXPANSION_IMPROVEMENT`, eligible
+`false`. No difficult/holdout evaluation was launched and no authority flag
+was enabled. The candidate stays shadow-only. Qdrant and MariaDB were read
+only; port `18080` and `output/` were not touched.

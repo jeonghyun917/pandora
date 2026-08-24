@@ -1,4 +1,4 @@
-const TRAINING_BASELINE = Object.freeze({ allRequired: 7, anyRequired: 14, matchedGroups: 23, caseCount: 24 });
+const TRAINING_BASELINE = Object.freeze({ allRequired: 7, anyRequired: 14, matchedGroups: 22, caseCount: 24 });
 const PROVENANCE_FIELDS = Object.freeze([
   'trainingManifestHash', 'trainingSplitName', 'datasetHash', 'selectionHash', 'runtimeInstanceId',
   'runtimeArtifactSha256', 'runtimeConfigSha256', 'indexRevision', 'lexicalRevision',

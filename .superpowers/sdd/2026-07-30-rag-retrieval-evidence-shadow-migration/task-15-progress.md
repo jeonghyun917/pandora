@@ -144,3 +144,31 @@ Date: 2026-08-24 (Asia/Seoul)
   was made. Runtime/parity/Qdrant fences remained stable; 18080 and `output/`
   were untouched. Exact run, stdout, and selector JSON/Markdown evidence is
   archived under the v2 filenames in this directory.
+
+## Task 9 corrected v3 terminal outcome
+
+Date: 2026-08-24 (Asia/Seoul)
+
+- The fused-to-fused comparator and strict multi-token Korean title extraction
+  were corrected and verified at source commit `f9d47f66`; the deployed
+  candidate JAR SHA-256 was
+  `e4b035429f2686d191675282e984884ede9c3334c844d4d45ec006a75553db00`.
+- Exact manifest `094b9aa8...` was approved. Both independent runs completed
+  `24/24` with request errors `0`, stable immutable provenance, and Qdrant
+  search failures `0`: exactly `48` OpenAI Embedding API calls and `0` Answer
+  API calls.
+- Both runs measured fused control `7/24` all-required, `14/24` any-required,
+  `22` matched groups; expansion source `0/24`, `0/24`, `0`; shadow fused
+  `7/24`, `14/24`, `22`.
+- Expansion applied for `irm-faithfulness` and `ai-law-enforcement-date`, but
+  added no required-ground match. The other 22 cases had no strong anchor.
+- The historical selector floor `7/14/23` came from the invalid source-union
+  comparator. TDD reproduced the mismatch and corrected only the fused-control
+  group floor to `7/14/22`; selector tests passed `3/3` and the related Node
+  suite passed `113/113`.
+- The one-time corrected selector returned
+  `NO_DOCUMENT_EXPANSION_IMPROVEMENT`, eligible `false`. No difficult or
+  holdout evaluation ran, and no authority flag changed.
+- Qdrant/MariaDB remained read only; port 18080 and `output/` were untouched.
+  Complete v3 run, stdout, policy, and selector JSON/Markdown evidence is
+  archived in this directory.

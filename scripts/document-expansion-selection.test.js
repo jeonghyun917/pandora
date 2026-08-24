@@ -33,9 +33,15 @@ test('document expansion summary keeps control and expansion recall separately',
 
 test('document expansion selector allows only repeated bounded gains without baseline loss', () => {
   assert.equal(typeof selection.selectDocumentExpansionPolicy, 'function');
+  assert.deepEqual(selection.TRAINING_BASELINE, {
+    allRequired: 7,
+    anyRequired: 14,
+    matchedGroups: 22,
+    caseCount: 24,
+  });
   const manifest = { expectedTrainingCount: 24, trainingCaseIds: caseIds(24), manifestHash: 'manifest-a' };
   const policies = [{ id: 'bounded-v1', configHash: 'policy-a' }];
-  const run1 = completeRun(manifest, 'bounded-v1', controlMetrics(7, 14, 23), expansionMetrics(8, 14, 25));
+  const run1 = completeRun(manifest, 'bounded-v1', controlMetrics(7, 14, 22), expansionMetrics(8, 14, 24));
   const run2 = structuredClone(run1);
 
   const result = selection.selectDocumentExpansionPolicy({ manifest, run1, run2, policies });
@@ -76,7 +82,7 @@ test('document expansion selector allows only repeated bounded gains without bas
     'REQUEST_ERRORS',
   );
 
-  const noGain = completeRun(manifest, 'bounded-v1', controlMetrics(7, 14, 23), expansionMetrics(7, 14, 23));
+  const noGain = completeRun(manifest, 'bounded-v1', controlMetrics(7, 14, 22), expansionMetrics(7, 14, 22));
   assert.equal(
     selection.selectDocumentExpansionPolicy({ manifest, run1: noGain, run2: structuredClone(noGain), policies }).status,
     'NO_DOCUMENT_EXPANSION_IMPROVEMENT',
@@ -88,7 +94,7 @@ test('document expansion selector allows only repeated bounded gains without bas
     'BASELINE_REGRESSION',
   );
 
-  const lowGroups = completeRun(manifest, 'bounded-v1', controlMetrics(7, 14, 23), expansionMetrics(8, 13, 22));
+  const lowGroups = completeRun(manifest, 'bounded-v1', controlMetrics(7, 14, 22), expansionMetrics(8, 13, 21));
   assert.equal(
     selection.selectDocumentExpansionPolicy({ manifest, run1: lowGroups, run2: structuredClone(lowGroups), policies }).status,
     'DOCUMENT_EXPANSION_QUALITY_REGRESSION',
