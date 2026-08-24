@@ -6,7 +6,11 @@ import com.kaces.pandora.infra.qdrant.QdrantClient;
 import com.kaces.pandora.infra.qdrant.QdrantIndexSnapshot;
 import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
 import com.kaces.pandora.rag.persistence.RagDocumentMapper;
+import com.kaces.pandora.semantic.config.LawAiCoverageAwareProperties;
+import com.kaces.pandora.semantic.config.LawAiDocumentExpansionProperties;
+import com.kaces.pandora.semantic.config.LawAiLexicalProperties;
 import com.kaces.pandora.semantic.config.LawAiProperties;
+import com.kaces.pandora.semantic.config.LawAiRrfProperties;
 import com.kaces.pandora.semantic.lexical.SemanticLexicalIndexService;
 import com.kaces.pandora.semantic.provenance.IndexContentSnapshot;
 import java.lang.reflect.Proxy;
@@ -89,6 +93,33 @@ class LawAiRuntimeInfoTests {
 		}
 	}
 
+	@Test
+	void runtimeInfoFingerprintsTheInjectedDocumentExpansionPolicy() {
+		LawAiProperties properties = properties();
+		LawAiDocumentExpansionProperties expansion = new LawAiDocumentExpansionProperties(true, false, 3, 8, 24);
+		QdrantClient qdrant = qdrant(properties, false);
+		LawAiAnswerService service = service(
+			mapper(LawChunkMapper.class, null, false),
+			mapper(RagDocumentMapper.class, null, false),
+			qdrant,
+			properties,
+			null,
+			expansion
+		);
+		try {
+			assertThat(service.runtimeInfo().runtimeConfigSha256()).isEqualTo(RuntimeConfigurationIdentity.sha256(
+				properties,
+				new LawAiLexicalProperties(1.2, 0.75, 8, 6, 7, 1, 24, 100),
+				new LawAiRrfProperties(false, false, 60, 1.0, 1.0, 100),
+				new LawAiCoverageAwareProperties(false, 0, 1, 30),
+				expansion
+			));
+		} finally {
+			service.shutdownExecutors();
+			qdrant.shutdownExecutor();
+		}
+	}
+
 	private LawAiAnswerService service(
 		LawChunkMapper lawMapper,
 		RagDocumentMapper ragMapper,
@@ -104,6 +135,24 @@ class LawAiRuntimeInfoTests {
 		QdrantClient qdrant,
 		LawAiProperties properties,
 		SemanticLexicalIndexService lexicalIndex
+	) {
+		return service(
+			lawMapper,
+			ragMapper,
+			qdrant,
+			properties,
+			lexicalIndex,
+			new LawAiDocumentExpansionProperties(false, false, 0, 0, 0)
+		);
+	}
+
+	private LawAiAnswerService service(
+		LawChunkMapper lawMapper,
+		RagDocumentMapper ragMapper,
+		QdrantClient qdrant,
+		LawAiProperties properties,
+		SemanticLexicalIndexService lexicalIndex,
+		LawAiDocumentExpansionProperties documentExpansionProperties
 	) {
 		return new LawAiAnswerService(
 			lawMapper,
@@ -122,7 +171,16 @@ class LawAiRuntimeInfoTests {
 			properties,
 			null,
 			null,
-			lexicalIndex
+			lexicalIndex,
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+			documentExpansionProperties
 		);
 	}
 

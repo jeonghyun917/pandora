@@ -16,10 +16,15 @@ public record RetrievalCandidateTrace(
 	boolean selected
 ) {
 	public static final String COVERAGE_FUSED_STAGE = "coverage-fused";
+	public static final String DOCUMENT_EXPANSION_STAGE = "document-expansion";
 	public static final String ABSENT_FROM_SOURCE_UNION = "ABSENT_FROM_SOURCE_UNION";
 	public static final String SOURCE_RANK_LIMIT = "SOURCE_RANK_LIMIT";
 	public static final String INVALID_DOCUMENT_IDENTITY = "INVALID_DOCUMENT_IDENTITY";
 	public static final String TOP_K_DISPLACED = "TOP_K_DISPLACED";
+	public static final String DOCUMENT_NOT_ANCHORED = "DOCUMENT_NOT_ANCHORED";
+	public static final String DOCUMENT_MATCH_AMBIGUOUS = "DOCUMENT_MATCH_AMBIGUOUS";
+	public static final String DOCUMENT_LIMIT = "DOCUMENT_LIMIT";
+	public static final String DOCUMENT_CHUNK_LIMIT = "DOCUMENT_CHUNK_LIMIT";
 
 	public RetrievalCandidateTrace {
 		sourceRanks = sourceRanks == null
