@@ -4,15 +4,25 @@ Date: 2026-08-24 (Asia/Seoul)
 
 ## Outcome
 
-Steps 1-2 and every pre-execution fence now pass. The execution manifest is
-marked `READY_FOR_EXACT_APPROVAL`. No OpenAI request, evaluation run, Qdrant
-mutation, MariaDB indexing mutation, or durable run registration occurred.
+The first approved manifest is immutable terminal `NOT_EVALUABLE` evidence and
+must never be reused. Evaluator fixes `1d9d43d8` and `cffa0258` are now built
+and deployed on candidate app-dev 8080. A new v2 execution manifest passed every
+pre-execution fence and is marked `READY_FOR_EXACT_APPROVAL`. No OpenAI request,
+evaluation run, Qdrant mutation, MariaDB indexing mutation, or durable run
+registration occurred while preparing v2.
+
+The new approval-eligible canonical SHA-256 is:
+
+`d2f1ed37ed067806e426b306fd7856d6d01c84c865edab038561eeee0ae8a047`
 
 The earlier blocked canonical hash
 `ca3b780d04527e2042990a1ed566b52a8fd0e0780065fe1e3e2d6edfed2cb4c6`
 is permanently invalid. The fresh approval-eligible canonical SHA-256 is:
 
 `4a5925f62213791998836e8739b02c2f42c9c37c995e08a40e5061eeb0923b38`
+
+That hash was later consumed by the aborted run documented below and is no
+longer approval-eligible.
 
 ## Candidate artifact
 
@@ -140,3 +150,36 @@ Evidence:
 Next: fix and independently verify the capture predicate, build a new JAR,
 generate a new manifest/hash, and obtain new exact approval. This manifest and
 run must never be reused.
+
+## Evaluator-fixed v2 pre-approval manifest
+
+- Fix commits: `1d9d43d841f95f919d790d1056315f1d238b96eb` and
+  `cffa0258f1f4992e6d9505f3fa0cfeef6864f770`.
+- Focused Node verification: `46/46` passing, failures `0`.
+- Staged package and deployed candidate JAR: `67,447,016` bytes, SHA-256
+  `0a705d296c2ad83796dfecbf1a74ea99c4fdeb36b1ae07c72703eb760a8db4ad`.
+- Candidate runtime instance:
+  `239acc3b-ae46-4888-9931-9db018645f45`; config
+  `c4c561172e2864f6215698bc002095ebe73b636a06d86057bc0dfc086620504c`;
+  index `4b4ef7ceab2f16492aae9931a2d19fda3c91acd5cffa1270726eae4bbc128614`;
+  lexical `da8d51cecea3bd10ce9ba7eb40c2a25015d2166e983d836018616377de9bb9aa`.
+- Two runtime reads matched. Law parity is `211548/211548`, RAG parity is
+  `84248/84248`; both collections are green, optimizer `ok`, update queue `0`,
+  Qdrant ready, and search failures `0`.
+- Live candidate mapper preflight passed in a SELECT-only MyBatis transaction
+  with explicit rollback: law documents/chunks `3/17`, RAG documents/chunks
+  `1/8`; the transient test source was removed.
+- Authorities remain false: document expansion, RRF, coverage-aware, semantic
+  verification, and semantic selection. Document expansion and RRF shadow
+  capture remain enabled only for evaluation.
+- Frozen v2 manifest:
+  `task-15-document-expansion-training-manifest-v2.json`; canonical SHA-256
+  `d2f1ed37ed067806e426b306fd7856d6d01c84c865edab038561eeee0ae8a047`.
+- It preserves the exact ordered 24 questions, two runs, K `30`, capture `100`,
+  concurrency `1`, exactly `48` OpenAI Embedding API calls using
+  `text-embedding-3-small`, and `0` Answer API calls. Qdrant and MariaDB effects
+  are read-only. Every v2 evidence path is new and absent.
+- No external evaluation was executed. A fresh exact approval for the v2 hash
+  and an immediate no-drift fence recheck are required before one-time launch.
+
+Port 18080 remained absent and `output/` was not accessed.

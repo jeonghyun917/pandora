@@ -271,3 +271,27 @@ The exact approved 12 questions were sent twice with `K=30` and concurrency `1`:
   untouched. Immutable run/abort evidence is archived in the Task 15 ledger.
 - Repair requires a separately reviewed evaluator fix, new artifact, new
   manifest/hash, and new exact approval; the consumed manifest cannot be reused.
+
+### Evaluator-fixed v2 approval-ready refresh
+
+- Capture fixes `1d9d43d8` and `cffa0258` pass the focused Node suite `46/46`.
+  The rebuilt candidate JAR SHA-256 is
+  `0a705d296c2ad83796dfecbf1a74ea99c4fdeb36b1ae07c72703eb760a8db4ad`
+  (`67,447,016` bytes).
+- Candidate app-dev 8080 runtime is
+  `239acc3b-ae46-4888-9931-9db018645f45`; config
+  `c4c561172e2864f6215698bc002095ebe73b636a06d86057bc0dfc086620504c`;
+  index `4b4ef7ceab2f16492aae9931a2d19fda3c91acd5cffa1270726eae4bbc128614`;
+  lexical `da8d51cecea3bd10ce9ba7eb40c2a25015d2166e983d836018616377de9bb9aa`.
+- Law/RAG parity is `211548/211548` and `84248/84248`; Qdrant collections are
+  green, optimizer `ok`, update queue `0`, readiness true, failures `0`.
+  SELECT-only live mapper execution returned law documents/chunks `3/17` and
+  RAG documents/chunks `1/8`, then explicitly rolled back.
+- New approval-eligible v2 canonical SHA-256:
+  `d2f1ed37ed067806e426b306fd7856d6d01c84c865edab038561eeee0ae8a047`.
+  It freezes the same ordered 24 questions twice: exactly 48 OpenAI Embedding
+  API calls, no Answer API call, K `30`, capture `100`, concurrency `1`, and
+  read-only Qdrant/MariaDB effects. All local evidence paths are new.
+- No external evaluation was launched. Authority remains false, 18080 remains
+  absent, and `output/` was not accessed. The consumed `4a5925f...` attempt is
+  immutable terminal evidence and may not be reused.

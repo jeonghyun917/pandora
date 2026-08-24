@@ -95,3 +95,31 @@ Date: 2026-08-24 (Asia/Seoul)
   stdout log, and terminal abort JSON/Markdown in this directory.
 - Next requires an evaluator fix, independent verification, new JAR, new
   immutable manifest/hash, and new exact approval. Never reuse this manifest.
+
+## Task 9 evaluator-fixed v2 approval-ready checkpoint
+
+Date: 2026-08-24 (Asia/Seoul)
+
+- The capture fixes are independently committed as `1d9d43d8` and `cffa0258`;
+  focused evaluator/selector Node tests pass `46/46`.
+- The fixed candidate JAR is `67,447,016` bytes with SHA-256
+  `0a705d296c2ad83796dfecbf1a74ea99c4fdeb36b1ae07c72703eb760a8db4ad`.
+  Candidate app-dev 8080 runtime is
+  `239acc3b-ae46-4888-9931-9db018645f45`; config
+  `c4c561172e2864f6215698bc002095ebe73b636a06d86057bc0dfc086620504c`;
+  index `4b4ef7ceab2f16492aae9931a2d19fda3c91acd5cffa1270726eae4bbc128614`;
+  lexical `da8d51cecea3bd10ce9ba7eb40c2a25015d2166e983d836018616377de9bb9aa`.
+- Law and RAG DB/Qdrant parity are `211548/211548` and `84248/84248`.
+  Both collections are green, optimizer `ok`, update queue `0`; Qdrant is
+  ready with search failures `0`.
+- Live SELECT-only mapper preflight passed and rolled back: law documents/chunks
+  `3/17`, RAG documents/chunks `1/8`. All authority flags remain false.
+- New immutable manifest
+  `task-15-document-expansion-training-manifest-v2.json` freezes the unchanged
+  ordered 24 cases twice, exactly 48 OpenAI Embedding API calls, zero Answer API
+  calls, K `30`, capture `100`, concurrency `1`, and read-only Qdrant/MariaDB.
+  Canonical SHA-256:
+  `d2f1ed37ed067806e426b306fd7856d6d01c84c865edab038561eeee0ae8a047`.
+- All v2 evidence paths are unique and absent. No external call or evaluation
+  ran during preparation. The prior `4a5925f...` manifest and abort evidence
+  remain immutable and non-reusable. Port 18080 and `output/` were untouched.
