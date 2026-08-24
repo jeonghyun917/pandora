@@ -800,6 +800,114 @@ test('document expansion capture is bounded, audit-only, and rejects malformed e
   );
 });
 
+test('BM25 title expansion capture requires bounded seed metadata and known outcomes', () => {
+  const bm25Title = {
+    target: 'law',
+    chunkId: 101,
+    documentId: 10,
+    documentExpansionRank: 1,
+    documentExpansionAnchorType: 'BM25_TITLE',
+    documentExpansionReason: 'BM25_TITLE_SEED',
+    documentExpansionOverlap: false,
+    documentExpansionSeedTermCount: 2,
+    documentExpansionSeedBm25Score: 9.5,
+    documentExpansionSeedBm25Rank: 4,
+    matchedAuditGroupIndexes: [0],
+    title: 'must not be captured',
+  };
+  const response = {
+    documentExpansionHits: [bm25Title],
+    documentExpansionFused: [bm25Title],
+  };
+
+  assert.deepEqual(retrievalRunner.assertDocumentExpansionCapture(response).documentExpansionHits[0], {
+    candidateKey: 'law:101',
+    documentId: 10,
+    rank: 1,
+    anchorType: 'BM25_TITLE',
+    reason: 'BM25_TITLE_SEED',
+    overlapsExistingSource: false,
+    seedTermCount: 2,
+    seedBm25Score: 9.5,
+    seedBm25Rank: 4,
+    matchedAuditGroupIndexes: [0],
+  });
+
+  for (const malformed of [
+    { documentExpansionSeedTermCount: undefined },
+    { documentExpansionSeedBm25Score: undefined },
+    { documentExpansionSeedBm25Rank: undefined },
+    { documentExpansionSeedTermCount: 1 },
+    { documentExpansionSeedTermCount: 7 },
+    { documentExpansionSeedBm25Score: Number.POSITIVE_INFINITY },
+    { documentExpansionSeedBm25Score: 0 },
+    { documentExpansionSeedBm25Rank: 0 },
+    { documentExpansionSeedBm25Rank: 101 },
+  ]) {
+    assert.throws(
+      () => retrievalRunner.assertDocumentExpansionCapture({
+        ...response,
+        documentExpansionHits: [{ ...bm25Title, ...malformed }],
+      }),
+      /seed|BM25/i,
+    );
+  }
+
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
+      documentExpansionHits: [{
+        ...bm25Title,
+        documentExpansionAnchorType: 'EXPLICIT_TITLE',
+        documentExpansionReason: 'EXACT_PROVISION',
+      }],
+    }),
+    /seed|legacy/i,
+  );
+
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      documentExpansionHits: Array.from({ length: 4 }, (_, index) => ({
+        ...bm25Title,
+        chunkId: index + 1,
+        documentId: index + 1,
+        documentExpansionRank: index + 1,
+      })),
+      documentExpansionFused: [],
+    }),
+    /at most 3.*document/i,
+  );
+
+  const validDebug = validDebugResponse();
+  assert.doesNotThrow(() => retrievalRunner.assertDebugResponse({
+    ...validDebug,
+    documentExpansionStatus: 'BM25_TITLE_APPLIED',
+    documentExpansionReasonCodes: [],
+    documentExpansionHits: [bm25Title],
+    documentExpansionFused: [bm25Title],
+  }));
+  assert.throws(
+    () => retrievalRunner.assertDebugResponse({
+      ...validDebug,
+      documentExpansionStatus: 'UNKNOWN_BM25_STATUS',
+    }),
+    /documentExpansionStatus.*known/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDebugResponse({
+      ...validDebug,
+      documentExpansionStatus: 'BM25_TITLE_NO_MATCH',
+      documentExpansionReasonCodes: ['UNKNOWN_BM25_REASON'],
+    }),
+    /ReasonCodes.*unknown/i,
+  );
+  assert.doesNotThrow(() => retrievalRunner.assertDebugResponse({
+    ...validDebug,
+    documentExpansionStatus: 'BM25_TITLE_DB_FALLBACK',
+    documentExpansionReasonCodes: ['BM25_TITLE_EXPANSION_DB_FAILURE'],
+  }));
+});
+
 test('document expansion shadow-fused presence includes retained control and expansion candidates', () => {
   const expansion = {
     target: 'official_doc',
@@ -1317,3 +1425,17 @@ test('downstream survival excludes cases that were absent from candidate sources
     rate: null,
   });
 });
+
+function validDebugResponse() {
+  return {
+    ...Object.fromEntries([
+      ...retrievalMetrics.STAGE_NAMES,
+      ...retrievalMetrics.SHADOW_STAGE_NAMES,
+    ].map((stage) => [stage, []])),
+    resultMsg: 'OK',
+    documentExpansionStatus: 'NO_STRONG_ANCHOR',
+    documentExpansionReasonCodes: ['DOCUMENT_NOT_ANCHORED'],
+    documentExpansionHits: [],
+    documentExpansionFused: [],
+  };
+}

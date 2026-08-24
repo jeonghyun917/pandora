@@ -51,6 +51,10 @@ function selectDocumentExpansionPolicy({ manifest, run1, run2, policies }) {
   if (!policy1 || !policy2 || policy1.id !== policy2.id || policy1.configHash !== policy2.configHash) {
     return fail('POLICY_MISMATCH', 'document expansion policy differs between runs');
   }
+  if (policy1.configHash !== run1.provenance.runtimeConfigSha256
+    || policy2.configHash !== run2.provenance.runtimeConfigSha256) {
+    return fail('POLICY_MISMATCH', 'document expansion policy is detached from the runtime configuration');
+  }
   const policy = new Map(normalizePolicies(policies).map((entry) => [entry.id, entry])).get(policy1.id);
   if (!policy || policy.configHash !== policy1.configHash) {
     return fail('POLICY_MISMATCH', 'document expansion policy is not an immutable supplied policy');

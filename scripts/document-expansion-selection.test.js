@@ -40,7 +40,7 @@ test('document expansion selector allows only repeated bounded gains without bas
     caseCount: 24,
   });
   const manifest = { expectedTrainingCount: 24, trainingCaseIds: caseIds(24), manifestHash: 'manifest-a' };
-  const policies = [{ id: 'bounded-v1', configHash: 'policy-a' }];
+  const policies = [{ id: 'bounded-v1', configHash: 'config-a' }];
   const run1 = completeRun(manifest, 'bounded-v1', controlMetrics(7, 14, 22), expansionMetrics(8, 14, 24));
   const run2 = structuredClone(run1);
 
@@ -62,6 +62,20 @@ test('document expansion selector allows only repeated bounded gains without bas
   assert.equal(
     selection.selectDocumentExpansionPolicy({ manifest, run1, run2: mismatch, policies }).status,
     'PROVENANCE_MISMATCH',
+  );
+
+  const detachedPolicyRun1 = structuredClone(run1);
+  const detachedPolicyRun2 = structuredClone(run2);
+  detachedPolicyRun1.documentExpansionPolicy.configHash = 'detached-policy-hash';
+  detachedPolicyRun2.documentExpansionPolicy.configHash = 'detached-policy-hash';
+  assert.equal(
+    selection.selectDocumentExpansionPolicy({
+      manifest,
+      run1: detachedPolicyRun1,
+      run2: detachedPolicyRun2,
+      policies: [{ id: 'bounded-v1', configHash: 'detached-policy-hash' }],
+    }).status,
+    'POLICY_MISMATCH',
   );
 
   const missingFenceRun1 = structuredClone(run1);
@@ -177,7 +191,7 @@ function completeRun(manifest, policyId, control, expansion) {
     selectedCases: ids.length,
     completedCases: ids.length,
     requestErrors: [],
-    documentExpansionPolicy: { id: policyId, configHash: 'policy-a' },
+    documentExpansionPolicy: { id: policyId, configHash: 'config-a' },
     provenance: provenance(manifest),
     results,
   };

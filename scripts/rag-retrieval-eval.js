@@ -26,12 +26,14 @@ const DOCUMENT_EXPANSION_ANCHOR_TYPES = new Set([
   'EXPLICIT_TITLE',
   'STABLE_ALIAS',
   'TITLE_WITH_PROVISION',
+  'BM25_TITLE',
 ]);
 const DOCUMENT_EXPANSION_REASON_CODES = new Set([
   'EXACT_PROVISION',
   'EXACT_HEADING',
   'EVIDENCE_TERMS',
   'DOCUMENT_ORDER',
+  'BM25_TITLE_SEED',
 ]);
 const DOCUMENT_EXPANSION_STATUSES = new Set([
   'DISABLED',
@@ -42,6 +44,11 @@ const DOCUMENT_EXPANSION_STATUSES = new Set([
   'DB_FALLBACK_BASELINE',
   'INVALID_BOUNDS',
   'FALLBACK_BASELINE',
+  'BM25_TITLE_APPLIED',
+  'BM25_TITLE_NO_MATCH',
+  'BM25_TITLE_AMBIGUOUS',
+  'BM25_TITLE_INVALID_INPUT',
+  'BM25_TITLE_DB_FALLBACK',
 ]);
 const DOCUMENT_EXPANSION_OUTCOME_REASON_CODES = new Set([
   'DOCUMENT_NOT_ANCHORED',
@@ -52,9 +59,17 @@ const DOCUMENT_EXPANSION_OUTCOME_REASON_CODES = new Set([
   'DOCUMENT_DUPLICATE_OVERLAP',
   'INVALID_DOCUMENT_IDENTITY',
   'DOCUMENT_EXPANSION_DB_FAILURE',
+  'BM25_TITLE_NO_MATCH',
+  'BM25_TITLE_AMBIGUOUS',
+  'BM25_TITLE_INVALID_INPUT',
+  'BM25_TITLE_EXPANSION_DB_FAILURE',
+  'BM25_TITLE_DOCUMENT_LIMIT',
+  'BM25_TITLE_INVALID_SEED',
+  'BM25_TITLE_INVALID_TARGET',
 ]);
 const MAX_DOCUMENT_EXPANSION_HITS = 24;
 const MAX_DOCUMENT_EXPANSION_HITS_PER_DOCUMENT = 8;
+const MAX_DOCUMENT_EXPANSION_DOCUMENTS = 3;
 
 const CASE_PATHS = [
   path.resolve('src/main/resources/rag-evaluation-cases.tsv'),
@@ -406,6 +421,9 @@ function hasDocumentExpansionMetadata(item) {
 		item?.documentExpansionAnchorType,
 		item?.documentExpansionReason,
 		item?.documentExpansionOverlap,
+		item?.documentExpansionSeedTermCount,
+		item?.documentExpansionSeedBm25Score,
+		item?.documentExpansionSeedBm25Rank,
 	].some((value) => value !== null && value !== undefined);
 }
 
@@ -438,6 +456,24 @@ function captureDocumentExpansionItems(items, label, options = {}) {
 		const reason = String(item.documentExpansionReason ?? '').trim();
 		if (!DOCUMENT_EXPANSION_REASON_CODES.has(reason)) throw new Error(`${label}[${index}] unknown document expansion reason`);
 		if (typeof item.documentExpansionOverlap !== 'boolean') throw new Error(`${label}[${index}] document expansion overlap must be boolean`);
+		const seedTermCount = item.documentExpansionSeedTermCount;
+		const seedBm25Score = item.documentExpansionSeedBm25Score;
+		const seedBm25Rank = item.documentExpansionSeedBm25Rank;
+		if (anchorType === 'BM25_TITLE') {
+			if (reason !== 'BM25_TITLE_SEED') throw new Error(`${label}[${index}] invalid BM25 title reason`);
+			if (!Number.isSafeInteger(seedTermCount) || seedTermCount < 2 || seedTermCount > 6) {
+				throw new Error(`${label}[${index}] BM25 seed term count must be between 2 and 6`);
+			}
+			if (!Number.isFinite(seedBm25Score) || seedBm25Score <= 0) {
+				throw new Error(`${label}[${index}] BM25 seed score must be finite and positive`);
+			}
+			if (!Number.isSafeInteger(seedBm25Rank) || seedBm25Rank < 1 || seedBm25Rank > 100) {
+				throw new Error(`${label}[${index}] BM25 seed rank must be between 1 and 100`);
+			}
+		} else if ([seedTermCount, seedBm25Score, seedBm25Rank]
+			.some((value) => value !== null && value !== undefined)) {
+			throw new Error(`${label}[${index}] legacy expansion anchor must not contain BM25 seed metadata`);
+		}
 		const perDocument = (documentCounts.get(documentId) ?? 0) + 1;
 		if (perDocument > MAX_DOCUMENT_EXPANSION_HITS_PER_DOCUMENT) {
 			throw new Error(`${label} must contain at most ${MAX_DOCUMENT_EXPANSION_HITS_PER_DOCUMENT} items per document`);
@@ -449,8 +485,19 @@ function captureDocumentExpansionItems(items, label, options = {}) {
 		if (!Array.isArray(sourceIndexes) || matchedAuditGroupIndexes.length !== new Set(sourceIndexes).size) {
 			throw new Error(`${label}[${index}] invalid matched audit group indexes`);
 		}
-		captured.push({ candidateKey: key, documentId, rank, anchorType, reason,
-			overlapsExistingSource: item.documentExpansionOverlap, matchedAuditGroupIndexes });
+		captured.push({
+			candidateKey: key,
+			documentId,
+			rank,
+			anchorType,
+			reason,
+			overlapsExistingSource: item.documentExpansionOverlap,
+			...(anchorType === 'BM25_TITLE' ? { seedTermCount, seedBm25Score, seedBm25Rank } : {}),
+			matchedAuditGroupIndexes,
+		});
+	}
+	if (documentCounts.size > MAX_DOCUMENT_EXPANSION_DOCUMENTS) {
+		throw new Error(`${label} must contain at most ${MAX_DOCUMENT_EXPANSION_DOCUMENTS} documents`);
 	}
 	if (options.requireSequentialRanks !== false && captured.some((item, index) => item.rank !== index + 1)) {
 		throw new Error(`${label} ranks must be sequential starting at 1`);
