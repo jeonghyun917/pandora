@@ -11,7 +11,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import org.springframework.stereotype.Component;
 
+@Component
 public final class Bm25TitleDocumentSeedSelector {
 
 	private static final String ANCHOR_TYPE = "BM25_TITLE";

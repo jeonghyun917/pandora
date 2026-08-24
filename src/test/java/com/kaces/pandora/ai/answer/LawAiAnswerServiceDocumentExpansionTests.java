@@ -16,6 +16,7 @@ import static org.mockito.Mockito.when;
 
 import com.kaces.pandora.common.text.DocumentSearchAnchor;
 import com.kaces.pandora.infra.openai.OpenAiEmbeddingClient;
+import com.kaces.pandora.infra.openai.OpenAiAnswerClient;
 import com.kaces.pandora.infra.qdrant.QdrantClient;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
@@ -31,6 +32,8 @@ import com.kaces.pandora.semantic.lexical.LexicalSearchHit;
 import com.kaces.pandora.semantic.lexical.ReciprocalRankFusion;
 import com.kaces.pandora.semantic.retrieval.DocumentCandidateExpansion;
 import com.kaces.pandora.semantic.retrieval.DocumentExpansionSearchService;
+import com.kaces.pandora.semantic.retrieval.Bm25TitleDocumentSeedSelector;
+import com.kaces.pandora.semantic.retrieval.DocumentExpansionSeed;
 import com.kaces.pandora.semantic.search.QdrantSearchHit;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -58,6 +61,63 @@ class LawAiAnswerServiceDocumentExpansionTests {
 	private static final List<LexicalSearchHit> BM25_HITS = List.of(
 		new LexicalSearchHit("law", 201, 20, 4.2, 1, List.of("전자정부법"))
 	);
+
+	@Test
+	void bm25TitleFallbackRemainsShadowOnlyAndAddsNoExternalRequest() {
+		DocumentCandidateExpansion.Result seeded = new DocumentCandidateExpansion.Result(
+			List.of(chunk(901, 90, 1, "BM25 title sibling")),
+			List.of(new DocumentCandidateExpansion.Hit(
+				"law:901", 1, "BM25_TITLE", false, "BM25_TITLE_SEED", 2, 9.0, 1
+			)),
+			DocumentCandidateExpansion.Status.BM25_TITLE_APPLIED,
+			List.of()
+		);
+		try (
+			Harness baseline = Harness.mocked(properties(false, false), true, true, disabled(), false);
+			Harness shadow = Harness.bm25TitleFallback(seeded, true)
+		) {
+			LawAiDebugResponse baselineResult = baseline.debug("정보화사업 사전협의는 언제 해야 해?");
+			LawAiDebugResponse result = shadow.debug("정보화사업 사전협의는 언제 해야 해?");
+
+			assertThat(result.documentExpansionStatus()).isEqualTo("BM25_TITLE_APPLIED");
+			assertThat(ids(result.documentExpansionHits())).containsExactly(901L);
+			assertThat(ids(result.merged())).containsExactlyElementsOf(ids(baselineResult.merged()));
+			assertThat(ids(result.selected())).containsExactlyElementsOf(ids(baselineResult.selected()));
+			assertThat(shadow.bm25TitleSelectorRequestCount()).isEqualTo(1);
+			assertThat(shadow.bm25SeededSearchRequestCount()).isEqualTo(1);
+			assertThat(shadow.embeddingRequestCount()).isEqualTo(1);
+			assertThat(shadow.qdrantSearchRequestCount()).isEqualTo(1);
+			assertThat(shadow.answerRequestCount()).isZero();
+
+			LawAiDebugResponse.Item hit = result.documentExpansionHits().get(0);
+			assertThat(hit.documentExpansionAnchorType()).isEqualTo("BM25_TITLE");
+			assertThat(hit.documentExpansionReason()).isEqualTo("BM25_TITLE_SEED");
+			assertThat(hit.documentExpansionSeedTermCount()).isEqualTo(2);
+			assertThat(hit.documentExpansionSeedBm25Score()).isEqualTo(9.0);
+			assertThat(hit.documentExpansionSeedBm25Rank()).isEqualTo(1);
+		}
+	}
+
+	@Test
+	void strongAnchorAppliedPreventsBm25TitleFallback() {
+		DocumentCandidateExpansion.Result strong = appliedExpansion(
+			List.of(chunk(901, 90, 1, "strong anchor sibling")),
+			List.of(new DocumentCandidateExpansion.Hit(
+				"law:901", 1, "EXPLICIT_TITLE", false, "DOCUMENT_ORDER"
+			))
+		);
+		try (Harness harness = Harness.strongAnchorWithBm25Available(strong)) {
+			LawAiDebugResponse result = harness.debug(QUESTION);
+
+			assertThat(result.documentExpansionStatus()).isEqualTo("APPLIED");
+			assertThat(ids(result.documentExpansionHits())).containsExactly(901L);
+			assertThat(harness.bm25TitleSelectorRequestCount()).isZero();
+			assertThat(harness.bm25SeededSearchRequestCount()).isZero();
+			assertThat(result.documentExpansionHits().get(0).documentExpansionSeedTermCount()).isNull();
+			assertThat(result.documentExpansionHits().get(0).documentExpansionSeedBm25Score()).isNull();
+			assertThat(result.documentExpansionHits().get(0).documentExpansionSeedBm25Rank()).isNull();
+		}
+	}
 
 	@Test
 	void computesExpansionInParallelWithoutChangingAnyShadowControlOrderOrExternalRequestCount() throws Exception {
@@ -448,8 +508,19 @@ class LawAiAnswerServiceDocumentExpansionTests {
 		);
 	}
 
+	private static DocumentCandidateExpansion.Result noStrongAnchor() {
+		return new DocumentCandidateExpansion.Result(
+			List.of(), List.of(), DocumentCandidateExpansion.Status.NO_STRONG_ANCHOR,
+			List.of(RetrievalCandidateTrace.DOCUMENT_NOT_ANCHORED)
+		);
+	}
+
 	private static LawAiDocumentExpansionProperties properties(boolean enabled, boolean authoritative) {
 		return new LawAiDocumentExpansionProperties(enabled, authoritative, enabled ? 3 : 0, enabled ? 8 : 0, enabled ? 24 : 0);
+	}
+
+	private static LawAiDocumentExpansionProperties bm25TitleProperties(boolean authoritative) {
+		return new LawAiDocumentExpansionProperties(true, authoritative, 3, 8, 24, true, 100, 2, 0.05);
 	}
 
 	private static List<Long> ids(List<LawAiDebugResponse.Item> items) {
@@ -491,9 +562,13 @@ class LawAiAnswerServiceDocumentExpansionTests {
 	private static final class Harness implements AutoCloseable {
 		private final LawChunkMapper lawMapper;
 		private final OpenAiEmbeddingClient embeddingClient;
+		private final OpenAiAnswerClient answerClient;
 		private final QdrantClient qdrantClient;
 		private final AtomicInteger embeddingRequests = new AtomicInteger();
+		private final AtomicInteger answerRequests = new AtomicInteger();
 		private final AtomicInteger qdrantSearchRequests = new AtomicInteger();
+		private final AtomicInteger bm25TitleSelectorRequests = new AtomicInteger();
+		private final AtomicInteger bm25SeededSearchRequests = new AtomicInteger();
 		private final AtomicReference<Set<String>> expansionInputCandidateKeys = new AtomicReference<>(Set.of());
 		private final CountDownLatch expansionStarted = new CountDownLatch(1);
 		private final AtomicBoolean embeddingObservedExpansionStart = new AtomicBoolean();
@@ -553,6 +628,42 @@ class LawAiAnswerServiceDocumentExpansionTests {
 			);
 		}
 
+		private static Harness bm25TitleFallback(
+			DocumentCandidateExpansion.Result seededResult,
+			boolean allAuthorityFlagsEnabled
+		) {
+			return new Harness(
+				bm25TitleProperties(allAuthorityFlagsEnabled),
+				allAuthorityFlagsEnabled,
+				allAuthorityFlagsEnabled,
+				LawAiAnswerServiceDocumentExpansionTests::noStrongAnchor,
+				false,
+				false,
+				VECTOR_HITS,
+				BM25_HITS,
+				100,
+				appliedSeedSelection(),
+				() -> seededResult
+			);
+		}
+
+		private static Harness strongAnchorWithBm25Available(DocumentCandidateExpansion.Result strongResult) {
+			return new Harness(
+				bm25TitleProperties(false), false, false, () -> strongResult, false, false,
+				VECTOR_HITS, BM25_HITS, 100, appliedSeedSelection(), LawAiAnswerServiceDocumentExpansionTests::noStrongAnchor
+			);
+		}
+
+		private static Bm25TitleDocumentSeedSelector.Selection appliedSeedSelection() {
+			return new Bm25TitleDocumentSeedSelector.Selection(
+				Bm25TitleDocumentSeedSelector.Status.APPLIED,
+				List.of(new DocumentExpansionSeed(
+					"law", 20, "정보화사업 사전협의 지침", List.of("정보화사업", "사전협의"),
+					9.0, 1, "BM25_TITLE", "BM25_TITLE_SEED"
+				))
+			);
+		}
+
 		@SuppressWarnings("unchecked")
 		private Harness(
 			LawAiDocumentExpansionProperties documentExpansionProperties,
@@ -564,6 +675,28 @@ class LawAiAnswerServiceDocumentExpansionTests {
 			List<QdrantSearchHit> vectorHits,
 			List<LexicalSearchHit> bm25Hits,
 			int rrfFusedLimit
+		) {
+			this(
+				documentExpansionProperties, rrfAuthority, semanticAuthority, expansionResult,
+				requireParallelStart, realExpansionService, vectorHits, bm25Hits, rrfFusedLimit,
+				new Bm25TitleDocumentSeedSelector.Selection(Bm25TitleDocumentSeedSelector.Status.NO_MATCH, List.of()),
+				LawAiAnswerServiceDocumentExpansionTests::noStrongAnchor
+			);
+		}
+
+		@SuppressWarnings("unchecked")
+		private Harness(
+			LawAiDocumentExpansionProperties documentExpansionProperties,
+			boolean rrfAuthority,
+			boolean semanticAuthority,
+			Supplier<DocumentCandidateExpansion.Result> expansionResult,
+			boolean requireParallelStart,
+			boolean realExpansionService,
+			List<QdrantSearchHit> vectorHits,
+			List<LexicalSearchHit> bm25Hits,
+			int rrfFusedLimit,
+			Bm25TitleDocumentSeedSelector.Selection seedSelection,
+			Supplier<DocumentCandidateExpansion.Result> seededExpansionResult
 		) {
 			lawMapper = mock(LawChunkMapper.class, invocation -> {
 				String method = invocation.getMethod().getName();
@@ -601,6 +734,10 @@ class LawAiAnswerServiceDocumentExpansionTests {
 				}
 				return List.of(List.of(0.1, 0.2));
 			});
+			answerClient = mock(OpenAiAnswerClient.class, invocation -> {
+				answerRequests.incrementAndGet();
+				return org.mockito.Answers.RETURNS_DEFAULTS.answer(invocation);
+			});
 			qdrantClient = mock(QdrantClient.class);
 			when(qdrantClient.searchBalanced(anyList(), anyList(), anyInt(), anyInt())).thenAnswer(invocation -> {
 				qdrantSearchRequests.incrementAndGet();
@@ -625,7 +762,19 @@ class LawAiAnswerServiceDocumentExpansionTests {
 					expansionStarted.countDown();
 					return expansionResult.get();
 				});
+				when(expansionService.searchBm25Seeded(
+					any(DocumentSearchAnchor.class), anyList(), anyBoolean(), anySet()
+				)).thenAnswer(invocation -> {
+					bm25SeededSearchRequests.incrementAndGet();
+					return seededExpansionResult.get();
+				});
 			}
+			Bm25TitleDocumentSeedSelector seedSelector = mock(Bm25TitleDocumentSeedSelector.class);
+			when(seedSelector.select(anyList(), anyList(), anyList(), anyList(), any()))
+				.thenAnswer(invocation -> {
+					bm25TitleSelectorRequests.incrementAndGet();
+					return seedSelection;
+				});
 			EvidenceJudge judge = mock(EvidenceJudge.class);
 			when(judge.judge(anyString(), anyList(), anyMap(), anyInt())).thenAnswer(invocation -> {
 				List<LawSemanticChunkRow> candidates = invocation.getArgument(1);
@@ -650,7 +799,7 @@ class LawAiAnswerServiceDocumentExpansionTests {
 				null,
 				embeddingClient,
 				qdrantClient,
-				null,
+				answerClient,
 				judge,
 				new AnswerGuard(),
 				new ClaimVerifier(),
@@ -671,7 +820,8 @@ class LawAiAnswerServiceDocumentExpansionTests {
 				new CoverageAwareFusion(),
 				new LawAiCoverageAwareProperties(false, 0, 1, 30),
 				expansionService,
-				documentExpansionProperties
+				documentExpansionProperties,
+				seedSelector
 			);
 		}
 
@@ -687,6 +837,18 @@ class LawAiAnswerServiceDocumentExpansionTests {
 
 		private int qdrantSearchRequestCount() {
 			return qdrantSearchRequests.get();
+		}
+
+		private int answerRequestCount() {
+			return answerRequests.get();
+		}
+
+		private int bm25TitleSelectorRequestCount() {
+			return bm25TitleSelectorRequests.get();
+		}
+
+		private int bm25SeededSearchRequestCount() {
+			return bm25SeededSearchRequests.get();
 		}
 
 		private Set<String> expansionInputCandidateKeys() {
