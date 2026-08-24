@@ -382,12 +382,14 @@ function captureDocumentExpansionItems(items, label, options = {}) {
 			throw new Error(`${label}[${index}] must be an object`);
 		}
 		const key = candidateKey(item);
-		if (!key) throw new Error(`${label}[${index}] missing candidate key`);
+		if (typeof key !== 'string' || !key.trim() || key !== key.trim()) {
+			throw new Error(`${label}[${index}] invalid candidate key`);
+		}
 		if (candidateKeys.has(key)) throw new Error(`${label} duplicate candidate key: ${key}`);
 		candidateKeys.add(key);
-		const documentId = Number(item.documentId);
+		const documentId = item.documentId;
 		if (!Number.isSafeInteger(documentId) || documentId <= 0) throw new Error(`${label}[${index}] invalid documentId`);
-		const rank = Number(item.documentExpansionRank);
+		const rank = item.documentExpansionRank;
 		if (!Number.isSafeInteger(rank) || rank <= 0) throw new Error(`${label}[${index}] invalid document expansion rank`);
 		if (rankSet.has(rank)) throw new Error(`${label} duplicate document expansion rank: ${rank}`);
 		rankSet.add(rank);
@@ -426,7 +428,7 @@ function measureDocumentExpansionCase(evalCase, response) {
 	];
 	const control = measureDocumentExpansionPresence(controlItems, requiredGroupCount);
 	const expansionSourcePresence = measureDocumentExpansionPresence(capture.documentExpansionHits, requiredGroupCount);
-	const shadowFusedPresence = measureDocumentExpansionPresence(capture.documentExpansionFused, requiredGroupCount);
+	const shadowFusedPresence = measureDocumentExpansionPresence(response?.documentExpansionFused, requiredGroupCount);
 	return {
 		control, candidateSourcePresence: control, expansionSourcePresence, shadowFusedPresence,
 		firstDropStage: !control.anyRequired ? 'candidateSources' : !expansionSourcePresence.anyRequired ? 'documentExpansion'

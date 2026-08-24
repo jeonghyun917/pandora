@@ -63,8 +63,8 @@ function selectDocumentExpansionPolicy({ manifest, run1, run2, policies }) {
   } catch (error) {
     return fail('INVALID_CAPTURE', error.message);
   }
-  if ([summary1.control, summary2.control].some(belowBaseline)) {
-    return fail('BASELINE_REGRESSION', 'control recall is below the frozen training baseline');
+  if ([summary1.control, summary2.control].some((metrics) => !matchesBaseline(metrics))) {
+    return fail('BASELINE_REGRESSION', 'control recall does not match the frozen training baseline');
   }
   if ([summary1, summary2].some((summary) => summary.control.passedCaseIds
     .some((id) => !summary.shadowFused.passedCaseIds.includes(id)))) {
@@ -72,6 +72,9 @@ function selectDocumentExpansionPolicy({ manifest, run1, run2, policies }) {
   }
   if ([summary1.shadowFused, summary2.shadowFused].some((metrics) => metrics.allRequired <= TRAINING_BASELINE.allRequired)) {
     return fail('NO_DOCUMENT_EXPANSION_IMPROVEMENT', 'shadow fused all-required recall did not exceed 7/24');
+  }
+  if ([summary1, summary2].some((summary) => summary.shadowFused.allRequired <= summary.control.allRequired)) {
+    return fail('NO_DOCUMENT_EXPANSION_IMPROVEMENT', 'shadow fused all-required recall did not improve its control');
   }
   if ([summary1.shadowFused, summary2.shadowFused].some((metrics) => metrics.anyRequired < TRAINING_BASELINE.anyRequired
     || metrics.matchedGroups < TRAINING_BASELINE.matchedGroups)) {
@@ -88,9 +91,9 @@ function selectDocumentExpansionPolicy({ manifest, run1, run2, policies }) {
   };
 }
 
-function belowBaseline(metrics) {
-  return metrics.caseCount !== TRAINING_BASELINE.caseCount || metrics.allRequired < TRAINING_BASELINE.allRequired
-    || metrics.anyRequired < TRAINING_BASELINE.anyRequired || metrics.matchedGroups < TRAINING_BASELINE.matchedGroups;
+function matchesBaseline(metrics) {
+  return metrics.caseCount === TRAINING_BASELINE.caseCount && metrics.allRequired === TRAINING_BASELINE.allRequired
+    && metrics.anyRequired === TRAINING_BASELINE.anyRequired && metrics.matchedGroups === TRAINING_BASELINE.matchedGroups;
 }
 
 function normalizeManifest(manifest) {

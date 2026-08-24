@@ -751,6 +751,28 @@ test('document expansion capture is bounded, audit-only, and rejects malformed e
   assert.throws(
     () => retrievalRunner.assertDocumentExpansionCapture({
       ...response,
+      documentExpansionHits: [{ ...response.documentExpansionHits[0], candidateKey: '   ' }],
+      documentExpansionFused: [],
+    }),
+    /candidate key/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
+      documentExpansionHits: [{ ...response.documentExpansionHits[0], documentId: '207' }],
+    }),
+    /invalid documentId/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
+      documentExpansionHits: [{ ...response.documentExpansionHits[0], documentExpansionRank: '1' }],
+    }),
+    /invalid document expansion rank/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
       documentExpansionHits: Array.from({ length: 25 }, (_, index) => ({
         ...response.documentExpansionHits[0], chunkId: index + 1, documentExpansionRank: index + 1,
       })),
@@ -766,6 +788,33 @@ test('document expansion capture is bounded, audit-only, and rejects malformed e
     }),
     /at most 8.*document/i,
   );
+});
+
+test('document expansion shadow-fused presence includes retained control and expansion candidates', () => {
+  const expansion = {
+    target: 'official_doc',
+    chunkId: 7,
+    documentId: 207,
+    documentExpansionRank: 1,
+    documentExpansionAnchorType: 'EXPLICIT_TITLE',
+    documentExpansionReason: 'EXACT_PROVISION',
+    documentExpansionOverlap: false,
+    matchedAuditGroupIndexes: [1],
+  };
+  const result = retrievalRunner.measureDocumentExpansionCase({
+    requiredPropositionGroups: [['control'], ['expansion']],
+    requiredConditionGroups: [],
+  }, {
+    vectorHits: [{ matchedAuditGroupIndexes: [0] }],
+    lexicalHits: [],
+    bm25Hits: [],
+    documentExpansionHits: [expansion],
+    documentExpansionFused: [{ matchedAuditGroupIndexes: [0] }, expansion],
+  });
+
+  assert.deepEqual(result.shadowFusedPresence.matchedRequiredGroupIndexes, [0, 1]);
+  assert.equal(result.shadowFusedPresence.allRequired, true);
+  assert.deepEqual(result.capture.documentExpansionFused.map((item) => item.candidateKey), ['official_doc:7']);
 });
 
 test('release coverage rejects no-ground controls without distractors and too few controls', () => {

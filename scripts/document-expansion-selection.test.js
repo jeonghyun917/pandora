@@ -35,7 +35,7 @@ test('document expansion selector allows only repeated bounded gains without bas
   assert.equal(typeof selection.selectDocumentExpansionPolicy, 'function');
   const manifest = { expectedTrainingCount: 24, trainingCaseIds: caseIds(24), manifestHash: 'manifest-a' };
   const policies = [{ id: 'bounded-v1', configHash: 'policy-a' }];
-  const run1 = completeRun(manifest, 'bounded-v1', controlMetrics(7, 14, 23), expansionMetrics(8, 14, 23));
+  const run1 = completeRun(manifest, 'bounded-v1', controlMetrics(7, 14, 23), expansionMetrics(8, 14, 25));
   const run2 = structuredClone(run1);
 
   const result = selection.selectDocumentExpansionPolicy({ manifest, run1, run2, policies });
@@ -74,6 +74,24 @@ test('document expansion selector allows only repeated bounded gains without bas
   assert.equal(
     selection.selectDocumentExpansionPolicy({ manifest, run1: missingErrors, run2, policies }).status,
     'REQUEST_ERRORS',
+  );
+
+  const noGain = completeRun(manifest, 'bounded-v1', controlMetrics(7, 14, 23), expansionMetrics(7, 14, 23));
+  assert.equal(
+    selection.selectDocumentExpansionPolicy({ manifest, run1: noGain, run2: structuredClone(noGain), policies }).status,
+    'NO_DOCUMENT_EXPANSION_IMPROVEMENT',
+  );
+
+  const changedControl = completeRun(manifest, 'bounded-v1', controlMetrics(8, 14, 29), expansionMetrics(9, 14, 30));
+  assert.equal(
+    selection.selectDocumentExpansionPolicy({ manifest, run1: changedControl, run2: structuredClone(changedControl), policies }).status,
+    'BASELINE_REGRESSION',
+  );
+
+  const lowGroups = completeRun(manifest, 'bounded-v1', controlMetrics(7, 14, 23), expansionMetrics(8, 13, 22));
+  assert.equal(
+    selection.selectDocumentExpansionPolicy({ manifest, run1: lowGroups, run2: structuredClone(lowGroups), policies }).status,
+    'DOCUMENT_EXPANSION_QUALITY_REGRESSION',
   );
 });
 
@@ -130,10 +148,11 @@ function metrics(allRequired, anyRequired, matchedGroups, expanded) {
 
 function completeRun(manifest, policyId, control, expansion) {
   const ids = manifest.trainingCaseIds;
+  const groupCounts = ids.map((_, index) => index < 7 ? 2 : 3);
   const results = ids.map((id, index) => {
-    const controlIndexes = indexesFor(index, control, 3);
-    const expansionIndexes = indexesFor(index, expansion, 3);
-    return metric(id, controlIndexes, expansionIndexes, 3);
+    const controlIndexes = indexesFor(index, control, groupCounts);
+    const expansionIndexes = indexesFor(index, expansion, groupCounts);
+    return metric(id, controlIndexes, expansionIndexes, groupCounts[index]);
   });
   return {
     complete: true,
@@ -146,9 +165,16 @@ function completeRun(manifest, policyId, control, expansion) {
   };
 }
 
-function indexesFor(index, metrics, groupCount) {
+function indexesFor(index, metrics, groupCounts) {
+  const groupCount = groupCounts[index];
   if (index < metrics.allRequired) return Array.from({ length: groupCount }, (_, value) => value);
-  if (index < metrics.anyRequired) return [0];
+  if (index < metrics.anyRequired) {
+    const minimum = groupCounts.slice(0, metrics.allRequired).reduce((sum, value) => sum + value, 0)
+      + (metrics.anyRequired - metrics.allRequired);
+    const priorCapacity = groupCounts.slice(metrics.allRequired, index).reduce((sum, value) => sum + value - 2, 0);
+    const extra = Math.max(0, Math.min(groupCount - 2, metrics.matchedGroups - minimum - priorCapacity));
+    return Array.from({ length: 1 + extra }, (_, value) => value);
+  }
   return [];
 }
 
