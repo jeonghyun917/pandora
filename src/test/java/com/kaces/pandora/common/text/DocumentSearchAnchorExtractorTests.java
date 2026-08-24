@@ -87,6 +87,20 @@ class DocumentSearchAnchorExtractorTests {
 	}
 
 	@Test
+	void preservesProvisionEncounterOrderWhenAppendixPrecedesArticle() {
+		String question = "전자정부법 별표 3 제12조의 적용 대상은?";
+
+		DocumentSearchAnchor anchor = DocumentSearchAnchorExtractor.extract(
+			question,
+			QuestionIntentProfile.from(question),
+			List.of("전자정부법", "대상"),
+			List.of("대상")
+		);
+
+		assertThat(anchor.provisionTerms()).containsExactly("별표 3", "제12조");
+	}
+
+	@Test
 	void boundsTermsAndKeepsFirstDisplaySafeValueForNormalizedDuplicates() {
 		String question = "가법 나법 다법 라법 마법 바법 사법의 대상은?";
 		List<String> lexicalKeywords = List.of(
@@ -122,6 +136,40 @@ class DocumentSearchAnchorExtractorTests {
 
 		assertThat(anchor.status()).isEqualTo(DocumentSearchAnchor.Status.NO_STRONG_ANCHOR);
 		assertThat(anchor.eligible()).isFalse();
+		assertThat(anchor.anchorType()).isEqualTo(DocumentSearchAnchor.AnchorType.NONE);
+		assertThat(anchor.titleTerms()).isEmpty();
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {
+		"공공데이터는 왜 제공하나요?",
+		"소프트웨어사업은 과업심의 대상인가요?"
+	})
+	void failsClosedForBroadDictionaryRecallAliases(String question) {
+		DocumentSearchAnchor anchor = DocumentSearchAnchorExtractor.extract(
+			question,
+			QuestionIntentProfile.from(question),
+			List.of("공공데이터", "소프트웨어사업", "대상"),
+			List.of("대상")
+		);
+
+		assertThat(anchor.status()).isEqualTo(DocumentSearchAnchor.Status.NO_STRONG_ANCHOR);
+		assertThat(anchor.anchorType()).isEqualTo(DocumentSearchAnchor.AnchorType.NONE);
+		assertThat(anchor.titleTerms()).isEmpty();
+	}
+
+	@Test
+	void failsClosedForQuotedTopicWithoutDocumentTitleIndicator() {
+		String question = "「사전협의」는 언제 하나요?";
+
+		DocumentSearchAnchor anchor = DocumentSearchAnchorExtractor.extract(
+			question,
+			QuestionIntentProfile.from(question),
+			List.of("사전협의", "언제"),
+			List.of("사전협의")
+		);
+
+		assertThat(anchor.status()).isEqualTo(DocumentSearchAnchor.Status.NO_STRONG_ANCHOR);
 		assertThat(anchor.anchorType()).isEqualTo(DocumentSearchAnchor.AnchorType.NONE);
 		assertThat(anchor.titleTerms()).isEmpty();
 	}

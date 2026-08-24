@@ -12,18 +12,13 @@ public final class DocumentSearchAnchorExtractor {
 	private static final int MAX_PROVISION_TERMS = 6;
 	private static final int MAX_HEADING_TERMS = 8;
 	private static final int MAX_EVIDENCE_TERMS = 18;
-	private static final Pattern QUOTED_TITLE = Pattern.compile("[「『\\\"']\\s*([^」』\\\"']{2,100}?)\\s*[」』\\\"']");
 	private static final Pattern TITLE_SUFFIX = Pattern.compile(
 		"(?<![\\p{IsHangul}\\p{Alnum}])([\\p{IsHangul}\\p{Alnum}][\\p{IsHangul}\\p{Alnum}\\s]{0,70}?"
-			+ "(?:법\\s*시행규칙|법\\s*시행령|시행규칙|시행령|규정|지침|고시|법))(?=$|[\\s\\p{Punct}]|은|는|이|가|을|를|의|에|에서|로|으로)");
+			+ "(?:법\\s*시행규칙|법\\s*시행령|시행규칙|시행령|규정|지침|고시|법))(?=$|[\\s\\p{Punct}」』\\\"']|은|는|이|가|을|를|의|에|에서|로|으로)");
 	private static final Pattern ARTICLE = Pattern.compile("제\\s*(\\d+)\\s*조(?:\\s*의\\s*(\\d+))?");
 	private static final Pattern APPENDIX = Pattern.compile("별표\\s*(\\d+)");
 	private static final Pattern SECTION_HEADING = Pattern.compile(
 		"(?:제\\s*\\d+\\s*조(?:\\s*의\\s*\\d+)?|별표\\s*\\d+)\\s*\\(([^)]+)\\)"
-	);
-	private static final Pattern ASCII_ACRONYM = Pattern.compile("[A-Za-z0-9]{2,8}");
-	private static final List<String> GENERIC_ALIAS_SUFFIXES = List.of(
-		"대상", "대상사업", "대상기관", "대상시스템", "적용대상", "범위", "절차", "방법", "신청", "요건"
 	);
 
 	private DocumentSearchAnchorExtractor() {
@@ -80,10 +75,6 @@ public final class DocumentSearchAnchorExtractor {
 
 	private static List<String> explicitTitleTerms(String question) {
 		List<String> titles = new ArrayList<>();
-		Matcher quoted = QUOTED_TITLE.matcher(question);
-		while (quoted.find()) {
-			titles.add(quoted.group(1));
-		}
 		Matcher suffix = TITLE_SUFFIX.matcher(question);
 		while (suffix.find()) {
 			titles.add(suffix.group(1));
@@ -92,16 +83,22 @@ public final class DocumentSearchAnchorExtractor {
 	}
 
 	private static List<String> provisionTerms(String question) {
-		List<String> provisions = new ArrayList<>();
+		List<ProvisionMatch> matches = new ArrayList<>();
 		Matcher articles = ARTICLE.matcher(question);
 		while (articles.find()) {
-			provisions.add("제" + articles.group(1) + "조" + (articles.group(2) == null ? "" : "의" + articles.group(2)));
+			matches.add(new ProvisionMatch(
+				articles.start(),
+				"제" + articles.group(1) + "조" + (articles.group(2) == null ? "" : "의" + articles.group(2))
+			));
 		}
 		Matcher appendices = APPENDIX.matcher(question);
 		while (appendices.find()) {
-			provisions.add("별표 " + appendices.group(1));
+			matches.add(new ProvisionMatch(appendices.start(), "별표 " + appendices.group(1)));
 		}
-		return cleanTerms(provisions, MAX_PROVISION_TERMS);
+		return cleanTerms(matches.stream()
+			.sorted(Comparator.comparingInt(ProvisionMatch::start))
+			.map(ProvisionMatch::term)
+			.toList(), MAX_PROVISION_TERMS);
 	}
 
 	private static List<String> headingTerms(String question) {
@@ -117,10 +114,10 @@ public final class DocumentSearchAnchorExtractor {
 		String normalizedQuestion = KoreanQueryNormalizer.normalizeForMatch(question);
 		List<AliasMatch> matches = new ArrayList<>();
 		for (QuestionEntity entity : profile.entities()) {
-			for (String alias : entity.aliases()) {
+			for (String alias : QuestionIntentDictionary.stableAliases(entity.id())) {
 				String normalizedAlias = KoreanQueryNormalizer.normalizeForMatch(alias);
 				int position = normalizedQuestion.indexOf(normalizedAlias);
-				if (position >= 0 && isStableAlias(alias, normalizedAlias)) {
+				if (position >= 0 && !normalizedAlias.isBlank()) {
 					matches.add(new AliasMatch(alias, position, position + normalizedAlias.length()));
 				}
 			}
@@ -136,11 +133,6 @@ public final class DocumentSearchAnchorExtractor {
 		return cleanTerms(selected.stream().map(AliasMatch::alias).toList(), MAX_TITLE_TERMS);
 	}
 
-	private static boolean isStableAlias(String alias, String normalizedAlias) {
-		return (normalizedAlias.length() >= 6 && GENERIC_ALIAS_SUFFIXES.stream().noneMatch(normalizedAlias::endsWith))
-			|| ASCII_ACRONYM.matcher(alias == null ? "" : alias.trim()).matches();
-	}
-
 	private record AliasMatch(String alias, int start, int end) {
 		private int length() {
 			return end - start;
@@ -149,6 +141,9 @@ public final class DocumentSearchAnchorExtractor {
 		private boolean overlaps(AliasMatch other) {
 			return start < other.end && other.start < end;
 		}
+	}
+
+	private record ProvisionMatch(int start, String term) {
 	}
 
 	private static List<String> evidenceTerms(List<String> focusedKeywords, List<String> lexicalKeywords) {

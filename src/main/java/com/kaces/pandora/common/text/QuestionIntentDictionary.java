@@ -58,6 +58,10 @@ final class QuestionIntentDictionary {
 			.toList();
 	}
 
+	static List<String> stableAliases(String entityId) {
+		return values("entity." + entityId + ".stable_aliases", List.of());
+	}
+
 	static List<List<String>> matchedSynonymGroups(String question) {
 		String source = question == null ? "" : question;
 		String normalized = KoreanQueryNormalizer.normalizeForMatch(source);
