@@ -183,3 +183,29 @@ The exact approved 12 questions were sent twice with `K=30` and concurrency `1`:
   `f97cb99b9e5526ae566564a4a52b47266849e89b4d6dd4c4194af63cb0894814`,
   law and RAG DB/Qdrant parity `211548/211548` and `84248/84248`, Qdrant
   ready, search failures `0`, and no `18080` listener.
+
+## Document-first candidate expansion verification checkpoint (2026-08-24)
+
+- Coverage-aware training ended `NO_COVERAGE_IMPROVEMENT`, so the next bounded
+  candidate-entry experiment is a document-first MariaDB read path keyed only
+  by strong title/provision anchors. It is implemented on
+  `codex/document-first-candidate-expansion` and remains shadow-only.
+- Verified production/test code commit:
+  `04dbf342c3f113419b67735358d1f3de0748cfd1`; tree:
+  `70c21dca46a9414d76fd0dc1b9e1c6449dd9d145`.
+- Committed bounds are three documents, eight chunks per document, and 24
+  unique chunks globally. `document-expansion.authoritative=false`,
+  `rrf-authoritative=false`, coverage-aware remains disabled, and both semantic
+  authority flags remain false.
+- Verification: focused Maven `107/107`, relevant Node `111/111`, and full
+  Maven `1301` tests with `0` failures, `0` errors, and `18` opt-in MariaDB
+  integration skips.
+- No OpenAI/Qdrant evaluation or mutation ran, no candidate runtime was
+  deployed, and port `18080` plus `output/` were untouched. The stopped app-dev
+  state made a safe live MyBatis/MariaDB mapper invocation unavailable; this is
+  retained as a Task 9 pre-evaluation fence.
+- Full evidence:
+  `docs/superpowers/specs/2026-08-24-document-first-candidate-expansion-verification.md`.
+- Task 9 must prepare a fresh immutable 24-case manifest and stop for exact
+  OpenAI payload approval before any question leaves the machine. Difficult and
+  holdout cases remain unconsumed.

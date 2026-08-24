@@ -43,6 +43,27 @@ node .\scripts\rag-eval-gate.js
 
 The gate must pass with zero failures before promotion.
 
+## Document-first Candidate Expansion Gate
+
+Document-first candidate expansion is shadow-only until its separately
+approved promotion ladder passes. The committed safety bounds are three
+documents, eight chunks per document, and 24 unique chunks globally.
+
+- Keep `law-ai.retrieval.document-expansion.authoritative=false` before
+  promotion.
+- Preserve the vector, lexical, pure-RRF, coverage-aware, and final answer
+  control orders while authority is false.
+- Treat invalid bounds, malformed document/chunk identity, ambiguity, database
+  failure, timeout, and provenance drift as baseline fallbacks.
+- Require an immutable manifest and exact approval before sending evaluation
+  questions to an OpenAI API. Do not infer approval from a prior or broader
+  evaluation.
+- Do not consume difficult or holdout cases unless the frozen training gate
+  passes twice without baseline regression.
+
+The implementation verification record is
+[`docs/superpowers/specs/2026-08-24-document-first-candidate-expansion-verification.md`](superpowers/specs/2026-08-24-document-first-candidate-expansion-verification.md).
+
 For the full local gate, the script writes a checkpoint after every batch:
 
 ```text
