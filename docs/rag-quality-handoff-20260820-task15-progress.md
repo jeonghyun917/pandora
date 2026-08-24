@@ -209,3 +209,65 @@ The exact approved 12 questions were sent twice with `K=30` and concurrency `1`:
 - Task 9 must prepare a fresh immutable 24-case manifest and stop for exact
   OpenAI payload approval before any question leaves the machine. Difficult and
   holdout cases remain unconsumed.
+
+## Document-expansion Task 9 blocked manifest checkpoint (2026-08-24)
+
+- The candidate JAR was built without deployment. SHA-256:
+  `aaf560bc15b6a7ffea7792ae918374e2929c32fd98d6c2c42d56f99eb4e95784`;
+  size `67,447,016` bytes; source commit `0bcf0a34`.
+- The exact ordered 24-case/two-run payload draft is recorded in the Task 15
+  ledger directory. Its canonical SHA-256 is
+  `ca3b780d04527e2042990a1ed566b52a8fd0e0780065fe1e3e2d6edfed2cb4c6`,
+  with 48 planned OpenAI Embedding API calls, K `30`, capture `100`, and
+  concurrency `1`.
+- This hash is not approval-eligible: app-dev 8080 and Qdrant 6333 were not
+  listening, so the live runtime/config/index identity, collection health,
+  zero-failure and parity fences, and the deferred Task 3 mapper execution
+  could not be frozen. A fresh manifest/hash is required after restoration.
+- MariaDB was running and 18080 remained absent. No OpenAI call, Qdrant request
+  or mutation, MariaDB indexing mutation, evaluation run, or run registration
+  occurred. `output/` was not accessed.
+
+### Approval-ready refresh
+
+- Qdrant 6333 was restored through its official lifecycle, and only the
+  candidate app-dev 8080 was started. Candidate runtime identity is
+  `5e60e115-32ac-405c-af3a-c827509cfaea`; JAR
+  `aaf560bc15b6a7ffea7792ae918374e2929c32fd98d6c2c42d56f99eb4e95784`;
+  config `c4c561172e2864f6215698bc002095ebe73b636a06d86057bc0dfc086620504c`;
+  index `f374cacbc316b227f2e1b1f2e8331e8d1ed090a50ac836747aab129200743c42`;
+  lexical `da8d51cecea3bd10ce9ba7eb40c2a25015d2166e983d836018616377de9bb9aa`.
+- Law parity is `211548/211548`, RAG parity `84248/84248`; both Qdrant
+  collections are green with optimizer `ok`, update queue `0`, readiness true,
+  and search failures `0`.
+- A SELECT-only, autocommit-disabled MyBatis session executed both new document
+  and chunk statements against live MariaDB and rolled back. It returned law
+  documents/chunks `3/17` and RAG documents/chunks `1/8`; all bounds held.
+- The prior blocked hash is invalid. Fresh approval-eligible manifest SHA-256:
+  `4a5925f62213791998836e8739b02c2f42c9c37c995e08a40e5061eeb0923b38`.
+  It covers the exact 24 ordered questions twice: 48 OpenAI Embedding API calls,
+  K `30`, capture `100`, concurrency `1`, and zero Answer API calls.
+- No external evaluation has launched. Port 18080 and `output/` remain
+  untouched. Exact approval and an immediate no-drift fence recheck are the
+  only remaining pre-launch gates.
+
+### Approved document-expansion training abort
+
+- Exact manifest `4a5925f...` was approved and all fences matched immediately
+  before its one-time run 1 launch.
+- The 24 approved question embeddings were requested exactly once and all 24
+  debug responses returned, but every response failed local capture validation:
+  `documentExpansionFused must contain at most 24 items`. Run 1 accepted `0/24`
+  measurements and exited `1`.
+- This is a deterministic evaluator mismatch: all full shadow-fused DTO items
+  serialize nullable document-expansion fields, while the capture predicate
+  treats field ownership as expansion membership and incorrectly applies the
+  24 source-hit limit to the full fused ranking.
+- Fail-closed: no retry, run 2, selector, difficult set, or holdout. No recall
+  or policy recommendation is valid; terminal status is `NOT_EVALUABLE` and
+  every authority flag remains false.
+- Runtime identity and parity remained stable after failure, Qdrant remained
+  green/ready with search failures `0`, and 18080 plus `output/` remained
+  untouched. Immutable run/abort evidence is archived in the Task 15 ledger.
+- Repair requires a separately reviewed evaluator fix, new artifact, new
+  manifest/hash, and new exact approval; the consumed manifest cannot be reused.

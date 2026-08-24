@@ -1,0 +1,158 @@
+{
+  "schemaVersion": 1,
+  "manifestType": "task15-document-expansion-training-execution",
+  "status": "READY_FOR_EXACT_APPROVAL",
+  "createdAt": "2026-08-24T12:10:59.8100933+09:00",
+  "supersedesBlockedCanonicalSha256": "ca3b780d04527e2042990a1ed566b52a8fd0e0780065fe1e3e2d6edfed2cb4c6",
+  "purpose": "Evaluate whether bounded document-first shadow expansion improves required-ground retrieval recall on the frozen independent 24-case training split without changing the authoritative answer path.",
+  "sourceTrainingManifest": {
+    "path": "src/main/resources/rag-retrieval-training-manifest.json",
+    "sha256": "3c5cc394524389d9c05c0e72e602232a8eb98a297f25a55c4f0c71a85ae2b2db",
+    "splitName": "task15-rrf-training-v1"
+  },
+  "candidate": {
+    "branch": "codex/document-first-candidate-expansion",
+    "gitCommit": "0bcf0a34afcedff9938c23ab0568810a9dbf201f",
+    "gitTree": "a5a8097ff581722d98975d7ecacbbb2f7efb9a0d",
+    "jarPath": "target/pandora-0.0.1-SNAPSHOT.jar",
+    "jarSizeBytes": 67447016,
+    "jarSha256": "aaf560bc15b6a7ffea7792ae918374e2929c32fd98d6c2c42d56f99eb4e95784"
+  },
+  "evaluation": {
+    "runCount": 2,
+    "caseCountPerRun": 24,
+    "orderedQuestionCount": 24,
+    "k": 30,
+    "captureRankLimit": 100,
+    "concurrency": 1,
+    "expectedOpenAiEmbeddingCallsPerRun": 24,
+    "expectedOpenAiEmbeddingCallsTotal": 48,
+    "expectedOpenAiAnswerCallsTotal": 0,
+    "retryPolicy": "NO_BLIND_RETRY",
+    "trainingManifestArgument": "src/main/resources/rag-retrieval-training-manifest.json"
+  },
+  "externalDestination": {
+    "provider": "OpenAI",
+    "api": "Embedding API",
+    "endpointPurpose": "Create one query embedding for each frozen evaluation question in each of two runs.",
+    "model": "text-embedding-3-small",
+    "payload": "The exact ordered Korean question text and embedding model identifier.",
+    "callCount": 48
+  },
+  "readOnlyDestinations": {
+    "qdrant": {
+      "baseUrl": "http://127.0.0.1:6333",
+      "collections": [
+        "law_chunks",
+        "rag_chunks_v4"
+      ],
+      "effect": "Read-only candidate vector search; no point, payload, collection, or optimizer mutation."
+    },
+    "mariaDb": {
+      "effect": "Read-only lexical, BM25, hydration, and bounded document-expansion mapper queries; no indexing or durable-state mutation."
+    },
+    "localEvidence": {
+      "effect": "Create only the listed evaluation evidence files after exact approval and successful fence recheck."
+    }
+  },
+  "runtimeFences": {
+    "baseUrl": "http://127.0.0.1:8080",
+    "runtimeInstanceId": "5e60e115-32ac-405c-af3a-c827509cfaea",
+    "runtimeArtifactSha256": "aaf560bc15b6a7ffea7792ae918374e2929c32fd98d6c2c42d56f99eb4e95784",
+    "runtimeConfigSha256": "c4c561172e2864f6215698bc002095ebe73b636a06d86057bc0dfc086620504c",
+    "expectedCommittedDefaultConfigSha256": "c4c561172e2864f6215698bc002095ebe73b636a06d86057bc0dfc086620504c",
+    "indexRevision": "f374cacbc316b227f2e1b1f2e8331e8d1ed090a50ac836747aab129200743c42",
+    "lexicalRevision": "da8d51cecea3bd10ce9ba7eb40c2a25015d2166e983d836018616377de9bb9aa",
+    "qdrantReady": true,
+    "qdrantSearchFailureCount": 0,
+    "lawDbCount": 211548,
+    "lawQdrantCount": 211548,
+    "ragDbCount": 84248,
+    "ragQdrantCount": 84248,
+    "lawQdrantStatus": "green",
+    "lawQdrantOptimizerStatus": "ok",
+    "lawQdrantUpdateQueueLength": 0,
+    "ragQdrantStatus": "green",
+    "ragQdrantOptimizerStatus": "ok",
+    "ragQdrantUpdateQueueLength": 0,
+    "appDev8080Listening": true,
+    "appDev8080Pid": 14884,
+    "batchRunner18080Listening": false,
+    "qdrant6333Listening": true,
+    "qdrant6333Pid": 22036,
+    "mariaDbService": "Running",
+    "liveDocumentExpansionMapperPreflight": "PASS",
+    "liveDocumentExpansionMapperPreflightResult": {
+      "transaction": "SELECT-only MyBatis session with autocommit disabled and explicit rollback",
+      "lawDocuments": 3,
+      "lawChunks": 17,
+      "ragDocuments": 1,
+      "ragChunks": 8,
+      "boundsObserved": "documents <=4 overfetch; chunks <=24 global and <=8 per selected document"
+    },
+    "identityReadCount": 2,
+    "identityStableAcrossReads": true,
+    "fenceObservedAt": "2026-08-24T12:10:59.8100933+09:00",
+    "blockers": []
+  },
+  "authorityFlags": {
+    "documentExpansionEnabled": true,
+    "documentExpansionAuthoritative": false,
+    "rrfAuthoritative": false,
+    "coverageAwareEnabled": false,
+    "semanticVerificationAuthoritative": false,
+    "semanticSelectionAuthoritative": false
+  },
+  "models": {
+    "embedding": "text-embedding-3-small",
+    "answer": "gpt-5-mini",
+    "answerCallsPlanned": 0
+  },
+  "datasets": {
+    "ragEvaluationCasesSha256": "6e0a94801a2366d51bde6437b7a5292aa712f39338c6b76061e56c815cd8f9b9",
+    "ragEvaluationCasesGeneratedSha256": "6175e0d65654abe4dae3bc29afe95d93253a6ffa9641e65159693addb0040769",
+    "ragAnswerEvaluationOraclesSha256": "3428ef9b94b431e336d9999b100d9a94559649efd3f52cc529001a1ed7717e0f"
+  },
+  "evidencePaths": {
+    "run1Json": ".superpowers/sdd/2026-07-30-rag-retrieval-evidence-shadow-migration/task-15-document-expansion-training-run1.json",
+    "run1Markdown": ".superpowers/sdd/2026-07-30-rag-retrieval-evidence-shadow-migration/task-15-document-expansion-training-run1.md",
+    "run1Stdout": ".superpowers/sdd/2026-07-30-rag-retrieval-evidence-shadow-migration/task-15-document-expansion-training-run1.stdout.log",
+    "run2Json": ".superpowers/sdd/2026-07-30-rag-retrieval-evidence-shadow-migration/task-15-document-expansion-training-run2.json",
+    "run2Markdown": ".superpowers/sdd/2026-07-30-rag-retrieval-evidence-shadow-migration/task-15-document-expansion-training-run2.md",
+    "run2Stdout": ".superpowers/sdd/2026-07-30-rag-retrieval-evidence-shadow-migration/task-15-document-expansion-training-run2.stdout.log",
+    "selectionJson": ".superpowers/sdd/2026-07-30-rag-retrieval-evidence-shadow-migration/task-15-document-expansion-training-selection.json",
+    "selectionMarkdown": ".superpowers/sdd/2026-07-30-rag-retrieval-evidence-shadow-migration/task-15-document-expansion-training-selection.md"
+  },
+  "orderedCases": [
+    {"order": 1, "id": "project-review-target", "question": "과업심의 대상은?", "targets": ["official_doc", "internal_doc"]},
+    {"order": 2, "id": "project-review-simple-software", "question": "단순 소프트웨어 구매면 과업심의 안해도 돼?", "targets": ["official_doc", "internal_doc"]},
+    {"order": 3, "id": "project-review-hardware-exclusion", "question": "공공소프트웨어사업에서 단순 하드웨어 구매는 소프트웨어사업에 포함되나요?", "targets": ["official_doc", "internal_doc"]},
+    {"order": 4, "id": "pre-consultation-target", "question": "기타공공기관 사전협의 대상 알려줘", "targets": ["official_doc", "internal_doc", "admrul", "law"]},
+    {"order": 5, "id": "pre-consultation-when", "question": "정보화사업 사전협의는 언제 해야해?", "targets": ["official_doc", "internal_doc", "admrul", "law"]},
+    {"order": 6, "id": "pre-consultation-exception", "question": "정보화사업 사전협의 제외 대상은?", "targets": ["official_doc", "internal_doc", "admrul", "law"]},
+    {"order": 7, "id": "security-review-target", "question": "보안성검토 대상 시스템은?", "targets": ["official_doc", "internal_doc", "admrul", "law"]},
+    {"order": 8, "id": "security-review-exception", "question": "보안성검토 생략 가능한 경우는?", "targets": ["official_doc", "internal_doc", "admrul", "law"]},
+    {"order": 9, "id": "security-review-procedure", "question": "보안성검토 절차는 어떻게 돼?", "targets": ["official_doc", "internal_doc", "admrul", "law"]},
+    {"order": 10, "id": "rfp-required-items", "question": "공공기관 제안요청서 작성할때 필수요소가 있나?", "targets": ["official_doc", "internal_doc", "admrul", "law"]},
+    {"order": 11, "id": "rfp-tech-score-table", "question": "제안요청서에 기술평가 항목 및 배점표는 필수로 적어야해?", "targets": ["official_doc", "internal_doc", "admrul", "law"]},
+    {"order": 12, "id": "public-data-db-standard", "question": "공공데이터베이스 표준화는 뭘 해야해?", "targets": ["official_doc", "internal_doc", "admrul", "law"]},
+    {"order": 13, "id": "procurement-catalog-contract", "question": "조달청 디지털카탈로그에서 구매하면 수의계약 인가?", "targets": ["law", "admrul", "official_doc", "internal_doc"]},
+    {"order": 14, "id": "commercial-sw-direct-purchase", "question": "상용SW 직접구매 대상은?", "targets": ["official_doc", "internal_doc", "admrul", "law"]},
+    {"order": 15, "id": "irm-faithfulness", "question": "IRM 충실성 이란?", "targets": ["official_doc", "internal_doc"]},
+    {"order": 16, "id": "traffic-crosswalk-stop", "question": "운전중 우회전할때 횡단보도에서 멈춰야 하나?", "targets": ["law", "admrul"]},
+    {"order": 17, "id": "video-cctv-guide", "question": "공공기관 고정형 영상정보처리기기 설치 운영 가이드라인은 뭐야?", "targets": ["official_doc", "internal_doc"]},
+    {"order": 18, "id": "personal-info-purpose", "question": "개인정보 보호법상 개인정보 처리 목적은 어떻게 알려야 해?", "targets": ["law", "admrul"]},
+    {"order": 19, "id": "privacy-consent-notice-items", "question": "개인정보 수집 이용 동의 받을 때 무엇을 알려야 해?", "targets": ["law", "official_doc", "internal_doc"]},
+    {"order": 20, "id": "mois-autonomy-preconsultation-procedure", "question": "자치분권 사전협의 절차는 어떻게 돼?", "targets": ["official_doc", "internal_doc", "admrul", "law"]},
+    {"order": 21, "id": "pipc-cctv-public-place-exception", "question": "개인정보보호위원회 CCTV 안내서에서 공개된 장소에 CCTV를 설치할 수 있는 예외는?", "targets": ["official_doc", "internal_doc", "law"]},
+    {"order": 22, "id": "pipc-pseudonym-additional-info", "question": "개보위 가명정보 자료에서 추가정보는 분리보관해야 해?", "targets": ["official_doc", "internal_doc", "law"]},
+    {"order": 23, "id": "msit-tving-investigation", "question": "과기정통부 티빙 침해사고 조사에서 스미싱 피해 신고는 어디에 해야 해?", "targets": ["official_doc", "internal_doc"]},
+    {"order": 24, "id": "ai-law-enforcement-date", "question": "인공지능 데이터 기반 행정 활성화 법은 언제부터 효력이 있어?", "targets": ["law"]}
+  ],
+  "canonicalization": {
+    "algorithm": "RFC8785-style recursive lexicographic object-key ordering with UTF-8 JSON, arrays preserved, no insignificant whitespace",
+    "hashAlgorithm": "SHA-256",
+    "hashScope": "Entire manifest object excluding immutableApprovalSha256",
+    "immutableApprovalSha256": "4a5925f62213791998836e8739b02c2f42c9c37c995e08a40e5061eeb0923b38"
+  }
+}

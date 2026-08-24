@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "status": "TRAINING_ABORTED_CAPTURE_SCHEMA_FAILURE",
+  "generatedAt": "2026-08-24T14:04:22.7961391+09:00",
+  "approvedManifestCanonicalSha256": "4a5925f62213791998836e8739b02c2f42c9c37c995e08a40e5061eeb0923b38",
+  "candidateRuntime": {
+    "runtimeInstanceId": "5e60e115-32ac-405c-af3a-c827509cfaea",
+    "runtimeArtifactSha256": "aaf560bc15b6a7ffea7792ae918374e2929c32fd98d6c2c42d56f99eb4e95784",
+    "runtimeConfigSha256": "c4c561172e2864f6215698bc002095ebe73b636a06d86057bc0dfc086620504c",
+    "indexRevision": "f374cacbc316b227f2e1b1f2e8331e8d1ed090a50ac836747aab129200743c42",
+    "lexicalRevision": "da8d51cecea3bd10ce9ba7eb40c2a25015d2166e983d836018616377de9bb9aa"
+  },
+  "run1": {
+    "attemptedCases": 24,
+    "openAiEmbeddingCalls": 24,
+    "debugResponsesReceived": 24,
+    "capturedMeasurements": 0,
+    "captureValidationErrors": 24,
+    "complete": false,
+    "processExitCode": 1,
+    "jsonPath": ".superpowers/sdd/2026-07-30-rag-retrieval-evidence-shadow-migration/task-15-document-expansion-training-run1.json",
+    "jsonSha256": "61efe52be1b42a979c058295595891840869e6d6b46ef004041ccd1fde1749f6",
+    "markdownPath": ".superpowers/sdd/2026-07-30-rag-retrieval-evidence-shadow-migration/task-15-document-expansion-training-run1.md",
+    "markdownSha256": "68695dda6705a8902fbc986349aec540b3b28e86da7f1fda3368178404c438fd",
+    "stdoutPath": ".superpowers/sdd/2026-07-30-rag-retrieval-evidence-shadow-migration/task-15-document-expansion-training-run1.stdout.log"
+  },
+  "rootCause": {
+    "message": "documentExpansionFused must contain at most 24 items",
+    "affectedCases": 24,
+    "classification": "LOCAL_CAPTURE_SCHEMA_MISMATCH",
+    "detail": "The server returned a full shadow-fused ranking. Every serialized fused item owns nullable document-expansion metadata fields, so hasDocumentExpansionMetadata treated the complete fused list as expansion-source hits and applied the 24-source-hit ceiling to the wrong list."
+  },
+  "failClosedActions": {
+    "run2Launched": false,
+    "selectorLaunched": false,
+    "blindRetryPerformed": false,
+    "difficultEvaluationConsumed": false,
+    "holdoutEvaluationConsumed": false,
+    "authorityChanged": false
+  },
+  "postFailureFences": {
+    "runtimeIdentityStable": true,
+    "lawDbQdrantParity": "211548/211548",
+    "ragDbQdrantParity": "84248/84248",
+    "qdrantReady": true,
+    "qdrantSearchFailureCount": 0,
+    "lawCollection": "green/optimizer ok/update queue 0",
+    "ragCollection": "green/optimizer ok/update queue 0",
+    "batchRunner18080Listening": false
+  },
+  "promotionOutcome": "NOT_EVALUABLE",
+  "nextStep": "Fix and verify the local capture predicate, build a new candidate artifact, create a new immutable execution manifest, and obtain a new exact approval. Never reuse this manifest or rerun either training capture."
+}
