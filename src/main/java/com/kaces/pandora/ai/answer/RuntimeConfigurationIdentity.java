@@ -90,7 +90,11 @@ public final class RuntimeConfigurationIdentity {
 			"documentExpansion.authoritative=" + documentExpansion.authoritative(),
 			"documentExpansion.maxDocuments=" + documentExpansion.maxDocuments(),
 			"documentExpansion.maxChunksPerDocument=" + documentExpansion.maxChunksPerDocument(),
-			"documentExpansion.maxTotalChunks=" + documentExpansion.maxTotalChunks()
+			"documentExpansion.maxTotalChunks=" + documentExpansion.maxTotalChunks(),
+			"documentExpansion.bm25TitleEnabled=" + documentExpansion.bm25TitleEnabled(),
+			"documentExpansion.bm25TitleMaxHits=" + documentExpansion.bm25TitleMaxHits(),
+			"documentExpansion.bm25TitleMinimumTerms=" + documentExpansion.bm25TitleMinimumTerms(),
+			"documentExpansion.bm25TitleAmbiguityRatio=" + documentExpansion.bm25TitleAmbiguityRatio()
 		);
 		try {
 			MessageDigest digest = MessageDigest.getInstance("SHA-256");

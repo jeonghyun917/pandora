@@ -96,6 +96,37 @@ class RuntimeConfigurationIdentityTests {
 		)).isNotEqualTo(fingerprint);
 	}
 
+	@Test
+	void fingerprintsEveryBm25TitleExpansionPolicyField() {
+		LawAiProperties base = properties("secret", "http://127.0.0.1:6333");
+		LawAiLexicalProperties lexical = new LawAiLexicalProperties(1.2, 0.75, 8, 6, 7, 1, 24, 100);
+		LawAiRrfProperties rrf = new LawAiRrfProperties(true, false, 60, 1.0, 1.0, 100);
+		LawAiCoverageAwareProperties coverage = new LawAiCoverageAwareProperties(false, 0, 1, 30);
+		LawAiDocumentExpansionProperties baseline = expansion(true, 100, 2, 0.05);
+		String fingerprint = RuntimeConfigurationIdentity.sha256(base, lexical, rrf, coverage, baseline);
+
+		assertThat(RuntimeConfigurationIdentity.sha256(
+			base, lexical, rrf, coverage, expansion(false, 100, 2, 0.05)
+		)).isNotEqualTo(fingerprint);
+		assertThat(RuntimeConfigurationIdentity.sha256(
+			base, lexical, rrf, coverage, expansion(true, 99, 2, 0.05)
+		)).isNotEqualTo(fingerprint);
+		assertThat(RuntimeConfigurationIdentity.sha256(
+			base, lexical, rrf, coverage, expansion(true, 100, 3, 0.05)
+		)).isNotEqualTo(fingerprint);
+		assertThat(RuntimeConfigurationIdentity.sha256(
+			base, lexical, rrf, coverage, expansion(true, 100, 2, 0.04)
+		)).isNotEqualTo(fingerprint);
+	}
+
+	private LawAiDocumentExpansionProperties expansion(
+		boolean enabled, int maxHits, int minimumTerms, double ambiguityRatio
+	) {
+		return new LawAiDocumentExpansionProperties(
+			true, false, 3, 8, 24, enabled, maxHits, minimumTerms, ambiguityRatio
+		);
+	}
+
 	private LawAiProperties properties(String apiKey, String qdrantBaseUrl) {
 		return new LawAiProperties(
 			new LawAiProperties.OpenAi(apiKey, "embedding", "answer", "low", "low", 700),
