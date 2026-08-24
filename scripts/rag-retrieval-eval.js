@@ -22,6 +22,20 @@ const {
 } = require('./lib/rag-eval-provenance');
 const { loadTrainingManifest } = require('./lib/rrf-weight-selection');
 
+const DOCUMENT_EXPANSION_ANCHOR_TYPES = new Set([
+  'EXPLICIT_TITLE',
+  'STABLE_ALIAS',
+  'TITLE_WITH_PROVISION',
+]);
+const DOCUMENT_EXPANSION_REASON_CODES = new Set([
+  'EXACT_PROVISION',
+  'EXACT_HEADING',
+  'EVIDENCE_TERMS',
+  'DOCUMENT_ORDER',
+]);
+const MAX_DOCUMENT_EXPANSION_HITS = 24;
+const MAX_DOCUMENT_EXPANSION_HITS_PER_DOCUMENT = 8;
+
 const CASE_PATHS = [
   path.resolve('src/main/resources/rag-evaluation-cases.tsv'),
   path.resolve('src/main/resources/rag-evaluation-cases.generated.tsv'),
@@ -56,6 +70,7 @@ async function main() {
       const response = await loadDebugResponse(evalCase, options);
       const measurement = {
         ...measureRetrievalCase(evalCase, response, options.k),
+		documentExpansion: measureDocumentExpansionCase(evalCase, response),
 		candidateLoss: extractCandidateLossAnalysis(response),
         question: evalCase.question,
         targets: evalCase.targets,
@@ -104,6 +119,10 @@ async function main() {
       } : {}),
     },
     runtimeVerifiedAtEnd: true,
+    documentExpansionPolicy: {
+      id: 'document-expansion-shadow-v1',
+      configHash: String(runtimeInfo.runtimeConfigSha256 ?? ''),
+    },
     results: successfulMeasurements,
   };
   writeJson(outputPaths.outputPath, body);
@@ -314,7 +333,119 @@ function assertDebugResponse(body, auditGroupCount = 0) {
 			}
 		}
 	}
+	assertDocumentExpansionCapture(body);
   return body;
+}
+
+function assertDocumentExpansionCapture(response) {
+	if (!response || typeof response !== 'object' || Array.isArray(response)) {
+		throw new Error('document expansion capture response must be an object');
+	}
+	if (!Array.isArray(response.documentExpansionHits)) {
+		throw new Error('debug search response documentExpansionHits must be an array');
+	}
+	if (!Array.isArray(response.documentExpansionFused)) {
+		throw new Error('debug search response documentExpansionFused must be an array');
+	}
+	const documentExpansionHits = captureDocumentExpansionItems(response.documentExpansionHits, 'documentExpansionHits');
+	const documentExpansionFused = captureDocumentExpansionItems(
+		response.documentExpansionFused.filter((item) => hasDocumentExpansionMetadata(item)),
+		'documentExpansionFused',
+		{ requireSequentialRanks: false },
+	);
+	const sourceKeys = new Set(documentExpansionHits.map((item) => item.candidateKey));
+	for (const item of documentExpansionFused) {
+		if (!sourceKeys.has(item.candidateKey)) {
+			throw new Error(`documentExpansionFused has unknown expansion candidate: ${item.candidateKey}`);
+		}
+	}
+	return { documentExpansionHits, documentExpansionFused };
+}
+
+function hasDocumentExpansionMetadata(item) {
+	return Object.hasOwn(item ?? {}, 'documentExpansionRank')
+		|| Object.hasOwn(item ?? {}, 'documentExpansionAnchorType')
+		|| Object.hasOwn(item ?? {}, 'documentExpansionReason')
+		|| Object.hasOwn(item ?? {}, 'documentExpansionOverlap');
+}
+
+function captureDocumentExpansionItems(items, label, options = {}) {
+	if (items.length > MAX_DOCUMENT_EXPANSION_HITS) {
+		throw new Error(`${label} must contain at most ${MAX_DOCUMENT_EXPANSION_HITS} items`);
+	}
+	const captured = [];
+	const candidateKeys = new Set();
+	const rankSet = new Set();
+	const documentCounts = new Map();
+	for (const [index, item] of items.entries()) {
+		if (!item || typeof item !== 'object' || Array.isArray(item)) {
+			throw new Error(`${label}[${index}] must be an object`);
+		}
+		const key = candidateKey(item);
+		if (!key) throw new Error(`${label}[${index}] missing candidate key`);
+		if (candidateKeys.has(key)) throw new Error(`${label} duplicate candidate key: ${key}`);
+		candidateKeys.add(key);
+		const documentId = Number(item.documentId);
+		if (!Number.isSafeInteger(documentId) || documentId <= 0) throw new Error(`${label}[${index}] invalid documentId`);
+		const rank = Number(item.documentExpansionRank);
+		if (!Number.isSafeInteger(rank) || rank <= 0) throw new Error(`${label}[${index}] invalid document expansion rank`);
+		if (rankSet.has(rank)) throw new Error(`${label} duplicate document expansion rank: ${rank}`);
+		rankSet.add(rank);
+		const anchorType = String(item.documentExpansionAnchorType ?? '').trim();
+		if (!DOCUMENT_EXPANSION_ANCHOR_TYPES.has(anchorType)) throw new Error(`${label}[${index}] invalid document expansion anchor type`);
+		const reason = String(item.documentExpansionReason ?? '').trim();
+		if (!DOCUMENT_EXPANSION_REASON_CODES.has(reason)) throw new Error(`${label}[${index}] unknown document expansion reason`);
+		if (typeof item.documentExpansionOverlap !== 'boolean') throw new Error(`${label}[${index}] document expansion overlap must be boolean`);
+		const perDocument = (documentCounts.get(documentId) ?? 0) + 1;
+		if (perDocument > MAX_DOCUMENT_EXPANSION_HITS_PER_DOCUMENT) {
+			throw new Error(`${label} must contain at most ${MAX_DOCUMENT_EXPANSION_HITS_PER_DOCUMENT} items per document`);
+		}
+		documentCounts.set(documentId, perDocument);
+		const sourceIndexes = item.matchedAuditGroupIndexes;
+		const matchedAuditGroupIndexes = Array.from(new Set(Array.isArray(sourceIndexes) ? sourceIndexes : []))
+			.filter((value) => Number.isSafeInteger(value) && value >= 0).sort((left, right) => left - right);
+		if (!Array.isArray(sourceIndexes) || matchedAuditGroupIndexes.length !== new Set(sourceIndexes).size) {
+			throw new Error(`${label}[${index}] invalid matched audit group indexes`);
+		}
+		captured.push({ candidateKey: key, documentId, rank, anchorType, reason,
+			overlapsExistingSource: item.documentExpansionOverlap, matchedAuditGroupIndexes });
+	}
+	if (options.requireSequentialRanks !== false && captured.some((item, index) => item.rank !== index + 1)) {
+		throw new Error(`${label} ranks must be sequential starting at 1`);
+	}
+	return captured;
+}
+
+function measureDocumentExpansionCase(evalCase, response) {
+	const requiredGroupCount = buildAuditTermGroups(evalCase).length;
+	const capture = assertDocumentExpansionCapture(response);
+	const controlItems = [
+		...(Array.isArray(response?.vectorHits) ? response.vectorHits : []),
+		...(Array.isArray(response?.lexicalHits) ? response.lexicalHits : []),
+		...(Array.isArray(response?.bm25Hits) ? response.bm25Hits : []),
+	];
+	const control = measureDocumentExpansionPresence(controlItems, requiredGroupCount);
+	const expansionSourcePresence = measureDocumentExpansionPresence(capture.documentExpansionHits, requiredGroupCount);
+	const shadowFusedPresence = measureDocumentExpansionPresence(capture.documentExpansionFused, requiredGroupCount);
+	return {
+		control, candidateSourcePresence: control, expansionSourcePresence, shadowFusedPresence,
+		firstDropStage: !control.anyRequired ? 'candidateSources' : !expansionSourcePresence.anyRequired ? 'documentExpansion'
+			: !shadowFusedPresence.anyRequired ? 'documentExpansionFused' : null,
+		capture,
+	};
+}
+
+function measureDocumentExpansionPresence(items, requiredGroupCount) {
+	const matches = new Set();
+	for (const item of Array.isArray(items) ? items : []) {
+		for (const value of Array.isArray(item?.matchedAuditGroupIndexes) ? item.matchedAuditGroupIndexes : []) {
+			if (Number.isSafeInteger(value) && value >= 0 && value < requiredGroupCount) matches.add(value);
+		}
+	}
+	const matchedRequiredGroupIndexes = Array.from(matches).sort((left, right) => left - right);
+	return { requiredGroupCount, matchedRequiredGroupIndexes, matchedRequiredGroupCount: matchedRequiredGroupIndexes.length,
+		anyRequired: matchedRequiredGroupIndexes.length > 0,
+		allRequired: requiredGroupCount > 0 && matchedRequiredGroupIndexes.length === requiredGroupCount };
 }
 
 function extractCandidateLossAnalysis(response) {
@@ -532,9 +663,11 @@ if (require.main === module) {
 module.exports = {
   assertTrainingSelection,
   assertDebugResponse,
+	assertDocumentExpansionCapture,
   buildDebugRequest,
 	captureSourceRankSnapshot,
 	extractCandidateLossAnalysis,
+	measureDocumentExpansionCase,
   loadRuntimeInfo,
   main,
   parseOptions,

@@ -618,6 +618,8 @@ test('debug response validator requires resultMsg and every retrieval stage arra
     ...retrievalMetrics.SHADOW_STAGE_NAMES,
   ].map((stage) => [stage, []]));
   valid.resultMsg = 'OK';
+  valid.documentExpansionHits = [];
+  valid.documentExpansionFused = [];
 
   assert.equal(retrievalRunner.assertDebugResponse(valid), valid);
   assert.throws(
@@ -637,6 +639,10 @@ test('debug response validator requires resultMsg and every retrieval stage arra
     /coverageFused.*array/i,
   );
   assert.throws(
+    () => retrievalRunner.assertDebugResponse({ ...valid, documentExpansionHits: undefined }),
+    /documentExpansionHits.*array/i,
+  );
+  assert.throws(
     () => retrievalRunner.assertDebugResponse({
       ...valid,
       vectorHits: [{ title: '문서', chunkTitle: '제목' }],
@@ -650,6 +656,116 @@ test('debug response validator requires resultMsg and every retrieval stage arra
 		}),
 		/candidateTraces.*chunkText/i,
 	);
+});
+
+test('document expansion capture is bounded, audit-only, and rejects malformed expansion payloads', () => {
+  assert.equal(typeof retrievalRunner.assertDocumentExpansionCapture, 'function');
+  const response = {
+    documentExpansionHits: [{
+      target: 'official_doc',
+      chunkId: 7,
+      documentId: 207,
+      documentExpansionRank: 1,
+      documentExpansionAnchorType: 'EXPLICIT_TITLE',
+      documentExpansionReason: 'EXACT_PROVISION',
+      documentExpansionOverlap: false,
+      matchedAuditGroupIndexes: [1, 0, 1],
+      title: 'must not be captured',
+      snippet: 'must not be captured',
+    }],
+    documentExpansionFused: [
+      {
+        target: 'official_doc',
+        chunkId: 7,
+        documentId: 207,
+        documentExpansionRank: 1,
+        documentExpansionAnchorType: 'EXPLICIT_TITLE',
+        documentExpansionReason: 'EXACT_PROVISION',
+        documentExpansionOverlap: false,
+        matchedAuditGroupIndexes: [0, 1],
+      },
+      {
+        target: 'law',
+        chunkId: 8,
+        documentId: 108,
+        matchedAuditGroupIndexes: [],
+      },
+    ],
+  };
+
+  const captured = retrievalRunner.assertDocumentExpansionCapture(response);
+
+  assert.deepEqual(captured, {
+    documentExpansionHits: [{
+      candidateKey: 'official_doc:7',
+      documentId: 207,
+      rank: 1,
+      anchorType: 'EXPLICIT_TITLE',
+      reason: 'EXACT_PROVISION',
+      overlapsExistingSource: false,
+      matchedAuditGroupIndexes: [0, 1],
+    }],
+    documentExpansionFused: [{
+      candidateKey: 'official_doc:7',
+      documentId: 207,
+      rank: 1,
+      anchorType: 'EXPLICIT_TITLE',
+      reason: 'EXACT_PROVISION',
+      overlapsExistingSource: false,
+      matchedAuditGroupIndexes: [0, 1],
+    }],
+  });
+  assert.equal(JSON.stringify(captured).includes('must not be captured'), false);
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({ ...response, documentExpansionHits: undefined }),
+    /documentExpansionHits.*array/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
+      documentExpansionHits: [...response.documentExpansionHits, { ...response.documentExpansionHits[0] }],
+    }),
+    /duplicate.*candidate/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
+      documentExpansionHits: [{ ...response.documentExpansionHits[0], documentExpansionReason: 'UNKNOWN_REASON' }],
+    }),
+    /unknown.*reason/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
+      documentExpansionHits: [{ ...response.documentExpansionHits[0], documentId: 0 }],
+    }),
+    /invalid documentId/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
+      documentExpansionHits: [{ ...response.documentExpansionHits[0], documentExpansionRank: 0 }],
+    }),
+    /invalid document expansion rank/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
+      documentExpansionHits: Array.from({ length: 25 }, (_, index) => ({
+        ...response.documentExpansionHits[0], chunkId: index + 1, documentExpansionRank: index + 1,
+      })),
+    }),
+    /at most 24/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
+      documentExpansionHits: Array.from({ length: 9 }, (_, index) => ({
+        ...response.documentExpansionHits[0], chunkId: index + 1, documentExpansionRank: index + 1,
+      })),
+    }),
+    /at most 8.*document/i,
+  );
 });
 
 test('release coverage rejects no-ground controls without distractors and too few controls', () => {
