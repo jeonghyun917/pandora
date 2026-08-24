@@ -3,6 +3,7 @@ package com.kaces.pandora.semantic.config;
 import com.kaces.pandora.semantic.retrieval.DocumentCandidateExpansion;
 import com.kaces.pandora.semantic.retrieval.Bm25TitleDocumentSeedSelector;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 @ConfigurationProperties(prefix = "law-ai.retrieval.document-expansion")
 public record LawAiDocumentExpansionProperties(
@@ -24,6 +25,7 @@ public record LawAiDocumentExpansionProperties(
 	private static final int MAX_BM25_TITLE_TERMS = 6;
 	private static final double MAX_BM25_TITLE_AMBIGUITY_RATIO = 0.25;
 
+	@ConstructorBinding
 	public LawAiDocumentExpansionProperties {
 		if (maxDocuments > MAX_DOCUMENTS) {
 			throw new IllegalArgumentException("maxDocuments must not exceed " + MAX_DOCUMENTS);
