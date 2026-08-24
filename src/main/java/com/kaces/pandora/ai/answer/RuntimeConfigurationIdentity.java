@@ -2,6 +2,7 @@ package com.kaces.pandora.ai.answer;
 
 import com.kaces.pandora.semantic.config.LawAiLexicalProperties;
 import com.kaces.pandora.semantic.config.LawAiCoverageAwareProperties;
+import com.kaces.pandora.semantic.config.LawAiDocumentExpansionProperties;
 import com.kaces.pandora.semantic.config.LawAiProperties;
 import com.kaces.pandora.semantic.config.LawAiRrfProperties;
 import java.nio.charset.StandardCharsets;
@@ -26,7 +27,8 @@ public final class RuntimeConfigurationIdentity {
 			properties,
 			new LawAiLexicalProperties(1.2, 0.75, 8, 6, 7, 1, 24, 100),
 			new LawAiRrfProperties(false, false, 60, 1.0, 1.0, 100),
-			new LawAiCoverageAwareProperties(false, 0, 1, 30)
+			new LawAiCoverageAwareProperties(false, 0, 1, 30),
+			disabledDocumentExpansion()
 		);
 	}
 
@@ -35,7 +37,7 @@ public final class RuntimeConfigurationIdentity {
 		LawAiLexicalProperties lexical,
 		LawAiRrfProperties rrf
 	) {
-		return sha256(properties, lexical, rrf, new LawAiCoverageAwareProperties(false, 0, 1, 30));
+		return sha256(properties, lexical, rrf, new LawAiCoverageAwareProperties(false, 0, 1, 30), disabledDocumentExpansion());
 	}
 
 	static String sha256(
@@ -43,6 +45,16 @@ public final class RuntimeConfigurationIdentity {
 		LawAiLexicalProperties lexical,
 		LawAiRrfProperties rrf,
 		LawAiCoverageAwareProperties coverage
+	) {
+		return sha256(properties, lexical, rrf, coverage, disabledDocumentExpansion());
+	}
+
+	static String sha256(
+		LawAiProperties properties,
+		LawAiLexicalProperties lexical,
+		LawAiRrfProperties rrf,
+		LawAiCoverageAwareProperties coverage,
+		LawAiDocumentExpansionProperties documentExpansion
 	) {
 		LawAiProperties.OpenAi openAi = properties.openai();
 		LawAiProperties.Qdrant qdrant = properties.qdrant();
@@ -73,7 +85,12 @@ public final class RuntimeConfigurationIdentity {
 			"coverage.enabled=" + coverage.enabled(),
 			"coverage.maxRescues=" + coverage.maxRescues(),
 			"coverage.maxRescuesPerDocument=" + coverage.maxRescuesPerDocument(),
-			"coverage.sourceRankLimit=" + coverage.sourceRankLimit()
+			"coverage.sourceRankLimit=" + coverage.sourceRankLimit(),
+			"documentExpansion.enabled=" + documentExpansion.enabled(),
+			"documentExpansion.authoritative=" + documentExpansion.authoritative(),
+			"documentExpansion.maxDocuments=" + documentExpansion.maxDocuments(),
+			"documentExpansion.maxChunksPerDocument=" + documentExpansion.maxChunksPerDocument(),
+			"documentExpansion.maxTotalChunks=" + documentExpansion.maxTotalChunks()
 		);
 		try {
 			MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -81,6 +98,10 @@ public final class RuntimeConfigurationIdentity {
 		} catch (NoSuchAlgorithmException exception) {
 			throw new IllegalStateException("SHA-256 is unavailable", exception);
 		}
+	}
+
+	private static LawAiDocumentExpansionProperties disabledDocumentExpansion() {
+		return new LawAiDocumentExpansionProperties(false, false, 0, 0, 0);
 	}
 
 	private static String value(String value) {
