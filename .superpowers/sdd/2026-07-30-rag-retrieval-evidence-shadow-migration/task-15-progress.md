@@ -123,3 +123,24 @@ Date: 2026-08-24 (Asia/Seoul)
 - All v2 evidence paths are unique and absent. No external call or evaluation
   ran during preparation. The prior `4a5925f...` manifest and abort evidence
   remain immutable and non-reusable. Port 18080 and `output/` were untouched.
+
+## Task 9 evaluator-fixed v2 terminal outcome
+
+Date: 2026-08-24 (Asia/Seoul)
+
+- Exact manifest `d2f1ed37...` was approved. All frozen fences matched before
+  execution.
+- Two independent runs completed `24/24` with request errors `0` and Qdrant
+  search failures `0`: exactly 48 OpenAI Embedding API calls total and zero
+  Answer API calls. Immutable provenance matched across runs.
+- Both runs measured control `9/24` all-required, `16/24` any-required, `28`
+  matched groups; expansion source `0/24`, `0/24`, `0`; shadow fused `8/24`,
+  `16/24`, `27`.
+- Shadow fusion lost `pre-consultation-target`, which passed control, and the
+  expansion source added no required-ground match.
+- The one-time selector returned `BASELINE_REGRESSION`, eligible `false`, with
+  reason `control recall does not match the frozen training baseline`.
+- Fail closed: authority remains false; no difficult/holdout manifest or call
+  was made. Runtime/parity/Qdrant fences remained stable; 18080 and `output/`
+  were untouched. Exact run, stdout, and selector JSON/Markdown evidence is
+  archived under the v2 filenames in this directory.

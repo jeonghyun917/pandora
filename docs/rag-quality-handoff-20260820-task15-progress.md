@@ -295,3 +295,20 @@ The exact approved 12 questions were sent twice with `K=30` and concurrency `1`:
 - No external evaluation was launched. Authority remains false, 18080 remains
   absent, and `output/` was not accessed. The consumed `4a5925f...` attempt is
   immutable terminal evidence and may not be reused.
+
+### Evaluator-fixed v2 terminal outcome
+
+- Exact approved manifest `d2f1ed37...` executed twice without retry: each run
+  completed `24/24`, request errors `0`, Qdrant failures `0`. Total external
+  use was exactly 48 OpenAI Embedding API calls and zero Answer API calls.
+- Both runs had identical provenance and results. Control recall was `9/24`
+  all-required, `16/24` any-required, `28` matched groups. Expansion-source
+  recall was `0/24`, `0/24`, `0`; shadow-fused recall was `8/24`, `16/24`,
+  `27`.
+- Shadow fusion lost the control-passing `pre-consultation-target` case and
+  gained no required-ground match from document expansion.
+- The selector ran once and returned `BASELINE_REGRESSION`, eligible `false`.
+  No difficult or holdout evaluation was prepared or consumed and no authority
+  flag changed. Runtime, parity, and Qdrant health remained stable; 18080 and
+  `output/` were untouched. The v2 evidence set is archived in the Task 15
+  ledger directory.

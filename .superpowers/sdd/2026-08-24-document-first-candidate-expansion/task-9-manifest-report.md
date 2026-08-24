@@ -183,3 +183,41 @@ run must never be reused.
   and an immediate no-drift fence recheck are required before one-time launch.
 
 Port 18080 remained absent and `output/` was not accessed.
+
+## Evaluator-fixed v2 terminal evaluation
+
+The user exactly approved canonical manifest
+`d2f1ed37ed067806e426b306fd7856d6d01c84c865edab038561eeee0ae8a047`.
+Every runtime, artifact, config, index, lexical, parity, Qdrant, authority,
+mapper, process, evidence-path, and 18080 fence matched immediately before the
+one-time launch.
+
+- Run 1: `24/24` completed, request errors `0`, Qdrant failures `0`.
+- Run 2: `24/24` completed, request errors `0`, Qdrant failures `0`.
+- OpenAI Embedding API calls: exactly `48`; Answer API calls: `0`.
+- Both runs used identical immutable provenance and policy identity.
+- Both runs produced identical recall: control `9/24` all-required, `16/24`
+  any-required, `28` matched groups; expansion source `0/24`, `0/24`, `0`;
+  shadow fused `8/24`, `16/24`, `27`.
+- Shadow fusion lost the control-passing `pre-consultation-target` case and
+  added no required-ground match from the document-expansion source.
+- The selector ran exactly once and returned `BASELINE_REGRESSION`, eligible
+  `false`, reason `control recall does not match the frozen training baseline`.
+  The frozen baseline is `7/14/23`; the observed control is `9/16/28`.
+- Fail closed: no difficult manifest, difficult call, holdout call, or authority
+  change. Document expansion remains shadow-only.
+
+Terminal evidence uses only the frozen v2 paths:
+
+- `task-15-document-expansion-training-v2-run1.json`;
+- `task-15-document-expansion-training-v2-run1.md`;
+- `task-15-document-expansion-training-v2-run1.stdout.log`;
+- `task-15-document-expansion-training-v2-run2.json`;
+- `task-15-document-expansion-training-v2-run2.md`;
+- `task-15-document-expansion-training-v2-run2.stdout.log`;
+- `task-15-document-expansion-training-v2-selection.json`;
+- `task-15-document-expansion-training-v2-selection.md`.
+
+Post-run runtime/JAR/config/index/lexical identity and DB/Qdrant parity remained
+unchanged; Qdrant remained ready/green with failures `0`; 18080 remained absent
+and `output/` was not accessed.
