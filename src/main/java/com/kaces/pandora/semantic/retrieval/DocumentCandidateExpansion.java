@@ -6,6 +6,7 @@ import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -40,7 +41,7 @@ public class DocumentCandidateExpansion {
 		LinkedHashSet<String> reasonCodes = new LinkedHashSet<>();
 		List<String> titleTerms = normalizedTerms(anchor.titleTerms());
 		Set<String> targetRestrictions = normalizedTargets(anchor.targets());
-		List<ScoredDocument> matches = new ArrayList<>();
+		Map<String, ScoredDocument> matchesByDocumentIdentity = new HashMap<>();
 		for (DocumentIdentityCandidate candidate : safeList(candidates)) {
 			if (!validDocument(candidate)) {
 				reasonCodes.add("INVALID_DOCUMENT_IDENTITY");
@@ -55,9 +56,11 @@ public class DocumentCandidateExpansion {
 			if (!exactTitle && !allTitleTerms) {
 				continue;
 			}
-			matches.add(new ScoredDocument(candidate, exactTitle, allTitleTerms, candidate.provisionAnchorMatch()));
+			ScoredDocument scored = new ScoredDocument(candidate, exactTitle, allTitleTerms, candidate.provisionAnchorMatch());
+			matchesByDocumentIdentity.merge(documentKey(candidate), scored, this::preferredDocument);
 		}
 
+		List<ScoredDocument> matches = new ArrayList<>(matchesByDocumentIdentity.values());
 		if (matches.isEmpty()) {
 			return documentSelection(List.of(), Status.DOCUMENT_NOT_FOUND, reasonCodes);
 		}
@@ -101,11 +104,13 @@ public class DocumentCandidateExpansion {
 			return result(List.of(), List.of(), documents.status(), documents.reasonCodes());
 		}
 
-		LinkedHashSet<String> reasonCodes = new LinkedHashSet<>(documents.reasonCodes());
-		List<DocumentIdentityCandidate> selectedDocuments = selectedDocuments(anchor, documents.documents(), policy, reasonCodes);
-		if (selectedDocuments.isEmpty()) {
-			return result(List.of(), List.of(), Status.DOCUMENT_NOT_FOUND, reasonCodes);
+		DocumentSelection verifiedDocuments = selectDocuments(anchor, documents.documents(), policy);
+		if (verifiedDocuments.status() != Status.APPLIED) {
+			return result(List.of(), List.of(), verifiedDocuments.status(), verifiedDocuments.reasonCodes());
 		}
+		LinkedHashSet<String> reasonCodes = new LinkedHashSet<>(documents.reasonCodes());
+		reasonCodes.addAll(verifiedDocuments.reasonCodes());
+		List<DocumentIdentityCandidate> selectedDocuments = verifiedDocuments.documents();
 		Map<String, List<LawSemanticChunkRow>> byDocument = safeList(candidates).stream()
 			.filter(row -> validChunk(row, reasonCodes))
 			.collect(Collectors.groupingBy(
@@ -162,36 +167,6 @@ public class DocumentCandidateExpansion {
 		return result(chunks, hits, Status.APPLIED, reasonCodes);
 	}
 
-	private List<DocumentIdentityCandidate> selectedDocuments(
-		DocumentSearchAnchor anchor,
-		List<DocumentIdentityCandidate> documents,
-		Policy policy,
-		Set<String> reasonCodes
-	) {
-		Set<String> targetRestrictions = normalizedTargets(anchor.targets());
-		Set<String> seen = new HashSet<>();
-		List<DocumentIdentityCandidate> selected = new ArrayList<>();
-		for (DocumentIdentityCandidate document : safeList(documents)) {
-			if (!validDocument(document)) {
-				reasonCodes.add("INVALID_DOCUMENT_IDENTITY");
-				continue;
-			}
-			if (!targetRestrictions.isEmpty() && !targetRestrictions.contains(normalizeTarget(document.target()))) {
-				continue;
-			}
-			if (!seen.add(documentKey(document))) {
-				reasonCodes.add("INVALID_DOCUMENT_IDENTITY");
-				continue;
-			}
-			if (selected.size() == policy.maxDocuments()) {
-				reasonCodes.add("DOCUMENT_LIMIT");
-				break;
-			}
-			selected.add(document);
-		}
-		return List.copyOf(selected);
-	}
-
 	private boolean validResult(List<LawSemanticChunkRow> chunks, List<Hit> hits, Policy policy) {
 		if (chunks.size() != hits.size() || chunks.size() > policy.maxTotalChunks()) {
 			return false;
@@ -224,7 +199,12 @@ public class DocumentCandidateExpansion {
 		return Comparator.comparing(ScoredDocument::exactTitle).reversed()
 			.thenComparing(Comparator.comparing(ScoredDocument::allTitleTerms).reversed())
 			.thenComparing(Comparator.comparing(ScoredDocument::provisionMatch).reversed())
-			.thenComparing(scored -> scored.candidate().documentId());
+			.thenComparing(scored -> scored.candidate().documentId())
+			.thenComparing(scored -> KoreanQueryNormalizer.normalizeForMatch(scored.candidate().title()));
+	}
+
+	private ScoredDocument preferredDocument(ScoredDocument first, ScoredDocument second) {
+		return documentComparator().compare(first, second) <= 0 ? first : second;
 	}
 
 	private Comparator<ScoredChunk> chunkComparator() {

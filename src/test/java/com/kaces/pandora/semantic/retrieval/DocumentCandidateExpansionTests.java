@@ -100,8 +100,8 @@ class DocumentCandidateExpansionTests {
 	@Test
 	void enforcesDocumentPerDocumentAndGlobalBoundsWithDeterministicUniqueKeys() {
 		List<DocumentIdentityCandidate> identities = List.of(
-			document(1, "law", "문서 1", false), document(2, "law", "문서 2", false),
-			document(3, "law", "문서 3", false), document(4, "law", "문서 4", false)
+			document(1, "law", "문서 1", true), document(2, "law", "문서 2", true),
+			document(3, "law", "문서 3", true), document(4, "law", "문서 4", false)
 		);
 		DocumentCandidateExpansion.DocumentSelection documents = new DocumentCandidateExpansion.DocumentSelection(
 			identities, DocumentCandidateExpansion.Status.APPLIED, List.of()
@@ -154,6 +154,43 @@ class DocumentCandidateExpansionTests {
 			anchor(List.of("전자정부법"), List.of(), List.of(), List.of("law")), documents,
 			List.of(chunk(101, 1, "law", "제1조", "목적", "", 1)), Set.of(), invalid
 		).status()).isEqualTo(DocumentCandidateExpansion.Status.INVALID_BOUNDS);
+	}
+
+	@Test
+	void rejectsCallerSuppliedAppliedSelectionThatDoesNotMatchTheAnchor() {
+		DocumentSearchAnchor anchor = anchor(List.of("전자정부법"), List.of(), List.of(), List.of("law"));
+		DocumentCandidateExpansion.DocumentSelection forgedSelection = selected(
+			document(9, "law", "전혀 관계없는 지침", false)
+		);
+
+		DocumentCandidateExpansion.Result result = expansion.rankChunks(
+			anchor,
+			forgedSelection,
+			List.of(chunk(901, 9, "law", "제1조", "목적", "", 1)),
+			Set.of(),
+			policy
+		);
+
+		assertThat(result.status()).isEqualTo(DocumentCandidateExpansion.Status.DOCUMENT_NOT_FOUND);
+		assertThat(result.chunks()).isEmpty();
+	}
+
+	@Test
+	void deduplicatesRepeatedDocumentIdentityBeforeAmbiguityAndLimits() {
+		DocumentCandidateExpansion.DocumentSelection selection = expansion.selectDocuments(
+			anchor(List.of("전자정부법"), List.of(), List.of(), List.of("law")),
+			List.of(
+				document(1, "law", "전자정부법", false),
+				document(1, "law", "전자정부법", true),
+				document(2, "law", "전자정부법", false),
+				document(3, "law", "전자정부법", false)
+			),
+			policy
+		);
+
+		assertThat(selection.status()).isEqualTo(DocumentCandidateExpansion.Status.APPLIED);
+		assertThat(selection.documents()).extracting(DocumentIdentityCandidate::documentId).containsExactly(1L, 2L, 3L);
+		assertThat(selection.documents().get(0).provisionAnchorMatch()).isTrue();
 	}
 
 	private DocumentCandidateExpansion.DocumentSelection selected(DocumentIdentityCandidate... documents) {
