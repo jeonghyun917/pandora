@@ -817,6 +817,50 @@ test('document expansion shadow-fused presence includes retained control and exp
   assert.deepEqual(result.capture.documentExpansionFused.map((item) => item.candidateKey), ['official_doc:7']);
 });
 
+test('document expansion capture ignores nullable fused control metadata but rejects partial expansion metadata', () => {
+  const expansion = {
+    target: 'official_doc',
+    chunkId: 7,
+    documentId: 207,
+    documentExpansionRank: 1,
+    documentExpansionAnchorType: 'EXPLICIT_TITLE',
+    documentExpansionReason: 'EXACT_PROVISION',
+    documentExpansionOverlap: false,
+    matchedAuditGroupIndexes: [0],
+  };
+  const controls = Array.from({ length: 29 }, (_, index) => ({
+    target: 'law',
+    chunkId: index + 1,
+    documentId: index + 1,
+    documentExpansionRank: null,
+    documentExpansionAnchorType: '',
+    documentExpansionReason: null,
+    documentExpansionOverlap: null,
+    matchedAuditGroupIndexes: [],
+  }));
+
+  assert.deepEqual(retrievalRunner.assertDocumentExpansionCapture({
+    documentExpansionHits: [expansion],
+    documentExpansionFused: [...controls, expansion],
+  }).documentExpansionFused, [{
+    candidateKey: 'official_doc:7',
+    documentId: 207,
+    rank: 1,
+    anchorType: 'EXPLICIT_TITLE',
+    reason: 'EXACT_PROVISION',
+    overlapsExistingSource: false,
+    matchedAuditGroupIndexes: [0],
+  }]);
+
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      documentExpansionHits: [expansion],
+      documentExpansionFused: [{ ...expansion, documentExpansionAnchorType: null }],
+    }),
+    /invalid document expansion anchor type/i,
+  );
+});
+
 test('release coverage rejects no-ground controls without distractors and too few controls', () => {
   const cases = [{
     id: 'no-weak',

@@ -363,10 +363,14 @@ function assertDocumentExpansionCapture(response) {
 }
 
 function hasDocumentExpansionMetadata(item) {
-	return Object.hasOwn(item ?? {}, 'documentExpansionRank')
-		|| Object.hasOwn(item ?? {}, 'documentExpansionAnchorType')
-		|| Object.hasOwn(item ?? {}, 'documentExpansionReason')
-		|| Object.hasOwn(item ?? {}, 'documentExpansionOverlap');
+	return item?.documentExpansionRank != null
+		|| nonBlankString(item?.documentExpansionAnchorType)
+		|| nonBlankString(item?.documentExpansionReason)
+		|| typeof item?.documentExpansionOverlap === 'boolean';
+}
+
+function nonBlankString(value) {
+	return typeof value === 'string' && value.trim().length > 0;
 }
 
 function captureDocumentExpansionItems(items, label, options = {}) {
