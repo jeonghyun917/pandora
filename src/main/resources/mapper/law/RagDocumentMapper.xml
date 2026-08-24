@@ -1314,6 +1314,182 @@
     LIMIT #{limit}
   </select>
 
+  <select id="findDocumentExpansionDocuments"
+          resultType="com.kaces.pandora.semantic.retrieval.DocumentIdentityCandidate"
+          timeout="3">
+    WITH document_matches AS (
+      SELECT
+        doc.document_id,
+        doc.document_type,
+        doc.title,
+        LOWER(REGEXP_REPLACE(doc.title, '[^0-9A-Za-z가-힣]', '')) AS normalized_title,
+        MAX(
+          <foreach collection="titleTerms" item="titleTerm" separator=" + ">
+            CASE WHEN LOWER(REGEXP_REPLACE(doc.title, '[^0-9A-Za-z가-힣]', ''))
+              LIKE CONCAT('%', LOWER(REGEXP_REPLACE(#{titleTerm}, '[^0-9A-Za-z가-힣]', '')), '%')
+              THEN 1 ELSE 0 END
+          </foreach>
+        ) AS matched_title_term_count,
+        MAX(CASE WHEN
+          <foreach collection="titleTerms" item="titleTerm" separator=" OR ">
+            LOWER(REGEXP_REPLACE(doc.title, '[^0-9A-Za-z가-힣]', ''))
+              = LOWER(REGEXP_REPLACE(#{titleTerm}, '[^0-9A-Za-z가-힣]', ''))
+          </foreach>
+          THEN 1 ELSE 0 END) AS exact_title_match,
+        <choose>
+          <when test="provisionTerms != null and provisionTerms.size() > 0">
+            MAX(CASE WHEN
+              <foreach collection="provisionTerms" item="provisionTerm" separator=" OR ">
+                LOWER(REGEXP_REPLACE(COALESCE(c.chunk_no, ''), '[^0-9A-Za-z가-힣]', ''))
+                  = LOWER(REGEXP_REPLACE(#{provisionTerm}, '[^0-9A-Za-z가-힣]', ''))
+                OR LOWER(REGEXP_REPLACE(COALESCE(c.chunk_title, ''), '[^0-9A-Za-z가-힣]', ''))
+                  LIKE CONCAT('%', LOWER(REGEXP_REPLACE(#{provisionTerm}, '[^0-9A-Za-z가-힣]', '')), '%')
+                OR LOWER(REGEXP_REPLACE(COALESCE(c.parent_section_title, ''), '[^0-9A-Za-z가-힣]', ''))
+                  LIKE CONCAT('%', LOWER(REGEXP_REPLACE(#{provisionTerm}, '[^0-9A-Za-z가-힣]', '')), '%')
+              </foreach>
+              THEN 1 ELSE 0 END)
+          </when>
+          <otherwise>0</otherwise>
+        </choose> AS provision_anchor_match
+      FROM rag_documents doc
+      JOIN rag_document_chunks c ON c.document_id = doc.document_id
+      WHERE doc.use_yn = 'Y'
+        AND c.use_yn = 'Y'
+        AND <include refid="searchableChunkQualityFilter"/>
+        AND <include refid="latestActiveChunkVersionFilter"/>
+        AND doc.document_type IN
+        <foreach collection="targets" item="target" open="(" separator="," close=")">
+          #{target}
+        </foreach>
+      GROUP BY doc.document_id, doc.document_type, doc.title
+    )
+    SELECT
+      document_id AS documentId,
+      document_type AS target,
+      title,
+      normalized_title AS normalizedTitle,
+      matched_title_term_count AS matchedTitleTermCount,
+      exact_title_match AS exactTitleMatch,
+      provision_anchor_match AS provisionAnchorMatch
+    FROM document_matches
+    WHERE (
+      <foreach collection="titleTerms" item="titleTerm" separator=" OR ">
+        normalized_title = LOWER(REGEXP_REPLACE(#{titleTerm}, '[^0-9A-Za-z가-힣]', ''))
+      </foreach>
+      OR (
+      <foreach collection="titleTerms" item="titleTerm" separator=" AND ">
+        normalized_title LIKE CONCAT('%', LOWER(REGEXP_REPLACE(#{titleTerm}, '[^0-9A-Za-z가-힣]', '')), '%')
+      </foreach>
+      )
+    )
+    ORDER BY exactTitleMatch DESC, matchedTitleTermCount DESC, provisionAnchorMatch DESC, documentId
+    LIMIT #{limit}
+  </select>
+
+  <select id="findDocumentExpansionChunks"
+          resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow"
+          timeout="3">
+    WITH chunk_matches AS (
+      SELECT
+        c.chunk_id,
+        c.document_id,
+        c.sort_order,
+        <choose>
+          <when test="(provisionTerms != null and provisionTerms.size() > 0) or (headingTerms != null and headingTerms.size() > 0)">
+            CASE
+          <if test="provisionTerms != null and provisionTerms.size() > 0">
+            WHEN (
+            <foreach collection="provisionTerms" item="provisionTerm" separator=" OR ">
+              LOWER(REGEXP_REPLACE(COALESCE(c.chunk_no, ''), '[^0-9A-Za-z가-힣]', ''))
+                = LOWER(REGEXP_REPLACE(#{provisionTerm}, '[^0-9A-Za-z가-힣]', ''))
+              OR LOWER(REGEXP_REPLACE(COALESCE(c.chunk_title, ''), '[^0-9A-Za-z가-힣]', ''))
+                = LOWER(REGEXP_REPLACE(#{provisionTerm}, '[^0-9A-Za-z가-힣]', ''))
+            </foreach>
+            ) THEN 0
+          </if>
+          <if test="headingTerms != null and headingTerms.size() > 0">
+            WHEN (
+            <foreach collection="headingTerms" item="headingTerm" separator=" OR ">
+              LOWER(REGEXP_REPLACE(COALESCE(c.chunk_title, ''), '[^0-9A-Za-z가-힣]', ''))
+                = LOWER(REGEXP_REPLACE(#{headingTerm}, '[^0-9A-Za-z가-힣]', ''))
+              OR LOWER(REGEXP_REPLACE(COALESCE(c.parent_section_title, ''), '[^0-9A-Za-z가-힣]', ''))
+                = LOWER(REGEXP_REPLACE(#{headingTerm}, '[^0-9A-Za-z가-힣]', ''))
+            </foreach>
+            ) THEN 1
+          </if>
+              ELSE 2
+            END
+          </when>
+          <otherwise>2</otherwise>
+        </choose> AS match_class,
+        <choose>
+          <when test="evidenceTerms != null and evidenceTerms.size() > 0">
+            <foreach collection="evidenceTerms" item="evidenceTerm" separator=" + ">
+              CASE WHEN c.chunk_text LIKE CONCAT('%', #{evidenceTerm}, '%')
+                OR c.chunk_title LIKE CONCAT('%', #{evidenceTerm}, '%')
+                OR c.parent_section_title LIKE CONCAT('%', #{evidenceTerm}, '%')
+                THEN 1 ELSE 0 END
+            </foreach>
+          </when>
+          <otherwise>0</otherwise>
+        </choose> AS evidence_match_count
+      FROM rag_document_chunks c
+      JOIN rag_documents doc ON doc.document_id = c.document_id
+      WHERE doc.use_yn = 'Y'
+        AND c.use_yn = 'Y'
+        AND <include refid="searchableChunkQualityFilter"/>
+        AND <include refid="latestActiveChunkVersionFilter"/>
+        AND c.document_id IN
+        <foreach collection="documentIds" item="documentId" open="(" separator="," close=")">
+          #{documentId}
+        </foreach>
+    ),
+    ranked_chunks AS (
+      SELECT
+        matched.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY matched.document_id
+          ORDER BY matched.match_class, matched.evidence_match_count DESC, matched.sort_order, matched.chunk_id
+        ) AS document_rank
+      FROM chunk_matches matched
+    )
+    SELECT
+      c.chunk_id AS chunkId,
+      c.document_id AS documentId,
+      doc.document_type AS target,
+      CAST(doc.document_id AS CHAR) AS externalId,
+      doc.title AS title,
+      doc.source_org AS agencyName,
+      CASE
+        WHEN doc.document_type = 'official_doc' THEN '공식 가이드 문서'
+        WHEN doc.document_type = 'internal_doc' THEN '내부 지침/매뉴얼'
+        WHEN doc.document_type = 'reference_doc' THEN '참고자료'
+        ELSE doc.document_type
+      END AS categoryName,
+      doc.published_date AS sourceDate,
+      CAST(NULL AS CHAR) AS effectiveStatus,
+      c.chunk_no AS chunkNo,
+      c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText,
+      c.page_no AS pageNo,
+      c.source_path AS sourcePath,
+      COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
+      c.sort_order AS sortOrder,
+      c.content_hash AS contentHash,
+      c.parent_section_title AS parentSectionTitle,
+      c.section_type AS sectionType,
+      c.quality_status AS qualityStatus,
+      CAST(NULL AS CHAR) AS embeddingText,
+      CAST(NULL AS CHAR) AS parentKey,
+      c.chunk_version AS chunkVersion
+    FROM ranked_chunks ranked
+    JOIN rag_document_chunks c ON c.chunk_id = ranked.chunk_id
+    JOIN rag_documents doc ON doc.document_id = ranked.document_id
+    WHERE ranked.document_rank &lt;= #{perDocumentLimit}
+    ORDER BY ranked.match_class, ranked.document_id, ranked.sort_order, ranked.chunk_id
+    LIMIT #{limit}
+  </select>
+
   <select id="findCurrentIndexedSnapshot"
           resultType="com.kaces.pandora.semantic.provenance.IndexContentSnapshot"
           timeout="5">

@@ -2,9 +2,13 @@ package com.kaces.pandora.rag.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import java.io.InputStream;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.apache.ibatis.builder.xml.XMLMapperBuilder;
 import org.apache.ibatis.io.Resources;
 import org.apache.ibatis.mapping.MappedStatement;
@@ -25,6 +29,88 @@ class RagDocumentMapperXmlTests {
 		"com.kaces.pandora.rag.persistence.RagDocumentMapper.findActiveDocumentsForObjectStorage";
 	private static final String UPDATE_OBJECT_KEY_STATEMENT =
 		"com.kaces.pandora.rag.persistence.RagDocumentMapper.assignObjectKeyIfHashMatches";
+	private static final String DOCUMENT_EXPANSION_DOCUMENTS_STATEMENT =
+		"com.kaces.pandora.rag.persistence.RagDocumentMapper.findDocumentExpansionDocuments";
+	private static final String DOCUMENT_EXPANSION_CHUNKS_STATEMENT =
+		"com.kaces.pandora.rag.persistence.RagDocumentMapper.findDocumentExpansionChunks";
+	private static final List<String> SEMANTIC_CHUNK_COMPONENTS = Arrays.stream(
+		LawSemanticChunkRow.class.getRecordComponents()
+	).map(component -> component.getName()).toList();
+	private static final Pattern PROJECTION_ALIAS = Pattern.compile(
+		"(?i)\\bAS\\s+([A-Za-z][A-Za-z0-9]*)\\s*(?=,|$)"
+	);
+	private static final Pattern CTE_OUTER_SELECT = Pattern.compile("(?i)\\)\\s+SELECT\\s+");
+
+	@Test
+	void documentExpansionDocumentsAreActiveTypeIsolatedAndAmbiguityBounded() throws Exception {
+		Configuration configuration = parseMapper();
+		MappedStatement statement = configuration.getMappedStatement(DOCUMENT_EXPANSION_DOCUMENTS_STATEMENT);
+		Map<String, Object> parameters = Map.of(
+			"targets", List.of("official_doc", "internal_doc"),
+			"titleTerms", List.of("개인정보 보호지침", "개인정보"),
+			"provisionTerms", List.of("제12조"),
+			"limit", 4
+		);
+		String sql = normalizedSql(statement, parameters);
+
+		assertThat(sql)
+			.contains("FROM rag_documents doc", "JOIN rag_document_chunks c ON c.document_id = doc.document_id")
+			.contains("doc.use_yn = 'Y'", "c.use_yn = 'Y'")
+			.contains("COALESCE(c.quality_status, 'PASS') IN ('PASS', 'REVIEW')")
+			.contains("c.chunk_version = ( SELECT MAX(c2.chunk_version)")
+			.contains("doc.document_type IN ( ? , ? )")
+			.contains("normalized_title =", "OR ( normalized_title LIKE", "AND normalized_title LIKE")
+			.contains("ORDER BY exactTitleMatch DESC, matchedTitleTermCount DESC, provisionAnchorMatch DESC, documentId")
+			.endsWith("LIMIT ?");
+		assertThat(statement.getBoundSql(parameters).getParameterObject())
+			.as("the caller supplies maxDocuments + 1 for ambiguity detection")
+			.extracting(value -> ((Map<?, ?>) value).get("limit"))
+			.isEqualTo(4);
+	}
+
+	@Test
+	void documentExpansionChunksUseLatestSearchableVersionAndBoundRowsBeforeJdbc() throws Exception {
+		Configuration configuration = parseMapper();
+		MappedStatement statement = configuration.getMappedStatement(DOCUMENT_EXPANSION_CHUNKS_STATEMENT);
+		String sql = normalizedSql(statement, Map.of(
+			"documentIds", List.of(10L, 20L),
+			"provisionTerms", List.of("제12조"),
+			"headingTerms", List.of("적용 대상"),
+			"evidenceTerms", List.of("개인정보", "보호조치"),
+			"perDocumentLimit", 8,
+			"limit", 24
+		));
+
+		assertThat(sql)
+			.contains("WITH chunk_matches AS", "ranked_chunks AS")
+			.contains("ROW_NUMBER() OVER ( PARTITION BY matched.document_id ORDER BY matched.match_class, matched.evidence_match_count DESC, matched.sort_order, matched.chunk_id ) AS document_rank")
+			.contains("doc.use_yn = 'Y'", "c.use_yn = 'Y'")
+			.contains("COALESCE(c.quality_status, 'PASS') IN ('PASS', 'REVIEW')")
+			.contains("c.chunk_version = ( SELECT MAX(c2.chunk_version)")
+			.contains("c.document_id IN ( ? , ? )")
+			.contains("WHERE ranked.document_rank <= ?")
+			.contains("ORDER BY ranked.match_class, ranked.document_id, ranked.sort_order, ranked.chunk_id")
+			.endsWith("LIMIT ?")
+			.doesNotContain("embedding_text LIKE");
+		assertCanonicalProjection(sql);
+	}
+
+	@Test
+	void documentExpansionChunksRenderValidRankingWithoutOptionalMatchTerms() throws Exception {
+		Configuration configuration = parseMapper();
+		String sql = normalizedSql(configuration.getMappedStatement(DOCUMENT_EXPANSION_CHUNKS_STATEMENT), Map.of(
+			"documentIds", List.of(10L),
+			"provisionTerms", List.of(),
+			"headingTerms", List.of(),
+			"evidenceTerms", List.of(),
+			"perDocumentLimit", 8,
+			"limit", 24
+		));
+
+		assertThat(sql)
+			.contains("2 AS match_class", "0 AS evidence_match_count")
+			.doesNotContain("CASE ELSE 2 END");
+	}
 
 	@Test
 	void headingSearchFiltersAndRanksHeadingFieldsWithoutSearchingBodyText() throws Exception {
@@ -170,6 +256,45 @@ class RagDocumentMapperXmlTests {
 			new XMLMapperBuilder(input, configuration, MAPPER_RESOURCE, configuration.getSqlFragments()).parse();
 		}
 		return configuration;
+	}
+
+	private String normalizedSql(MappedStatement statement, Map<String, Object> parameters) {
+		return statement.getBoundSql(parameters).getSql().replaceAll("\\s+", " ").trim();
+	}
+
+	private void assertCanonicalProjection(String sql) {
+		assertThat(projectionAliases(sql)).containsExactlyElementsOf(SEMANTIC_CHUNK_COMPONENTS);
+		assertThat(projection(sql)).contains(
+			"CAST(NULL AS CHAR) AS effectiveStatus",
+			"c.page_no AS pageNo",
+			"CAST(NULL AS CHAR) AS embeddingText",
+			"CAST(NULL AS CHAR) AS parentKey",
+			"c.chunk_version AS chunkVersion"
+		);
+	}
+
+	private List<String> projectionAliases(String sql) {
+		Matcher matcher = PROJECTION_ALIAS.matcher(projection(sql));
+		List<String> aliases = new java.util.ArrayList<>();
+		while (matcher.find()) {
+			aliases.add(matcher.group(1));
+		}
+		return aliases;
+	}
+
+	private String projection(String sql) {
+		int selectBoundary = 0;
+		if (sql.regionMatches(true, 0, "WITH ", 0, "WITH ".length())) {
+			Matcher matcher = CTE_OUTER_SELECT.matcher(sql);
+			while (matcher.find()) {
+				selectBoundary = matcher.end() - "SELECT ".length();
+			}
+		}
+		int selectStart = sql.toUpperCase().indexOf("SELECT ", selectBoundary) + "SELECT ".length();
+		assertThat(selectStart).as("SELECT boundary in %s", sql).isGreaterThan("SELECT ".length() - 1);
+		int fromStart = sql.toUpperCase().indexOf(" FROM ", selectStart);
+		assertThat(fromStart).as("outer FROM boundary in %s", sql).isGreaterThan(selectStart);
+		return sql.substring(selectStart, fromStart);
 	}
 
 	private void assertOrdered(String text, String... fragments) {
