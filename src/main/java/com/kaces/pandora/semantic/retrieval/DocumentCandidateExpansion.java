@@ -167,6 +167,109 @@ public class DocumentCandidateExpansion {
 		return result(chunks, hits, Status.APPLIED, reasonCodes);
 	}
 
+	public Result rankSeededChunks(
+		DocumentSearchAnchor anchor,
+		List<DocumentExpansionSeed> seeds,
+		List<LawSemanticChunkRow> candidates,
+		Set<String> existingCandidateKeys,
+		Policy policy
+	) {
+		if (!enabled(policy)) {
+			return result(List.of(), List.of(), Status.DISABLED, List.of());
+		}
+		if (!validBounds(policy) || anchor == null) {
+			return result(List.of(), List.of(), Status.BM25_TITLE_INVALID_INPUT, List.of("BM25_TITLE_INVALID_INPUT"));
+		}
+		List<DocumentExpansionSeed> safeSeeds = safeList(seeds);
+		if (safeSeeds.isEmpty()) {
+			return result(List.of(), List.of(), Status.BM25_TITLE_NO_MATCH, List.of("BM25_TITLE_NO_MATCH"));
+		}
+		if (safeSeeds.size() > policy.maxDocuments()) {
+			return result(List.of(), List.of(), Status.BM25_TITLE_INVALID_INPUT, List.of("BM25_TITLE_DOCUMENT_LIMIT"));
+		}
+
+		Set<String> targetRestrictions = normalizedTargets(anchor.targets());
+		Map<String, DocumentExpansionSeed> seedByDocument = new HashMap<>();
+		for (DocumentExpansionSeed seed : safeSeeds) {
+			if (!validSeed(seed, targetRestrictions)
+				|| seedByDocument.putIfAbsent(documentKey(seed), seed) != null) {
+				return result(List.of(), List.of(), Status.BM25_TITLE_INVALID_INPUT, List.of("BM25_TITLE_INVALID_SEED"));
+			}
+		}
+
+		LinkedHashSet<String> reasonCodes = new LinkedHashSet<>();
+		Map<String, List<LawSemanticChunkRow>> byDocument = new HashMap<>();
+		for (LawSemanticChunkRow row : safeList(candidates)) {
+			if (!validChunk(row, reasonCodes)) {
+				return result(List.of(), List.of(), Status.BM25_TITLE_INVALID_INPUT, reasonCodes);
+			}
+			String key = documentKey(row);
+			if (seedByDocument.containsKey(key)) {
+				byDocument.computeIfAbsent(key, ignored -> new ArrayList<>()).add(row);
+			}
+		}
+
+		List<String> provisions = normalizedTerms(anchor.provisionTerms());
+		List<String> headings = normalizedTerms(anchor.headingTerms());
+		List<String> evidence = normalizedTerms(anchor.evidenceTerms());
+		Set<String> existingKeys = safeExistingKeys(existingCandidateKeys);
+		List<LawSemanticChunkRow> chunks = new ArrayList<>();
+		List<Hit> hits = new ArrayList<>();
+		Set<String> emittedKeys = new HashSet<>();
+
+		for (DocumentExpansionSeed seed : safeSeeds) {
+			if (chunks.size() >= policy.maxTotalChunks()) {
+				reasonCodes.add("DOCUMENT_GLOBAL_LIMIT");
+				break;
+			}
+			List<ScoredChunk> ranked = byDocument.getOrDefault(documentKey(seed), List.of()).stream()
+				.map(row -> scoreChunk(row, provisions, headings, evidence))
+				.sorted(chunkComparator())
+				.toList();
+			if (ranked.size() > policy.maxChunksPerDocument()) {
+				reasonCodes.add("DOCUMENT_CHUNK_LIMIT");
+			}
+			int emittedForDocument = 0;
+			for (ScoredChunk scored : ranked) {
+				if (emittedForDocument >= policy.maxChunksPerDocument() || chunks.size() >= policy.maxTotalChunks()) {
+					if (chunks.size() >= policy.maxTotalChunks()) {
+						reasonCodes.add("DOCUMENT_GLOBAL_LIMIT");
+					}
+					break;
+				}
+				String candidateKey = candidateKey(scored.row());
+				if (!emittedKeys.add(candidateKey)) {
+					reasonCodes.add("DOCUMENT_DUPLICATE_OVERLAP");
+					continue;
+				}
+				boolean overlapsExisting = existingKeys.contains(candidateKey);
+				if (overlapsExisting) {
+					reasonCodes.add("DOCUMENT_DUPLICATE_OVERLAP");
+				}
+				chunks.add(scored.row());
+				hits.add(new Hit(
+					candidateKey,
+					hits.size() + 1,
+					"BM25_TITLE",
+					overlapsExisting,
+					"BM25_TITLE_SEED",
+					seed.matchedTitleTerms().size(),
+					seed.bm25Score(),
+					seed.bm25Rank()
+				));
+				emittedForDocument++;
+			}
+		}
+
+		if (!validResult(chunks, hits, policy)) {
+			return result(List.of(), List.of(), Status.BM25_TITLE_INVALID_INPUT, reasonCodes);
+		}
+		if (chunks.isEmpty()) {
+			return result(List.of(), List.of(), Status.BM25_TITLE_NO_MATCH, reasonCodes);
+		}
+		return result(chunks, hits, Status.BM25_TITLE_APPLIED, reasonCodes);
+	}
+
 	private boolean validResult(List<LawSemanticChunkRow> chunks, List<Hit> hits, Policy policy) {
 		if (chunks.size() != hits.size() || chunks.size() > policy.maxTotalChunks()) {
 			return false;
@@ -236,6 +339,24 @@ public class DocumentCandidateExpansion {
 			&& !KoreanQueryNormalizer.normalizeForMatch(candidate.title()).isBlank();
 	}
 
+	private boolean validSeed(DocumentExpansionSeed seed, Set<String> targetRestrictions) {
+		if (seed == null
+			|| seed.documentId() <= 0
+			|| normalizeTarget(seed.target()).isBlank()
+			|| KoreanQueryNormalizer.normalizeForMatch(seed.title()).isBlank()
+			|| seed.matchedTitleTerms().size() < 2
+			|| seed.matchedTitleTerms().size() > 6
+			|| !Double.isFinite(seed.bm25Score())
+			|| seed.bm25Score() <= 0.0
+			|| seed.bm25Rank() < 1
+			|| seed.bm25Rank() > 100
+			|| !"BM25_TITLE".equals(seed.anchorType())
+			|| !"BM25_TITLE_SEED".equals(seed.reason())) {
+			return false;
+		}
+		return targetRestrictions.isEmpty() || targetRestrictions.contains(normalizeTarget(seed.target()));
+	}
+
 	private boolean validChunk(LawSemanticChunkRow row, Set<String> reasonCodes) {
 		boolean valid = row != null && row.chunkId() > 0 && row.documentId() > 0 && !normalizeTarget(row.target()).isBlank();
 		if (!valid) {
@@ -254,6 +375,10 @@ public class DocumentCandidateExpansion {
 
 	private String documentKey(DocumentIdentityCandidate candidate) {
 		return normalizeTarget(candidate.target()) + ":" + candidate.documentId();
+	}
+
+	private String documentKey(DocumentExpansionSeed seed) {
+		return normalizeTarget(seed.target()) + ":" + seed.documentId();
 	}
 
 	private String normalizeProvision(String value) {
@@ -322,7 +447,19 @@ public class DocumentCandidateExpansion {
 		}
 	}
 
-	public record Hit(String candidateKey, int sourceRank, String anchorType, boolean overlapsExistingSource, String reason) {
+	public record Hit(
+		String candidateKey,
+		int sourceRank,
+		String anchorType,
+		boolean overlapsExistingSource,
+		String reason,
+		Integer seedTermCount,
+		Double seedBm25Score,
+		Integer seedBm25Rank
+	) {
+		public Hit(String candidateKey, int sourceRank, String anchorType, boolean overlapsExistingSource, String reason) {
+			this(candidateKey, sourceRank, anchorType, overlapsExistingSource, reason, null, null, null);
+		}
 	}
 
 	public record Result(List<LawSemanticChunkRow> chunks, List<Hit> hits, Status status, List<String> reasonCodes) {
@@ -336,7 +473,9 @@ public class DocumentCandidateExpansion {
 	public enum Status {
 		DISABLED, NO_STRONG_ANCHOR, DOCUMENT_NOT_FOUND,
 		DOCUMENT_MATCH_AMBIGUOUS, APPLIED, DB_FALLBACK_BASELINE,
-		INVALID_BOUNDS, FALLBACK_BASELINE
+		INVALID_BOUNDS, FALLBACK_BASELINE, BM25_TITLE_APPLIED,
+		BM25_TITLE_NO_MATCH, BM25_TITLE_AMBIGUOUS,
+		BM25_TITLE_INVALID_INPUT, BM25_TITLE_DB_FALLBACK
 	}
 
 	private record ScoredDocument(

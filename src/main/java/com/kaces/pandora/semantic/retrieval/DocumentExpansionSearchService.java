@@ -81,6 +81,57 @@ public class DocumentExpansionSearchService {
 		return logged(expansion.rankChunks(anchor, selection, chunks, existingCandidateKeys, policy), targetCount, selection.documents().size(), startedAt);
 	}
 
+	public DocumentCandidateExpansion.Result searchBm25Seeded(
+		DocumentSearchAnchor anchor,
+		List<DocumentExpansionSeed> seeds,
+		boolean includeFuture,
+		Set<String> existingCandidateKeys
+	) {
+		long startedAt = System.nanoTime();
+		DocumentCandidateExpansion.Policy policy = properties.policy();
+		List<DocumentExpansionSeed> safeSeeds = seeds == null ? List.of() : List.copyOf(seeds);
+		if (!properties.bm25TitleEnabled()) {
+			return logged(
+				new DocumentCandidateExpansion.Result(
+					List.of(), List.of(), DocumentCandidateExpansion.Status.DISABLED, List.of()
+				),
+				distinctSeedTargets(safeSeeds), safeSeeds.size(), startedAt
+			);
+		}
+		DocumentCandidateExpansion.Result validation = expansion.rankSeededChunks(
+			anchor, safeSeeds, List.of(), existingCandidateKeys, policy
+		);
+		if (validation.status() == DocumentCandidateExpansion.Status.DISABLED
+			|| validation.status() == DocumentCandidateExpansion.Status.BM25_TITLE_INVALID_INPUT
+			|| safeSeeds.isEmpty()) {
+			return logged(validation, distinctSeedTargets(safeSeeds), safeSeeds.size(), startedAt);
+		}
+
+		List<Long> lawDocumentIds = seedDocumentIds(safeSeeds, true);
+		List<Long> ragDocumentIds = seedDocumentIds(safeSeeds, false);
+		if (lawDocumentIds.size() + ragDocumentIds.size() != safeSeeds.size()) {
+			return logged(
+				new DocumentCandidateExpansion.Result(
+					List.of(), List.of(), DocumentCandidateExpansion.Status.BM25_TITLE_INVALID_INPUT,
+					List.of("BM25_TITLE_INVALID_TARGET")
+				),
+				distinctSeedTargets(safeSeeds), safeSeeds.size(), startedAt
+			);
+		}
+		MapperRead<LawSemanticChunkRow> lawChunks = readLawChunks(anchor, lawDocumentIds, includeFuture, policy);
+		MapperRead<LawSemanticChunkRow> ragChunks = readRagChunks(anchor, ragDocumentIds, policy);
+		if (lawChunks.failed() || ragChunks.failed()) {
+			return logged(bm25TitleDbFallback(), distinctSeedTargets(safeSeeds), safeSeeds.size(), startedAt);
+		}
+
+		List<LawSemanticChunkRow> chunks = new ArrayList<>(lawChunks.values());
+		chunks.addAll(ragChunks.values());
+		return logged(
+			expansion.rankSeededChunks(anchor, safeSeeds, chunks, existingCandidateKeys, policy),
+			distinctSeedTargets(safeSeeds), safeSeeds.size(), startedAt
+		);
+	}
+
 	private MapperRead<DocumentIdentityCandidate> readLawDocuments(
 		DocumentSearchAnchor anchor,
 		List<String> targets,
@@ -160,6 +211,17 @@ public class DocumentExpansionSearchService {
 			.toList();
 	}
 
+	private List<Long> seedDocumentIds(List<DocumentExpansionSeed> seeds, boolean law) {
+		return seeds.stream()
+			.filter(seed -> law ? isLawTarget(seed.target()) : isRagTarget(seed.target()))
+			.map(DocumentExpansionSeed::documentId)
+			.toList();
+	}
+
+	private int distinctSeedTargets(List<DocumentExpansionSeed> seeds) {
+		return (int) seeds.stream().map(DocumentExpansionSeed::target).distinct().count();
+	}
+
 	private List<String> requestedTargets(List<String> targets) {
 		return targets == null ? List.of() : targets.stream()
 			.filter(target -> target != null && !target.isBlank())
@@ -184,6 +246,13 @@ public class DocumentExpansionSearchService {
 	private DocumentCandidateExpansion.Result dbFallback() {
 		return new DocumentCandidateExpansion.Result(
 			List.of(), List.of(), DocumentCandidateExpansion.Status.DB_FALLBACK_BASELINE, List.of("DOCUMENT_EXPANSION_DB_FAILURE")
+		);
+	}
+
+	private DocumentCandidateExpansion.Result bm25TitleDbFallback() {
+		return new DocumentCandidateExpansion.Result(
+			List.of(), List.of(), DocumentCandidateExpansion.Status.BM25_TITLE_DB_FALLBACK,
+			List.of("BM25_TITLE_EXPANSION_DB_FAILURE")
 		);
 	}
 

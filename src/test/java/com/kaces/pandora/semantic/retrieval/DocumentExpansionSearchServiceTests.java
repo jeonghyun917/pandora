@@ -24,6 +24,62 @@ import org.junit.jupiter.api.Test;
 class DocumentExpansionSearchServiceTests {
 
 	@Test
+	void seededSearchReadsOnlyExactDocumentIdsWithoutIdentityLookup() {
+		LawChunkMapper lawMapper = mock(LawChunkMapper.class);
+		RagDocumentMapper ragMapper = mock(RagDocumentMapper.class);
+		when(lawMapper.findDocumentExpansionChunks(
+			eq(List.of(10L)), eq(List.of("제1조")), eq(List.of("목적")), eq(List.of("전자정부")),
+			eq(true), eq(5), eq(7)
+		)).thenReturn(List.of(chunk(100L, 10L, "law")));
+		when(ragMapper.findDocumentExpansionChunks(
+			eq(List.of(20L)), eq(List.of("제1조")), eq(List.of("목적")), eq(List.of("전자정부")),
+			eq(5), eq(7)
+		)).thenReturn(List.of(chunk(200L, 20L, "official_doc")));
+
+		DocumentCandidateExpansion.Result result = service(lawMapper, ragMapper, properties(true, 2, 5, 7))
+			.searchBm25Seeded(
+				anchor(), List.of(seed("law", 10), seed("official_doc", 20)), true, Set.of("law:100")
+			);
+
+		assertThat(result.status()).isEqualTo(DocumentCandidateExpansion.Status.BM25_TITLE_APPLIED);
+		assertThat(result.chunks()).extracting(LawSemanticChunkRow::chunkId).containsExactly(100L, 200L);
+		verify(lawMapper, never()).findDocumentExpansionDocuments(anyList(), anyList(), anyList(), anyBoolean(), anyInt());
+		verify(ragMapper, never()).findDocumentExpansionDocuments(anyList(), anyList(), anyList(), anyInt());
+	}
+
+	@Test
+	void seededSearchDiscardsAllRowsWhenEitherFamilyReadFails() {
+		LawChunkMapper lawMapper = mock(LawChunkMapper.class);
+		RagDocumentMapper ragMapper = mock(RagDocumentMapper.class);
+		when(lawMapper.findDocumentExpansionChunks(anyList(), anyList(), anyList(), anyList(), anyBoolean(), anyInt(), anyInt()))
+			.thenReturn(List.of(chunk(100L, 10L, "law")));
+		when(ragMapper.findDocumentExpansionChunks(anyList(), anyList(), anyList(), anyList(), anyInt(), anyInt()))
+			.thenThrow(new IllegalStateException("database unavailable"));
+
+		DocumentCandidateExpansion.Result result = service(lawMapper, ragMapper, properties(true, 2, 5, 7))
+			.searchBm25Seeded(
+				anchor(), List.of(seed("law", 10), seed("official_doc", 20)), false, Set.of()
+			);
+
+		assertThat(result.status()).isEqualTo(DocumentCandidateExpansion.Status.BM25_TITLE_DB_FALLBACK);
+		assertThat(result.chunks()).isEmpty();
+	}
+
+	@Test
+	void seededSearchPerformsNoReadForEmptyOrOverBoundSeeds() {
+		LawChunkMapper lawMapper = mock(LawChunkMapper.class);
+		RagDocumentMapper ragMapper = mock(RagDocumentMapper.class);
+		DocumentExpansionSearchService service = service(lawMapper, ragMapper, properties(true, 3, 5, 7));
+
+		assertThat(service.searchBm25Seeded(anchor(), List.of(), false, Set.of()).status())
+			.isEqualTo(DocumentCandidateExpansion.Status.BM25_TITLE_NO_MATCH);
+		assertThat(service.searchBm25Seeded(
+			anchor(), List.of(seed("law", 1), seed("law", 2), seed("law", 3), seed("law", 4)), false, Set.of()
+		).status()).isEqualTo(DocumentCandidateExpansion.Status.BM25_TITLE_INVALID_INPUT);
+		verifyNoInteractions(lawMapper, ragMapper);
+	}
+
+	@Test
 	void skipsAllDatabaseReadsWhenExpansionIsDisabled() {
 		LawChunkMapper lawMapper = mock(LawChunkMapper.class);
 		RagDocumentMapper ragMapper = mock(RagDocumentMapper.class);
@@ -191,7 +247,16 @@ class DocumentExpansionSearchServiceTests {
 	}
 
 	private LawAiDocumentExpansionProperties properties(boolean enabled, int maxDocuments, int maxChunksPerDocument, int maxTotalChunks) {
-		return new LawAiDocumentExpansionProperties(enabled, false, maxDocuments, maxChunksPerDocument, maxTotalChunks);
+		return new LawAiDocumentExpansionProperties(
+			enabled, false, maxDocuments, maxChunksPerDocument, maxTotalChunks, true, 100, 2, 0.05
+		);
+	}
+
+	private DocumentExpansionSeed seed(String target, long documentId) {
+		return new DocumentExpansionSeed(
+			target, documentId, "전자정부법", List.of("전자정부", "법률"), 9.0, 1,
+			"BM25_TITLE", "BM25_TITLE_SEED"
+		);
 	}
 
 	private DocumentSearchAnchor anchor() {

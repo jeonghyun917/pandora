@@ -18,6 +18,69 @@ class DocumentCandidateExpansionTests {
 		new DocumentCandidateExpansion.Policy(true, false, 3, 8, 24);
 
 	@Test
+	void ranksOnlyChunksBelongingToBoundedBm25TitleSeeds() {
+		DocumentCandidateExpansion.Result result = expansion.rankSeededChunks(
+			evidenceAnchor(),
+			List.of(seed("law", 10), seed("official_doc", 20)),
+			List.of(
+				chunk(101, 10, "law", "제1조", "목적", "", 1),
+				chunk(201, 20, "official_doc", "1", "절차", "", 1),
+				chunk(301, 30, "law", "제2조", "기타", "", 1)
+			),
+			Set.of("law:101"),
+			policy
+		);
+
+		assertThat(result.status()).isEqualTo(DocumentCandidateExpansion.Status.BM25_TITLE_APPLIED);
+		assertThat(result.chunks()).extracting(LawSemanticChunkRow::documentId).containsOnly(10L, 20L);
+		assertThat(result.hits()).allMatch(hit -> "BM25_TITLE".equals(hit.anchorType()));
+		assertThat(result.hits()).extracting(DocumentCandidateExpansion.Hit::seedTermCount).containsOnly(2);
+		assertThat(result.hits()).extracting(DocumentCandidateExpansion.Hit::seedBm25Score).containsOnly(9.0);
+		assertThat(result.hits()).extracting(DocumentCandidateExpansion.Hit::seedBm25Rank).containsOnly(1);
+	}
+
+	@Test
+	void seededRankingRejectsDuplicateOverBoundAndWrongTargetSeeds() {
+		DocumentExpansionSeed lawSeed = seed("law", 10);
+
+		assertThat(expansion.rankSeededChunks(
+			evidenceAnchor(), List.of(lawSeed, lawSeed), List.of(), Set.of(), policy
+		).status()).isEqualTo(DocumentCandidateExpansion.Status.BM25_TITLE_INVALID_INPUT);
+
+		assertThat(expansion.rankSeededChunks(
+			evidenceAnchor(),
+			List.of(seed("law", 10), seed("law", 20), seed("law", 30), seed("law", 40)),
+			List.of(), Set.of(), policy
+		).status()).isEqualTo(DocumentCandidateExpansion.Status.BM25_TITLE_INVALID_INPUT);
+
+		assertThat(expansion.rankSeededChunks(
+			evidenceAnchor(), List.of(seed("admrul", 10)), List.of(), Set.of(), policy
+		).status()).isEqualTo(DocumentCandidateExpansion.Status.BM25_TITLE_INVALID_INPUT);
+	}
+
+	@Test
+	void seededRankingPreservesPerDocumentAndGlobalBounds() {
+		List<LawSemanticChunkRow> candidates = new ArrayList<>();
+		for (long documentId = 1; documentId <= 3; documentId++) {
+			for (int order = 1; order <= 9; order++) {
+				candidates.add(chunk(documentId * 100 + order, documentId, "law", "제" + order + "조", "", "", order));
+			}
+		}
+
+		DocumentCandidateExpansion.Result result = expansion.rankSeededChunks(
+			evidenceAnchor(),
+			List.of(seed("law", 1), seed("law", 2), seed("law", 3)),
+			candidates, Set.of(), policy
+		);
+
+		assertThat(result.status()).isEqualTo(DocumentCandidateExpansion.Status.BM25_TITLE_APPLIED);
+		assertThat(result.chunks()).hasSize(24);
+		assertThat(result.chunks().stream().filter(row -> row.documentId() == 1).count()).isEqualTo(8);
+		assertThat(result.chunks().stream().filter(row -> row.documentId() == 2).count()).isEqualTo(8);
+		assertThat(result.chunks().stream().filter(row -> row.documentId() == 3).count()).isEqualTo(8);
+	}
+
+	@Test
 	void selectsExactTitleBeforeAllTermAndProvisionMatches() {
 		DocumentCandidateExpansion.DocumentSelection selection = expansion.selectDocuments(
 			anchor(List.of("전자정부법"), List.of("제12조"), List.of("대상"), List.of("law")),
@@ -229,6 +292,21 @@ class DocumentCandidateExpansionTests {
 		List<String> targets
 	) {
 		return anchor(titles, provisions, headings, headings, targets);
+	}
+
+	private DocumentSearchAnchor evidenceAnchor() {
+		return new DocumentSearchAnchor(
+			List.of(), List.of("제1조"), List.of("목적"), List.of("전자정부", "절차"),
+			List.of("law", "official_doc"), DocumentSearchAnchor.AnchorType.NONE,
+			DocumentSearchAnchor.Status.NO_STRONG_ANCHOR
+		);
+	}
+
+	private DocumentExpansionSeed seed(String target, long documentId) {
+		return new DocumentExpansionSeed(
+			target, documentId, "정보화사업 사전협의 지침", List.of("정보화사업", "사전협의"),
+			9.0, 1, "BM25_TITLE", "BM25_TITLE_SEED"
+		);
 	}
 
 	private DocumentSearchAnchor anchor(
