@@ -618,6 +618,8 @@ test('debug response validator requires resultMsg and every retrieval stage arra
     ...retrievalMetrics.SHADOW_STAGE_NAMES,
   ].map((stage) => [stage, []]));
   valid.resultMsg = 'OK';
+  valid.documentExpansionStatus = 'NO_STRONG_ANCHOR';
+  valid.documentExpansionReasonCodes = ['DOCUMENT_NOT_ANCHORED'];
   valid.documentExpansionHits = [];
   valid.documentExpansionFused = [];
 
@@ -641,6 +643,14 @@ test('debug response validator requires resultMsg and every retrieval stage arra
   assert.throws(
     () => retrievalRunner.assertDebugResponse({ ...valid, documentExpansionHits: undefined }),
     /documentExpansionHits.*array/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDebugResponse({ ...valid, documentExpansionStatus: undefined }),
+    /documentExpansionStatus.*string/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDebugResponse({ ...valid, documentExpansionReasonCodes: undefined }),
+    /documentExpansionReasonCodes.*array/i,
   );
   assert.throws(
     () => retrievalRunner.assertDebugResponse({
@@ -808,13 +818,42 @@ test('document expansion shadow-fused presence includes retained control and exp
     vectorHits: [{ matchedAuditGroupIndexes: [0] }],
     lexicalHits: [],
     bm25Hits: [],
+    fused: [{ matchedAuditGroupIndexes: [0] }],
     documentExpansionHits: [expansion],
     documentExpansionFused: [{ matchedAuditGroupIndexes: [0] }, expansion],
+    documentExpansionStatus: 'APPLIED',
+    documentExpansionReasonCodes: [],
   });
 
+  assert.deepEqual(result.controlFusedPresence.matchedRequiredGroupIndexes, [0]);
   assert.deepEqual(result.shadowFusedPresence.matchedRequiredGroupIndexes, [0, 1]);
   assert.equal(result.shadowFusedPresence.allRequired, true);
+  assert.equal(result.status, 'APPLIED');
+  assert.deepEqual(result.reasonCodes, []);
   assert.deepEqual(result.capture.documentExpansionFused.map((item) => item.candidateKey), ['official_doc:7']);
+});
+
+test('document expansion compares top-k fused control to top-k fused shadow without inventing a regression', () => {
+  const result = retrievalRunner.measureDocumentExpansionCase({
+    requiredPropositionGroups: [['first'], ['second']],
+    requiredConditionGroups: [],
+  }, {
+    vectorHits: [{ matchedAuditGroupIndexes: [0, 1] }],
+    lexicalHits: [],
+    bm25Hits: [],
+    fused: [{ matchedAuditGroupIndexes: [0] }],
+    documentExpansionHits: [],
+    documentExpansionFused: [{ matchedAuditGroupIndexes: [0] }],
+    documentExpansionStatus: 'NO_STRONG_ANCHOR',
+    documentExpansionReasonCodes: ['DOCUMENT_NOT_ANCHORED'],
+  }, 10);
+
+  assert.deepEqual(result.candidateSourcePresence.matchedRequiredGroupIndexes, [0, 1]);
+  assert.deepEqual(result.controlFusedPresence.matchedRequiredGroupIndexes, [0]);
+  assert.deepEqual(result.shadowFusedPresence.matchedRequiredGroupIndexes, [0]);
+  assert.equal(result.firstDropStage, 'controlFused');
+  assert.equal(result.status, 'NO_STRONG_ANCHOR');
+  assert.deepEqual(result.reasonCodes, ['DOCUMENT_NOT_ANCHORED']);
 });
 
 test('document expansion capture ignores nullable fused control metadata but rejects partial expansion metadata', () => {

@@ -1953,6 +1953,8 @@ public class LawAiAnswerService {
 				new LawAiDebugResponse.Stage("grounds", retrieval.grounds().size(), "Grounds returned to the UI"),
 				new LawAiDebugResponse.Stage("selected", retrieval.answerChunks().size(), "Grounds compressed for answer generation")
 			),
+			retrieval.hybrid().documentExpansionStatus().name(),
+			retrieval.hybrid().documentExpansionReasonCodes(),
 			toDebugItems(retrieval.vectorChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.lexicalChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.hybrid().bm25Chunks(), retrieval, selectedKeys, auditTermGroups),

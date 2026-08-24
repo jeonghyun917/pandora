@@ -50,7 +50,23 @@ class DocumentSearchAnchorExtractorTests {
 
 		assertThat(anchor.status()).isEqualTo(DocumentSearchAnchor.Status.ELIGIBLE);
 		assertThat(anchor.anchorType()).isEqualTo(DocumentSearchAnchor.AnchorType.EXPLICIT_TITLE);
-		assertThat(anchor.titleTerms()).containsExactly(title);
+		assertThat(anchor.titleTerms()).containsExactly(title.split("\\s+"));
+	}
+
+	@Test
+	void splitsMultiWordExplicitTitleIntoStrictOrderedTerms() {
+		String question = "인공지능 데이터 기반 행정 활성화 법은 언제부터 효력이 있어?";
+
+		DocumentSearchAnchor anchor = DocumentSearchAnchorExtractor.extract(
+			question,
+			QuestionIntentProfile.from(question),
+			List.of("인공지능", "데이터", "행정", "활성화", "효력"),
+			List.of("효력")
+		);
+
+		assertThat(anchor.status()).isEqualTo(DocumentSearchAnchor.Status.ELIGIBLE);
+		assertThat(anchor.anchorType()).isEqualTo(DocumentSearchAnchor.AnchorType.EXPLICIT_TITLE);
+		assertThat(anchor.titleTerms()).containsExactly("인공지능", "데이터", "기반", "행정", "활성화", "법");
 	}
 
 	@Test

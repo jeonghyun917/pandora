@@ -33,6 +33,26 @@ const DOCUMENT_EXPANSION_REASON_CODES = new Set([
   'EVIDENCE_TERMS',
   'DOCUMENT_ORDER',
 ]);
+const DOCUMENT_EXPANSION_STATUSES = new Set([
+  'DISABLED',
+  'NO_STRONG_ANCHOR',
+  'DOCUMENT_NOT_FOUND',
+  'DOCUMENT_MATCH_AMBIGUOUS',
+  'APPLIED',
+  'DB_FALLBACK_BASELINE',
+  'INVALID_BOUNDS',
+  'FALLBACK_BASELINE',
+]);
+const DOCUMENT_EXPANSION_OUTCOME_REASON_CODES = new Set([
+  'DOCUMENT_NOT_ANCHORED',
+  'DOCUMENT_MATCH_AMBIGUOUS',
+  'DOCUMENT_LIMIT',
+  'DOCUMENT_CHUNK_LIMIT',
+  'DOCUMENT_GLOBAL_LIMIT',
+  'DOCUMENT_DUPLICATE_OVERLAP',
+  'INVALID_DOCUMENT_IDENTITY',
+  'DOCUMENT_EXPANSION_DB_FAILURE',
+]);
 const MAX_DOCUMENT_EXPANSION_HITS = 24;
 const MAX_DOCUMENT_EXPANSION_HITS_PER_DOCUMENT = 8;
 
@@ -70,7 +90,7 @@ async function main() {
       const response = await loadDebugResponse(evalCase, options);
       const measurement = {
         ...measureRetrievalCase(evalCase, response, options.k),
-		documentExpansion: measureDocumentExpansionCase(evalCase, response),
+        documentExpansion: measureDocumentExpansionCase(evalCase, response, options.k),
 		candidateLoss: extractCandidateLossAnalysis(response),
         question: evalCase.question,
         targets: evalCase.targets,
@@ -293,6 +313,7 @@ function assertDebugResponse(body, auditGroupCount = 0) {
   if (typeof body.resultMsg !== 'string') {
     throw new Error('debug search response resultMsg must be a string');
   }
+  assertDocumentExpansionOutcome(body);
   for (const stage of [...STAGE_NAMES, ...SHADOW_STAGE_NAMES]) {
     if (!Array.isArray(body[stage])) {
       throw new Error(`debug search response ${stage} must be an array`);
@@ -335,6 +356,23 @@ function assertDebugResponse(body, auditGroupCount = 0) {
 	}
 	assertDocumentExpansionCapture(body);
   return body;
+}
+
+function assertDocumentExpansionOutcome(response) {
+	const status = String(response?.documentExpansionStatus ?? '').trim();
+	if (!DOCUMENT_EXPANSION_STATUSES.has(status)) {
+		throw new Error('debug search response documentExpansionStatus must be a known string');
+	}
+	const source = response?.documentExpansionReasonCodes;
+	if (!Array.isArray(source) || source.length > 8) {
+		throw new Error('debug search response documentExpansionReasonCodes must be an array with at most 8 items');
+	}
+	const reasonCodes = source.map((value) => String(value ?? '').trim());
+	if (reasonCodes.some((value) => !DOCUMENT_EXPANSION_OUTCOME_REASON_CODES.has(value))
+		|| new Set(reasonCodes).size !== reasonCodes.length) {
+		throw new Error('debug search response documentExpansionReasonCodes contains an unknown or duplicate value');
+	}
+	return { status, reasonCodes };
 }
 
 function assertDocumentExpansionCapture(response) {
@@ -420,21 +458,33 @@ function captureDocumentExpansionItems(items, label, options = {}) {
 	return captured;
 }
 
-function measureDocumentExpansionCase(evalCase, response) {
+function measureDocumentExpansionCase(evalCase, response, k = 10) {
 	const requiredGroupCount = buildAuditTermGroups(evalCase).length;
 	const capture = assertDocumentExpansionCapture(response);
+	const outcome = assertDocumentExpansionOutcome(response);
+	const limit = Number.isSafeInteger(k) && k > 0 ? k : 10;
+	const bounded = (items) => Array.isArray(items) ? items.slice(0, limit) : [];
 	const controlItems = [
-		...(Array.isArray(response?.vectorHits) ? response.vectorHits : []),
-		...(Array.isArray(response?.lexicalHits) ? response.lexicalHits : []),
-		...(Array.isArray(response?.bm25Hits) ? response.bm25Hits : []),
+		...bounded(response?.vectorHits),
+		...bounded(response?.lexicalHits),
+		...bounded(response?.bm25Hits),
 	];
-	const control = measureDocumentExpansionPresence(controlItems, requiredGroupCount);
+	const candidateSourcePresence = measureDocumentExpansionPresence(controlItems, requiredGroupCount);
+	const controlFusedPresence = measureDocumentExpansionPresence(bounded(response?.fused), requiredGroupCount);
 	const expansionSourcePresence = measureDocumentExpansionPresence(capture.documentExpansionHits, requiredGroupCount);
-	const shadowFusedPresence = measureDocumentExpansionPresence(response?.documentExpansionFused, requiredGroupCount);
+	const shadowFusedPresence = measureDocumentExpansionPresence(bounded(response?.documentExpansionFused), requiredGroupCount);
 	return {
-		control, candidateSourcePresence: control, expansionSourcePresence, shadowFusedPresence,
-		firstDropStage: !control.anyRequired ? 'candidateSources' : !expansionSourcePresence.anyRequired ? 'documentExpansion'
-			: !shadowFusedPresence.anyRequired ? 'documentExpansionFused' : null,
+		control: controlFusedPresence,
+		candidateSourcePresence,
+		controlFusedPresence,
+		expansionSourcePresence,
+		shadowFusedPresence,
+		firstDropStage: !candidateSourcePresence.allRequired ? 'candidateSources'
+			: !controlFusedPresence.allRequired && !shadowFusedPresence.allRequired ? 'controlFused'
+				: controlFusedPresence.allRequired && !shadowFusedPresence.allRequired ? 'documentExpansionFused'
+					: null,
+		status: outcome.status,
+		reasonCodes: outcome.reasonCodes,
 		capture,
 	};
 }

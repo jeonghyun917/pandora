@@ -3,6 +3,8 @@ package com.kaces.pandora.semantic.retrieval;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.kaces.pandora.common.text.DocumentSearchAnchor;
+import com.kaces.pandora.common.text.DocumentSearchAnchorExtractor;
+import com.kaces.pandora.common.text.QuestionIntentProfile;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,6 +32,29 @@ class DocumentCandidateExpansionTests {
 		assertThat(selection.status()).isEqualTo(DocumentCandidateExpansion.Status.APPLIED);
 		assertThat(selection.documents()).extracting(DocumentIdentityCandidate::documentId)
 			.containsExactly(10L, 20L, 30L);
+	}
+
+	@Test
+	void matchesFormalTitleOnlyWhenEveryExplicitTitleTokenIsPresent() {
+		String question = "인공지능 데이터 기반 행정 활성화 법은 언제부터 효력이 있어?";
+		DocumentSearchAnchor extracted = DocumentSearchAnchorExtractor.extract(
+			question,
+			QuestionIntentProfile.from(question),
+			List.of("인공지능", "데이터", "행정", "활성화", "효력"),
+			List.of("효력")
+		);
+
+		DocumentCandidateExpansion.DocumentSelection selection = expansion.selectDocuments(
+			extracted,
+			List.of(
+				document(1, "law", "인공지능 및 데이터 기반 행정 활성화에 관한 법률", false),
+				document(2, "law", "인공지능 기반 행정 활성화에 관한 법률", false)
+			),
+			policy
+		);
+
+		assertThat(selection.status()).isEqualTo(DocumentCandidateExpansion.Status.APPLIED);
+		assertThat(selection.documents()).extracting(DocumentIdentityCandidate::documentId).containsExactly(1L);
 	}
 
 	@Test

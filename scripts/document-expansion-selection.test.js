@@ -93,6 +93,17 @@ test('document expansion selector allows only repeated bounded gains without bas
     selection.selectDocumentExpansionPolicy({ manifest, run1: lowGroups, run2: structuredClone(lowGroups), policies }).status,
     'DOCUMENT_EXPANSION_QUALITY_REGRESSION',
   );
+
+  const legacyComparator = structuredClone(run1);
+  for (const result of legacyComparator.results) {
+    delete result.documentExpansion.controlFusedPresence;
+  }
+  assert.equal(
+    selection.selectDocumentExpansionPolicy({
+      manifest, run1: legacyComparator, run2: structuredClone(legacyComparator), policies,
+    }).status,
+    'INVALID_CAPTURE',
+  );
 });
 
 test('document expansion selector CLI requires immutable evidence paths', () => {
@@ -124,6 +135,7 @@ function metric(id, controlIndexes, fusedIndexes, requiredGroupCount = 2) {
     id,
     documentExpansion: {
       control: { matchedRequiredGroupIndexes: controlIndexes, requiredGroupCount },
+      controlFusedPresence: { matchedRequiredGroupIndexes: controlIndexes, requiredGroupCount },
       expansionSourcePresence: { matchedRequiredGroupIndexes: fusedIndexes, requiredGroupCount },
       shadowFusedPresence: { matchedRequiredGroupIndexes: fusedIndexes, requiredGroupCount },
     },

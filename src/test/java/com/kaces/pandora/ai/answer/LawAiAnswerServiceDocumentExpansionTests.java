@@ -96,6 +96,11 @@ class LawAiAnswerServiceDocumentExpansionTests {
 			assertThat(ids(result.merged())).containsExactly(101L, 201L, 301L);
 			assertThat(ids(result.documentExpansionHits())).containsExactly(901L, 902L);
 			assertThat(ids(result.documentExpansionFused())).containsExactly(101L, 201L, 901L, 902L);
+			assertThat(result.documentExpansionStatus()).isEqualTo(DocumentCandidateExpansion.Status.APPLIED.name());
+			assertThat(result.documentExpansionReasonCodes()).containsExactly(
+				RetrievalCandidateTrace.DOCUMENT_LIMIT,
+				RetrievalCandidateTrace.DOCUMENT_CHUNK_LIMIT
+			);
 			assertThat(baseline.embeddingRequestCount()).isEqualTo(1);
 			assertThat(shadow.embeddingRequestCount()).isEqualTo(1);
 			assertThat(baseline.qdrantSearchRequestCount()).isEqualTo(1);
@@ -210,6 +215,10 @@ class LawAiAnswerServiceDocumentExpansionTests {
 					RetrievalCandidateTrace.DOCUMENT_NOT_ANCHORED
 				);
 			assertThat(result.documentExpansionHits()).isEmpty();
+			assertThat(result.documentExpansionStatus())
+				.isEqualTo(DocumentCandidateExpansion.Status.NO_STRONG_ANCHOR.name());
+			assertThat(result.documentExpansionReasonCodes())
+				.containsExactly(RetrievalCandidateTrace.DOCUMENT_NOT_ANCHORED);
 			assertThat(result.documentExpansionFused()).extracting(LawAiDebugResponse.Item::chunkId)
 				.containsExactly(101L, 201L);
 			verify(harness.lawMapper(), never()).findDocumentExpansionDocuments(

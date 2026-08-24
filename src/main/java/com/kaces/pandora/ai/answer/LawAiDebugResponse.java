@@ -13,6 +13,8 @@ public record LawAiDebugResponse(
 	List<String> expandedQueries,
 	List<String> clarificationQuestions,
 	List<Stage> stages,
+	String documentExpansionStatus,
+	List<String> documentExpansionReasonCodes,
 	List<Item> vectorHits,
 	List<Item> lexicalHits,
 	List<Item> bm25Hits,

@@ -8,7 +8,7 @@ const PROVENANCE_FIELDS = Object.freeze([
 function summarizeDocumentExpansionRun(run) {
   const results = Array.isArray(run?.results) ? run.results : [];
   return {
-    control: summarizePresence(results, 'control'),
+    control: summarizePresence(results, 'controlFusedPresence'),
     expansionSource: summarizePresence(results, 'expansionSourcePresence'),
     shadowFused: summarizePresence(results, 'shadowFusedPresence'),
   };

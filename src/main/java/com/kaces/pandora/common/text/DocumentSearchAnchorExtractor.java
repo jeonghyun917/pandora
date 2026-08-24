@@ -77,7 +77,12 @@ public final class DocumentSearchAnchorExtractor {
 		List<String> titles = new ArrayList<>();
 		Matcher suffix = TITLE_SUFFIX.matcher(question);
 		while (suffix.find()) {
-			titles.add(suffix.group(1));
+			String title = suffix.group(1).replaceAll("\\s+", " ").trim();
+			if (title.contains(" ")) {
+				titles.addAll(List.of(title.split("\\s+")));
+			} else {
+				titles.add(title);
+			}
 		}
 		return cleanTerms(titles, MAX_TITLE_TERMS);
 	}
