@@ -172,3 +172,33 @@ Date: 2026-08-24 (Asia/Seoul)
 - Qdrant/MariaDB remained read only; port 18080 and `output/` were untouched.
   Complete v3 run, stdout, policy, and selector JSON/Markdown evidence is
   archived in this directory.
+
+## BM25 title-seeded expansion implementation checkpoint
+
+Date: 2026-08-25 (Asia/Seoul)
+
+- Code commit/tree: `0bd36c2b54dc63f6f11ff5e1541cb33ec46bf47d` /
+  `30ea575d435e458ba58a84f3547ec48a6468b8f3` on
+  `codex/document-first-candidate-expansion`.
+- Added a bounded BM25-title document-seed fallback only when strong anchor
+  extraction returns `NO_STRONG_ANCHOR`; a strong `APPLIED` anchor still wins.
+- Policy: enabled, max hits `100`, minimum title terms `2`, ambiguity ratio
+  `0.05`, and existing expansion limits `3/8/24`.
+- Authority remains false. The BM25 path is capture/shadow evidence only and
+  cannot alter final answer grounds or the existing control orders.
+- Debug/capture evidence includes seed term count, finite positive score, and
+  bounded rank. Offline validation checks seed status, identity, bounds, and
+  selection-policy/runtime-config hash equality.
+- Verification: focused Maven `69/69`; related Node `114/114`; fresh full Maven
+  `1324` tests with failures/errors `0/0` and opt-in MariaDB skips `18`.
+- The first full run found a configuration-record constructor binding error.
+  `@ConstructorBinding` on the canonical constructor fixed the root cause;
+  focused application-context regression tests passed `5/5` before the clean
+  full-suite rerun.
+- Read-only status: Qdrant `6333` and app-dev `8080` were listening; `18080`
+  was absent with a stale PID file only. No service lifecycle action, OpenAI
+  call, Qdrant/MariaDB mutation, or `output/` access occurred.
+- The live 8080 runtime is not the new candidate. Candidate deployment, a live
+  read-only mapper fence, and a new immutable 24-case manifest remain required
+  before any external evaluation. Do not reuse the historical `094b9aa8...`
+  approval or evidence.

@@ -144,3 +144,59 @@ The one-time selector result is `NO_DOCUMENT_EXPANSION_IMPROVEMENT`, eligible
 `false`. No difficult/holdout evaluation was launched and no authority flag
 was enabled. The candidate stays shadow-only. Qdrant and MariaDB were read
 only; port `18080` and `output/` were not touched.
+
+## BM25 title-seeded candidate implementation checkpoint
+
+Date: 2026-08-25 (Asia/Seoul)
+
+- Candidate branch: `codex/document-first-candidate-expansion`.
+- Verified production/test code commit/tree:
+  `0bd36c2b54dc63f6f11ff5e1541cb33ec46bf47d` /
+  `30ea575d435e458ba58a84f3547ec48a6468b8f3`.
+- When strong anchor extraction returns `NO_STRONG_ANCHOR`, the answer service
+  can select bounded document seeds from BM25 title hits and expand chunks from
+  those verified documents. A strong `APPLIED` anchor suppresses the fallback.
+- The committed BM25 policy is enabled, maximum hits `100`, minimum title terms
+  `2`, ambiguity ratio `0.05`, with the existing expansion bounds `3/8/24`.
+- This path remains shadow-only. The authoritative decision still requires the
+  legacy strong-anchor result to be `APPLIED`, so BM25-seeded chunks cannot
+  affect answer grounds or control ordering.
+- Debug and offline capture now include seed term count, score, and rank. The
+  evaluator accepts that metadata only for BM25 seed statuses, checks all
+  numeric/bound constraints, and requires the captured selection-policy config
+  hash to match the runtime config hash.
+
+Verification evidence for this exact code tree:
+
+```text
+Focused backend suite: 69 tests, 0 failures, 0 errors, 0 skipped
+Related Node suite: 114 tests, 114 passed, 0 failed/skipped/todo
+Full Maven suite: 1324 tests, 0 failures, 0 errors, 18 skipped
+```
+
+The first full Maven run exposed a Spring constructor-binding regression after
+the configuration record gained a compatibility constructor. The canonical
+constructor was explicitly annotated with `@ConstructorBinding`; focused
+application-context tests then passed `5/5`, and the fresh full Maven rerun
+passed as recorded above. The 18 skips remain the opt-in MariaDB integration
+tests guarded by `pandora.mariadb.it=true`.
+
+A read-only runtime status check found Qdrant on `6333` and app-dev on `8080`,
+no listener on `18080`, and only a stale batch PID file. No runtime was started,
+stopped, restarted, promoted, or changed. The live 8080 process is not this
+new candidate, so it is not runtime evidence for the candidate. Tests used
+mocks/in-memory fixtures; no OpenAI request and no Qdrant or MariaDB mutation
+was performed. Port `18080` and `output/` were not touched.
+
+The live MyBatis read-only mapper check remains a pre-evaluation fence for a
+deployed candidate; mapper XML parsing and parameter/bound tests passed locally.
+No new 24-case external evaluation has run. A fresh immutable manifest and
+exact payload approval are required; the historical `094b9aa8...` manifest
+must not be reused. Authority remains false until the new candidate passes its
+frozen training gate twice without baseline regression.
+
+A scoped implementation review found no Critical or Important defect. It
+checked external-call counts, shadow/authority isolation, bounded mapper reads,
+title-only term evidence, malformed identity and numeric metadata, evaluator
+provenance, and database failure fallback. No fix round was required beyond the
+constructor-binding regression found by the full suite.

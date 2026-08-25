@@ -49,10 +49,19 @@ Document-first candidate expansion is shadow-only until its separately
 approved promotion ladder passes. The committed safety bounds are three
 documents, eight chunks per document, and 24 unique chunks globally.
 
+When strong title/section anchoring returns `NO_STRONG_ANCHOR`, the candidate
+may derive document seeds from bounded BM25 title hits. This fallback is also
+shadow-only. Its committed bounds are 100 inspected hits, at least two title
+terms, ambiguity ratio `0.05`, and the same `3/8/24` document/chunk limits.
+
 - Keep `law-ai.retrieval.document-expansion.authoritative=false` before
   promotion.
 - Preserve the vector, lexical, pure-RRF, coverage-aware, and final answer
   control orders while authority is false.
+- Do not run the BM25 title fallback after a strong anchor is applied, and do
+  not let its candidates become authoritative through another retrieval flag.
+- Reject body-only overlap, insufficient title terms, ambiguous title hits,
+  non-positive/non-finite scores, out-of-range ranks, and malformed identity.
 - Treat invalid bounds, malformed document/chunk identity, ambiguity, database
   failure, timeout, and provenance drift as baseline fallbacks.
 - Require an immutable manifest and exact approval before sending evaluation
@@ -60,6 +69,9 @@ documents, eight chunks per document, and 24 unique chunks globally.
   evaluation.
 - Do not consume difficult or holdout cases unless the frozen training gate
   passes twice without baseline regression.
+- Require a fresh immutable manifest and exact external-payload approval for
+  evaluating the BM25 title-seeded candidate. A manifest approved for an older
+  candidate must not be reused.
 
 The implementation verification record is
 [`docs/superpowers/specs/2026-08-24-document-first-candidate-expansion-verification.md`](superpowers/specs/2026-08-24-document-first-candidate-expansion-verification.md).
