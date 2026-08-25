@@ -227,3 +227,37 @@ Date: 2026-08-25 (Asia/Seoul)
   No difficult/holdout evaluation ran and no authority flag changed.
 - Law DB/Qdrant stayed 211,548/211,548; RAG DB/Qdrant stayed 84,248/84,248.
   Port 18080 and `output/` were untouched.
+
+## BM25 novel-chunk expansion approval-ready checkpoint
+
+Date: 2026-08-25 (Asia/Seoul)
+
+- Merged implementation commit `5f3117a8ed3fb9cf478adb56637605d5f1cab9c1`
+  (tree `3f5cd5b6be4449a2afcc88d6f20d61df46a50e5e`) makes the BM25
+  title-seeded shadow path skip already-seen source candidates and continue
+  scanning a bounded deeper pool for genuinely novel chunks. Strong-anchor
+  behavior and all authority flags remain unchanged.
+- Fresh merged-tree verification passed: Maven `1326` tests with failures and
+  errors `0/0` (`18` opt-in MariaDB skips), plus related Node tests `114/114`.
+- App-dev 8080 only was deployed with JAR SHA-256
+  `f8ce7f16bf16ddbbb47efe10f102bb12ee248ec76744508d97f0668e65d05f67`.
+  Runtime `d52ee990-4105-4b1b-b1c8-996ff2d8d1f7`, config
+  `4ffc75b09dfbeaed48e2cda40ad88fe0725d3d1a3f61f3dedc651ae3af44333c`,
+  index `d7f79c7f07e289e720170936572c1e300abb9b6c3202fd0b9d08f584fb6746da`,
+  and lexical `da8d51cecea3bd10ce9ba7eb40c2a25015d2166e983d836018616377de9bb9aa`
+  were stable across repeated reads.
+- Law DB/Qdrant parity is `211548/211548`; RAG parity is `84248/84248`.
+  Both collections are green, optimizer `ok`, update queue `0`, readiness true,
+  and Qdrant search failures `0`.
+- A live read-only mapper preflight ran inside an automatically rolled-back
+  transaction. It returned law documents/chunks `3/49` and RAG
+  documents/chunks `3/55`; the candidate pool limits `24` per document and
+  `72` total held.
+- New exact 24-question, two-run manifest canonical SHA-256 is
+  `202b0981abe9f360c7f2d3cdda98f0b61470c980e4b31a191b68f347c45f62df`.
+  It permits exactly `48` OpenAI Embedding API calls, zero Answer API calls,
+  K `30`, capture `100`, concurrency `1`, and read-only Qdrant/MariaDB access.
+  Its evidence paths are new and absent.
+- No external evaluation has launched and no authority flag changed. Port
+  18080 and `output/` were untouched. Exact payload approval and an immediate
+  no-drift fence recheck remain required before the one-time evaluation.
