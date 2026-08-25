@@ -97,6 +97,56 @@ class Bm25TitleDocumentSeedSelectorTests {
 	}
 
 	@Test
+	void returnsNoMatchWhenBm25HasNoHits() {
+		Bm25TitleDocumentSeedSelector.Selection result = selector.select(
+			List.of(),
+			List.of(),
+			List.of("정보화사업", "사전협의"),
+			List.of("law"),
+			policy(3)
+		);
+
+		assertThat(result.status()).isEqualTo(Bm25TitleDocumentSeedSelector.Status.NO_MATCH);
+	}
+
+	@Test
+	void ignoresUnhydratedHitWhenLaterDocumentHasAValidTitleSeed() {
+		Bm25TitleDocumentSeedSelector.Selection result = selector.select(
+			List.of(
+				hit("law", 999, 99, 10.0, 1, "정보화사업", "사전협의"),
+				hit("law", 101, 10, 9.0, 2, "정보화사업", "사전협의")
+			),
+			List.of(chunk(101, 10, "law", "정보화사업 사전협의 지침", "")),
+			List.of("정보화사업", "사전협의"),
+			List.of("law"),
+			policy(3)
+		);
+
+		assertThat(result.status()).isEqualTo(Bm25TitleDocumentSeedSelector.Status.APPLIED);
+		assertThat(result.seeds()).extracting(DocumentExpansionSeed::documentId).containsExactly(10L);
+	}
+
+	@Test
+	void ignoresBlankTitleRowWhenLaterDocumentHasAValidTitleSeed() {
+		Bm25TitleDocumentSeedSelector.Selection result = selector.select(
+			List.of(
+				hit("law", 999, 99, 10.0, 1, "정보화사업", "사전협의"),
+				hit("law", 101, 10, 9.0, 2, "정보화사업", "사전협의")
+			),
+			List.of(
+				chunk(999, 99, "law", "", ""),
+				chunk(101, 10, "law", "정보화사업 사전협의 지침", "")
+			),
+			List.of("정보화사업", "사전협의"),
+			List.of("law"),
+			policy(3)
+		);
+
+		assertThat(result.status()).isEqualTo(Bm25TitleDocumentSeedSelector.Status.APPLIED);
+		assertThat(result.seeds()).extracting(DocumentExpansionSeed::documentId).containsExactly(10L);
+	}
+
+	@Test
 	void aggregatesDuplicateChunkHitsForOneDocumentUsingBestScoreAndRank() {
 		Bm25TitleDocumentSeedSelector.Selection result = selector.select(
 			List.of(
