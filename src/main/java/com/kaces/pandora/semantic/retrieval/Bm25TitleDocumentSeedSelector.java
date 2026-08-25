@@ -42,7 +42,7 @@ public final class Bm25TitleDocumentSeedSelector {
 		Map<String, LawSemanticChunkRow> rowByCandidate = new LinkedHashMap<>();
 		for (LawSemanticChunkRow row : hydratedRows) {
 			if (!validRow(row)) {
-				return Selection.empty(Status.INVALID_INPUT);
+				continue;
 			}
 			String key = candidateKey(row.target(), row.chunkId());
 			if (rowByCandidate.putIfAbsent(key, row) != null) {
@@ -51,6 +51,7 @@ public final class Bm25TitleDocumentSeedSelector {
 		}
 
 		Map<String, MutableSeed> byDocument = new LinkedHashMap<>();
+		boolean hasHydratedHit = false;
 		int inspected = Math.min(hits.size(), policy.maxBm25HitsInspected());
 		for (int index = 0; index < inspected; index++) {
 			LexicalSearchHit hit = hits.get(index);
@@ -62,9 +63,13 @@ public final class Bm25TitleDocumentSeedSelector {
 				return Selection.empty(Status.INVALID_INPUT);
 			}
 			LawSemanticChunkRow row = rowByCandidate.get(candidateKey(target, hit.chunkId()));
-			if (row == null || row.documentId() != hit.documentId() || !target.equals(normalizeTarget(row.target()))) {
+			if (row == null) {
+				continue;
+			}
+			if (row.documentId() != hit.documentId() || !target.equals(normalizeTarget(row.target()))) {
 				return Selection.empty(Status.INVALID_INPUT);
 			}
+			hasHydratedHit = true;
 
 			String normalizedTitle = KoreanQueryNormalizer.normalizeForMatch(row.title());
 			String documentKey = documentKey(target, hit.documentId());
@@ -87,6 +92,9 @@ public final class Bm25TitleDocumentSeedSelector {
 			}
 			seed.bestScore = Math.max(seed.bestScore, hit.score());
 			seed.bestRank = Math.min(seed.bestRank, hit.rank());
+		}
+		if (inspected > 0 && !hasHydratedHit) {
+			return Selection.empty(Status.INVALID_INPUT);
 		}
 
 		List<DocumentExpansionSeed> eligible = byDocument.values().stream()
