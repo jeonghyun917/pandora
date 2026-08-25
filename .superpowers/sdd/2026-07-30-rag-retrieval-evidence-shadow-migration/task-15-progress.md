@@ -202,3 +202,28 @@ Date: 2026-08-25 (Asia/Seoul)
   read-only mapper fence, and a new immutable 24-case manifest remain required
   before any external evaluation. Do not reuse the historical `094b9aa8...`
   approval or evidence.
+
+## BM25 title-seeded expansion training result
+
+Date: 2026-08-25 (Asia/Seoul)
+
+- Merged candidate commit `cb4d499d41c4787c39fb2a88bc196a3671909ee9`
+  was packaged as JAR SHA-256 `a05d6411e0673705921843f4959f49dadfe07a80071ce516c3e70370650ec965`
+  and deployed to app-dev 8080 only. Runtime instance was
+  `895a548c-0ab7-455e-9c3a-7032015af9e0`; 18080 remained absent.
+- Fresh live mapper preflight passed with explicit rollback: law documents/chunks
+  3/14 and RAG documents/chunks 3/20. No database mutation occurred.
+- Exact manifest `7dcd1601...` was approved. An initial missing case-ID argument
+  failed before runtime retrieval or external calls; the corrected frozen scope
+  then completed two independent 24/24 runs with 48 total OpenAI Embedding API
+  calls, 0 Answer API calls, request errors 0, and Qdrant failures 0.
+- Both runs reproduced control `7/24` all-required, `14/24` any-required, and
+  `22` matched groups. Expansion source was `0/24`, `0/24`, `0`; shadow fused
+  remained `7/24`, `14/24`, `22`.
+- BM25 title seeding applied to `project-review-hardware-exclusion` and
+  `msit-tving-investigation`, but all emitted chunks overlapped existing source
+  candidates and added no required-oracle group.
+- Selector result is `NO_DOCUMENT_EXPANSION_IMPROVEMENT`, eligible `false`.
+  No difficult/holdout evaluation ran and no authority flag changed.
+- Law DB/Qdrant stayed 211,548/211,548; RAG DB/Qdrant stayed 84,248/84,248.
+  Port 18080 and `output/` were untouched.
