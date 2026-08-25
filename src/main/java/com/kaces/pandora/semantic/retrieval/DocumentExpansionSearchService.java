@@ -17,6 +17,9 @@ import org.springframework.stereotype.Service;
 public class DocumentExpansionSearchService {
 
 	private static final Logger log = LoggerFactory.getLogger(DocumentExpansionSearchService.class);
+	private static final int BM25_TITLE_CANDIDATE_POOL_MULTIPLIER = 3;
+	private static final int MAX_BM25_TITLE_CANDIDATES_PER_DOCUMENT = 24;
+	private static final int MAX_BM25_TITLE_CANDIDATES_TOTAL = 72;
 
 	private final LawChunkMapper lawChunkMapper;
 	private final RagDocumentMapper ragDocumentMapper;
@@ -118,8 +121,14 @@ public class DocumentExpansionSearchService {
 				distinctSeedTargets(safeSeeds), safeSeeds.size(), startedAt
 			);
 		}
-		MapperRead<LawSemanticChunkRow> lawChunks = readLawChunks(anchor, lawDocumentIds, includeFuture, policy);
-		MapperRead<LawSemanticChunkRow> ragChunks = readRagChunks(anchor, ragDocumentIds, policy);
+		int candidatePoolPerDocument = bm25TitleCandidatePoolPerDocument(policy);
+		int candidatePoolTotal = bm25TitleCandidatePoolTotal(policy);
+		MapperRead<LawSemanticChunkRow> lawChunks = readLawChunks(
+			anchor, lawDocumentIds, includeFuture, candidatePoolPerDocument, candidatePoolTotal
+		);
+		MapperRead<LawSemanticChunkRow> ragChunks = readRagChunks(
+			anchor, ragDocumentIds, candidatePoolPerDocument, candidatePoolTotal
+		);
 		if (lawChunks.failed() || ragChunks.failed()) {
 			return logged(bm25TitleDbFallback(), distinctSeedTargets(safeSeeds), safeSeeds.size(), startedAt);
 		}
@@ -173,13 +182,25 @@ public class DocumentExpansionSearchService {
 		boolean includeFuture,
 		DocumentCandidateExpansion.Policy policy
 	) {
+		return readLawChunks(
+			anchor, documentIds, includeFuture, policy.maxChunksPerDocument(), policy.maxTotalChunks()
+		);
+	}
+
+	private MapperRead<LawSemanticChunkRow> readLawChunks(
+		DocumentSearchAnchor anchor,
+		List<Long> documentIds,
+		boolean includeFuture,
+		int maxChunksPerDocument,
+		int maxTotalChunks
+	) {
 		if (documentIds.isEmpty()) {
 			return MapperRead.success(List.of());
 		}
 		try {
 			return MapperRead.success(lawChunkMapper.findDocumentExpansionChunks(
 				documentIds, anchor.provisionTerms(), anchor.headingTerms(), anchor.evidenceTerms(), includeFuture,
-				policy.maxChunksPerDocument(), policy.maxTotalChunks()
+				maxChunksPerDocument, maxTotalChunks
 			));
 		} catch (RuntimeException exception) {
 			return MapperRead.failure();
@@ -191,13 +212,22 @@ public class DocumentExpansionSearchService {
 		List<Long> documentIds,
 		DocumentCandidateExpansion.Policy policy
 	) {
+		return readRagChunks(anchor, documentIds, policy.maxChunksPerDocument(), policy.maxTotalChunks());
+	}
+
+	private MapperRead<LawSemanticChunkRow> readRagChunks(
+		DocumentSearchAnchor anchor,
+		List<Long> documentIds,
+		int maxChunksPerDocument,
+		int maxTotalChunks
+	) {
 		if (documentIds.isEmpty()) {
 			return MapperRead.success(List.of());
 		}
 		try {
 			return MapperRead.success(ragDocumentMapper.findDocumentExpansionChunks(
 				documentIds, anchor.provisionTerms(), anchor.headingTerms(), anchor.evidenceTerms(),
-				policy.maxChunksPerDocument(), policy.maxTotalChunks()
+				maxChunksPerDocument, maxTotalChunks
 			));
 		} catch (RuntimeException exception) {
 			return MapperRead.failure();
@@ -220,6 +250,20 @@ public class DocumentExpansionSearchService {
 
 	private int distinctSeedTargets(List<DocumentExpansionSeed> seeds) {
 		return (int) seeds.stream().map(DocumentExpansionSeed::target).distinct().count();
+	}
+
+	private int bm25TitleCandidatePoolPerDocument(DocumentCandidateExpansion.Policy policy) {
+		return Math.min(
+			MAX_BM25_TITLE_CANDIDATES_PER_DOCUMENT,
+			policy.maxChunksPerDocument() * BM25_TITLE_CANDIDATE_POOL_MULTIPLIER
+		);
+	}
+
+	private int bm25TitleCandidatePoolTotal(DocumentCandidateExpansion.Policy policy) {
+		return Math.min(
+			MAX_BM25_TITLE_CANDIDATES_TOTAL,
+			policy.maxTotalChunks() * BM25_TITLE_CANDIDATE_POOL_MULTIPLIER
+		);
 	}
 
 	private List<String> requestedTargets(List<String> targets) {

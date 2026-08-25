@@ -29,11 +29,11 @@ class DocumentExpansionSearchServiceTests {
 		RagDocumentMapper ragMapper = mock(RagDocumentMapper.class);
 		when(lawMapper.findDocumentExpansionChunks(
 			eq(List.of(10L)), eq(List.of("제1조")), eq(List.of("목적")), eq(List.of("전자정부")),
-			eq(true), eq(5), eq(7)
+			eq(true), eq(15), eq(21)
 		)).thenReturn(List.of(chunk(100L, 10L, "law")));
 		when(ragMapper.findDocumentExpansionChunks(
 			eq(List.of(20L)), eq(List.of("제1조")), eq(List.of("목적")), eq(List.of("전자정부")),
-			eq(5), eq(7)
+			eq(15), eq(21)
 		)).thenReturn(List.of(chunk(200L, 20L, "official_doc")));
 
 		DocumentCandidateExpansion.Result result = service(lawMapper, ragMapper, properties(true, 2, 5, 7))
@@ -42,7 +42,7 @@ class DocumentExpansionSearchServiceTests {
 			);
 
 		assertThat(result.status()).isEqualTo(DocumentCandidateExpansion.Status.BM25_TITLE_APPLIED);
-		assertThat(result.chunks()).extracting(LawSemanticChunkRow::chunkId).containsExactly(100L, 200L);
+		assertThat(result.chunks()).extracting(LawSemanticChunkRow::chunkId).containsExactly(200L);
 		verify(lawMapper, never()).findDocumentExpansionDocuments(anyList(), anyList(), anyList(), anyBoolean(), anyInt());
 		verify(ragMapper, never()).findDocumentExpansionDocuments(anyList(), anyList(), anyList(), anyInt());
 	}

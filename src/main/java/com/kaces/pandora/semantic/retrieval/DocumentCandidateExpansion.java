@@ -245,6 +245,7 @@ public class DocumentCandidateExpansion {
 				boolean overlapsExisting = existingKeys.contains(candidateKey);
 				if (overlapsExisting) {
 					reasonCodes.add("DOCUMENT_DUPLICATE_OVERLAP");
+					continue;
 				}
 				chunks.add(scored.row());
 				hits.add(new Hit(
@@ -265,6 +266,9 @@ public class DocumentCandidateExpansion {
 			return result(List.of(), List.of(), Status.BM25_TITLE_INVALID_INPUT, reasonCodes);
 		}
 		if (chunks.isEmpty()) {
+			if (reasonCodes.contains("DOCUMENT_DUPLICATE_OVERLAP")) {
+				reasonCodes.add("BM25_TITLE_NO_NOVEL_CHUNK");
+			}
 			return result(List.of(), List.of(), Status.BM25_TITLE_NO_MATCH, reasonCodes);
 		}
 		return result(chunks, hits, Status.BM25_TITLE_APPLIED, reasonCodes);
