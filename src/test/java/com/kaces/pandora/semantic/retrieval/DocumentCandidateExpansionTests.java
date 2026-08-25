@@ -27,7 +27,7 @@ class DocumentCandidateExpansionTests {
 				chunk(201, 20, "official_doc", "1", "절차", "", 1),
 				chunk(301, 30, "law", "제2조", "기타", "", 1)
 			),
-			Set.of("law:101"),
+			Set.of(),
 			policy
 		);
 
@@ -37,6 +37,44 @@ class DocumentCandidateExpansionTests {
 		assertThat(result.hits()).extracting(DocumentCandidateExpansion.Hit::seedTermCount).containsOnly(2);
 		assertThat(result.hits()).extracting(DocumentCandidateExpansion.Hit::seedBm25Score).containsOnly(9.0);
 		assertThat(result.hits()).extracting(DocumentCandidateExpansion.Hit::seedBm25Rank).containsOnly(1);
+	}
+
+	@Test
+	void seededRankingSkipsExistingCandidatesAndFillsTheBoundWithNovelChunks() {
+		DocumentCandidateExpansion.Policy twoChunkPolicy =
+			new DocumentCandidateExpansion.Policy(true, false, 1, 2, 2);
+
+		DocumentCandidateExpansion.Result result = expansion.rankSeededChunks(
+			evidenceAnchor(),
+			List.of(seed("law", 10)),
+			List.of(
+				chunk(101, 10, "law", "제1조", "목적", "전자정부", 1),
+				chunk(102, 10, "law", "제2조", "절차", "전자정부", 2),
+				chunk(103, 10, "law", "제3조", "범위", "전자정부", 3)
+			),
+			Set.of("law:101"),
+			twoChunkPolicy
+		);
+
+		assertThat(result.status()).isEqualTo(DocumentCandidateExpansion.Status.BM25_TITLE_APPLIED);
+		assertThat(result.chunks()).extracting(LawSemanticChunkRow::chunkId).containsExactly(102L, 103L);
+		assertThat(result.hits()).allMatch(hit -> !hit.overlapsExistingSource());
+		assertThat(result.reasonCodes()).contains("DOCUMENT_DUPLICATE_OVERLAP");
+	}
+
+	@Test
+	void seededRankingReportsNoNovelChunkWhenEveryCandidateAlreadyExists() {
+		DocumentCandidateExpansion.Result result = expansion.rankSeededChunks(
+			evidenceAnchor(),
+			List.of(seed("law", 10)),
+			List.of(chunk(101, 10, "law", "제1조", "목적", "전자정부", 1)),
+			Set.of("law:101"),
+			policy
+		);
+
+		assertThat(result.status()).isEqualTo(DocumentCandidateExpansion.Status.BM25_TITLE_NO_MATCH);
+		assertThat(result.chunks()).isEmpty();
+		assertThat(result.reasonCodes()).contains("BM25_TITLE_NO_NOVEL_CHUNK");
 	}
 
 	@Test
