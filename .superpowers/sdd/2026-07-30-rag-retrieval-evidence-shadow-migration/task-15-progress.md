@@ -261,3 +261,31 @@ Date: 2026-08-25 (Asia/Seoul)
 - No external evaluation has launched and no authority flag changed. Port
   18080 and `output/` were untouched. Exact payload approval and an immediate
   no-drift fence recheck remain required before the one-time evaluation.
+
+## BM25 novel-chunk expansion terminal outcome
+
+Date: 2026-08-25 (Asia/Seoul)
+
+- Exact manifest SHA-256 `202b0981abe9f360c7f2d3cdda98f0b61470c980e4b31a191b68f347c45f62df`
+  was approved and passed its immediate no-drift preflight.
+- Both independent runs completed `24/24` without retry, with request errors
+  `0` and Qdrant search failures `0`. External use was exactly `48` OpenAI
+  Embedding API calls and zero Answer API calls.
+- Both runs measured control fused `7/24` all-required, `14/24` any-required,
+  `23` matched groups; expansion source `0/24`, `0/24`, `0`; shadow fused
+  `7/24`, `14/24`, `23`.
+- Expansion applied to `irm-faithfulness` and `ai-law-enforcement-date`, but it
+  found no required oracle group and added no recall over control.
+- The selector returned `BASELINE_REGRESSION`, eligible `false`, because the
+  exact frozen control is `7/14/22` while this capture is `7/14/23`. The drift
+  is localized to `security-review-procedure`, whose matched groups changed
+  from `[0]` to `[0,1]`; it is a gain, but exact baseline equality is required.
+- No difficult or holdout evaluation ran and no authority flag changed.
+  Postflight runtime/JAR/config/index/lexical fences remained stable. Law
+  DB/Qdrant stayed `211548/211548`; RAG stayed `84248/84248`; both collections
+  remained green with optimizer `ok` and failures `0`.
+- Run 1, run 2, and selector JSON SHA-256 values are respectively
+  `c2ad7db982593c1de9467ff9e26cdc6b275d33a485616440f377f051e208dcf0`,
+  `c42cbd80ea3673c86cda0191cb4be621709c8aab6705832f1016779b9a09bc3b`,
+  and `1cc8062ee291345502597e7d43a6e3fb206681281a0fad2a65ec5366aec739d0`.
+  Port 18080 and `output/` were untouched.
