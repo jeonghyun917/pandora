@@ -906,6 +906,11 @@ test('BM25 title expansion capture requires bounded seed metadata and known outc
     documentExpansionStatus: 'BM25_TITLE_DB_FALLBACK',
     documentExpansionReasonCodes: ['BM25_TITLE_EXPANSION_DB_FAILURE'],
   }));
+  assert.doesNotThrow(() => retrievalRunner.assertDebugResponse({
+    ...validDebug,
+    documentExpansionStatus: 'BM25_TITLE_NO_MATCH',
+    documentExpansionReasonCodes: ['DOCUMENT_DUPLICATE_OVERLAP', 'BM25_TITLE_NO_NOVEL_CHUNK'],
+  }));
 });
 
 test('document expansion shadow-fused presence includes retained control and expansion candidates', () => {

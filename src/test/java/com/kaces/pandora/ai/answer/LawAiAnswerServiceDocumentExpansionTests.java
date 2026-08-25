@@ -99,6 +99,25 @@ class LawAiAnswerServiceDocumentExpansionTests {
 	}
 
 	@Test
+	void bm25TitleNoNovelChunkReasonSurvivesDebugResponse() {
+		DocumentCandidateExpansion.Result noNovelChunk = new DocumentCandidateExpansion.Result(
+			List.of(),
+			List.of(),
+			DocumentCandidateExpansion.Status.BM25_TITLE_NO_MATCH,
+			List.of("DOCUMENT_DUPLICATE_OVERLAP", "BM25_TITLE_NO_NOVEL_CHUNK")
+		);
+		try (Harness harness = Harness.bm25TitleFallback(noNovelChunk, true)) {
+			LawAiDebugResponse result = harness.debug("공공소프트웨어사업에서 단순 하드웨어 구매는 포함되나요?");
+
+			assertThat(result.documentExpansionStatus()).isEqualTo("BM25_TITLE_NO_MATCH");
+			assertThat(result.documentExpansionReasonCodes()).containsExactly(
+				"DOCUMENT_DUPLICATE_OVERLAP",
+				"BM25_TITLE_NO_NOVEL_CHUNK"
+			);
+		}
+	}
+
+	@Test
 	void strongAnchorAppliedPreventsBm25TitleFallback() {
 		DocumentCandidateExpansion.Result strong = appliedExpansion(
 			List.of(chunk(901, 90, 1, "strong anchor sibling")),

@@ -5597,6 +5597,7 @@ public class LawAiAnswerService {
 			|| RetrievalCandidateTrace.DOCUMENT_CHUNK_LIMIT.equals(reasonCode)
 			|| "DOCUMENT_GLOBAL_LIMIT".equals(reasonCode)
 			|| "DOCUMENT_DUPLICATE_OVERLAP".equals(reasonCode)
+			|| "BM25_TITLE_NO_NOVEL_CHUNK".equals(reasonCode)
 			|| "INVALID_DOCUMENT_IDENTITY".equals(reasonCode)
 			|| "DOCUMENT_EXPANSION_DB_FAILURE".equals(reasonCode)
 			|| "BM25_TITLE_NO_MATCH".equals(reasonCode)
