@@ -303,7 +303,7 @@ test('retrieval metrics find a first downstream drop after vector or lexical ent
   assert.equal(measured.stages.intentFiltered.directHit, false);
 });
 
-test('retrieval metrics preserve BM25 and fused shadow ranks for deterministic acceptance', () => {
+test('retrieval metrics preserve BM25, fused, and coverage shadow ranks for deterministic acceptance', () => {
   const evalCase = {
     id: 'shadow-rank',
     expectedTitleTerms: ['정답 문서'],
@@ -318,18 +318,22 @@ test('retrieval metrics preserve BM25 and fused shadow ranks for deterministic a
   response.resultMsg = 'OK';
   response.bm25Hits = [wrong, direct];
   response.fused = [direct, wrong];
+  response.coverageFused = [wrong, direct];
 
   const measured = retrievalMetrics.measureRetrievalCase(evalCase, response, 30);
   const summary = retrievalMetrics.summarizeRetrievalCases([measured], 30);
 
   assert.equal(measured.stages.bm25Hits.directHit, true);
   assert.equal(measured.stages.fused.directHit, true);
+  assert.equal(measured.stages.coverageFused.directHit, true);
   assert.deepEqual(measured.shadowRanks, {
     bm25Hits: ['law:8', 'law:7'],
     fused: ['law:7', 'law:8'],
+    coverageFused: ['law:8', 'law:7'],
   });
   assert.equal(summary.shadowStages.bm25Hits.directHitRate, 1);
   assert.equal(summary.shadowStages.fused.directHitRate, 1);
+  assert.equal(summary.shadowStages.coverageFused.directHitRate, 1);
 });
 
 test('retrieval metrics honor K and report no-ground false grounds outside recall denominators', () => {
@@ -535,16 +539,17 @@ test('source rank snapshot is bounded, ordered, audit-only, and excludes candida
       {
         target: 'law',
         chunkId: 9,
+        documentId: 109,
         matchedAuditGroupIndexes: [2, 0, 2, -1, '1'],
         chunkText: 'secret chunk',
         body: 'secret body',
         snippet: 'secret snippet',
       },
-      { candidateKey: 'official_doc:7', matchedAuditGroupIndexes: [1] },
-      { candidateKey: 'law:8', matchedAuditGroupIndexes: [] },
+      { candidateKey: 'official_doc:7', documentId: 207, matchedAuditGroupIndexes: [1] },
+      { candidateKey: 'law:8', documentId: 108, matchedAuditGroupIndexes: [] },
     ],
     bm25Hits: [
-      { candidateKey: 'internal_doc:4', matchedAuditGroupIndexes: [3, 1] },
+      { candidateKey: 'internal_doc:4', documentId: 304, matchedAuditGroupIndexes: [3, 1] },
     ],
   };
 
@@ -552,11 +557,11 @@ test('source rank snapshot is bounded, ordered, audit-only, and excludes candida
 
   assert.deepEqual(snapshot, {
     vector: [
-      { candidateKey: 'law:9', rank: 1, matchedAuditGroupIndexes: [0, 2] },
-      { candidateKey: 'official_doc:7', rank: 2, matchedAuditGroupIndexes: [1] },
+      { candidateKey: 'law:9', documentId: 109, rank: 1, matchedAuditGroupIndexes: [0, 2] },
+      { candidateKey: 'official_doc:7', documentId: 207, rank: 2, matchedAuditGroupIndexes: [1] },
     ],
     bm25: [
-      { candidateKey: 'internal_doc:4', rank: 1, matchedAuditGroupIndexes: [1, 3] },
+      { candidateKey: 'internal_doc:4', documentId: 304, rank: 1, matchedAuditGroupIndexes: [1, 3] },
     ],
   });
   const serialized = JSON.stringify(snapshot);
@@ -608,8 +613,15 @@ test('runtime verification never retries a completed HTTP rejection', async () =
 
 test('debug response validator requires resultMsg and every retrieval stage array', () => {
   assert.equal(typeof retrievalRunner.assertDebugResponse, 'function');
-  const valid = Object.fromEntries(retrievalMetrics.STAGE_NAMES.map((stage) => [stage, []]));
+  const valid = Object.fromEntries([
+    ...retrievalMetrics.STAGE_NAMES,
+    ...retrievalMetrics.SHADOW_STAGE_NAMES,
+  ].map((stage) => [stage, []]));
   valid.resultMsg = 'OK';
+  valid.documentExpansionStatus = 'NO_STRONG_ANCHOR';
+  valid.documentExpansionReasonCodes = ['DOCUMENT_NOT_ANCHORED'];
+  valid.documentExpansionHits = [];
+  valid.documentExpansionFused = [];
 
   assert.equal(retrievalRunner.assertDebugResponse(valid), valid);
   assert.throws(
@@ -625,6 +637,22 @@ test('debug response validator requires resultMsg and every retrieval stage arra
     /selected.*array/i,
   );
   assert.throws(
+    () => retrievalRunner.assertDebugResponse({ ...valid, coverageFused: undefined }),
+    /coverageFused.*array/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDebugResponse({ ...valid, documentExpansionHits: undefined }),
+    /documentExpansionHits.*array/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDebugResponse({ ...valid, documentExpansionStatus: undefined }),
+    /documentExpansionStatus.*string/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDebugResponse({ ...valid, documentExpansionReasonCodes: undefined }),
+    /documentExpansionReasonCodes.*array/i,
+  );
+  assert.throws(
     () => retrievalRunner.assertDebugResponse({
       ...valid,
       vectorHits: [{ title: '문서', chunkTitle: '제목' }],
@@ -638,6 +666,370 @@ test('debug response validator requires resultMsg and every retrieval stage arra
 		}),
 		/candidateTraces.*chunkText/i,
 	);
+});
+
+test('document expansion capture is bounded, audit-only, and rejects malformed expansion payloads', () => {
+  assert.equal(typeof retrievalRunner.assertDocumentExpansionCapture, 'function');
+  const response = {
+    documentExpansionHits: [{
+      target: 'official_doc',
+      chunkId: 7,
+      documentId: 207,
+      documentExpansionRank: 1,
+      documentExpansionAnchorType: 'EXPLICIT_TITLE',
+      documentExpansionReason: 'EXACT_PROVISION',
+      documentExpansionOverlap: false,
+      matchedAuditGroupIndexes: [1, 0, 1],
+      title: 'must not be captured',
+      snippet: 'must not be captured',
+    }],
+    documentExpansionFused: [
+      {
+        target: 'official_doc',
+        chunkId: 7,
+        documentId: 207,
+        documentExpansionRank: 1,
+        documentExpansionAnchorType: 'EXPLICIT_TITLE',
+        documentExpansionReason: 'EXACT_PROVISION',
+        documentExpansionOverlap: false,
+        matchedAuditGroupIndexes: [0, 1],
+      },
+      {
+        target: 'law',
+        chunkId: 8,
+        documentId: 108,
+        matchedAuditGroupIndexes: [],
+      },
+    ],
+  };
+
+  const captured = retrievalRunner.assertDocumentExpansionCapture(response);
+
+  assert.deepEqual(captured, {
+    documentExpansionHits: [{
+      candidateKey: 'official_doc:7',
+      documentId: 207,
+      rank: 1,
+      anchorType: 'EXPLICIT_TITLE',
+      reason: 'EXACT_PROVISION',
+      overlapsExistingSource: false,
+      matchedAuditGroupIndexes: [0, 1],
+    }],
+    documentExpansionFused: [{
+      candidateKey: 'official_doc:7',
+      documentId: 207,
+      rank: 1,
+      anchorType: 'EXPLICIT_TITLE',
+      reason: 'EXACT_PROVISION',
+      overlapsExistingSource: false,
+      matchedAuditGroupIndexes: [0, 1],
+    }],
+  });
+  assert.equal(JSON.stringify(captured).includes('must not be captured'), false);
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({ ...response, documentExpansionHits: undefined }),
+    /documentExpansionHits.*array/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
+      documentExpansionHits: [...response.documentExpansionHits, { ...response.documentExpansionHits[0] }],
+    }),
+    /duplicate.*candidate/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
+      documentExpansionHits: [{ ...response.documentExpansionHits[0], documentExpansionReason: 'UNKNOWN_REASON' }],
+    }),
+    /unknown.*reason/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
+      documentExpansionHits: [{ ...response.documentExpansionHits[0], documentId: 0 }],
+    }),
+    /invalid documentId/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
+      documentExpansionHits: [{ ...response.documentExpansionHits[0], documentExpansionRank: 0 }],
+    }),
+    /invalid document expansion rank/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
+      documentExpansionHits: [{ ...response.documentExpansionHits[0], candidateKey: '   ' }],
+      documentExpansionFused: [],
+    }),
+    /candidate key/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
+      documentExpansionHits: [{ ...response.documentExpansionHits[0], documentId: '207' }],
+    }),
+    /invalid documentId/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
+      documentExpansionHits: [{ ...response.documentExpansionHits[0], documentExpansionRank: '1' }],
+    }),
+    /invalid document expansion rank/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
+      documentExpansionHits: Array.from({ length: 25 }, (_, index) => ({
+        ...response.documentExpansionHits[0], chunkId: index + 1, documentExpansionRank: index + 1,
+      })),
+    }),
+    /at most 24/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
+      documentExpansionHits: Array.from({ length: 9 }, (_, index) => ({
+        ...response.documentExpansionHits[0], chunkId: index + 1, documentExpansionRank: index + 1,
+      })),
+    }),
+    /at most 8.*document/i,
+  );
+});
+
+test('BM25 title expansion capture requires bounded seed metadata and known outcomes', () => {
+  const bm25Title = {
+    target: 'law',
+    chunkId: 101,
+    documentId: 10,
+    documentExpansionRank: 1,
+    documentExpansionAnchorType: 'BM25_TITLE',
+    documentExpansionReason: 'BM25_TITLE_SEED',
+    documentExpansionOverlap: false,
+    documentExpansionSeedTermCount: 2,
+    documentExpansionSeedBm25Score: 9.5,
+    documentExpansionSeedBm25Rank: 4,
+    matchedAuditGroupIndexes: [0],
+    title: 'must not be captured',
+  };
+  const response = {
+    documentExpansionHits: [bm25Title],
+    documentExpansionFused: [bm25Title],
+  };
+
+  assert.deepEqual(retrievalRunner.assertDocumentExpansionCapture(response).documentExpansionHits[0], {
+    candidateKey: 'law:101',
+    documentId: 10,
+    rank: 1,
+    anchorType: 'BM25_TITLE',
+    reason: 'BM25_TITLE_SEED',
+    overlapsExistingSource: false,
+    seedTermCount: 2,
+    seedBm25Score: 9.5,
+    seedBm25Rank: 4,
+    matchedAuditGroupIndexes: [0],
+  });
+
+  for (const malformed of [
+    { documentExpansionSeedTermCount: undefined },
+    { documentExpansionSeedBm25Score: undefined },
+    { documentExpansionSeedBm25Rank: undefined },
+    { documentExpansionSeedTermCount: 1 },
+    { documentExpansionSeedTermCount: 7 },
+    { documentExpansionSeedBm25Score: Number.POSITIVE_INFINITY },
+    { documentExpansionSeedBm25Score: 0 },
+    { documentExpansionSeedBm25Rank: 0 },
+    { documentExpansionSeedBm25Rank: 101 },
+  ]) {
+    assert.throws(
+      () => retrievalRunner.assertDocumentExpansionCapture({
+        ...response,
+        documentExpansionHits: [{ ...bm25Title, ...malformed }],
+      }),
+      /seed|BM25/i,
+    );
+  }
+
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      ...response,
+      documentExpansionHits: [{
+        ...bm25Title,
+        documentExpansionAnchorType: 'EXPLICIT_TITLE',
+        documentExpansionReason: 'EXACT_PROVISION',
+      }],
+    }),
+    /seed|legacy/i,
+  );
+
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      documentExpansionHits: Array.from({ length: 4 }, (_, index) => ({
+        ...bm25Title,
+        chunkId: index + 1,
+        documentId: index + 1,
+        documentExpansionRank: index + 1,
+      })),
+      documentExpansionFused: [],
+    }),
+    /at most 3.*document/i,
+  );
+
+  const validDebug = validDebugResponse();
+  assert.doesNotThrow(() => retrievalRunner.assertDebugResponse({
+    ...validDebug,
+    documentExpansionStatus: 'BM25_TITLE_APPLIED',
+    documentExpansionReasonCodes: [],
+    documentExpansionHits: [bm25Title],
+    documentExpansionFused: [bm25Title],
+  }));
+  assert.throws(
+    () => retrievalRunner.assertDebugResponse({
+      ...validDebug,
+      documentExpansionStatus: 'UNKNOWN_BM25_STATUS',
+    }),
+    /documentExpansionStatus.*known/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertDebugResponse({
+      ...validDebug,
+      documentExpansionStatus: 'BM25_TITLE_NO_MATCH',
+      documentExpansionReasonCodes: ['UNKNOWN_BM25_REASON'],
+    }),
+    /ReasonCodes.*unknown/i,
+  );
+  assert.doesNotThrow(() => retrievalRunner.assertDebugResponse({
+    ...validDebug,
+    documentExpansionStatus: 'BM25_TITLE_DB_FALLBACK',
+    documentExpansionReasonCodes: ['BM25_TITLE_EXPANSION_DB_FAILURE'],
+  }));
+});
+
+test('document expansion shadow-fused presence includes retained control and expansion candidates', () => {
+  const expansion = {
+    target: 'official_doc',
+    chunkId: 7,
+    documentId: 207,
+    documentExpansionRank: 1,
+    documentExpansionAnchorType: 'EXPLICIT_TITLE',
+    documentExpansionReason: 'EXACT_PROVISION',
+    documentExpansionOverlap: false,
+    matchedAuditGroupIndexes: [1],
+  };
+  const result = retrievalRunner.measureDocumentExpansionCase({
+    requiredPropositionGroups: [['control'], ['expansion']],
+    requiredConditionGroups: [],
+  }, {
+    vectorHits: [{ matchedAuditGroupIndexes: [0] }],
+    lexicalHits: [],
+    bm25Hits: [],
+    fused: [{ matchedAuditGroupIndexes: [0] }],
+    documentExpansionHits: [expansion],
+    documentExpansionFused: [{ matchedAuditGroupIndexes: [0] }, expansion],
+    documentExpansionStatus: 'APPLIED',
+    documentExpansionReasonCodes: [],
+  });
+
+  assert.deepEqual(result.controlFusedPresence.matchedRequiredGroupIndexes, [0]);
+  assert.deepEqual(result.shadowFusedPresence.matchedRequiredGroupIndexes, [0, 1]);
+  assert.equal(result.shadowFusedPresence.allRequired, true);
+  assert.equal(result.status, 'APPLIED');
+  assert.deepEqual(result.reasonCodes, []);
+  assert.deepEqual(result.capture.documentExpansionFused.map((item) => item.candidateKey), ['official_doc:7']);
+});
+
+test('document expansion compares top-k fused control to top-k fused shadow without inventing a regression', () => {
+  const result = retrievalRunner.measureDocumentExpansionCase({
+    requiredPropositionGroups: [['first'], ['second']],
+    requiredConditionGroups: [],
+  }, {
+    vectorHits: [{ matchedAuditGroupIndexes: [0, 1] }],
+    lexicalHits: [],
+    bm25Hits: [],
+    fused: [{ matchedAuditGroupIndexes: [0] }],
+    documentExpansionHits: [],
+    documentExpansionFused: [{ matchedAuditGroupIndexes: [0] }],
+    documentExpansionStatus: 'NO_STRONG_ANCHOR',
+    documentExpansionReasonCodes: ['DOCUMENT_NOT_ANCHORED'],
+  }, 10);
+
+  assert.deepEqual(result.candidateSourcePresence.matchedRequiredGroupIndexes, [0, 1]);
+  assert.deepEqual(result.controlFusedPresence.matchedRequiredGroupIndexes, [0]);
+  assert.deepEqual(result.shadowFusedPresence.matchedRequiredGroupIndexes, [0]);
+  assert.equal(result.firstDropStage, 'controlFused');
+  assert.equal(result.status, 'NO_STRONG_ANCHOR');
+  assert.deepEqual(result.reasonCodes, ['DOCUMENT_NOT_ANCHORED']);
+});
+
+test('document expansion capture ignores nullable fused control metadata but rejects partial expansion metadata', () => {
+  const expansion = {
+    target: 'official_doc',
+    chunkId: 7,
+    documentId: 207,
+    documentExpansionRank: 1,
+    documentExpansionAnchorType: 'EXPLICIT_TITLE',
+    documentExpansionReason: 'EXACT_PROVISION',
+    documentExpansionOverlap: false,
+    matchedAuditGroupIndexes: [0],
+  };
+  const controls = Array.from({ length: 29 }, (_, index) => ({
+    target: 'law',
+    chunkId: index + 1,
+    documentId: index + 1,
+    documentExpansionRank: null,
+    documentExpansionAnchorType: null,
+    documentExpansionReason: null,
+    documentExpansionOverlap: null,
+    matchedAuditGroupIndexes: [],
+  }));
+
+  assert.deepEqual(retrievalRunner.assertDocumentExpansionCapture({
+    documentExpansionHits: [expansion],
+    documentExpansionFused: [...controls, expansion],
+  }).documentExpansionFused, [{
+    candidateKey: 'official_doc:7',
+    documentId: 207,
+    rank: 1,
+    anchorType: 'EXPLICIT_TITLE',
+    reason: 'EXACT_PROVISION',
+    overlapsExistingSource: false,
+    matchedAuditGroupIndexes: [0],
+  }]);
+
+  assert.throws(
+    () => retrievalRunner.assertDocumentExpansionCapture({
+      documentExpansionHits: [expansion],
+      documentExpansionFused: [{ ...expansion, documentExpansionAnchorType: null }],
+    }),
+    /invalid document expansion anchor type/i,
+  );
+
+  for (const malformed of [
+    { documentExpansionAnchorType: 42 },
+    { documentExpansionReason: {} },
+    { documentExpansionOverlap: 'false' },
+  ]) {
+    assert.throws(
+      () => retrievalRunner.assertDocumentExpansionCapture({
+        documentExpansionHits: [expansion],
+        documentExpansionFused: [{
+          target: 'law',
+          chunkId: 99,
+          documentId: 99,
+          documentExpansionRank: null,
+          documentExpansionAnchorType: null,
+          documentExpansionReason: null,
+          documentExpansionOverlap: null,
+          matchedAuditGroupIndexes: [],
+          ...malformed,
+        }],
+      }),
+      /invalid document expansion rank/i,
+    );
+  }
 });
 
 test('release coverage rejects no-ground controls without distractors and too few controls', () => {
@@ -1033,3 +1425,17 @@ test('downstream survival excludes cases that were absent from candidate sources
     rate: null,
   });
 });
+
+function validDebugResponse() {
+  return {
+    ...Object.fromEntries([
+      ...retrievalMetrics.STAGE_NAMES,
+      ...retrievalMetrics.SHADOW_STAGE_NAMES,
+    ].map((stage) => [stage, []])),
+    resultMsg: 'OK',
+    documentExpansionStatus: 'NO_STRONG_ANCHOR',
+    documentExpansionReasonCodes: ['DOCUMENT_NOT_ANCHORED'],
+    documentExpansionHits: [],
+    documentExpansionFused: [],
+  };
+}

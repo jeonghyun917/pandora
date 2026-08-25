@@ -18,6 +18,7 @@ class ShadowActivationConfigurationTests {
 
 		assertThat(properties.getProperty("law-ai.retrieval.rrf-shadow-enabled")).isEqualTo("true");
 		assertThat(properties.getProperty("law-ai.retrieval.rrf-authoritative")).isEqualTo("false");
+		assertThat(properties.getProperty("law-ai.retrieval.coverage-aware.enabled")).isEqualTo("false");
 		assertThat(properties.getProperty("law-ai.verification.semantic-shadow-enabled")).isEqualTo("true");
 		assertThat(properties.getProperty("law-ai.verification.semantic-authoritative")).isEqualTo("false");
 	}

@@ -1,5 +1,6 @@
 package com.kaces.pandora.ai.answer;
 
+import com.kaces.pandora.common.text.DocumentSearchAnchor;
 import com.kaces.pandora.common.text.KoreanQueryNormalizer;
 import com.kaces.pandora.common.text.QuestionIntentProfile;
 import com.kaces.pandora.common.text.QuestionSearchPlan;
@@ -14,15 +15,21 @@ import com.kaces.pandora.rag.chunk.RagChunker;
 import com.kaces.pandora.rag.common.HwpxTextCleaner;
 import com.kaces.pandora.rag.persistence.RagDocumentMapper;
 import com.kaces.pandora.rag.search.RagChunkSearchIndexService;
+import com.kaces.pandora.semantic.config.LawAiCoverageAwareProperties;
+import com.kaces.pandora.semantic.config.LawAiDocumentExpansionProperties;
 import com.kaces.pandora.semantic.config.LawAiLexicalProperties;
 import com.kaces.pandora.semantic.config.LawAiProperties;
 import com.kaces.pandora.semantic.config.LawAiRrfProperties;
 import com.kaces.pandora.semantic.config.LawAiSemanticSelectionProperties;
+import com.kaces.pandora.semantic.lexical.CoverageAwareFusion;
 import com.kaces.pandora.semantic.lexical.KoreanBm25SearchService;
 import com.kaces.pandora.semantic.lexical.LexicalSearchHit;
 import com.kaces.pandora.semantic.lexical.ReciprocalRankFusion;
 import com.kaces.pandora.semantic.lexical.SemanticLexicalIndexService;
 import com.kaces.pandora.semantic.provenance.IndexContentSnapshot;
+import com.kaces.pandora.semantic.retrieval.Bm25TitleDocumentSeedSelector;
+import com.kaces.pandora.semantic.retrieval.DocumentCandidateExpansion;
+import com.kaces.pandora.semantic.retrieval.DocumentExpansionSearchService;
 import com.kaces.pandora.semantic.search.QdrantSearchHit;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
@@ -99,6 +106,11 @@ public class LawAiAnswerService {
 	private static final long FOCUSED_KEYWORD_SEARCH_TIMEOUT_MILLIS = 3_000L;
 	private static final long VECTOR_SHORTFALL_KEYWORD_SEARCH_TIMEOUT_MILLIS = 2_500L;
 	private static final long BM25_SHADOW_TIMEOUT_MILLIS = 1_250L;
+	private static final long DOCUMENT_EXPANSION_TIMEOUT_MILLIS = 1_250L;
+	private static final int MAX_DOCUMENT_EXPANSION_HITS = 24;
+	private static final double DOCUMENT_EXPANSION_RRF_WEIGHT = 1.0;
+	private static final LawAiDocumentExpansionProperties DISABLED_DOCUMENT_EXPANSION =
+		new LawAiDocumentExpansionProperties(false, false, 0, 0, 0);
 	private static final int MAX_USEFUL_TEXT_CHECK_CHARS = 900;
 	private static final int SIMPLE_ANSWER_CONTEXT_CHARS_PER_GROUND = 420;
 	private static final int STANDARD_ANSWER_CONTEXT_CHARS_PER_GROUND = 620;
@@ -141,9 +153,14 @@ public class LawAiAnswerService {
 	private final SemanticLexicalIndexService semanticLexicalIndexService;
 	private final KoreanBm25SearchService koreanBm25SearchService;
 	private final ReciprocalRankFusion reciprocalRankFusion;
+	private final CoverageAwareFusion coverageAwareFusion;
 	private final LawAiLexicalProperties lexicalProperties;
 	private final LawAiRrfProperties rrfProperties;
 	private final LawAiSemanticSelectionProperties semanticSelectionProperties;
+	private final LawAiCoverageAwareProperties coverageAwareProperties;
+	private final DocumentExpansionSearchService documentExpansionSearchService;
+	private final LawAiDocumentExpansionProperties documentExpansionProperties;
+	private final Bm25TitleDocumentSeedSelector bm25TitleDocumentSeedSelector;
 	private final Map<String, CachedAnswer> answerCache = new ConcurrentHashMap<>();
 	private final ExecutorService streamExecutor;
 	private final ExecutorService searchExecutor;
@@ -271,7 +288,84 @@ public class LawAiAnswerService {
 			evidenceJudge, answerGuard, claimVerifier, answerVerificationService,
 			parentContextAssembler, evidenceCandidateDiversifier, failureLoggingService,
 			searchFailureMapper, properties, groundedAnswerRepairService,
-			ragChunkSearchIndexService, semanticLexicalIndexService, null, null, null, null, null
+			ragChunkSearchIndexService, semanticLexicalIndexService, null, null, null, null, null, null, null
+		);
+	}
+
+	public LawAiAnswerService(
+		LawChunkMapper lawChunkMapper,
+		RagDocumentMapper ragDocumentMapper,
+		OpenAiEmbeddingClient embeddingClient,
+		QdrantClient qdrantClient,
+		OpenAiAnswerClient answerClient,
+		EvidenceJudge evidenceJudge,
+		AnswerGuard answerGuard,
+		ClaimVerifier claimVerifier,
+		AnswerVerificationService answerVerificationService,
+		ParentContextAssembler parentContextAssembler,
+		EvidenceCandidateDiversifier evidenceCandidateDiversifier,
+		FailureLoggingService failureLoggingService,
+		LawAiSearchFailureMapper searchFailureMapper,
+		LawAiProperties properties,
+		GroundedAnswerRepairService groundedAnswerRepairService,
+		RagChunkSearchIndexService ragChunkSearchIndexService,
+		SemanticLexicalIndexService semanticLexicalIndexService,
+		KoreanBm25SearchService koreanBm25SearchService,
+		ReciprocalRankFusion reciprocalRankFusion,
+		LawAiLexicalProperties lexicalProperties,
+		LawAiRrfProperties rrfProperties,
+		LawAiSemanticSelectionProperties semanticSelectionProperties,
+		CoverageAwareFusion coverageAwareFusion,
+		LawAiCoverageAwareProperties coverageAwareProperties
+	) {
+		this(
+			lawChunkMapper, ragDocumentMapper, embeddingClient, qdrantClient, answerClient,
+			evidenceJudge, answerGuard, claimVerifier, answerVerificationService,
+			parentContextAssembler, evidenceCandidateDiversifier, failureLoggingService,
+			searchFailureMapper, properties, groundedAnswerRepairService,
+			ragChunkSearchIndexService, semanticLexicalIndexService, koreanBm25SearchService,
+			reciprocalRankFusion, lexicalProperties, rrfProperties, semanticSelectionProperties,
+			coverageAwareFusion, coverageAwareProperties, null, null
+		);
+	}
+
+	public LawAiAnswerService(
+		LawChunkMapper lawChunkMapper,
+		RagDocumentMapper ragDocumentMapper,
+		OpenAiEmbeddingClient embeddingClient,
+		QdrantClient qdrantClient,
+		OpenAiAnswerClient answerClient,
+		EvidenceJudge evidenceJudge,
+		AnswerGuard answerGuard,
+		ClaimVerifier claimVerifier,
+		AnswerVerificationService answerVerificationService,
+		ParentContextAssembler parentContextAssembler,
+		EvidenceCandidateDiversifier evidenceCandidateDiversifier,
+		FailureLoggingService failureLoggingService,
+		LawAiSearchFailureMapper searchFailureMapper,
+		LawAiProperties properties,
+		GroundedAnswerRepairService groundedAnswerRepairService,
+		RagChunkSearchIndexService ragChunkSearchIndexService,
+		SemanticLexicalIndexService semanticLexicalIndexService,
+		KoreanBm25SearchService koreanBm25SearchService,
+		ReciprocalRankFusion reciprocalRankFusion,
+		LawAiLexicalProperties lexicalProperties,
+		LawAiRrfProperties rrfProperties,
+		LawAiSemanticSelectionProperties semanticSelectionProperties,
+		CoverageAwareFusion coverageAwareFusion,
+		LawAiCoverageAwareProperties coverageAwareProperties,
+		DocumentExpansionSearchService documentExpansionSearchService,
+		LawAiDocumentExpansionProperties documentExpansionProperties
+	) {
+		this(
+			lawChunkMapper, ragDocumentMapper, embeddingClient, qdrantClient, answerClient,
+			evidenceJudge, answerGuard, claimVerifier, answerVerificationService,
+			parentContextAssembler, evidenceCandidateDiversifier, failureLoggingService,
+			searchFailureMapper, properties, groundedAnswerRepairService,
+			ragChunkSearchIndexService, semanticLexicalIndexService, koreanBm25SearchService,
+			reciprocalRankFusion, lexicalProperties, rrfProperties, semanticSelectionProperties,
+			coverageAwareFusion, coverageAwareProperties, documentExpansionSearchService,
+			documentExpansionProperties, null
 		);
 	}
 
@@ -298,7 +392,12 @@ public class LawAiAnswerService {
 		ReciprocalRankFusion reciprocalRankFusion,
 		LawAiLexicalProperties lexicalProperties,
 		LawAiRrfProperties rrfProperties,
-		LawAiSemanticSelectionProperties semanticSelectionProperties
+		LawAiSemanticSelectionProperties semanticSelectionProperties,
+		CoverageAwareFusion coverageAwareFusion,
+		LawAiCoverageAwareProperties coverageAwareProperties,
+		DocumentExpansionSearchService documentExpansionSearchService,
+		LawAiDocumentExpansionProperties documentExpansionProperties,
+		Bm25TitleDocumentSeedSelector bm25TitleDocumentSeedSelector
 	) {
 		this.lawChunkMapper = lawChunkMapper;
 		this.ragDocumentMapper = ragDocumentMapper;
@@ -327,6 +426,7 @@ public class LawAiAnswerService {
 		this.semanticLexicalIndexService = semanticLexicalIndexService;
 		this.koreanBm25SearchService = koreanBm25SearchService;
 		this.reciprocalRankFusion = reciprocalRankFusion == null ? new ReciprocalRankFusion() : reciprocalRankFusion;
+		this.coverageAwareFusion = coverageAwareFusion == null ? new CoverageAwareFusion() : coverageAwareFusion;
 		this.lexicalProperties = lexicalProperties == null
 			? new LawAiLexicalProperties(1.2, 0.75, 8, 6, 7, 1, 24, 100)
 			: lexicalProperties;
@@ -336,6 +436,23 @@ public class LawAiAnswerService {
 		this.semanticSelectionProperties = semanticSelectionProperties == null
 			? new LawAiSemanticSelectionProperties(false, false, 4)
 			: semanticSelectionProperties;
+		this.coverageAwareProperties = coverageAwareProperties == null
+			? new LawAiCoverageAwareProperties(false, 0, 1, 30)
+			: coverageAwareProperties;
+		this.documentExpansionProperties = documentExpansionProperties == null
+			? DISABLED_DOCUMENT_EXPANSION
+			: documentExpansionProperties;
+		this.documentExpansionSearchService = documentExpansionSearchService == null
+			? new DocumentExpansionSearchService(
+				lawChunkMapper,
+				ragDocumentMapper,
+				new DocumentCandidateExpansion(),
+				this.documentExpansionProperties
+			)
+			: documentExpansionSearchService;
+		this.bm25TitleDocumentSeedSelector = bm25TitleDocumentSeedSelector == null
+			? new Bm25TitleDocumentSeedSelector()
+			: bm25TitleDocumentSeedSelector;
 		this.runtimeArtifactIdentity = RuntimeArtifactIdentity.from(LawAiAnswerService.class);
 		this.streamExecutor = Executors.newFixedThreadPool(4, namedThreadFactory("law-ai-stream-"));
 		this.searchExecutor = Executors.newFixedThreadPool(8, namedThreadFactory("law-ai-search-"));
@@ -369,7 +486,13 @@ public class LawAiAnswerService {
 			artifact.path(),
 			artifact.modifiedAt(),
 			RuntimeConfigurationIdentity.instanceId(),
-			RuntimeConfigurationIdentity.sha256(properties, lexicalProperties, rrfProperties),
+			RuntimeConfigurationIdentity.sha256(
+				properties,
+				lexicalProperties,
+				rrfProperties,
+				coverageAwareProperties,
+				documentExpansionProperties
+			),
 			indexIdentity == null ? null : indexIdentity.revision(),
 			lexicalRevision(),
 			indexIdentity == null ? null : pointCount(indexIdentity.lawQdrant()),
@@ -999,6 +1122,17 @@ public class LawAiAnswerService {
 			? List.of(queryPlan.embeddingQuery())
 			: queryPlan.expandedQueries();
 		timing.plannerMs.addAndGet(elapsedMillis(plannerStart));
+		CompletableFuture<DocumentCandidateExpansion.Result> documentExpansionFuture = documentExpansionProperties.enabled()
+			? CompletableFuture.supplyAsync(
+				() -> documentExpansionSearchService.search(
+					queryPlan.documentSearchAnchor(),
+					targets,
+					normalized.includeFuture(),
+					Set.of()
+				),
+				searchExecutor
+			)
+			: CompletableFuture.completedFuture(disabledDocumentExpansionResult());
 		CompletableFuture<List<LawSemanticChunkRow>> lexicalFuture = CompletableFuture.supplyAsync(() -> {
 			try {
 				return findLexicalChunks(queryPlan, targets, normalized.includeFuture());
@@ -1142,13 +1276,82 @@ public class LawAiAnswerService {
 			.map(hit -> chunkById.get(hit.candidateKey()))
 			.filter(chunk -> chunk != null)
 			.toList();
-		HybridRetrieval hybrid = new HybridRetrieval(bm25Hits, fusedHits, bm25Chunks, fusedChunks);
+		CoverageAwareFusion.Result coverage = coverageAwareRerank(fusedHits, chunkById);
+		List<LawSemanticChunkRow> coverageChunks = coverage.ranking().stream()
+			.map(hit -> chunkById.get(hit.candidateKey()))
+			.filter(chunk -> chunk != null)
+			.toList();
+		Set<String> finalControlCandidateKeys = finalControlCandidateKeys(hits, lexicalChunks, bm25Hits);
+		DocumentCandidateExpansion.Result documentExpansion = finalizeDocumentExpansion(
+			joinDocumentExpansion(documentExpansionFuture),
+			finalControlCandidateKeys
+		);
+		if (documentExpansion.status() == DocumentCandidateExpansion.Status.NO_STRONG_ANCHOR) {
+			documentExpansion = finalizeDocumentExpansion(
+				bm25TitleDocumentExpansion(
+					queryPlan.documentSearchAnchor(),
+					bm25Hits,
+					bm25Chunks,
+					queryPlan.bm25Keywords(),
+					targets,
+					normalized.includeFuture(),
+					finalControlCandidateKeys,
+					documentExpansion
+				),
+				finalControlCandidateKeys
+			);
+		}
+		Map<String, LawSemanticChunkRow> documentExpansionChunkById = new LinkedHashMap<>(chunkById);
+		for (LawSemanticChunkRow chunk : documentExpansion.chunks()) {
+			documentExpansionChunkById.putIfAbsent(scoreKey(chunk.target(), chunk.chunkId()), chunk);
+		}
+		List<ReciprocalRankFusion.RrfHit> documentExpansionFusedHits = rrfProperties.enabled()
+			? fuseDocumentExpansion(
+				hits,
+				bm25Hits,
+				fusedHits,
+				documentExpansion.hits(),
+				documentExpansionChunkById
+			)
+			: List.of();
+		List<LawSemanticChunkRow> documentExpansionFusedChunks = documentExpansionFusedHits.stream()
+			.map(hit -> documentExpansionChunkById.get(hit.candidateKey()))
+			.filter(chunk -> chunk != null)
+			.toList();
+		HybridRetrieval hybrid = new HybridRetrieval(
+			bm25Hits,
+			fusedHits,
+			bm25Chunks,
+			fusedChunks,
+			documentExpansion.hits(),
+			documentExpansion.chunks(),
+			documentExpansionFusedHits,
+			documentExpansionFusedChunks,
+			documentExpansion.status(),
+			documentExpansion.reasonCodes(),
+			coverage.ranking(),
+			coverageChunks,
+			coverage.rescues(),
+			coverage.status()
+		);
 		List<LawSemanticChunkRow> controlChunks = searchedChunks;
-		List<LawSemanticChunkRow> authoritativeChunks = mergeChunks(fusedChunks, lexicalChunks);
+		List<LawSemanticChunkRow> rrfCandidateChunks = coverageAwareProperties.enabled()
+			? coverageChunks
+			: fusedChunks;
+		List<LawSemanticChunkRow> authoritativeChunks = mergeChunks(rrfCandidateChunks, lexicalChunks);
 		searchedChunks = selectCandidateOrder(
 			controlChunks,
 			authoritativeChunks,
 			rrfProperties.rrfAuthoritative()
+		);
+		List<LawSemanticChunkRow> documentExpansionAuthoritativeChunks = mergeChunks(
+			documentExpansionFusedChunks,
+			lexicalChunks
+		);
+		searchedChunks = selectCandidateOrder(
+			searchedChunks,
+			documentExpansionAuthoritativeChunks,
+			documentExpansionAuthoritative(hybrid)
 		);
 		Map<String, Double> baseScoreByChunkId = baseScoreMap(searchedChunks, vectorScoreByChunkId, keywordScoreByChunkId);
 		baseScoreByChunkId = applyAuthoritativeRrfScores(baseScoreByChunkId, hybrid);
@@ -1790,7 +1993,18 @@ public class LawAiAnswerService {
 				new LawAiDebugResponse.Stage("vector", retrieval.vectorChunks().size(), "Qdrant vector search hits loaded from DB"),
 				new LawAiDebugResponse.Stage("keyword", retrieval.lexicalChunks().size(), "Lexical keyword candidates"),
 				new LawAiDebugResponse.Stage("bm25", retrieval.hybrid().bm25Chunks().size(), "Common Korean BM25 shadow candidates"),
+				new LawAiDebugResponse.Stage(
+					RetrievalCandidateTrace.DOCUMENT_EXPANSION_STAGE,
+					retrieval.hybrid().documentExpansionChunks().size(),
+					"Bounded document expansion shadow. status=" + retrieval.hybrid().documentExpansionStatus()
+						+ ", reasons=" + retrieval.hybrid().documentExpansionReasonCodes()
+				),
 				new LawAiDebugResponse.Stage("rrf", retrieval.hybrid().fusedChunks().size(), "Vector and BM25 reciprocal-rank fusion"),
+				new LawAiDebugResponse.Stage(
+					RetrievalCandidateTrace.COVERAGE_FUSED_STAGE,
+					Math.min(retrieval.hybrid().coverageChunks().size(), JUDGE_CANDIDATE_LIMIT),
+					"Bounded document coverage shadow. status=" + retrieval.hybrid().coverageStatus()
+				),
 				new LawAiDebugResponse.Stage("merged", retrieval.searchedChunks().size(), "Merged vector and keyword candidates"),
 				new LawAiDebugResponse.Stage("reranked", retrieval.rankedChunks().size(), "Heuristic rerank result"),
 				new LawAiDebugResponse.Stage("intent", retrieval.intentFilteredChunks().size(), "Question intent filtered candidates"),
@@ -1801,10 +2015,26 @@ public class LawAiAnswerService {
 				new LawAiDebugResponse.Stage("grounds", retrieval.grounds().size(), "Grounds returned to the UI"),
 				new LawAiDebugResponse.Stage("selected", retrieval.answerChunks().size(), "Grounds compressed for answer generation")
 			),
+			retrieval.hybrid().documentExpansionStatus().name(),
+			retrieval.hybrid().documentExpansionReasonCodes(),
 			toDebugItems(retrieval.vectorChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.lexicalChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.hybrid().bm25Chunks(), retrieval, selectedKeys, auditTermGroups),
+			toDebugItems(retrieval.hybrid().documentExpansionChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.hybrid().fusedChunks(), retrieval, selectedKeys, auditTermGroups),
+			toDebugItems(
+				retrieval.hybrid().documentExpansionFusedChunks(),
+				retrieval,
+				selectedKeys,
+				auditTermGroups,
+				true
+			),
+			toDebugItems(
+				retrieval.hybrid().coverageChunks().stream().limit(JUDGE_CANDIDATE_LIMIT).toList(),
+				retrieval,
+				selectedKeys,
+				auditTermGroups
+			),
 			toDebugItems(retrieval.searchedChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.rankedChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.intentFilteredChunks(), retrieval, selectedKeys, auditTermGroups),
@@ -1839,13 +2069,30 @@ public class LawAiAnswerService {
 		Set<String> selectedKeys,
 		List<List<String>> auditTermGroups
 	) {
+		return toDebugItems(chunks, retrieval, selectedKeys, auditTermGroups, false);
+	}
+
+	private List<LawAiDebugResponse.Item> toDebugItems(
+		List<LawSemanticChunkRow> chunks,
+		RetrievalResult retrieval,
+		Set<String> selectedKeys,
+		List<List<String>> auditTermGroups,
+		boolean documentExpansionFused
+	) {
 		int[] rank = {1};
 		return chunks.stream()
 			.map(chunk -> {
 				String key = scoreKey(chunk.target(), chunk.chunkId());
 				Integer vectorRank = vectorRank(retrieval.qdrantHits(), key);
 				LexicalSearchHit bm25Hit = retrieval.hybrid().bm25Hit(key);
-				ReciprocalRankFusion.RrfHit fusedHit = retrieval.hybrid().fusedHit(key);
+				ReciprocalRankFusion.RrfHit fusedHit = documentExpansionFused
+					? retrieval.hybrid().documentExpansionFusedHit(key)
+					: retrieval.hybrid().fusedHit(key);
+				Integer fusedRank = documentExpansionFused
+					? retrieval.hybrid().documentExpansionFusedRank(key)
+					: retrieval.hybrid().fusedRank(key);
+				CoverageAwareFusion.Rescue coverageRescue = retrieval.hybrid().coverageRescue(key);
+				DocumentCandidateExpansion.Hit documentExpansionHit = retrieval.hybrid().documentExpansionHit(key);
 				List<RetrievalAuditTermMatcher.GroupMatch> auditMatches =
 					RetrievalAuditTermMatcher.matchGroups(auditTermGroups, chunk.chunkText());
 				return new LawAiDebugResponse.Item(
@@ -1864,7 +2111,17 @@ public class LawAiAnswerService {
 					chunk.sourcePath(),
 					vectorRank,
 					bm25Hit == null ? null : bm25Hit.rank(),
-					fusedHit == null ? null : retrieval.hybrid().fusedRank(key),
+					fusedHit == null ? null : fusedRank,
+					retrieval.hybrid().coverageRank(key),
+					coverageRescue == null ? null : coverageRescue.anchorCandidateKey(),
+					coverageRescue == null ? null : coverageRescue.reason(),
+					documentExpansionHit == null ? null : documentExpansionHit.sourceRank(),
+					documentExpansionHit == null ? null : documentExpansionHit.anchorType(),
+					documentExpansionHit == null ? null : documentExpansionHit.reason(),
+					documentExpansionHit == null ? null : documentExpansionHit.overlapsExistingSource(),
+					documentExpansionHit == null ? null : documentExpansionHit.seedTermCount(),
+					documentExpansionHit == null ? null : documentExpansionHit.seedBm25Score(),
+					documentExpansionHit == null ? null : documentExpansionHit.seedBm25Rank(),
 					retrieval.vectorScoreByChunkId().getOrDefault(key, 0.0),
 					bm25Hit == null ? 0.0 : bm25Hit.score(),
 					fusedHit == null ? 0.0 : fusedHit.score(),
@@ -2302,11 +2559,36 @@ public class LawAiAnswerService {
 				"rrf", retrieval.hybrid().fusedRank(scoreKey(hit.target(), hit.chunkId()))
 			);
 		}
+		for (DocumentCandidateExpansion.Hit hit : retrieval.hybrid().documentExpansionHits()) {
+			LawSemanticChunkRow chunk = retrieval.hybrid().documentExpansionChunks().stream()
+				.filter(candidate -> scoreKey(candidate.target(), candidate.chunkId()).equals(hit.candidateKey()))
+				.findFirst()
+				.orElse(null);
+			if (chunk == null) {
+				continue;
+			}
+			collector.source(
+				hit.candidateKey(),
+				chunk.target(),
+				chunk.chunkId(),
+				RetrievalCandidateTrace.DOCUMENT_EXPANSION_STAGE,
+				hit.sourceRank()
+			);
+			collector.enter(hit.candidateKey(), RetrievalCandidateTrace.DOCUMENT_EXPANSION_STAGE);
+			for (String reasonCode : retrieval.hybrid().documentExpansionReasonCodes()) {
+				collector.note(hit.candidateKey(), RetrievalCandidateTrace.DOCUMENT_EXPANSION_STAGE, reasonCode);
+			}
+		}
 
 		collector.transition("loaded", candidateKeys(
 			retrieval.vectorChunks(), retrieval.lexicalChunks(),
-			retrieval.hybrid().bm25Chunks(), retrieval.hybrid().fusedChunks()
+			retrieval.hybrid().bm25Chunks(), retrieval.hybrid().fusedChunks(),
+			retrieval.hybrid().documentExpansionChunks(), retrieval.hybrid().documentExpansionFusedChunks()
 		), "SOURCE_CHUNK_NOT_LOADED");
+		collector.transitionCoverage(
+			candidateKeys(retrieval.hybrid().coverageChunks().stream().limit(JUDGE_CANDIDATE_LIMIT).toList()),
+			coverageLossReasons(retrieval)
+		);
 		collector.transition("merged", candidateKeys(retrieval.searchedChunks()), "MERGE_NOT_SELECTED");
 		collector.transition("reranked", candidateKeys(retrieval.rankedChunks()), "RERANK_LIMIT");
 		collector.transition("intent", candidateKeys(retrieval.intentFilteredChunks()), "INTENT_FILTERED");
@@ -2325,6 +2607,45 @@ public class LawAiAnswerService {
 			collector.select(selectedKey);
 		}
 		return collector.finishAll();
+	}
+
+	private Map<String, String> coverageLossReasons(RetrievalResult retrieval) {
+		Map<String, ReciprocalRankFusion.RrfHit> fusedByKey = retrieval.hybrid().fusedHits().stream()
+			.collect(java.util.stream.Collectors.toMap(
+				ReciprocalRankFusion.RrfHit::candidateKey,
+				hit -> hit,
+				(first, second) -> first,
+				LinkedHashMap::new
+			));
+		Map<String, LawSemanticChunkRow> chunksByKey = java.util.stream.Stream.of(
+			retrieval.vectorChunks(),
+			retrieval.lexicalChunks(),
+			retrieval.hybrid().bm25Chunks(),
+			retrieval.hybrid().fusedChunks()
+		).flatMap(List::stream).collect(java.util.stream.Collectors.toMap(
+			chunk -> scoreKey(chunk.target(), chunk.chunkId()),
+			chunk -> chunk,
+			(first, second) -> first,
+			LinkedHashMap::new
+		));
+		Map<String, String> reasons = new LinkedHashMap<>();
+		for (String key : candidateKeys(
+			retrieval.vectorChunks(), retrieval.lexicalChunks(),
+			retrieval.hybrid().bm25Chunks(), retrieval.hybrid().fusedChunks()
+		)) {
+			ReciprocalRankFusion.RrfHit fusedHit = fusedByKey.get(key);
+			LawSemanticChunkRow chunk = chunksByKey.get(key);
+			if (fusedHit == null) {
+				reasons.put(key, RetrievalCandidateTrace.ABSENT_FROM_SOURCE_UNION);
+			} else if (chunk == null || chunk.documentId() <= 0) {
+				reasons.put(key, RetrievalCandidateTrace.INVALID_DOCUMENT_IDENTITY);
+			} else if (fusedHit.bestSourceRank() > coverageAwareProperties.sourceRankLimit()) {
+				reasons.put(key, RetrievalCandidateTrace.SOURCE_RANK_LIMIT);
+			} else {
+				reasons.put(key, RetrievalCandidateTrace.TOP_K_DISPLACED);
+			}
+		}
+		return Map.copyOf(reasons);
 	}
 
 	@SafeVarargs
@@ -5090,7 +5411,7 @@ public class LawAiAnswerService {
 		return merged.values().stream().toList();
 	}
 
-	private static List<LawSemanticChunkRow> selectCandidateOrder(
+	static List<LawSemanticChunkRow> selectCandidateOrder(
 		List<LawSemanticChunkRow> controlOrder,
 		List<LawSemanticChunkRow> fusedOrder,
 		boolean authoritative
@@ -5098,20 +5419,315 @@ public class LawAiAnswerService {
 		return authoritative ? List.copyOf(fusedOrder) : List.copyOf(controlOrder);
 	}
 
+	CoverageAwareFusion.Result coverageAwareRerank(
+		List<ReciprocalRankFusion.RrfHit> fusedHits,
+		Map<String, LawSemanticChunkRow> chunkById
+	) {
+		Map<String, Long> documentIds = new HashMap<>();
+		for (Map.Entry<String, LawSemanticChunkRow> entry : chunkById.entrySet()) {
+			if (entry.getValue() != null) {
+				documentIds.put(entry.getKey(), entry.getValue().documentId());
+			}
+		}
+		return coverageAwareFusion.rerank(
+			fusedHits,
+			Map.copyOf(documentIds),
+			coverageAwareProperties.policy(),
+			JUDGE_CANDIDATE_LIMIT
+		);
+	}
+
+	private Set<String> finalControlCandidateKeys(
+		List<QdrantSearchHit> vectorHits,
+		List<LawSemanticChunkRow> lexicalChunks,
+		List<LexicalSearchHit> bm25Hits
+	) {
+		LinkedHashSet<String> keys = new LinkedHashSet<>();
+		for (QdrantSearchHit hit : vectorHits == null ? List.<QdrantSearchHit>of() : vectorHits) {
+			if (hit != null) {
+				keys.add(scoreKey(hit.target(), hit.chunkId()));
+			}
+		}
+		for (LawSemanticChunkRow chunk : lexicalChunks == null ? List.<LawSemanticChunkRow>of() : lexicalChunks) {
+			if (chunk != null) {
+				keys.add(scoreKey(chunk.target(), chunk.chunkId()));
+			}
+		}
+		for (LexicalSearchHit hit : bm25Hits == null ? List.<LexicalSearchHit>of() : bm25Hits) {
+			if (hit != null) {
+				keys.add(scoreKey(hit.target(), hit.chunkId()));
+			}
+		}
+		return Set.copyOf(keys);
+	}
+
+	private DocumentCandidateExpansion.Result finalizeDocumentExpansion(
+		DocumentCandidateExpansion.Result result,
+		Set<String> finalControlCandidateKeys
+	) {
+		if (result == null || result.status() == null) {
+			return fallbackDocumentExpansionResult();
+		}
+		boolean applied = result.status() == DocumentCandidateExpansion.Status.APPLIED
+			|| result.status() == DocumentCandidateExpansion.Status.BM25_TITLE_APPLIED;
+		if (!applied) {
+			return result.chunks().isEmpty() && result.hits().isEmpty()
+				? new DocumentCandidateExpansion.Result(
+					List.of(),
+					List.of(),
+					result.status(),
+					boundedDocumentExpansionReasonCodes(result.reasonCodes())
+				)
+				: fallbackDocumentExpansionResult();
+		}
+		List<LawSemanticChunkRow> chunks = result.chunks();
+		List<DocumentCandidateExpansion.Hit> hits = result.hits();
+		if (chunks.size() != hits.size()) {
+			return fallbackDocumentExpansionResult();
+		}
+		Set<String> candidateKeys = new LinkedHashSet<>();
+		for (int index = 0; index < chunks.size(); index++) {
+			LawSemanticChunkRow chunk = chunks.get(index);
+			DocumentCandidateExpansion.Hit hit = hits.get(index);
+			if (!validDocumentExpansionPair(chunk, hit, index + 1)
+				|| !candidateKeys.add(hit.candidateKey())) {
+				return fallbackDocumentExpansionResult();
+			}
+		}
+		int limit = Math.min(MAX_DOCUMENT_EXPANSION_HITS, documentExpansionProperties.maxTotalChunks());
+		Map<String, Long> chunksPerDocument = chunks.stream().collect(java.util.stream.Collectors.groupingBy(
+			chunk -> chunk.target() + ':' + chunk.documentId(),
+			LinkedHashMap::new,
+			java.util.stream.Collectors.counting()
+		));
+		if (limit <= 0 || chunks.size() > limit
+			|| chunksPerDocument.size() > documentExpansionProperties.maxDocuments()
+			|| chunksPerDocument.values().stream().anyMatch(
+				count -> count > documentExpansionProperties.maxChunksPerDocument()
+			)) {
+			return fallbackDocumentExpansionResult();
+		}
+		Set<String> existingKeys = finalControlCandidateKeys == null ? Set.of() : finalControlCandidateKeys;
+		List<DocumentCandidateExpansion.Hit> reannotatedHits = new java.util.ArrayList<>();
+		for (DocumentCandidateExpansion.Hit hit : hits) {
+			reannotatedHits.add(new DocumentCandidateExpansion.Hit(
+				hit.candidateKey(),
+				hit.sourceRank(),
+				hit.anchorType(),
+				existingKeys.contains(hit.candidateKey()),
+				hit.reason(),
+				hit.seedTermCount(),
+				hit.seedBm25Score(),
+				hit.seedBm25Rank()
+			));
+		}
+		return new DocumentCandidateExpansion.Result(
+			chunks,
+			reannotatedHits,
+			result.status(),
+			boundedDocumentExpansionReasonCodes(result.reasonCodes())
+		);
+	}
+
+	private DocumentCandidateExpansion.Result bm25TitleDocumentExpansion(
+		DocumentSearchAnchor anchor,
+		List<LexicalSearchHit> bm25Hits,
+		List<LawSemanticChunkRow> bm25Chunks,
+		List<String> plannedTerms,
+		List<String> targets,
+		boolean includeFuture,
+		Set<String> existingCandidateKeys,
+		DocumentCandidateExpansion.Result strongAnchorResult
+	) {
+		if (!documentExpansionProperties.bm25TitleEnabled() || !rrfProperties.enabled()) {
+			return strongAnchorResult;
+		}
+		Bm25TitleDocumentSeedSelector.Selection selection = bm25TitleDocumentSeedSelector.select(
+			bm25Hits,
+			bm25Chunks,
+			plannedTerms,
+			targets,
+			documentExpansionProperties.bm25TitlePolicy()
+		);
+		return switch (selection.status()) {
+			case APPLIED -> documentExpansionSearchService.searchBm25Seeded(
+				anchor,
+				selection.seeds(),
+				includeFuture,
+				existingCandidateKeys
+			);
+			case NO_MATCH -> emptyDocumentExpansionResult(
+				DocumentCandidateExpansion.Status.BM25_TITLE_NO_MATCH,
+				"BM25_TITLE_NO_MATCH"
+			);
+			case AMBIGUOUS -> emptyDocumentExpansionResult(
+				DocumentCandidateExpansion.Status.BM25_TITLE_AMBIGUOUS,
+				"BM25_TITLE_AMBIGUOUS"
+			);
+			case INVALID_INPUT -> emptyDocumentExpansionResult(
+				DocumentCandidateExpansion.Status.BM25_TITLE_INVALID_INPUT,
+				"BM25_TITLE_INVALID_INPUT"
+			);
+			case DISABLED -> strongAnchorResult;
+		};
+	}
+
+	private DocumentCandidateExpansion.Result emptyDocumentExpansionResult(
+		DocumentCandidateExpansion.Status status,
+		String reasonCode
+	) {
+		return new DocumentCandidateExpansion.Result(List.of(), List.of(), status, List.of(reasonCode));
+	}
+
+	private List<String> boundedDocumentExpansionReasonCodes(List<String> reasonCodes) {
+		if (reasonCodes == null || reasonCodes.isEmpty()) {
+			return List.of();
+		}
+		return reasonCodes.stream()
+			.filter(this::isDocumentExpansionReasonCode)
+			.distinct()
+			.limit(8)
+			.toList();
+	}
+
+	private boolean isDocumentExpansionReasonCode(String reasonCode) {
+		return RetrievalCandidateTrace.DOCUMENT_NOT_ANCHORED.equals(reasonCode)
+			|| RetrievalCandidateTrace.DOCUMENT_MATCH_AMBIGUOUS.equals(reasonCode)
+			|| RetrievalCandidateTrace.DOCUMENT_LIMIT.equals(reasonCode)
+			|| RetrievalCandidateTrace.DOCUMENT_CHUNK_LIMIT.equals(reasonCode)
+			|| "DOCUMENT_GLOBAL_LIMIT".equals(reasonCode)
+			|| "DOCUMENT_DUPLICATE_OVERLAP".equals(reasonCode)
+			|| "INVALID_DOCUMENT_IDENTITY".equals(reasonCode)
+			|| "DOCUMENT_EXPANSION_DB_FAILURE".equals(reasonCode)
+			|| "BM25_TITLE_NO_MATCH".equals(reasonCode)
+			|| "BM25_TITLE_AMBIGUOUS".equals(reasonCode)
+			|| "BM25_TITLE_INVALID_INPUT".equals(reasonCode)
+			|| "BM25_TITLE_EXPANSION_DB_FAILURE".equals(reasonCode)
+			|| "BM25_TITLE_DOCUMENT_LIMIT".equals(reasonCode)
+			|| "BM25_TITLE_INVALID_SEED".equals(reasonCode)
+			|| "BM25_TITLE_INVALID_TARGET".equals(reasonCode);
+	}
+
+	private boolean validDocumentExpansionPair(
+		LawSemanticChunkRow chunk,
+		DocumentCandidateExpansion.Hit hit,
+		int expectedRank
+	) {
+		if (chunk == null || hit == null || chunk.chunkId() <= 0 || chunk.documentId() <= 0
+			|| (!isLawTarget(chunk.target()) && !isRagTarget(chunk.target()))
+			|| hit.sourceRank() != expectedRank
+			|| !scoreKey(chunk.target(), chunk.chunkId()).equals(hit.candidateKey())) {
+			return false;
+		}
+		boolean validAnchorType = "EXPLICIT_TITLE".equals(hit.anchorType())
+			|| "STABLE_ALIAS".equals(hit.anchorType())
+			|| "TITLE_WITH_PROVISION".equals(hit.anchorType());
+		boolean validReason = "EXACT_PROVISION".equals(hit.reason())
+			|| "EXACT_HEADING".equals(hit.reason())
+			|| "EVIDENCE_TERMS".equals(hit.reason())
+			|| "DOCUMENT_ORDER".equals(hit.reason());
+		boolean legacyPair = validAnchorType && validReason
+			&& hit.seedTermCount() == null
+			&& hit.seedBm25Score() == null
+			&& hit.seedBm25Rank() == null;
+		boolean bm25TitlePair = "BM25_TITLE".equals(hit.anchorType())
+			&& "BM25_TITLE_SEED".equals(hit.reason())
+			&& hit.seedTermCount() != null
+			&& hit.seedTermCount() >= 2
+			&& hit.seedTermCount() <= 6
+			&& hit.seedBm25Score() != null
+			&& Double.isFinite(hit.seedBm25Score())
+			&& hit.seedBm25Score() > 0.0
+			&& hit.seedBm25Rank() != null
+			&& hit.seedBm25Rank() >= 1
+			&& hit.seedBm25Rank() <= 100;
+		return legacyPair || bm25TitlePair;
+	}
+
+	private List<ReciprocalRankFusion.RrfHit> fuseDocumentExpansion(
+		List<QdrantSearchHit> vectorHits,
+		List<LexicalSearchHit> bm25Hits,
+		List<ReciprocalRankFusion.RrfHit> controlFusedHits,
+		List<DocumentCandidateExpansion.Hit> expansionHits,
+		Map<String, LawSemanticChunkRow> chunkById
+	) {
+		List<ReciprocalRankFusion.RrfHit> baseline = controlFusedHits == null
+			? List.of()
+			: List.copyOf(controlFusedHits);
+		if (expansionHits == null || expansionHits.isEmpty()) {
+			return baseline;
+		}
+		int rawSourceLimit = Math.max(
+			1,
+			(vectorHits == null ? 0 : vectorHits.size()) + (bm25Hits == null ? 0 : bm25Hits.size())
+		);
+		List<ReciprocalRankFusion.RrfHit> rawSourceHits = reciprocalRankFusion.fuse(
+			vectorHits,
+			bm25Hits,
+			rrfProperties.rrfK(),
+			rrfProperties.rrfVectorWeight(),
+			rrfProperties.rrfLexicalWeight(),
+			rawSourceLimit
+		);
+		Map<String, ReciprocalRankFusion.RrfHit> combined = rawSourceHits.stream().collect(
+			java.util.stream.Collectors.toMap(
+				ReciprocalRankFusion.RrfHit::candidateKey,
+				hit -> hit,
+				(first, second) -> first,
+				LinkedHashMap::new
+			)
+		);
+		int k = Math.max(1, rrfProperties.rrfK());
+		for (DocumentCandidateExpansion.Hit expansionHit : expansionHits) {
+			LawSemanticChunkRow chunk = chunkById.get(expansionHit.candidateKey());
+			if (chunk == null) {
+				continue;
+			}
+			ReciprocalRankFusion.RrfHit current = combined.get(expansionHit.candidateKey());
+			double expansionScore = DOCUMENT_EXPANSION_RRF_WEIGHT / (k + (double) expansionHit.sourceRank());
+			combined.put(expansionHit.candidateKey(), new ReciprocalRankFusion.RrfHit(
+				expansionHit.candidateKey(),
+				chunk.target(),
+				chunk.chunkId(),
+				(current == null ? 0.0 : current.score()) + expansionScore,
+				current == null ? null : current.vectorRank(),
+				current == null ? null : current.lexicalRank(),
+				Math.min(current == null ? Integer.MAX_VALUE : current.bestSourceRank(), expansionHit.sourceRank())
+			));
+		}
+		return combined.values().stream()
+			.sorted(Comparator.comparingDouble(ReciprocalRankFusion.RrfHit::score).reversed()
+				.thenComparingInt(ReciprocalRankFusion.RrfHit::bestSourceRank)
+				.thenComparing(ReciprocalRankFusion.RrfHit::target)
+				.thenComparingLong(ReciprocalRankFusion.RrfHit::chunkId))
+			.limit(Math.max(1, rrfProperties.rrfFusedLimit()))
+			.toList();
+	}
+
+	private boolean documentExpansionAuthoritative(HybridRetrieval hybrid) {
+		return documentExpansionProperties.authoritative()
+			&& rrfProperties.rrfAuthoritative()
+			&& semanticSelectionProperties.authoritative()
+			&& hybrid.documentExpansionStatus() == DocumentCandidateExpansion.Status.APPLIED;
+	}
+
 	private Map<String, Double> applyAuthoritativeRrfScores(
 		Map<String, Double> controlScores,
 		HybridRetrieval hybrid
 	) {
-		if (!rrfProperties.rrfAuthoritative() || hybrid.fusedHits().isEmpty()) {
+		List<ReciprocalRankFusion.RrfHit> authoritativeHits = documentExpansionAuthoritative(hybrid)
+			? hybrid.documentExpansionFusedHits()
+			: hybrid.fusedHits();
+		if (!rrfProperties.rrfAuthoritative() || authoritativeHits.isEmpty()) {
 			return controlScores;
 		}
 		Map<String, Double> scores = new HashMap<>(controlScores);
 		double maximumControl = scores.values().stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
-		double maximumRrf = hybrid.fusedHits().stream()
+		double maximumRrf = authoritativeHits.stream()
 			.mapToDouble(ReciprocalRankFusion.RrfHit::score)
 			.max()
 			.orElse(1.0);
-		for (ReciprocalRankFusion.RrfHit hit : hybrid.fusedHits()) {
+		for (ReciprocalRankFusion.RrfHit hit : authoritativeHits) {
 			double normalizedRrf = maximumRrf <= 0 ? 0.0 : hit.score() / maximumRrf;
 			scores.put(hit.candidateKey(), maximumControl + normalizedRrf);
 		}
@@ -10062,6 +10678,49 @@ public class LawAiAnswerService {
 		}
 	}
 
+	private DocumentCandidateExpansion.Result joinDocumentExpansion(
+		CompletableFuture<DocumentCandidateExpansion.Result> future
+	) {
+		try {
+			return future.get(DOCUMENT_EXPANSION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+		} catch (TimeoutException exception) {
+			future.cancel(true);
+			log.warn(
+				"Document expansion shadow timed out after {}ms. Continuing with baseline.",
+				DOCUMENT_EXPANSION_TIMEOUT_MILLIS
+			);
+			return fallbackDocumentExpansionResult();
+		} catch (InterruptedException exception) {
+			Thread.currentThread().interrupt();
+			return fallbackDocumentExpansionResult();
+		} catch (java.util.concurrent.ExecutionException exception) {
+			Throwable cause = exception.getCause();
+			log.warn(
+				"Document expansion shadow failed closed. failureType={}",
+				cause == null ? exception.getClass().getSimpleName() : cause.getClass().getSimpleName()
+			);
+			return fallbackDocumentExpansionResult();
+		}
+	}
+
+	private DocumentCandidateExpansion.Result disabledDocumentExpansionResult() {
+		return new DocumentCandidateExpansion.Result(
+			List.of(),
+			List.of(),
+			DocumentCandidateExpansion.Status.DISABLED,
+			List.of()
+		);
+	}
+
+	private DocumentCandidateExpansion.Result fallbackDocumentExpansionResult() {
+		return new DocumentCandidateExpansion.Result(
+			List.of(),
+			List.of(),
+			DocumentCandidateExpansion.Status.FALLBACK_BASELINE,
+			List.of()
+		);
+	}
+
 	// 메소드 설명: elapsedMillis 처리 흐름을 수행합니다.
 	private static long elapsedMillis(long startNanos) {
 		return Math.max(0, (System.nanoTime() - startNanos) / 1_000_000);
@@ -10338,17 +10997,49 @@ public class LawAiAnswerService {
 		List<LexicalSearchHit> bm25Hits,
 		List<ReciprocalRankFusion.RrfHit> fusedHits,
 		List<LawSemanticChunkRow> bm25Chunks,
-		List<LawSemanticChunkRow> fusedChunks
+		List<LawSemanticChunkRow> fusedChunks,
+		List<DocumentCandidateExpansion.Hit> documentExpansionHits,
+		List<LawSemanticChunkRow> documentExpansionChunks,
+		List<ReciprocalRankFusion.RrfHit> documentExpansionFusedHits,
+		List<LawSemanticChunkRow> documentExpansionFusedChunks,
+		DocumentCandidateExpansion.Status documentExpansionStatus,
+		List<String> documentExpansionReasonCodes,
+		List<ReciprocalRankFusion.RrfHit> coverageHits,
+		List<LawSemanticChunkRow> coverageChunks,
+		List<CoverageAwareFusion.Rescue> coverageRescues,
+		CoverageAwareFusion.Status coverageStatus
 	) {
 		private HybridRetrieval {
 			bm25Hits = bm25Hits == null ? List.of() : List.copyOf(bm25Hits);
 			fusedHits = fusedHits == null ? List.of() : List.copyOf(fusedHits);
 			bm25Chunks = bm25Chunks == null ? List.of() : List.copyOf(bm25Chunks);
 			fusedChunks = fusedChunks == null ? List.of() : List.copyOf(fusedChunks);
+			documentExpansionHits = documentExpansionHits == null ? List.of() : List.copyOf(documentExpansionHits);
+			documentExpansionChunks = documentExpansionChunks == null ? List.of() : List.copyOf(documentExpansionChunks);
+			documentExpansionFusedHits = documentExpansionFusedHits == null
+				? List.of()
+				: List.copyOf(documentExpansionFusedHits);
+			documentExpansionFusedChunks = documentExpansionFusedChunks == null
+				? List.of()
+				: List.copyOf(documentExpansionFusedChunks);
+			documentExpansionStatus = documentExpansionStatus == null
+				? DocumentCandidateExpansion.Status.DISABLED
+				: documentExpansionStatus;
+			documentExpansionReasonCodes = documentExpansionReasonCodes == null
+				? List.of()
+				: List.copyOf(documentExpansionReasonCodes);
+			coverageHits = coverageHits == null ? List.of() : List.copyOf(coverageHits);
+			coverageChunks = coverageChunks == null ? List.of() : List.copyOf(coverageChunks);
+			coverageRescues = coverageRescues == null ? List.of() : List.copyOf(coverageRescues);
+			coverageStatus = coverageStatus == null ? CoverageAwareFusion.Status.DISABLED : coverageStatus;
 		}
 
 		private static HybridRetrieval empty() {
-			return new HybridRetrieval(List.of(), List.of(), List.of(), List.of());
+			return new HybridRetrieval(
+				List.of(), List.of(), List.of(), List.of(),
+				List.of(), List.of(), List.of(), List.of(), DocumentCandidateExpansion.Status.DISABLED, List.of(),
+				List.of(), List.of(), List.of(), CoverageAwareFusion.Status.DISABLED
+			);
 		}
 
 		private LexicalSearchHit bm25Hit(String candidateKey) {
@@ -10372,6 +11063,45 @@ public class LawAiAnswerService {
 				}
 			}
 			return null;
+		}
+
+		private DocumentCandidateExpansion.Hit documentExpansionHit(String candidateKey) {
+			return documentExpansionHits.stream()
+				.filter(hit -> hit.candidateKey().equals(candidateKey))
+				.findFirst()
+				.orElse(null);
+		}
+
+		private ReciprocalRankFusion.RrfHit documentExpansionFusedHit(String candidateKey) {
+			return documentExpansionFusedHits.stream()
+				.filter(hit -> hit.candidateKey().equals(candidateKey))
+				.findFirst()
+				.orElse(null);
+		}
+
+		private Integer documentExpansionFusedRank(String candidateKey) {
+			for (int index = 0; index < documentExpansionFusedHits.size(); index++) {
+				if (documentExpansionFusedHits.get(index).candidateKey().equals(candidateKey)) {
+					return index + 1;
+				}
+			}
+			return null;
+		}
+
+		private Integer coverageRank(String candidateKey) {
+			for (int index = 0; index < coverageHits.size(); index++) {
+				if (coverageHits.get(index).candidateKey().equals(candidateKey)) {
+					return index + 1;
+				}
+			}
+			return null;
+		}
+
+		private CoverageAwareFusion.Rescue coverageRescue(String candidateKey) {
+			return coverageRescues.stream()
+				.filter(rescue -> rescue.candidateKey().equals(candidateKey))
+				.findFirst()
+				.orElse(null);
 		}
 	}
 }

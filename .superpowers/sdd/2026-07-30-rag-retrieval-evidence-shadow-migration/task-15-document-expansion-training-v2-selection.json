@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "status": "BASELINE_REGRESSION",
+  "eligible": false,
+  "reason": "control recall does not match the frozen training baseline",
+  "trainingBaseline": {
+    "allRequired": 7,
+    "anyRequired": 14,
+    "matchedGroups": 23,
+    "caseCount": 24
+  }
+}

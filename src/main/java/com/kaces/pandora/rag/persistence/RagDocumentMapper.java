@@ -10,6 +10,7 @@ import com.kaces.pandora.rag.importing.RagImportJobKey;
 import com.kaces.pandora.rag.search.RagChunkSearchTermRow;
 import com.kaces.pandora.rag.search.RagChunkSearchIndexStateRow;
 import com.kaces.pandora.semantic.provenance.IndexContentSnapshot;
+import com.kaces.pandora.semantic.retrieval.DocumentIdentityCandidate;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -219,6 +220,22 @@ public interface RagDocumentMapper {
 	List<LawSemanticChunkRow> findSemanticChunksByHeadingText(
 		@Param("documentTypes") List<String> documentTypes,
 		@Param("keywords") List<String> keywords,
+		@Param("limit") int limit
+	);
+
+	List<DocumentIdentityCandidate> findDocumentExpansionDocuments(
+		@Param("targets") List<String> targets,
+		@Param("titleTerms") List<String> titleTerms,
+		@Param("provisionTerms") List<String> provisionTerms,
+		@Param("limit") int limit
+	);
+
+	List<LawSemanticChunkRow> findDocumentExpansionChunks(
+		@Param("documentIds") List<Long> documentIds,
+		@Param("provisionTerms") List<String> provisionTerms,
+		@Param("headingTerms") List<String> headingTerms,
+		@Param("evidenceTerms") List<String> evidenceTerms,
+		@Param("perDocumentLimit") int perDocumentLimit,
 		@Param("limit") int limit
 	);
 

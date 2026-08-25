@@ -7,6 +7,18 @@ import org.junit.jupiter.api.Test;
 class QuestionSearchPlanTests {
 
 	@Test
+	void derivesDocumentSearchAnchorWithoutChangingPlanConstruction() {
+		QuestionSearchPlan plan = QuestionSearchPlan.from("전자정부법 제67조의2에 따른 사전협의 대상은?");
+
+		DocumentSearchAnchor anchor = plan.documentSearchAnchor();
+
+		assertThat(anchor.status()).isEqualTo(DocumentSearchAnchor.Status.ELIGIBLE);
+		assertThat(anchor.titleTerms()).containsExactly("전자정부법");
+		assertThat(anchor.provisionTerms()).containsExactly("제67조의2");
+		assertThat(anchor.anchorType()).isEqualTo(DocumentSearchAnchor.AnchorType.TITLE_WITH_PROVISION);
+	}
+
+	@Test
 	void expandsProcurementCatalogContractQuestion() {
 		QuestionSearchPlan plan = QuestionSearchPlan.from("조달청 디지털카달로그에서 구매하면 수의계약 인가?");
 

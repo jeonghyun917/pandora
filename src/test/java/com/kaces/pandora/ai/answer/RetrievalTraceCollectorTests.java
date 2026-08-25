@@ -3,6 +3,7 @@ package com.kaces.pandora.ai.answer;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class RetrievalTraceCollectorTests {
@@ -82,5 +83,35 @@ class RetrievalTraceCollectorTests {
 		assertThat(collector.finishAll())
 			.extracting(RetrievalCandidateTrace::candidateKey)
 			.containsExactly("law:1", "official_doc:3");
+	}
+
+	@Test
+	void recordsDistinctCoverageFusionLossReasonsAtTheCoverageStage() {
+		RetrievalTraceCollector collector = new RetrievalTraceCollector(100);
+		for (int index = 1; index <= 4; index++) {
+			collector.source("law:" + index, "law", index, "vector", index);
+		}
+
+		collector.transitionCoverage(
+			List.of(),
+			Map.of(
+				"law:1", RetrievalCandidateTrace.ABSENT_FROM_SOURCE_UNION,
+				"law:2", RetrievalCandidateTrace.SOURCE_RANK_LIMIT,
+				"law:3", RetrievalCandidateTrace.INVALID_DOCUMENT_IDENTITY,
+				"law:4", RetrievalCandidateTrace.TOP_K_DISPLACED
+			)
+		);
+
+		assertThat(collector.finishAll())
+			.extracting(RetrievalCandidateTrace::firstLossStage)
+			.containsOnly(RetrievalCandidateTrace.COVERAGE_FUSED_STAGE);
+		assertThat(collector.finishAll())
+			.flatExtracting(RetrievalCandidateTrace::reasonCodes)
+			.containsExactly(
+				"ABSENT_FROM_SOURCE_UNION",
+				"SOURCE_RANK_LIMIT",
+				"INVALID_DOCUMENT_IDENTITY",
+				"TOP_K_DISPLACED"
+			);
 	}
 }

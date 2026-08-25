@@ -9,6 +9,7 @@ import com.kaces.pandora.lawdata.sync.StoredChunk;
 import com.kaces.pandora.lawdata.sync.DocumentActivationOperation;
 import com.kaces.pandora.semantic.provenance.IndexContentSnapshot;
 import com.kaces.pandora.semantic.integrity.LawIndexIntegrityRow;
+import com.kaces.pandora.semantic.retrieval.DocumentIdentityCandidate;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -197,6 +198,24 @@ public interface LawChunkMapper {
 		@Param("titleKeywords") List<String> titleKeywords,
 		@Param("textKeywords") List<String> textKeywords,
 		@Param("includeFuture") boolean includeFuture,
+		@Param("limit") int limit
+	);
+
+	List<DocumentIdentityCandidate> findDocumentExpansionDocuments(
+		@Param("targets") List<String> targets,
+		@Param("titleTerms") List<String> titleTerms,
+		@Param("provisionTerms") List<String> provisionTerms,
+		@Param("includeFuture") boolean includeFuture,
+		@Param("limit") int limit
+	);
+
+	List<LawSemanticChunkRow> findDocumentExpansionChunks(
+		@Param("documentIds") List<Long> documentIds,
+		@Param("provisionTerms") List<String> provisionTerms,
+		@Param("headingTerms") List<String> headingTerms,
+		@Param("evidenceTerms") List<String> evidenceTerms,
+		@Param("includeFuture") boolean includeFuture,
+		@Param("perDocumentLimit") int perDocumentLimit,
 		@Param("limit") int limit
 	);
 

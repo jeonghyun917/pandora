@@ -28,6 +28,10 @@ public record QuestionSearchPlan(
 		return cleanKeywords(prioritized, MAX_LEXICAL_KEYWORDS);
 	}
 
+	public DocumentSearchAnchor documentSearchAnchor() {
+		return DocumentSearchAnchorExtractor.extract(question, profile, lexicalKeywords, focusedKeywords);
+	}
+
 	public static QuestionSearchPlan from(String question) {
 		String original = question == null ? "" : question.trim();
 		QuestionIntentProfile profile = QuestionIntentProfile.from(original);

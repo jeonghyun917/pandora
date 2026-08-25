@@ -22,6 +22,55 @@ const {
 } = require('./lib/rag-eval-provenance');
 const { loadTrainingManifest } = require('./lib/rrf-weight-selection');
 
+const DOCUMENT_EXPANSION_ANCHOR_TYPES = new Set([
+  'EXPLICIT_TITLE',
+  'STABLE_ALIAS',
+  'TITLE_WITH_PROVISION',
+  'BM25_TITLE',
+]);
+const DOCUMENT_EXPANSION_REASON_CODES = new Set([
+  'EXACT_PROVISION',
+  'EXACT_HEADING',
+  'EVIDENCE_TERMS',
+  'DOCUMENT_ORDER',
+  'BM25_TITLE_SEED',
+]);
+const DOCUMENT_EXPANSION_STATUSES = new Set([
+  'DISABLED',
+  'NO_STRONG_ANCHOR',
+  'DOCUMENT_NOT_FOUND',
+  'DOCUMENT_MATCH_AMBIGUOUS',
+  'APPLIED',
+  'DB_FALLBACK_BASELINE',
+  'INVALID_BOUNDS',
+  'FALLBACK_BASELINE',
+  'BM25_TITLE_APPLIED',
+  'BM25_TITLE_NO_MATCH',
+  'BM25_TITLE_AMBIGUOUS',
+  'BM25_TITLE_INVALID_INPUT',
+  'BM25_TITLE_DB_FALLBACK',
+]);
+const DOCUMENT_EXPANSION_OUTCOME_REASON_CODES = new Set([
+  'DOCUMENT_NOT_ANCHORED',
+  'DOCUMENT_MATCH_AMBIGUOUS',
+  'DOCUMENT_LIMIT',
+  'DOCUMENT_CHUNK_LIMIT',
+  'DOCUMENT_GLOBAL_LIMIT',
+  'DOCUMENT_DUPLICATE_OVERLAP',
+  'INVALID_DOCUMENT_IDENTITY',
+  'DOCUMENT_EXPANSION_DB_FAILURE',
+  'BM25_TITLE_NO_MATCH',
+  'BM25_TITLE_AMBIGUOUS',
+  'BM25_TITLE_INVALID_INPUT',
+  'BM25_TITLE_EXPANSION_DB_FAILURE',
+  'BM25_TITLE_DOCUMENT_LIMIT',
+  'BM25_TITLE_INVALID_SEED',
+  'BM25_TITLE_INVALID_TARGET',
+]);
+const MAX_DOCUMENT_EXPANSION_HITS = 24;
+const MAX_DOCUMENT_EXPANSION_HITS_PER_DOCUMENT = 8;
+const MAX_DOCUMENT_EXPANSION_DOCUMENTS = 3;
+
 const CASE_PATHS = [
   path.resolve('src/main/resources/rag-evaluation-cases.tsv'),
   path.resolve('src/main/resources/rag-evaluation-cases.generated.tsv'),
@@ -56,6 +105,7 @@ async function main() {
       const response = await loadDebugResponse(evalCase, options);
       const measurement = {
         ...measureRetrievalCase(evalCase, response, options.k),
+        documentExpansion: measureDocumentExpansionCase(evalCase, response, options.k),
 		candidateLoss: extractCandidateLossAnalysis(response),
         question: evalCase.question,
         targets: evalCase.targets,
@@ -104,6 +154,10 @@ async function main() {
       } : {}),
     },
     runtimeVerifiedAtEnd: true,
+    documentExpansionPolicy: {
+      id: 'document-expansion-shadow-v1',
+      configHash: String(runtimeInfo.runtimeConfigSha256 ?? ''),
+    },
     results: successfulMeasurements,
   };
   writeJson(outputPaths.outputPath, body);
@@ -274,7 +328,8 @@ function assertDebugResponse(body, auditGroupCount = 0) {
   if (typeof body.resultMsg !== 'string') {
     throw new Error('debug search response resultMsg must be a string');
   }
-  for (const stage of STAGE_NAMES) {
+  assertDocumentExpansionOutcome(body);
+  for (const stage of [...STAGE_NAMES, ...SHADOW_STAGE_NAMES]) {
     if (!Array.isArray(body[stage])) {
       throw new Error(`debug search response ${stage} must be an array`);
     }
@@ -314,7 +369,184 @@ function assertDebugResponse(body, auditGroupCount = 0) {
 			}
 		}
 	}
+	assertDocumentExpansionCapture(body);
   return body;
+}
+
+function assertDocumentExpansionOutcome(response) {
+	const status = String(response?.documentExpansionStatus ?? '').trim();
+	if (!DOCUMENT_EXPANSION_STATUSES.has(status)) {
+		throw new Error('debug search response documentExpansionStatus must be a known string');
+	}
+	const source = response?.documentExpansionReasonCodes;
+	if (!Array.isArray(source) || source.length > 8) {
+		throw new Error('debug search response documentExpansionReasonCodes must be an array with at most 8 items');
+	}
+	const reasonCodes = source.map((value) => String(value ?? '').trim());
+	if (reasonCodes.some((value) => !DOCUMENT_EXPANSION_OUTCOME_REASON_CODES.has(value))
+		|| new Set(reasonCodes).size !== reasonCodes.length) {
+		throw new Error('debug search response documentExpansionReasonCodes contains an unknown or duplicate value');
+	}
+	return { status, reasonCodes };
+}
+
+function assertDocumentExpansionCapture(response) {
+	if (!response || typeof response !== 'object' || Array.isArray(response)) {
+		throw new Error('document expansion capture response must be an object');
+	}
+	if (!Array.isArray(response.documentExpansionHits)) {
+		throw new Error('debug search response documentExpansionHits must be an array');
+	}
+	if (!Array.isArray(response.documentExpansionFused)) {
+		throw new Error('debug search response documentExpansionFused must be an array');
+	}
+	const documentExpansionHits = captureDocumentExpansionItems(response.documentExpansionHits, 'documentExpansionHits');
+	const documentExpansionFused = captureDocumentExpansionItems(
+		response.documentExpansionFused.filter((item) => hasDocumentExpansionMetadata(item)),
+		'documentExpansionFused',
+		{ requireSequentialRanks: false },
+	);
+	const sourceKeys = new Set(documentExpansionHits.map((item) => item.candidateKey));
+	for (const item of documentExpansionFused) {
+		if (!sourceKeys.has(item.candidateKey)) {
+			throw new Error(`documentExpansionFused has unknown expansion candidate: ${item.candidateKey}`);
+		}
+	}
+	return { documentExpansionHits, documentExpansionFused };
+}
+
+function hasDocumentExpansionMetadata(item) {
+	return [
+		item?.documentExpansionRank,
+		item?.documentExpansionAnchorType,
+		item?.documentExpansionReason,
+		item?.documentExpansionOverlap,
+		item?.documentExpansionSeedTermCount,
+		item?.documentExpansionSeedBm25Score,
+		item?.documentExpansionSeedBm25Rank,
+	].some((value) => value !== null && value !== undefined);
+}
+
+function captureDocumentExpansionItems(items, label, options = {}) {
+	if (items.length > MAX_DOCUMENT_EXPANSION_HITS) {
+		throw new Error(`${label} must contain at most ${MAX_DOCUMENT_EXPANSION_HITS} items`);
+	}
+	const captured = [];
+	const candidateKeys = new Set();
+	const rankSet = new Set();
+	const documentCounts = new Map();
+	for (const [index, item] of items.entries()) {
+		if (!item || typeof item !== 'object' || Array.isArray(item)) {
+			throw new Error(`${label}[${index}] must be an object`);
+		}
+		const key = candidateKey(item);
+		if (typeof key !== 'string' || !key.trim() || key !== key.trim()) {
+			throw new Error(`${label}[${index}] invalid candidate key`);
+		}
+		if (candidateKeys.has(key)) throw new Error(`${label} duplicate candidate key: ${key}`);
+		candidateKeys.add(key);
+		const documentId = item.documentId;
+		if (!Number.isSafeInteger(documentId) || documentId <= 0) throw new Error(`${label}[${index}] invalid documentId`);
+		const rank = item.documentExpansionRank;
+		if (!Number.isSafeInteger(rank) || rank <= 0) throw new Error(`${label}[${index}] invalid document expansion rank`);
+		if (rankSet.has(rank)) throw new Error(`${label} duplicate document expansion rank: ${rank}`);
+		rankSet.add(rank);
+		const anchorType = String(item.documentExpansionAnchorType ?? '').trim();
+		if (!DOCUMENT_EXPANSION_ANCHOR_TYPES.has(anchorType)) throw new Error(`${label}[${index}] invalid document expansion anchor type`);
+		const reason = String(item.documentExpansionReason ?? '').trim();
+		if (!DOCUMENT_EXPANSION_REASON_CODES.has(reason)) throw new Error(`${label}[${index}] unknown document expansion reason`);
+		if (typeof item.documentExpansionOverlap !== 'boolean') throw new Error(`${label}[${index}] document expansion overlap must be boolean`);
+		const seedTermCount = item.documentExpansionSeedTermCount;
+		const seedBm25Score = item.documentExpansionSeedBm25Score;
+		const seedBm25Rank = item.documentExpansionSeedBm25Rank;
+		if (anchorType === 'BM25_TITLE') {
+			if (reason !== 'BM25_TITLE_SEED') throw new Error(`${label}[${index}] invalid BM25 title reason`);
+			if (!Number.isSafeInteger(seedTermCount) || seedTermCount < 2 || seedTermCount > 6) {
+				throw new Error(`${label}[${index}] BM25 seed term count must be between 2 and 6`);
+			}
+			if (!Number.isFinite(seedBm25Score) || seedBm25Score <= 0) {
+				throw new Error(`${label}[${index}] BM25 seed score must be finite and positive`);
+			}
+			if (!Number.isSafeInteger(seedBm25Rank) || seedBm25Rank < 1 || seedBm25Rank > 100) {
+				throw new Error(`${label}[${index}] BM25 seed rank must be between 1 and 100`);
+			}
+		} else if ([seedTermCount, seedBm25Score, seedBm25Rank]
+			.some((value) => value !== null && value !== undefined)) {
+			throw new Error(`${label}[${index}] legacy expansion anchor must not contain BM25 seed metadata`);
+		}
+		const perDocument = (documentCounts.get(documentId) ?? 0) + 1;
+		if (perDocument > MAX_DOCUMENT_EXPANSION_HITS_PER_DOCUMENT) {
+			throw new Error(`${label} must contain at most ${MAX_DOCUMENT_EXPANSION_HITS_PER_DOCUMENT} items per document`);
+		}
+		documentCounts.set(documentId, perDocument);
+		const sourceIndexes = item.matchedAuditGroupIndexes;
+		const matchedAuditGroupIndexes = Array.from(new Set(Array.isArray(sourceIndexes) ? sourceIndexes : []))
+			.filter((value) => Number.isSafeInteger(value) && value >= 0).sort((left, right) => left - right);
+		if (!Array.isArray(sourceIndexes) || matchedAuditGroupIndexes.length !== new Set(sourceIndexes).size) {
+			throw new Error(`${label}[${index}] invalid matched audit group indexes`);
+		}
+		captured.push({
+			candidateKey: key,
+			documentId,
+			rank,
+			anchorType,
+			reason,
+			overlapsExistingSource: item.documentExpansionOverlap,
+			...(anchorType === 'BM25_TITLE' ? { seedTermCount, seedBm25Score, seedBm25Rank } : {}),
+			matchedAuditGroupIndexes,
+		});
+	}
+	if (documentCounts.size > MAX_DOCUMENT_EXPANSION_DOCUMENTS) {
+		throw new Error(`${label} must contain at most ${MAX_DOCUMENT_EXPANSION_DOCUMENTS} documents`);
+	}
+	if (options.requireSequentialRanks !== false && captured.some((item, index) => item.rank !== index + 1)) {
+		throw new Error(`${label} ranks must be sequential starting at 1`);
+	}
+	return captured;
+}
+
+function measureDocumentExpansionCase(evalCase, response, k = 10) {
+	const requiredGroupCount = buildAuditTermGroups(evalCase).length;
+	const capture = assertDocumentExpansionCapture(response);
+	const outcome = assertDocumentExpansionOutcome(response);
+	const limit = Number.isSafeInteger(k) && k > 0 ? k : 10;
+	const bounded = (items) => Array.isArray(items) ? items.slice(0, limit) : [];
+	const controlItems = [
+		...bounded(response?.vectorHits),
+		...bounded(response?.lexicalHits),
+		...bounded(response?.bm25Hits),
+	];
+	const candidateSourcePresence = measureDocumentExpansionPresence(controlItems, requiredGroupCount);
+	const controlFusedPresence = measureDocumentExpansionPresence(bounded(response?.fused), requiredGroupCount);
+	const expansionSourcePresence = measureDocumentExpansionPresence(capture.documentExpansionHits, requiredGroupCount);
+	const shadowFusedPresence = measureDocumentExpansionPresence(bounded(response?.documentExpansionFused), requiredGroupCount);
+	return {
+		control: controlFusedPresence,
+		candidateSourcePresence,
+		controlFusedPresence,
+		expansionSourcePresence,
+		shadowFusedPresence,
+		firstDropStage: !candidateSourcePresence.allRequired ? 'candidateSources'
+			: !controlFusedPresence.allRequired && !shadowFusedPresence.allRequired ? 'controlFused'
+				: controlFusedPresence.allRequired && !shadowFusedPresence.allRequired ? 'documentExpansionFused'
+					: null,
+		status: outcome.status,
+		reasonCodes: outcome.reasonCodes,
+		capture,
+	};
+}
+
+function measureDocumentExpansionPresence(items, requiredGroupCount) {
+	const matches = new Set();
+	for (const item of Array.isArray(items) ? items : []) {
+		for (const value of Array.isArray(item?.matchedAuditGroupIndexes) ? item.matchedAuditGroupIndexes : []) {
+			if (Number.isSafeInteger(value) && value >= 0 && value < requiredGroupCount) matches.add(value);
+		}
+	}
+	const matchedRequiredGroupIndexes = Array.from(matches).sort((left, right) => left - right);
+	return { requiredGroupCount, matchedRequiredGroupIndexes, matchedRequiredGroupCount: matchedRequiredGroupIndexes.length,
+		anyRequired: matchedRequiredGroupIndexes.length > 0,
+		allRequired: requiredGroupCount > 0 && matchedRequiredGroupIndexes.length === requiredGroupCount };
 }
 
 function extractCandidateLossAnalysis(response) {
@@ -388,6 +620,7 @@ function captureRankedItems(items, limit) {
 		.slice(0, limit)
 		.map((item, index) => ({
 			candidateKey: candidateKey(item),
+			documentId: Number(item?.documentId),
 			rank: index + 1,
 			matchedAuditGroupIndexes: Array.from(new Set(
 				(Array.isArray(item?.matchedAuditGroupIndexes) ? item.matchedAuditGroupIndexes : [])
@@ -531,9 +764,11 @@ if (require.main === module) {
 module.exports = {
   assertTrainingSelection,
   assertDebugResponse,
+	assertDocumentExpansionCapture,
   buildDebugRequest,
 	captureSourceRankSnapshot,
 	extractCandidateLossAnalysis,
+	measureDocumentExpansionCase,
   loadRuntimeInfo,
   main,
   parseOptions,
