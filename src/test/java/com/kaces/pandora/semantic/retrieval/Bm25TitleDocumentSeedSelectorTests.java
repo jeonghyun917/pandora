@@ -51,6 +51,9 @@ class Bm25TitleDocumentSeedSelectorTests {
 
 		assertThat(result.status()).isEqualTo(Bm25TitleDocumentSeedSelector.Status.NO_MATCH);
 		assertThat(result.seeds()).isEmpty();
+		assertThat(result.diagnostics()).isEqualTo(new Bm25TitleDocumentSeedSelector.Diagnostics(
+			2, 1, 1, 0, Bm25TitleDocumentSeedSelector.DiagnosticReason.TITLE_MISMATCH
+		));
 	}
 
 	@Test
@@ -64,6 +67,9 @@ class Bm25TitleDocumentSeedSelectorTests {
 		);
 
 		assertThat(result.status()).isEqualTo(Bm25TitleDocumentSeedSelector.Status.NO_MATCH);
+		assertThat(result.diagnostics()).isEqualTo(new Bm25TitleDocumentSeedSelector.Diagnostics(
+			1, 0, 0, 0, Bm25TitleDocumentSeedSelector.DiagnosticReason.INSUFFICIENT_PLANNED_TERMS
+		));
 	}
 
 	@Test
@@ -85,9 +91,13 @@ class Bm25TitleDocumentSeedSelectorTests {
 	void rejectsMissingHydrationAndTargetMismatch() {
 		LexicalSearchHit hit = hit("law", 101, 10, 9.0, 1, "정보화사업", "사전협의");
 
-		assertThat(selector.select(
+		Bm25TitleDocumentSeedSelector.Selection missingHydration = selector.select(
 			List.of(hit), List.of(), List.of("정보화사업", "사전협의"), List.of("law"), policy(3)
-		).status()).isEqualTo(Bm25TitleDocumentSeedSelector.Status.INVALID_INPUT);
+		);
+		assertThat(missingHydration.status()).isEqualTo(Bm25TitleDocumentSeedSelector.Status.INVALID_INPUT);
+		assertThat(missingHydration.diagnostics()).isEqualTo(new Bm25TitleDocumentSeedSelector.Diagnostics(
+			2, 1, 0, 0, Bm25TitleDocumentSeedSelector.DiagnosticReason.NO_VALID_CANDIDATE
+		));
 
 		assertThat(selector.select(
 			List.of(hit),
@@ -107,6 +117,9 @@ class Bm25TitleDocumentSeedSelectorTests {
 		);
 
 		assertThat(result.status()).isEqualTo(Bm25TitleDocumentSeedSelector.Status.NO_MATCH);
+		assertThat(result.diagnostics()).isEqualTo(new Bm25TitleDocumentSeedSelector.Diagnostics(
+			2, 0, 0, 0, Bm25TitleDocumentSeedSelector.DiagnosticReason.NO_VALID_CANDIDATE
+		));
 	}
 
 	@Test

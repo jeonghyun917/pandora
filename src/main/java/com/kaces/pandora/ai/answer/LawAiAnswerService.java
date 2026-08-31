@@ -5558,7 +5558,7 @@ public class LawAiAnswerService {
 			);
 			case NO_MATCH -> emptyDocumentExpansionResult(
 				DocumentCandidateExpansion.Status.BM25_TITLE_NO_MATCH,
-				"BM25_TITLE_NO_MATCH"
+				bm25TitleNoMatchReasonCodes(selection.diagnostics())
 			);
 			case AMBIGUOUS -> emptyDocumentExpansionResult(
 				DocumentCandidateExpansion.Status.BM25_TITLE_AMBIGUOUS,
@@ -5579,6 +5579,29 @@ public class LawAiAnswerService {
 		return new DocumentCandidateExpansion.Result(List.of(), List.of(), status, List.of(reasonCode));
 	}
 
+	private DocumentCandidateExpansion.Result emptyDocumentExpansionResult(
+		DocumentCandidateExpansion.Status status,
+		List<String> reasonCodes
+	) {
+		return new DocumentCandidateExpansion.Result(List.of(), List.of(), status, reasonCodes);
+	}
+
+	private List<String> bm25TitleNoMatchReasonCodes(Bm25TitleDocumentSeedSelector.Diagnostics diagnostics) {
+		Bm25TitleDocumentSeedSelector.Diagnostics safe = diagnostics == null
+			? new Bm25TitleDocumentSeedSelector.Diagnostics(
+				0, 0, 0, 0, Bm25TitleDocumentSeedSelector.DiagnosticReason.NOT_APPLICABLE
+			)
+			: diagnostics;
+		return List.of(
+			"BM25_TITLE_NO_MATCH",
+			"BM25_TITLE_DIAGNOSTIC_REASON_" + safe.reason().name(),
+			"BM25_TITLE_PLANNED_TERM_COUNT_" + safe.plannedTermCount(),
+			"BM25_TITLE_INSPECTED_CANDIDATE_COUNT_" + safe.inspectedBm25CandidateCount(),
+			"BM25_TITLE_HYDRATED_CANDIDATE_COUNT_" + safe.hydratedCandidateCount(),
+			"BM25_TITLE_MAX_MATCHED_TITLE_TERM_COUNT_" + safe.maxMatchedTitleTermCount()
+		);
+	}
+
 	private List<String> boundedDocumentExpansionReasonCodes(List<String> reasonCodes) {
 		if (reasonCodes == null || reasonCodes.isEmpty()) {
 			return List.of();
@@ -5591,6 +5614,9 @@ public class LawAiAnswerService {
 	}
 
 	private boolean isDocumentExpansionReasonCode(String reasonCode) {
+		if (reasonCode == null || reasonCode.isBlank()) {
+			return false;
+		}
 		return RetrievalCandidateTrace.DOCUMENT_NOT_ANCHORED.equals(reasonCode)
 			|| RetrievalCandidateTrace.DOCUMENT_MATCH_AMBIGUOUS.equals(reasonCode)
 			|| RetrievalCandidateTrace.DOCUMENT_LIMIT.equals(reasonCode)
@@ -5601,6 +5627,11 @@ public class LawAiAnswerService {
 			|| "INVALID_DOCUMENT_IDENTITY".equals(reasonCode)
 			|| "DOCUMENT_EXPANSION_DB_FAILURE".equals(reasonCode)
 			|| "BM25_TITLE_NO_MATCH".equals(reasonCode)
+			|| reasonCode.startsWith("BM25_TITLE_DIAGNOSTIC_REASON_")
+			|| reasonCode.startsWith("BM25_TITLE_PLANNED_TERM_COUNT_")
+			|| reasonCode.startsWith("BM25_TITLE_INSPECTED_CANDIDATE_COUNT_")
+			|| reasonCode.startsWith("BM25_TITLE_HYDRATED_CANDIDATE_COUNT_")
+			|| reasonCode.startsWith("BM25_TITLE_MAX_MATCHED_TITLE_TERM_COUNT_")
 			|| "BM25_TITLE_AMBIGUOUS".equals(reasonCode)
 			|| "BM25_TITLE_INVALID_INPUT".equals(reasonCode)
 			|| "BM25_TITLE_EXPANSION_DB_FAILURE".equals(reasonCode)

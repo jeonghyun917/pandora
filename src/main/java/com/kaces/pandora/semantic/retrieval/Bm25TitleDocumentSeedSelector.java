@@ -27,7 +27,7 @@ public final class Bm25TitleDocumentSeedSelector {
 		Policy policy
 	) {
 		if (!validInputs(hits, hydratedRows, plannedTerms, allowedTargets, policy)) {
-			return Selection.empty(Status.INVALID_INPUT);
+			return Selection.empty(Status.INVALID_INPUT, Diagnostics.empty(DiagnosticReason.INVALID_INPUT));
 		}
 		if (!policy.enabled()) {
 			return Selection.empty(Status.DISABLED);
@@ -35,8 +35,15 @@ public final class Bm25TitleDocumentSeedSelector {
 
 		Set<String> allowed = normalizeTargets(allowedTargets);
 		Set<String> planned = normalizeTerms(plannedTerms);
-		if (allowed.isEmpty() || planned.size() < policy.minimumDistinctTitleTerms()) {
-			return Selection.empty(Status.NO_MATCH);
+		if (planned.size() < policy.minimumDistinctTitleTerms()) {
+			return Selection.empty(Status.NO_MATCH, new Diagnostics(
+				planned.size(), 0, 0, 0, DiagnosticReason.INSUFFICIENT_PLANNED_TERMS
+			));
+		}
+		if (allowed.isEmpty()) {
+			return Selection.empty(Status.NO_MATCH, new Diagnostics(
+				planned.size(), 0, 0, 0, DiagnosticReason.NO_VALID_CANDIDATE
+			));
 		}
 
 		Map<String, LawSemanticChunkRow> rowByCandidate = new LinkedHashMap<>();
@@ -46,36 +53,49 @@ public final class Bm25TitleDocumentSeedSelector {
 			}
 			String key = candidateKey(row.target(), row.chunkId());
 			if (rowByCandidate.putIfAbsent(key, row) != null) {
-				return Selection.empty(Status.INVALID_INPUT);
+				return Selection.empty(Status.INVALID_INPUT, new Diagnostics(
+					planned.size(), 0, 0, 0, DiagnosticReason.INVALID_INPUT
+				));
 			}
 		}
 
 		Map<String, MutableSeed> byDocument = new LinkedHashMap<>();
 		boolean hasHydratedHit = false;
 		int inspected = Math.min(hits.size(), policy.maxBm25HitsInspected());
+		int hydrated = 0;
+		int maxMatchedTitleTerms = 0;
 		for (int index = 0; index < inspected; index++) {
 			LexicalSearchHit hit = hits.get(index);
 			if (!validHit(hit)) {
-				return Selection.empty(Status.INVALID_INPUT);
+				return Selection.empty(Status.INVALID_INPUT, new Diagnostics(
+					planned.size(), inspected, hydrated, maxMatchedTitleTerms, DiagnosticReason.INVALID_INPUT
+				));
 			}
 			String target = normalizeTarget(hit.target());
 			if (!allowed.contains(target)) {
-				return Selection.empty(Status.INVALID_INPUT);
+				return Selection.empty(Status.INVALID_INPUT, new Diagnostics(
+					planned.size(), inspected, hydrated, maxMatchedTitleTerms, DiagnosticReason.INVALID_INPUT
+				));
 			}
 			LawSemanticChunkRow row = rowByCandidate.get(candidateKey(target, hit.chunkId()));
 			if (row == null) {
 				continue;
 			}
 			if (row.documentId() != hit.documentId() || !target.equals(normalizeTarget(row.target()))) {
-				return Selection.empty(Status.INVALID_INPUT);
+				return Selection.empty(Status.INVALID_INPUT, new Diagnostics(
+					planned.size(), inspected, hydrated, maxMatchedTitleTerms, DiagnosticReason.INVALID_INPUT
+				));
 			}
 			hasHydratedHit = true;
+			hydrated++;
 
 			String normalizedTitle = KoreanQueryNormalizer.normalizeForMatch(row.title());
 			String documentKey = documentKey(target, hit.documentId());
 			MutableSeed seed = byDocument.get(documentKey);
 			if (seed != null && !seed.normalizedTitle.equals(normalizedTitle)) {
-				return Selection.empty(Status.INVALID_INPUT);
+				return Selection.empty(Status.INVALID_INPUT, new Diagnostics(
+					planned.size(), inspected, hydrated, maxMatchedTitleTerms, DiagnosticReason.INVALID_INPUT
+				));
 			}
 			if (seed == null) {
 				seed = new MutableSeed(target, hit.documentId(), row.title(), normalizedTitle);
@@ -90,11 +110,14 @@ public final class Bm25TitleDocumentSeedSelector {
 					seed.matchedTerms.add(term);
 				}
 			}
+			maxMatchedTitleTerms = Math.max(maxMatchedTitleTerms, seed.matchedTerms.size());
 			seed.bestScore = Math.max(seed.bestScore, hit.score());
 			seed.bestRank = Math.min(seed.bestRank, hit.rank());
 		}
 		if (inspected > 0 && !hasHydratedHit) {
-			return Selection.empty(Status.INVALID_INPUT);
+			return Selection.empty(Status.INVALID_INPUT, new Diagnostics(
+				planned.size(), inspected, 0, 0, DiagnosticReason.NO_VALID_CANDIDATE
+			));
 		}
 
 		List<DocumentExpansionSeed> eligible = byDocument.values().stream()
@@ -103,13 +126,24 @@ public final class Bm25TitleDocumentSeedSelector {
 			.sorted(seedComparator())
 			.toList();
 		if (eligible.isEmpty()) {
-			return Selection.empty(Status.NO_MATCH);
+			DiagnosticReason reason = inspected == 0
+				? DiagnosticReason.NO_VALID_CANDIDATE
+				: DiagnosticReason.TITLE_MISMATCH;
+			return Selection.empty(Status.NO_MATCH, new Diagnostics(
+				planned.size(), inspected, hydrated, maxMatchedTitleTerms, reason
+			));
 		}
 		if (eligible.size() > policy.maxDocuments()
 			&& ambiguousBoundary(eligible.get(policy.maxDocuments() - 1), eligible.get(policy.maxDocuments()), policy)) {
-			return Selection.empty(Status.AMBIGUOUS);
+			return Selection.empty(Status.AMBIGUOUS, new Diagnostics(
+				planned.size(), inspected, hydrated, maxMatchedTitleTerms, DiagnosticReason.AMBIGUOUS
+			));
 		}
-		return new Selection(Status.APPLIED, eligible.stream().limit(policy.maxDocuments()).toList());
+		return new Selection(
+			Status.APPLIED,
+			eligible.stream().limit(policy.maxDocuments()).toList(),
+			new Diagnostics(planned.size(), inspected, hydrated, maxMatchedTitleTerms, DiagnosticReason.APPLIED)
+		);
 	}
 
 	private boolean validInputs(
@@ -200,14 +234,53 @@ public final class Bm25TitleDocumentSeedSelector {
 		INVALID_INPUT
 	}
 
-	public record Selection(Status status, List<DocumentExpansionSeed> seeds) {
+	public enum DiagnosticReason {
+		NOT_APPLICABLE,
+		APPLIED,
+		INSUFFICIENT_PLANNED_TERMS,
+		NO_VALID_CANDIDATE,
+		TITLE_MISMATCH,
+		AMBIGUOUS,
+		INVALID_INPUT
+	}
+
+	public record Diagnostics(
+		int plannedTermCount,
+		int inspectedBm25CandidateCount,
+		int hydratedCandidateCount,
+		int maxMatchedTitleTermCount,
+		DiagnosticReason reason
+	) {
+		public Diagnostics {
+			plannedTermCount = Math.max(0, plannedTermCount);
+			inspectedBm25CandidateCount = Math.max(0, inspectedBm25CandidateCount);
+			hydratedCandidateCount = Math.max(0, hydratedCandidateCount);
+			maxMatchedTitleTermCount = Math.max(0, maxMatchedTitleTermCount);
+			reason = reason == null ? DiagnosticReason.NOT_APPLICABLE : reason;
+		}
+
+		private static Diagnostics empty(DiagnosticReason reason) {
+			return new Diagnostics(0, 0, 0, 0, reason);
+		}
+	}
+
+	public record Selection(Status status, List<DocumentExpansionSeed> seeds, Diagnostics diagnostics) {
+		public Selection(Status status, List<DocumentExpansionSeed> seeds) {
+			this(status, seeds, Diagnostics.empty(DiagnosticReason.NOT_APPLICABLE));
+		}
+
 		public Selection {
 			status = status == null ? Status.INVALID_INPUT : status;
 			seeds = seeds == null ? List.of() : List.copyOf(seeds);
+			diagnostics = diagnostics == null ? Diagnostics.empty(DiagnosticReason.NOT_APPLICABLE) : diagnostics;
 		}
 
 		private static Selection empty(Status status) {
-			return new Selection(status, List.of());
+			return empty(status, Diagnostics.empty(DiagnosticReason.NOT_APPLICABLE));
+		}
+
+		private static Selection empty(Status status, Diagnostics diagnostics) {
+			return new Selection(status, List.of(), diagnostics);
 		}
 	}
 

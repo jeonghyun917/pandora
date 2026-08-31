@@ -911,6 +911,26 @@ test('BM25 title expansion capture requires bounded seed metadata and known outc
     documentExpansionStatus: 'BM25_TITLE_NO_MATCH',
     documentExpansionReasonCodes: ['DOCUMENT_DUPLICATE_OVERLAP', 'BM25_TITLE_NO_NOVEL_CHUNK'],
   }));
+  assert.doesNotThrow(() => retrievalRunner.assertDebugResponse({
+    ...validDebug,
+    documentExpansionStatus: 'BM25_TITLE_NO_MATCH',
+    documentExpansionReasonCodes: [
+      'BM25_TITLE_NO_MATCH',
+      'BM25_TITLE_DIAGNOSTIC_REASON_TITLE_MISMATCH',
+      'BM25_TITLE_PLANNED_TERM_COUNT_3',
+      'BM25_TITLE_INSPECTED_CANDIDATE_COUNT_24',
+      'BM25_TITLE_HYDRATED_CANDIDATE_COUNT_22',
+      'BM25_TITLE_MAX_MATCHED_TITLE_TERM_COUNT_1',
+    ],
+  }));
+  assert.throws(
+    () => retrievalRunner.assertDebugResponse({
+      ...validDebug,
+      documentExpansionStatus: 'BM25_TITLE_NO_MATCH',
+      documentExpansionReasonCodes: ['BM25_TITLE_PLANNED_TERM_COUNT_NOT_A_NUMBER'],
+    }),
+    /ReasonCodes.*unknown/i,
+  );
 });
 
 test('document expansion shadow-fused presence includes retained control and expansion candidates', () => {

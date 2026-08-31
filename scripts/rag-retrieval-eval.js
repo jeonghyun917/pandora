@@ -384,11 +384,24 @@ function assertDocumentExpansionOutcome(response) {
 		throw new Error('debug search response documentExpansionReasonCodes must be an array with at most 8 items');
 	}
 	const reasonCodes = source.map((value) => String(value ?? '').trim());
-	if (reasonCodes.some((value) => !DOCUMENT_EXPANSION_OUTCOME_REASON_CODES.has(value))
+	if (reasonCodes.some((value) => !isDocumentExpansionOutcomeReasonCode(value))
 		|| new Set(reasonCodes).size !== reasonCodes.length) {
 		throw new Error('debug search response documentExpansionReasonCodes contains an unknown or duplicate value');
 	}
 	return { status, reasonCodes };
+}
+
+function isDocumentExpansionOutcomeReasonCode(value) {
+	if (DOCUMENT_EXPANSION_OUTCOME_REASON_CODES.has(value)) {
+		return true;
+	}
+	if (/^BM25_TITLE_DIAGNOSTIC_REASON_(?:NOT_APPLICABLE|APPLIED|INSUFFICIENT_PLANNED_TERMS|NO_VALID_CANDIDATE|TITLE_MISMATCH|AMBIGUOUS|INVALID_INPUT)$/.test(value)) {
+		return true;
+	}
+	const countMatch = value.match(
+		/^BM25_TITLE_(?:PLANNED_TERM|INSPECTED_CANDIDATE|HYDRATED_CANDIDATE|MAX_MATCHED_TITLE_TERM)_COUNT_(0|[1-9]\d{0,9})$/,
+	);
+	return countMatch !== null && Number(countMatch[1]) <= 2147483647;
 }
 
 function assertDocumentExpansionCapture(response) {

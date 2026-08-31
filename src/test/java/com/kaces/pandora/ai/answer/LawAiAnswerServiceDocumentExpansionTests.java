@@ -118,6 +118,26 @@ class LawAiAnswerServiceDocumentExpansionTests {
 	}
 
 	@Test
+	void bm25TitleNoMatchDiagnosticsSurviveDebugResponse() {
+		Bm25TitleDocumentSeedSelector.Diagnostics diagnostics = new Bm25TitleDocumentSeedSelector.Diagnostics(
+			3, 24, 22, 1, Bm25TitleDocumentSeedSelector.DiagnosticReason.TITLE_MISMATCH
+		);
+		try (Harness harness = Harness.bm25TitleNoMatch(diagnostics)) {
+			LawAiDebugResponse result = harness.debug("공공소프트웨어사업에서 단순 하드웨어 구매는 포함되나요?");
+
+			assertThat(result.documentExpansionStatus()).isEqualTo("BM25_TITLE_NO_MATCH");
+			assertThat(result.documentExpansionReasonCodes()).containsExactly(
+				"BM25_TITLE_NO_MATCH",
+				"BM25_TITLE_DIAGNOSTIC_REASON_TITLE_MISMATCH",
+				"BM25_TITLE_PLANNED_TERM_COUNT_3",
+				"BM25_TITLE_INSPECTED_CANDIDATE_COUNT_24",
+				"BM25_TITLE_HYDRATED_CANDIDATE_COUNT_22",
+				"BM25_TITLE_MAX_MATCHED_TITLE_TERM_COUNT_1"
+			);
+		}
+	}
+
+	@Test
 	void strongAnchorAppliedPreventsBm25TitleFallback() {
 		DocumentCandidateExpansion.Result strong = appliedExpansion(
 			List.of(chunk(901, 90, 1, "strong anchor sibling")),
@@ -663,6 +683,18 @@ class LawAiAnswerServiceDocumentExpansionTests {
 				100,
 				appliedSeedSelection(),
 				() -> seededResult
+			);
+		}
+
+		private static Harness bm25TitleNoMatch(Bm25TitleDocumentSeedSelector.Diagnostics diagnostics) {
+			return new Harness(
+				bm25TitleProperties(false), false, false,
+				LawAiAnswerServiceDocumentExpansionTests::noStrongAnchor,
+				false, false, VECTOR_HITS, BM25_HITS, 100,
+				new Bm25TitleDocumentSeedSelector.Selection(
+					Bm25TitleDocumentSeedSelector.Status.NO_MATCH, List.of(), diagnostics
+				),
+				LawAiAnswerServiceDocumentExpansionTests::noStrongAnchor
 			);
 		}
 
