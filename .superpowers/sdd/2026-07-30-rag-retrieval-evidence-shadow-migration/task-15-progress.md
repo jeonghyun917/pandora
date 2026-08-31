@@ -289,3 +289,35 @@ Date: 2026-08-25 (Asia/Seoul)
   `c42cbd80ea3673c86cda0191cb4be621709c8aab6705832f1016779b9a09bc3b`,
   and `1cc8062ee291345502597e7d43a6e3fb206681281a0fad2a65ec5366aec739d0`.
   Port 18080 and `output/` were untouched.
+
+## BM25 partial-hydration isolation terminal outcome
+
+Date: 2026-08-31 (Asia/Seoul)
+
+- The approved v2 execution was aborted before OpenAI receipt because app-dev
+  8080 inherited the Codex sandbox network restriction. All 24 connections
+  failed locally with `Permission denied: getsockopt`; run 2 was not started,
+  successful embedding calls were `0`, and the failed evidence was preserved.
+- App-dev 8080 was redeployed through the official user-process path with the
+  same verified JAR/config. Exact replacement manifest SHA-256
+  `8d6fe589bf58d627a1c8956c0492da3581c9c5a64931f8d57af0cf3ebdd53f97`
+  was approved after fresh runtime, index, parity, Qdrant, and destination
+  reachability checks.
+- Both independent replacement runs completed `24/24` with request errors `0`,
+  stable immutable provenance, and Qdrant search failures `0`: exactly `48`
+  successful OpenAI Embedding API calls and `0` Answer API calls.
+- Both runs reproduced the frozen control exactly: `7/24` all-required,
+  `14/24` any-required, and `22` matched groups. Expansion source remained
+  `0/24`, `0/24`, `0`; shadow fused remained `7/24`, `14/24`, `22`.
+- Expansion applied to `irm-faithfulness` and `ai-law-enforcement-date` but
+  added no required oracle group. The remaining 22 cases reported
+  `BM25_TITLE_NO_MATCH`.
+- The selector returned `NO_DOCUMENT_EXPANSION_IMPROVEMENT`, eligible `false`.
+  The incomplete-candidate isolation fix removed the earlier whole-set
+  invalidation failure mode, but did not improve frozen-set recall. No difficult
+  or holdout evaluation ran and no authority flag changed.
+- Run 1, run 2, and selector JSON SHA-256 values are respectively
+  `fb0011ef211b3360aadb23a6344f608dbccfcbad1aaf89dc397221daa4127cca`,
+  `34bfd3993c3b98aa9c3c4418e3cfeb2db0d0ea3f17a7ce10920cbb9bfe0cd1df`,
+  and `2573039c8c673bf75b503041aad359a77a2b5c5453c28490048b69cd803309e4`.
+  Port 18080 and `output/` were untouched.
