@@ -1,0 +1,339 @@
+{
+  "schemaVersion": 2,
+  "k": 30,
+  "totalCases": 0,
+  "recallEligibleCases": 0,
+  "missingRetrievalGoldCases": 0,
+  "noGroundCases": 0,
+  "falseGround": {
+    "cases": 0,
+    "falseGrounds": 0,
+    "rate": null,
+    "ids": []
+  },
+  "stages": {
+    "vectorHits": {
+      "recallEligibleCases": 0,
+      "directHits": 0,
+      "directHitRate": null,
+      "documentGoldCases": 0,
+      "documentHits": 0,
+      "documentHitRate": null,
+      "documentTermCoverageAtK": null,
+      "sectionParentGoldCases": 0,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": null,
+      "sectionParentTermCoverageAtK": null
+    },
+    "lexicalHits": {
+      "recallEligibleCases": 0,
+      "directHits": 0,
+      "directHitRate": null,
+      "documentGoldCases": 0,
+      "documentHits": 0,
+      "documentHitRate": null,
+      "documentTermCoverageAtK": null,
+      "sectionParentGoldCases": 0,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": null,
+      "sectionParentTermCoverageAtK": null
+    },
+    "merged": {
+      "recallEligibleCases": 0,
+      "directHits": 0,
+      "directHitRate": null,
+      "documentGoldCases": 0,
+      "documentHits": 0,
+      "documentHitRate": null,
+      "documentTermCoverageAtK": null,
+      "sectionParentGoldCases": 0,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": null,
+      "sectionParentTermCoverageAtK": null
+    },
+    "reranked": {
+      "recallEligibleCases": 0,
+      "directHits": 0,
+      "directHitRate": null,
+      "documentGoldCases": 0,
+      "documentHits": 0,
+      "documentHitRate": null,
+      "documentTermCoverageAtK": null,
+      "sectionParentGoldCases": 0,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": null,
+      "sectionParentTermCoverageAtK": null
+    },
+    "intentFiltered": {
+      "recallEligibleCases": 0,
+      "directHits": 0,
+      "directHitRate": null,
+      "documentGoldCases": 0,
+      "documentHits": 0,
+      "documentHitRate": null,
+      "documentTermCoverageAtK": null,
+      "sectionParentGoldCases": 0,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": null,
+      "sectionParentTermCoverageAtK": null
+    },
+    "judgeCandidates": {
+      "recallEligibleCases": 0,
+      "directHits": 0,
+      "directHitRate": null,
+      "documentGoldCases": 0,
+      "documentHits": 0,
+      "documentHitRate": null,
+      "documentTermCoverageAtK": null,
+      "sectionParentGoldCases": 0,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": null,
+      "sectionParentTermCoverageAtK": null
+    },
+    "judged": {
+      "recallEligibleCases": 0,
+      "directHits": 0,
+      "directHitRate": null,
+      "documentGoldCases": 0,
+      "documentHits": 0,
+      "documentHitRate": null,
+      "documentTermCoverageAtK": null,
+      "sectionParentGoldCases": 0,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": null,
+      "sectionParentTermCoverageAtK": null
+    },
+    "selected": {
+      "recallEligibleCases": 0,
+      "directHits": 0,
+      "directHitRate": null,
+      "documentGoldCases": 0,
+      "documentHits": 0,
+      "documentHitRate": null,
+      "documentTermCoverageAtK": null,
+      "sectionParentGoldCases": 0,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": null,
+      "sectionParentTermCoverageAtK": null
+    }
+  },
+  "shadowStages": {
+    "bm25Hits": {
+      "recallEligibleCases": 0,
+      "directHits": 0,
+      "directHitRate": null,
+      "documentGoldCases": 0,
+      "documentHits": 0,
+      "documentHitRate": null,
+      "documentTermCoverageAtK": null,
+      "sectionParentGoldCases": 0,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": null,
+      "sectionParentTermCoverageAtK": null
+    },
+    "fused": {
+      "recallEligibleCases": 0,
+      "directHits": 0,
+      "directHitRate": null,
+      "documentGoldCases": 0,
+      "documentHits": 0,
+      "documentHitRate": null,
+      "documentTermCoverageAtK": null,
+      "sectionParentGoldCases": 0,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": null,
+      "sectionParentTermCoverageAtK": null
+    },
+    "coverageFused": {
+      "recallEligibleCases": 0,
+      "directHits": 0,
+      "directHitRate": null,
+      "documentGoldCases": 0,
+      "documentHits": 0,
+      "documentHitRate": null,
+      "documentTermCoverageAtK": null,
+      "sectionParentGoldCases": 0,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": null,
+      "sectionParentTermCoverageAtK": null
+    }
+  },
+  "stageSurvival": {
+    "candidateSources": {
+      "denominator": 0,
+      "survived": 0,
+      "rate": null
+    },
+    "merged": {
+      "denominator": 0,
+      "survived": 0,
+      "rate": null
+    },
+    "reranked": {
+      "denominator": 0,
+      "survived": 0,
+      "rate": null
+    },
+    "intentFiltered": {
+      "denominator": 0,
+      "survived": 0,
+      "rate": null
+    },
+    "judgeCandidates": {
+      "denominator": 0,
+      "survived": 0,
+      "rate": null
+    },
+    "judged": {
+      "denominator": 0,
+      "survived": 0,
+      "rate": null
+    },
+    "selected": {
+      "denominator": 0,
+      "survived": 0,
+      "rate": null
+    }
+  },
+  "firstDropCounts": {},
+  "selectedCases": 24,
+  "completedCases": 0,
+  "requestErrors": [
+    {
+      "id": "project-review-target",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "project-review-simple-software",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "project-review-hardware-exclusion",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "pre-consultation-target",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "pre-consultation-when",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "pre-consultation-exception",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "security-review-target",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "security-review-exception",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "security-review-procedure",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "rfp-required-items",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "rfp-tech-score-table",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "public-data-db-standard",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "procurement-catalog-contract",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "commercial-sw-direct-purchase",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "irm-faithfulness",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "traffic-crosswalk-stop",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "video-cctv-guide",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "personal-info-purpose",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "privacy-consent-notice-items",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "mois-autonomy-preconsultation-procedure",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "pipc-cctv-public-place-exception",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "pipc-pseudonym-additional-info",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "msit-tving-investigation",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    },
+    {
+      "id": "ai-law-enforcement-date",
+      "message": "debug search HTTP 500: {\"message\":\"요청 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\"}"
+    }
+  ],
+  "complete": false,
+  "provenance": {
+    "schemaVersion": 4,
+    "runScope": "targeted",
+    "gateProfile": "release",
+    "generatedAt": "2026-08-31T10:07:17.495Z",
+    "baseUrl": "http://127.0.0.1:8080",
+    "executionPort": 8080,
+    "gitCommit": "59103b00b14ac5ad2d7374413b2c9b70200df5b6",
+    "gitDirty": false,
+    "datasetHash": "322dee52b2c78576754fe726ac3611a8b677bec9cbe7697684f9c1172d0308a6",
+    "selectionHash": "4e5546b95f079888138e7ef5d921b2a77c7f309aad16f2d269e8b83b9908bf22",
+    "baselineManifestId": null,
+    "selectedCaseCount": 24,
+    "totalCaseCount": 1003,
+    "indexVersion": "law_chunks+rag_chunks_v4",
+    "embeddingModel": "text-embedding-3-small",
+    "answerModel": "gpt-5-mini",
+    "lawCollection": "law_chunks",
+    "ragCollection": "rag_chunks_v4",
+    "runtimeArtifactKind": "jar",
+    "runtimeArtifactSha256": "4ee6018b5c76baa2cda8e2896bfa6e6beeadfe0b75b3187e53faaab972de6ceb",
+    "runtimeArtifactSize": 67632233,
+    "runtimeInstanceId": "4fff082e-2d46-46c6-86d8-367048ecd946",
+    "runtimeConfigSha256": "4ffc75b09dfbeaed48e2cda40ad88fe0725d3d1a3f61f3dedc651ae3af44333c",
+    "indexRevision": "f806acf19fb01f87b4da87999aa10115639d6453203f63ce0d4c5ebd79b144f3",
+    "lexicalRevision": "da8d51cecea3bd10ce9ba7eb40c2a25015d2166e983d836018616377de9bb9aa",
+    "qdrantReady": true,
+    "qdrantSearchFailureCount": 0,
+    "runtimeInfoSource": "server",
+    "runtimeInfoReadAttempts": 1,
+    "trainingManifestHash": "3c5cc394524389d9c05c0e72e602232a8eb98a297f25a55c4f0c71a85ae2b2db",
+    "trainingSplitName": "task15-rrf-training-v1"
+  },
+  "runtimeVerifiedAtEnd": true,
+  "documentExpansionPolicy": {
+    "id": "document-expansion-shadow-v1",
+    "configHash": "4ffc75b09dfbeaed48e2cda40ad88fe0725d3d1a3f61f3dedc651ae3af44333c"
+  },
+  "results": []
+}

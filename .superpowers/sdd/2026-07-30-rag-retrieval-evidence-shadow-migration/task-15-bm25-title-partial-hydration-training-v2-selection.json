@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "status": "ABORTED_BEFORE_OPENAI_RECEIPT",
+  "eligible": false,
+  "reason": "The app-dev Java process inherited the Codex sandbox network restriction. All 24 embedding connections failed locally with java.net.SocketException: Permission denied: getsockopt before reaching api.openai.com.",
+  "run1": {
+    "selectedCases": 24,
+    "completedCases": 0,
+    "requestErrors": 24,
+    "successfulOpenAiEmbeddingCalls": 0,
+    "jsonSha256": "86e5f93389e082ac87aab9969ac2971ce6b9630c28eda751e63dceb8939e4c65"
+  },
+  "run2": "NOT_STARTED",
+  "authorityChanged": false,
+  "blindRetryPerformed": false
+}
