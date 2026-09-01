@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "manifestType": "task15-bm25-title-no-match-diagnostics-training-execution",
+  "status": "READY_FOR_EXACT_APPROVAL",
+  "createdAt": "2026-09-01T08:36:30+09:00",
+  "replacementPreparedAt": "2026-09-01T11:09:25+09:00",
+  "supersedesApprovalSha256": "efa2d4b8783acd0d610f07ec5f1efa475ad3e082561b183105dad453c111ae0f",
+  "replacementReason": "The approved app-dev supervisor session ended before any evaluation request. The exact question payload, models, destinations, code artifact, configuration, database counts, and Qdrant counts are unchanged; only the restarted runtime identity, PID, and derived index revision fence changed.",
+  "purpose": "Classify the frozen training set's BM25_TITLE_NO_MATCH outcomes by planned-term shortage, absence of a valid hydrated candidate, or insufficient title-term match, without changing retrieval ranking or authority.",
+  "frozenPayload": {
+    "trainingManifestPath": "src/main/resources/rag-retrieval-training-manifest.json",
+    "trainingManifestSha256": "3c5cc394524389d9c05c0e72e602232a8eb98a297f25a55c4f0c71a85ae2b2db",
+    "splitName": "task15-rrf-training-v1",
+    "orderedQuestionCount": 24,
+    "runCount": 2,
+    "expectedOpenAiEmbeddingCallsTotal": 48,
+    "expectedOpenAiAnswerCallsTotal": 0,
+    "embeddingModel": "text-embedding-3-small",
+    "externalDestination": "OpenAI Embedding API",
+    "payload": "Each of the training manifest's exact 24 ordered Korean question strings, once per run, plus the embedding model identifier.",
+    "qdrantEffect": "Read-only candidate vector search in law_chunks and rag_chunks_v4.",
+    "mariaDbEffect": "Read-only lexical, BM25-title, hydration, and bounded document-expansion queries.",
+    "answerPathEffect": "SHADOW_ONLY"
+  },
+  "priorEvaluation": {
+    "canonicalSha256": "8d6fe589bf58d627a1c8956c0492da3581c9c5a64931f8d57af0cf3ebdd53f97",
+    "result": "NO_DOCUMENT_EXPANSION_IMPROVEMENT",
+    "callsConsumed": 48,
+    "reusable": false,
+    "reason": "Twenty-two of 24 frozen cases returned BM25_TITLE_NO_MATCH without enough detail to distinguish the failure boundary."
+  },
+  "candidate": {
+    "branch": "main",
+    "sourceGitCommit": "fdc79dd7748970f304c1012b3f03a631e0d9ab85",
+    "sourceGitTree": "b8e2370b007dfc1a3ada7414d0bb4279588aae71",
+    "gitDirty": true,
+    "workingTreeDifferenceScope": "Only this execution manifest and its Task 15 progress checkpoint; deployed code remains exact commit fdc79dd7.",
+    "jarPath": "target/pandora-0.0.1-SNAPSHOT.jar",
+    "jarSizeBytes": 67636692,
+    "jarSha256": "3c63bd78e1efb8e5210cff7634592d529cfede81abf1db1a31f75b566137160c"
+  },
+  "diagnosticContract": {
+    "status": "BM25_TITLE_NO_MATCH",
+    "reasonCodes": [
+      "BM25_TITLE_DIAGNOSTIC_REASON_*",
+      "BM25_TITLE_PLANNED_TERM_COUNT_*",
+      "BM25_TITLE_INSPECTED_CANDIDATE_COUNT_*",
+      "BM25_TITLE_HYDRATED_CANDIDATE_COUNT_*",
+      "BM25_TITLE_MAX_MATCHED_TITLE_TERM_COUNT_*"
+    ],
+    "allowedNoMatchReasons": [
+      "INSUFFICIENT_PLANNED_TERMS",
+      "NO_VALID_CANDIDATE",
+      "TITLE_MISMATCH"
+    ],
+    "retrievalRankingChanged": false,
+    "authorityChanged": false
+  },
+  "runtimeFences": {
+    "baseUrl": "http://127.0.0.1:8080",
+    "runtimeInstanceId": "9fa6d3db-c229-494a-a99c-843bd454f9e7",
+    "runtimeArtifactSha256": "3c63bd78e1efb8e5210cff7634592d529cfede81abf1db1a31f75b566137160c",
+    "runtimeConfigSha256": "4ffc75b09dfbeaed48e2cda40ad88fe0725d3d1a3f61f3dedc651ae3af44333c",
+    "indexRevision": "bd1cf1b42dc73dfaf36a2784ccfe09a16955db808c6fc4c517fb3001eb4d4853",
+    "lexicalRevision": "da8d51cecea3bd10ce9ba7eb40c2a25015d2166e983d836018616377de9bb9aa",
+    "qdrantReady": true,
+    "qdrantSearchFailureCount": 0,
+    "lawDbCount": 211548,
+    "lawQdrantCount": 211548,
+    "ragDbCount": 84248,
+    "ragQdrantCount": 84248,
+    "lawQdrantStatus": "green",
+    "lawQdrantOptimizerStatus": "ok",
+    "ragQdrantStatus": "green",
+    "ragQdrantOptimizerStatus": "ok",
+    "appDev8080Listening": true,
+    "appDev8080Pid": 14348,
+    "batchRunner18080Listening": false,
+    "qdrant6333Listening": true,
+    "qdrant6333Pid": 14600,
+    "mariaDbService": "Running",
+    "openAiApiReachable": true,
+    "openAiCredentialPresent": true,
+    "identityReadCount": 2,
+    "identityStableAcrossReads": true,
+    "fenceObservedAt": "2026-09-01T11:09:25+09:00",
+    "blockers": []
+  },
+  "liveMapperPreflight": {
+    "status": "NOT_RERUN_QUERY_LAYER_UNCHANGED",
+    "priorReadOnlyPreflightStatus": "PASS",
+    "reason": "The candidate adds only in-memory diagnostics after the existing bounded BM25 hydration and changes no mapper SQL, query bound, or database state.",
+    "mutationCount": 0
+  },
+  "authorityFlags": {
+    "documentExpansionEnabled": true,
+    "documentExpansionAuthoritative": false,
+    "rrfShadowEnabled": true,
+    "rrfAuthoritative": false,
+    "coverageAwareEnabled": false,
+    "semanticVerificationAuthoritative": false,
+    "semanticSelectionAuthoritative": false
+  },
+  "datasets": {
+    "ragEvaluationCasesSha256": "6e0a94801a2366d51bde6437b7a5292aa712f39338c6b76061e56c815cd8f9b9",
+    "ragEvaluationCasesGeneratedSha256": "6175e0d65654abe4dae3bc29afe95d93253a6ffa9641e65159693addb0040769",
+    "ragAnswerEvaluationOraclesSha256": "3428ef9b94b431e336d9999b100d9a94559649efd3f52cc529001a1ed7717e0f"
+  },
+  "evaluation": {
+    "caseCountPerRun": 24,
+    "runCount": 2,
+    "k": 30,
+    "captureRankLimit": 100,
+    "concurrency": 1,
+    "retryPolicy": "NO_BLIND_RETRY"
+  },
+  "evidencePaths": {
+    "run1Json": ".superpowers/sdd/2026-07-30-rag-retrieval-evidence-shadow-migration/task-15-bm25-title-no-match-diagnostics-training-v1-run1.json",
+    "run1Markdown": ".superpowers/sdd/2026-07-30-rag-retrieval-evidence-shadow-migration/task-15-bm25-title-no-match-diagnostics-training-v1-run1.md",
+    "run1Stdout": ".superpowers/sdd/2026-07-30-rag-retrieval-evidence-shadow-migration/task-15-bm25-title-no-match-diagnostics-training-v1-run1.stdout.log",
+    "run2Json": ".superpowers/sdd/2026-07-30-rag-retrieval-evidence-shadow-migration/task-15-bm25-title-no-match-diagnostics-training-v1-run2.json",
+    "run2Markdown": ".superpowers/sdd/2026-07-30-rag-retrieval-evidence-shadow-migration/task-15-bm25-title-no-match-diagnostics-training-v1-run2.md",
+    "run2Stdout": ".superpowers/sdd/2026-07-30-rag-retrieval-evidence-shadow-migration/task-15-bm25-title-no-match-diagnostics-training-v1-run2.stdout.log",
+    "diagnosticSummaryJson": ".superpowers/sdd/2026-07-30-rag-retrieval-evidence-shadow-migration/task-15-bm25-title-no-match-diagnostics-training-v1-summary.json",
+    "diagnosticSummaryMarkdown": ".superpowers/sdd/2026-07-30-rag-retrieval-evidence-shadow-migration/task-15-bm25-title-no-match-diagnostics-training-v1-summary.md"
+  },
+  "canonicalization": {
+    "algorithm": "RFC8785-style recursive lexicographic object-key ordering with UTF-8 JSON, arrays preserved, no insignificant whitespace",
+    "hashAlgorithm": "SHA-256",
+    "hashScope": "Entire manifest object excluding canonicalization.immutableApprovalSha256",
+    "immutableApprovalSha256": "4a5b40911e3c9ef08f94578ef0459db38491281ebc0815614718749076652095"
+  }
+}

@@ -321,3 +321,74 @@ Date: 2026-08-31 (Asia/Seoul)
   `34bfd3993c3b98aa9c3c4418e3cfeb2db0d0ea3f17a7ce10920cbb9bfe0cd1df`,
   and `2573039c8c673bf75b503041aad359a77a2b5c5453c28490048b69cd803309e4`.
   Port 18080 and `output/` were untouched.
+
+## BM25 title no-match diagnostics approval-ready checkpoint
+
+Date: 2026-09-01 (Asia/Seoul)
+
+- Diagnostic-only commit `fdc79dd7` records the normalized planned-term count,
+  inspected BM25 candidate count, hydrated candidate count, maximum matched
+  title-term count, and concrete no-match reason. Retrieval ranking and all
+  authority flags remain unchanged.
+- The verified candidate JAR is `67,636,692` bytes with SHA-256
+  `3c63bd78e1efb8e5210cff7634592d529cfede81abf1db1a31f75b566137160c`.
+  App-dev 8080 runtime is `887f92d5-1460-4d52-8e11-4b2a91abb64b`;
+  config, index, and lexical identities were stable across two reads.
+- Law DB/Qdrant parity is `211548/211548`; RAG parity is `84248/84248`.
+  Both collections are green with optimizer `ok`; Qdrant readiness is true and
+  search failures are `0`. OpenAI API TLS reachability and credential presence
+  passed without sending evaluation text.
+- The new exact scope freezes the existing ordered 24-question training set for
+  two runs: exactly `48` OpenAI Embedding API calls, `0` Answer API calls, and
+  read-only Qdrant/MariaDB access. Canonical SHA-256 is
+  `efa2d4b8783acd0d610f07ec5f1efa475ad3e082561b183105dad453c111ae0f`.
+- No evaluation request has launched and all new evidence paths are absent.
+  Port 18080 and `output/` were untouched. Exact payload approval and one final
+  no-drift fence recheck are required before the one-time execution.
+
+## BM25 title no-match diagnostics replacement approval checkpoint
+
+Date: 2026-09-01 (Asia/Seoul)
+
+- The exact `efa2d4b...` payload was approved, but its supervised app-dev 8080
+  session had ended before the launch fence check. The evaluation therefore
+  stopped before any OpenAI request; generated evidence paths remain absent.
+- Official app-dev deployment restored the same verified JAR and configuration.
+  Two runtime reads are stable under instance
+  `9fa6d3db-c229-494a-a99c-843bd454f9e7`; the restarted index revision is
+  `bd1cf1b42dc73dfaf36a2784ccfe09a16955db808c6fc4c517fb3001eb4d4853`.
+  Law parity remains `211548/211548`, RAG parity `84248/84248`, Qdrant is ready,
+  and search failures remain `0`.
+- The question payload, model, destinations, code artifact, database counts,
+  and read-only effects are unchanged. The replacement canonical SHA-256 is
+  `4a5b40911e3c9ef08f94578ef0459db38491281ebc0815614718749076652095`.
+  Exact replacement approval is required before the one-time 48-call run.
+- Port 18080 and `output/` remain untouched.
+
+## BM25 title no-match diagnostics terminal result
+
+Date: 2026-09-01 (Asia/Seoul)
+
+- Replacement approval hash
+  `4a5b40911e3c9ef08f94578ef0459db38491281ebc0815614718749076652095`
+  executed as two complete ordered 24-case runs: exactly `48` successful
+  OpenAI Embedding API calls and `0` Answer API calls. Both runs completed
+  `24/24` with request errors `0`, runtime-end verification true, and Qdrant
+  search failures `0`.
+- The no-match classification was stable: `20` `TITLE_MISMATCH`, `0`
+  insufficient planned terms, `0` no-valid-candidate, and `2`
+  `BM25_TITLE_NO_NOVEL_CHUNK`; `2` cases were `APPLIED`. Every fully
+  diagnosed miss inspected 100 candidates but matched at most one title term.
+- One hydration counter varied (`pre-consultation-when`, `99` versus `100`).
+  Retrieval also varied in `security-review-procedure` and
+  `public-data-db-standard`: run 1 control/shadow fused was `7/24`, `14/24`,
+  `22` groups, while run 2 was `7/24`, `14/24`, `23` groups. Expansion source
+  stayed `0/24`, `0/24`, `0`.
+- The JAR, configuration, lexical revision, content fingerprints, and exact
+  DB/Qdrant counts stayed fixed, but app restarts changed index revision because
+  its canonical input includes `updatedWatermark`. The next safe slice is to
+  make hydration ordering and watermark provenance deterministic before testing
+  a title canonicalization or threshold change.
+- Qdrant and MariaDB access was read-only. Port `18080` and `output/` were
+  untouched. Detailed evidence is in the matching `run1`, `run2`, and `summary`
+  JSON/Markdown files.

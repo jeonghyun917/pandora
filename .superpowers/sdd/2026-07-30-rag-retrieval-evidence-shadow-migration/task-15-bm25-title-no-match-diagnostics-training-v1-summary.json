@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-01T13:49:24+09:00",
+  "evaluation": "BM25 title no-match cause diagnostics",
+  "approval": {
+    "supersededHash": "efa2d4b8783acd0d610f07ec5f1efa475ad3e082561b183105dad453c111ae0f",
+    "executedReplacementHash": "4a5b40911e3c9ef08f94578ef0459db38491281ebc0815614718749076652095",
+    "orderedQuestionCount": 24,
+    "runCount": 2,
+    "openAiEmbeddingCalls": 48,
+    "openAiAnswerCalls": 0
+  },
+  "execution": {
+    "status": "PASS_WITH_REPRODUCIBILITY_VARIANCE",
+    "run1": {
+      "selectedCases": 24,
+      "completedCases": 24,
+      "requestErrors": 0,
+      "complete": true,
+      "runtimeVerifiedAtEnd": true,
+      "runtimeInstanceId": "396e29df-9d29-4495-8f82-8831c4114261",
+      "indexRevision": "bc2e324c4de6ff2748db9f4cb5c151824f786fa5e3f09da30e0034be2ca51d2d"
+    },
+    "run2": {
+      "selectedCases": 24,
+      "completedCases": 24,
+      "requestErrors": 0,
+      "complete": true,
+      "runtimeVerifiedAtEnd": true,
+      "runtimeInstanceId": "3942197d-8e30-457d-8885-c975a1633d71",
+      "indexRevision": "db6bcd8078b46a34790f968f45b839cfa02b057127497facf5bf5e478d613364"
+    },
+    "stableAcrossRuns": {
+      "runtimeArtifactSha256": "3c63bd78e1efb8e5210cff7634592d529cfede81abf1db1a31f75b566137160c",
+      "runtimeConfigSha256": "4ffc75b09dfbeaed48e2cda40ad88fe0725d3d1a3f61f3dedc651ae3af44333c",
+      "lexicalRevision": "da8d51cecea3bd10ce9ba7eb40c2a25015d2166e983d836018616377de9bb9aa",
+      "lawDatabaseContentFingerprint": "6CECE9255699C5B3B166621314706060FD0BD8ACE734A5ECFFA16C64CCB56620",
+      "ragDatabaseContentFingerprint": "4C9C89D6D9E2BCEEFEEF49B2C94DAD25146D84863CEDC5DA165068579EA98540",
+      "lawDbQdrantParity": "211548/211548",
+      "ragDbQdrantParity": "84248/84248",
+      "qdrantSearchFailureCount": 0
+    },
+    "indexRevisionVariance": {
+      "observed": true,
+      "classification": "UPDATED_WATERMARK_ONLY",
+      "explanation": "Each supervised app-dev restart produced a new stable index revision while content fingerprints, exact counts, vector configuration, JAR, and runtime configuration remained unchanged. IndexRevisionCalculator includes the database updatedWatermark."
+    }
+  },
+  "diagnostics": {
+    "statusCountsPerRun": {
+      "BM25_TITLE_NO_MATCH": 22,
+      "APPLIED": 2
+    },
+    "appliedCases": [
+      "irm-faithfulness",
+      "ai-law-enforcement-date"
+    ],
+    "noMatchCauseCounts": {
+      "TITLE_MISMATCH": 20,
+      "INSUFFICIENT_PLANNED_TERMS": 0,
+      "NO_VALID_CANDIDATE": 0,
+      "BM25_TITLE_NO_NOVEL_CHUNK": 2
+    },
+    "noNovelChunkCases": [
+      "project-review-hardware-exclusion",
+      "msit-tving-investigation"
+    ],
+    "titleMismatchCountersRun1": {
+      "plannedTermCount": {
+        "minimum": 20,
+        "maximum": 47
+      },
+      "inspectedCandidateCount": {
+        "minimum": 100,
+        "maximum": 100
+      },
+      "hydratedCandidateCount": {
+        "minimum": 96,
+        "maximum": 100
+      },
+      "maximumMatchedTitleTermCount": {
+        "zeroCases": 8,
+        "oneCases": 12,
+        "twoOrMoreCases": 0
+      }
+    },
+    "diagnosticReasonClassificationStable": true,
+    "exactDiagnosticCounterMismatches": [
+      {
+        "caseId": "pre-consultation-when",
+        "field": "hydratedCandidateCount",
+        "run1": 99,
+        "run2": 100
+      }
+    ]
+  },
+  "retrievalComparison": {
+    "run1": {
+      "controlAllRequired": 7,
+      "controlAnyRequired": 14,
+      "controlMatchedGroups": 22,
+      "expansionSourceAllRequired": 0,
+      "expansionSourceAnyRequired": 0,
+      "expansionSourceMatchedGroups": 0,
+      "shadowFusedAllRequired": 7,
+      "shadowFusedAnyRequired": 14,
+      "shadowFusedMatchedGroups": 22,
+      "selectedDirectHits": 10
+    },
+    "run2": {
+      "controlAllRequired": 7,
+      "controlAnyRequired": 14,
+      "controlMatchedGroups": 23,
+      "expansionSourceAllRequired": 0,
+      "expansionSourceAnyRequired": 0,
+      "expansionSourceMatchedGroups": 0,
+      "shadowFusedAllRequired": 7,
+      "shadowFusedAnyRequired": 14,
+      "shadowFusedMatchedGroups": 23,
+      "selectedDirectHits": 11
+    },
+    "varianceCases": [
+      {
+        "caseId": "security-review-procedure",
+        "difference": "control and shadow-fused matched required groups changed from 1 to 2"
+      },
+      {
+        "caseId": "public-data-db-standard",
+        "difference": "reranked through selected direct-hit changed from false to true"
+      }
+    ]
+  },
+  "conclusion": {
+    "primaryCause": "The BM25 title expansion threshold is not met because every one of the 20 fully diagnosed misses matched at most one planned title term despite inspecting 100 candidates; planned-term shortage and total hydration failure were not observed.",
+    "secondaryCause": "Two cases reached the no-novel-chunk path rather than the title-mismatch diagnostic path.",
+    "authorityChanged": false,
+    "rankingChangedByThisDiagnostic": false,
+    "recommendedNextStep": "First make hydration ordering and index updated-watermark provenance deterministic, then test a general title canonicalization or title-term threshold change in shadow mode."
+  },
+  "evidenceSha256": {
+    "preflightSelectionFailureLog": "2657c763bb0fbb43f5a3540566214402afab44e0b7f0374bcc2afc064ed6ecad",
+    "run1Json": "852d8b7a8f82dfe82cf0575eb2da2c7bad23b9ff84a0647c52f16478f5e8b108",
+    "run1Markdown": "2ea795df34970df595b470381049497189be6819fa97caacbe6884fa6aff0550",
+    "run1Stdout": "8141cdb3b96c92bbe0e50501a53e1fca63caec649ef0cd26940cc906f296a155",
+    "run2Json": "ad468f4ffd6928529706244f39ba29fd2721465fc42786934c989b30b8d1e523",
+    "run2Markdown": "279c710efa74fcad43a1b16c80dcdcbc2af9e3ffceaa54977e2b82d339cdd789",
+    "run2Stdout": "60e13bcbb9d9f442df2730930411e851ee2c869b041b14ade64a226b884a332c"
+  },
+  "safety": {
+    "qdrantEffect": "read-only",
+    "mariaDbEffect": "read-only",
+    "port18080Touched": false,
+    "outputDirectoryTouched": false
+  }
+}
