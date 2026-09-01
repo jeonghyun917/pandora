@@ -176,7 +176,7 @@ class Bm25TitleDocumentSeedSelectorTests {
 		assertThat(result.seeds()).hasSize(1);
 		assertThat(result.seeds().get(0).bm25Score()).isEqualTo(9.0);
 		assertThat(result.seeds().get(0).bm25Rank()).isEqualTo(1);
-		assertThat(result.seeds().get(0).matchedTitleTerms()).containsExactly("정보화사업", "사전협의");
+		assertThat(result.seeds().get(0).matchedTitleTerms()).containsExactly("사전협의", "정보화사업");
 	}
 
 	@Test
@@ -235,6 +235,26 @@ class Bm25TitleDocumentSeedSelectorTests {
 		);
 
 		assertThat(result.status()).isEqualTo(Bm25TitleDocumentSeedSelector.Status.NO_MATCH);
+	}
+
+	@Test
+	void canonicalizesBm25HitsBeforeApplyingTheInspectionLimit() {
+		List<LexicalSearchHit> hits = new ArrayList<>();
+		List<LawSemanticChunkRow> rows = new ArrayList<>();
+		for (int rank = 101; rank >= 2; rank--) {
+			hits.add(hit("law", rank, rank, 200.0 - rank, rank, "사전협의"));
+			rows.add(chunk(rank, rank, "law", "사전협의 지침", ""));
+		}
+		hits.add(hit("law", 1, 1, 999.0, 1, "정보화사업", "사전협의"));
+		rows.add(chunk(1, 1, "law", "정보화사업 사전협의 지침", ""));
+
+		Bm25TitleDocumentSeedSelector.Selection result = selector.select(
+			hits, rows, List.of("정보화사업", "사전협의"), List.of("law"), policy(3)
+		);
+
+		assertThat(result.status()).isEqualTo(Bm25TitleDocumentSeedSelector.Status.APPLIED);
+		assertThat(result.seeds()).extracting(DocumentExpansionSeed::documentId).containsExactly(1L);
+		assertThat(result.diagnostics().inspectedBm25CandidateCount()).isEqualTo(100);
 	}
 
 	@Test

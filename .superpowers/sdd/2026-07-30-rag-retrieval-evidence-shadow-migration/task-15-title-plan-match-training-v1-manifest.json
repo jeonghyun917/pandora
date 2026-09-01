@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "manifestType": "task15-title-plan-match-training-execution",
+  "status": "AUTHORIZED_BY_USER_STANDING_APPROVAL",
+  "purpose": "Evaluate the deterministic BM25 hydration and planned-term-to-hydrated-title matching candidate before any authoritative activation.",
+  "trainingManifestPath": "src/main/resources/rag-retrieval-training-manifest.json",
+  "trainingManifestSha256": "3c5cc394524389d9c05c0e72e602232a8eb98a297f25a55c4f0c71a85ae2b2db",
+  "splitName": "task15-rrf-training-v1",
+  "orderedCaseCount": 24,
+  "runCount": 2,
+  "expectedOpenAiEmbeddingCallsTotal": 48,
+  "expectedOpenAiAnswerCallsTotal": 0,
+  "embeddingModel": "text-embedding-3-small",
+  "externalDestination": "OpenAI Embedding API",
+  "payload": "Each exact ordered Korean question in rag-retrieval-training-manifest.json, once per run, plus the embedding model identifier.",
+  "qdrantEffect": "Read-only search in law_chunks and rag_chunks_v4.",
+  "mariaDbEffect": "Read-only lexical, hydration, and bounded document-expansion queries.",
+  "answerPathEffect": "SHADOW_ONLY",
+  "runtimeInstanceId": "760d5bc3-63ab-492d-932c-7592043a044c",
+  "runtimeArtifactSha256": "7ebac764aed6626cb12df0a8d1ea2ef9be57ea66e3766ae31de361506790c24f",
+  "runtimeConfigSha256": "4ffc75b09dfbeaed48e2cda40ad88fe0725d3d1a3f61f3dedc651ae3af44333c",
+  "indexRevision": "726f3c4dd53d09a99bb277ec85cae47270b7613618d23300c34a6c197eac7285",
+  "lexicalRevision": "da8d51cecea3bd10ce9ba7eb40c2a25015d2166e983d836018616377de9bb9aa",
+  "lawDbQdrantCount": 211548,
+  "ragDbQdrantCount": 84248,
+  "qdrantReady": true,
+  "qdrantSearchFailureCount": 0,
+  "appDev8080Listening": true,
+  "batchRunner18080Listening": false,
+  "evaluation": {
+    "k": 30,
+    "captureRankLimit": 100,
+    "concurrency": 1,
+    "retryPolicy": "NO_BLIND_RETRY"
+  },
+  "authorityFlags": {
+    "documentExpansionAuthoritative": false,
+    "rrfAuthoritative": false,
+    "semanticVerificationAuthoritative": false,
+    "semanticSelectionAuthoritative": false
+  },
+  "evidencePrefix": "task-15-title-plan-match-training-v1"
+}

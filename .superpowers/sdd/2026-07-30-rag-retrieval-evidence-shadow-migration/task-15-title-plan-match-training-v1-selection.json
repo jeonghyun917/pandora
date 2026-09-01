@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "status": "NO_DOCUMENT_EXPANSION_IMPROVEMENT",
+  "eligible": false,
+  "reason": "shadow fused all-required recall did not exceed 7/24",
+  "trainingBaseline": {
+    "allRequired": 7,
+    "anyRequired": 14,
+    "matchedGroups": 22,
+    "caseCount": 24
+  }
+}

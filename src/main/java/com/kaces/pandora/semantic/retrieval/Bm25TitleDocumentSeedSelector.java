@@ -3,7 +3,6 @@ package com.kaces.pandora.semantic.retrieval;
 import com.kaces.pandora.common.text.KoreanQueryNormalizer;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import com.kaces.pandora.semantic.lexical.LexicalSearchHit;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -45,6 +44,14 @@ public final class Bm25TitleDocumentSeedSelector {
 				planned.size(), 0, 0, 0, DiagnosticReason.NO_VALID_CANDIDATE
 			));
 		}
+		if (hits.stream().anyMatch(hit -> !validHit(hit))) {
+			return Selection.empty(Status.INVALID_INPUT, new Diagnostics(
+				planned.size(), 0, 0, 0, DiagnosticReason.INVALID_INPUT
+			));
+		}
+		List<LexicalSearchHit> orderedHits = hits.stream()
+			.sorted(hitComparator())
+			.toList();
 
 		Map<String, LawSemanticChunkRow> rowByCandidate = new LinkedHashMap<>();
 		for (LawSemanticChunkRow row : hydratedRows) {
@@ -61,16 +68,11 @@ public final class Bm25TitleDocumentSeedSelector {
 
 		Map<String, MutableSeed> byDocument = new LinkedHashMap<>();
 		boolean hasHydratedHit = false;
-		int inspected = Math.min(hits.size(), policy.maxBm25HitsInspected());
+		int inspected = Math.min(orderedHits.size(), policy.maxBm25HitsInspected());
 		int hydrated = 0;
 		int maxMatchedTitleTerms = 0;
 		for (int index = 0; index < inspected; index++) {
-			LexicalSearchHit hit = hits.get(index);
-			if (!validHit(hit)) {
-				return Selection.empty(Status.INVALID_INPUT, new Diagnostics(
-					planned.size(), inspected, hydrated, maxMatchedTitleTerms, DiagnosticReason.INVALID_INPUT
-				));
-			}
+			LexicalSearchHit hit = orderedHits.get(index);
 			String target = normalizeTarget(hit.target());
 			if (!allowed.contains(target)) {
 				return Selection.empty(Status.INVALID_INPUT, new Diagnostics(
@@ -234,6 +236,15 @@ public final class Bm25TitleDocumentSeedSelector {
 		INVALID_INPUT
 	}
 
+	private Comparator<LexicalSearchHit> hitComparator() {
+		return Comparator
+			.comparingInt(LexicalSearchHit::rank)
+			.thenComparing(Comparator.comparingDouble(LexicalSearchHit::score).reversed())
+			.thenComparing(hit -> normalizeTarget(hit.target()))
+			.thenComparingLong(LexicalSearchHit::chunkId)
+			.thenComparingLong(LexicalSearchHit::documentId);
+	}
+
 	public enum DiagnosticReason {
 		NOT_APPLICABLE,
 		APPLIED,
@@ -318,7 +329,8 @@ public final class Bm25TitleDocumentSeedSelector {
 
 		private DocumentExpansionSeed toSeed() {
 			return new DocumentExpansionSeed(
-				target, documentId, title, new ArrayList<>(matchedTerms), bestScore, bestRank, ANCHOR_TYPE, REASON
+				target, documentId, title, matchedTerms.stream().sorted().toList(),
+				bestScore, bestRank, ANCHOR_TYPE, REASON
 			);
 		}
 	}

@@ -10,7 +10,7 @@ import java.util.Locale;
 import java.util.Set;
 
 public final class IndexRevisionCalculator {
-	private static final String SCHEMA_VERSION = "pandora-index-revision-v1";
+	private static final String SCHEMA_VERSION = "pandora-index-revision-v2";
 
 	private IndexRevisionCalculator() {
 	}
@@ -44,7 +44,6 @@ public final class IndexRevisionCalculator {
 			append(canonical, prefix + "db.currentIndexedCount", collection.database().currentIndexedCount());
 			append(canonical, prefix + "db.contentFingerprint",
 				collection.database().contentFingerprint().toLowerCase(Locale.ROOT));
-			append(canonical, prefix + "db.updatedWatermark", collection.database().updatedWatermark());
 			append(canonical, prefix + "qdrant.exactPointCount", collection.qdrant().exactPointCount());
 			append(canonical, prefix + "qdrant.vectorSize", collection.qdrant().vectorSize());
 			append(canonical, prefix + "qdrant.distance", collection.qdrant().distance().toUpperCase(Locale.ROOT));
