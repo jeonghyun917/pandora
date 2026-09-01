@@ -8,8 +8,6 @@ public record IndexContentSnapshot(
 	boolean isUsable() {
 		return currentIndexedCount > 0
 			&& contentFingerprint != null
-			&& contentFingerprint.matches("[0-9A-Fa-f]{64}")
-			&& updatedWatermark != null
-			&& !updatedWatermark.isBlank();
+			&& contentFingerprint.matches("[0-9A-Fa-f]{64}");
 	}
 }

@@ -304,6 +304,21 @@ class LawAiAnswerServiceDocumentExpansionTests {
 	}
 
 	@Test
+	void sortsHydrationChunkIdsIndependentlyOfVectorAndBm25ArrivalOrder() {
+		List<QdrantSearchHit> vectorHits = List.of(new QdrantSearchHit("law", 201, 0.93));
+		List<LexicalSearchHit> bm25Hits = List.of(
+			new LexicalSearchHit("law", 101, 10, 9.0, 1, List.of("전자정부법"))
+		);
+		try (Harness harness = Harness.mockedWithSources(
+			properties(false, false), disabled(), vectorHits, bm25Hits, 100
+		)) {
+			harness.debug(QUESTION);
+
+			assertThat(harness.lawHydrationChunkIds()).containsExactly(101L, 201L);
+		}
+	}
+
+	@Test
 	void genericQuestionPerformsNoDocumentExpansionDatabaseQuery() {
 		try (Harness harness = Harness.real(properties(true, false), false, false)) {
 			LawAiDebugResponse result = harness.debug("사전협의는 언제 하나요?");
@@ -609,6 +624,7 @@ class LawAiAnswerServiceDocumentExpansionTests {
 		private final AtomicInteger bm25TitleSelectorRequests = new AtomicInteger();
 		private final AtomicInteger bm25SeededSearchRequests = new AtomicInteger();
 		private final AtomicReference<Set<String>> expansionInputCandidateKeys = new AtomicReference<>(Set.of());
+		private final AtomicReference<List<Long>> lawHydrationChunkIds = new AtomicReference<>(List.of());
 		private final CountDownLatch expansionStarted = new CountDownLatch(1);
 		private final AtomicBoolean embeddingObservedExpansionStart = new AtomicBoolean();
 		private final LawAiAnswerService service;
@@ -753,6 +769,7 @@ class LawAiAnswerServiceDocumentExpansionTests {
 				String method = invocation.getMethod().getName();
 				if ("findSemanticChunksByIds".equals(method)) {
 					List<Long> requestedIds = invocation.getArgument(0);
+					lawHydrationChunkIds.set(List.copyOf(requestedIds));
 					return List.of(VECTOR_CHUNK, BM25_CHUNK).stream()
 						.filter(chunk -> requestedIds.contains(chunk.chunkId()))
 						.toList();
@@ -904,6 +921,10 @@ class LawAiAnswerServiceDocumentExpansionTests {
 
 		private Set<String> expansionInputCandidateKeys() {
 			return expansionInputCandidateKeys.get();
+		}
+
+		private List<Long> lawHydrationChunkIds() {
+			return lawHydrationChunkIds.get();
 		}
 
 		private boolean embeddingObservedExpansionStart() {

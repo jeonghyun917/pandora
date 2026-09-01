@@ -30,6 +30,29 @@ class IndexRevisionCalculatorTests {
 	}
 
 	@Test
+	void operationalWatermarkChangeDoesNotChangeRevision() {
+		IndexRevisionCollection before = collection(
+			"law", "law_chunks", 20, fingerprint('a'), "2026-07-15T01:02:03.000000"
+		);
+		IndexRevisionCollection after = collection(
+			"law", "law_chunks", 20, fingerprint('a'), "2026-09-01T15:02:03.000000"
+		);
+
+		assertThat(IndexRevisionCalculator.calculate("text-embedding-3-small", List.of(after)))
+			.isEqualTo(IndexRevisionCalculator.calculate("text-embedding-3-small", List.of(before)));
+	}
+
+	@Test
+	void usableContentSnapshotDoesNotRequireAnOperationalWatermark() {
+		IndexContentSnapshot database = database(20, fingerprint('a'), "");
+
+		assertThat(IndexRevisionCalculator.calculate(
+			"text-embedding-3-small",
+			List.of(new IndexRevisionCollection("law", "law_chunks", database, qdrant("law_chunks", 20, 20, 3)))
+		)).matches("[0-9a-f]{64}");
+	}
+
+	@Test
 	void optimizerCountersDoNotChangeRevision() {
 		IndexContentSnapshot database = database(20, fingerprint('a'), "2026-07-15T01:02:03.000000");
 		QdrantIndexSnapshot before = qdrant("law_chunks", 20, 19, 3);
@@ -77,7 +100,7 @@ class IndexRevisionCalculatorTests {
 
 	@Test
 	void malformedDatabaseSnapshotIsUnavailable() {
-		IndexContentSnapshot malformed = database(20, "not-a-fingerprint", "");
+		IndexContentSnapshot malformed = database(20, "not-a-fingerprint", "2026-07-15T01:02:03.000000");
 
 		assertThat(IndexRevisionCalculator.calculate(
 			"text-embedding-3-small",

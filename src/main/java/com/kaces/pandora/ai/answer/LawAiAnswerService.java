@@ -1201,8 +1201,8 @@ public class LawAiAnswerService {
 				ragChunkIdSet.add(hit.chunkId());
 			}
 		}
-		List<Long> lawChunkIds = List.copyOf(lawChunkIdSet);
-		List<Long> ragChunkIds = List.copyOf(ragChunkIdSet);
+		List<Long> lawChunkIds = lawChunkIdSet.stream().sorted().toList();
+		List<Long> ragChunkIds = ragChunkIdSet.stream().sorted().toList();
 		timing.candidateBuildMs.addAndGet(elapsedMillis(candidateBuildStart));
 		Map<String, LawSemanticChunkRow> chunkById = new HashMap<>();
 		long vectorDbStart = System.nanoTime();

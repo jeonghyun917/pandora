@@ -321,3 +321,34 @@ Date: 2026-08-31 (Asia/Seoul)
   `34bfd3993c3b98aa9c3c4418e3cfeb2db0d0ea3f17a7ce10920cbb9bfe0cd1df`,
   and `2573039c8c673bf75b503041aad359a77a2b5c5453c28490048b69cd803309e4`.
   Port 18080 and `output/` were untouched.
+
+## Deterministic retrieval and title-plan candidate terminal outcome
+
+Date: 2026-09-01 (Asia/Seoul)
+
+- BM25 hydration inputs are now sorted deterministically before bounded
+  inspection and database hydration. Matched title terms are also emitted in a
+  stable order.
+- Index revision schema `v2` excludes the operational `updatedWatermark` and
+  remains content-derived. The exact index revision
+  `726f3c4dd53d09a99bb277ec85cae47270b7613618d23300c34a6c197eac7285`
+  stayed identical across three app-dev runtime instances.
+- Final backend verification passed `1335` tests with failures/errors `0/0`;
+  `18` opt-in MariaDB integration tests were skipped.
+- A generalized title candidate matched hydrated titles against the complete
+  planned-term set while preserving the two-distinct-term threshold. Two
+  independent 24-case training runs completed without errors using exactly 48
+  OpenAI Embedding API calls and zero Answer API calls.
+- Both runs reproduced control `7/24` all-required, `14/24` any-required, and
+  `22` matched groups. The candidate produced required expansion-source groups
+  in five cases, but all were already present in control; shadow fused remained
+  exactly `7/24`, `14/24`, and `22` groups.
+- Independent selection returned `NO_DOCUMENT_EXPANSION_IMPROVEMENT`. The
+  title candidate was reverted, and Difficult-12, holdout, answer evaluation,
+  authoritative activation, and the 1,004-case release gate were skipped by
+  the mandatory promotion gate. All authority flags remain false.
+- Final app-dev JAR SHA-256 is
+  `07594613d731d47212209dd2da29620c5d5a81e8605ed3dbd33b3d744fe760c1`.
+  Law DB/Qdrant remains `211548/211548`, RAG remains `84248/84248`, Qdrant is
+  ready with search failures `0`, port `18080` remains absent, and `output/`
+  was untouched.
