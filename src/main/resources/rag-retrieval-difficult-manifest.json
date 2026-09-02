@@ -5,16 +5,16 @@
   "selectionBasis": "Pre-declared Difficult-12 cases excluded from training and used only as a deterministic no-regression gate.",
   "trainingCaseIds": [
     "egov-preliminary-review-target",
-    "irm-user-auth-guide",
-    "noise-irm-menu-user-auth",
     "performance-measure-when",
+    "irm-user-auth-guide",
     "whistleblower-protection-scope",
+    "noise-irm-menu-user-auth",
     "privacy-integrated-guide-purpose",
     "pre-consultation-plan-stage",
     "privacy-consent-refusal",
     "whistleblower-disadvantage",
-    "mois-disaster-field-support",
     "mois-national-safety-plan",
+    "mois-disaster-field-support",
     "official-find-pipc-ai-privacy"
   ],
   "excludedDifficultCaseIds": []
