@@ -1396,6 +1396,7 @@ public class LawAiAnswerService {
 			documentExpansionAuthoritativeChunks,
 			documentExpansionAuthoritative(hybrid)
 		);
+		searchedChunks = applyLexicalVariantAuthority(searchedChunks, bm25VariantChunks, bm25Variant);
 		Map<String, Double> baseScoreByChunkId = baseScoreMap(searchedChunks, vectorScoreByChunkId, keywordScoreByChunkId);
 		baseScoreByChunkId = applyAuthoritativeRrfScores(baseScoreByChunkId, hybrid);
 		timing.candidateBuildMs.addAndGet(elapsedMillis(candidateBuildStart));
@@ -5475,6 +5476,19 @@ public class LawAiAnswerService {
 		boolean authoritative
 	) {
 		return authoritative ? List.copyOf(fusedOrder) : List.copyOf(controlOrder);
+	}
+
+	private List<LawSemanticChunkRow> applyLexicalVariantAuthority(
+		List<LawSemanticChunkRow> controlOrder,
+		List<LawSemanticChunkRow> variantOrder,
+		GroupBalancedBm25SearchService.Result variantResult
+	) {
+		if (!lexicalVariantProperties.authoritative()
+			|| variantResult == null
+			|| variantResult.status() != GroupBalancedBm25SearchService.Status.APPLIED) {
+			return List.copyOf(controlOrder == null ? List.of() : controlOrder);
+		}
+		return mergeChunks(controlOrder, variantOrder);
 	}
 
 	CoverageAwareFusion.Result coverageAwareRerank(

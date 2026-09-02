@@ -23,6 +23,7 @@ import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
 import com.kaces.pandora.semantic.config.LawAiCoverageAwareProperties;
 import com.kaces.pandora.semantic.config.LawAiDocumentExpansionProperties;
 import com.kaces.pandora.semantic.config.LawAiLexicalProperties;
+import com.kaces.pandora.semantic.config.LawAiLexicalVariantProperties;
 import com.kaces.pandora.semantic.config.LawAiProperties;
 import com.kaces.pandora.semantic.config.LawAiRrfProperties;
 import com.kaces.pandora.semantic.config.LawAiSemanticSelectionProperties;
@@ -98,6 +99,50 @@ class LawAiAnswerServiceDocumentExpansionTests {
 			assertThat(ids(shadowResult.bm25Hits())).isEqualTo(ids(baselineResult.bm25Hits()));
 			assertThat(ids(shadowResult.merged())).isEqualTo(ids(baselineResult.merged()));
 			assertThat(ids(shadowResult.selected())).isEqualTo(ids(baselineResult.selected()));
+		}
+	}
+
+	@Test
+	void groupBalancedBm25AuthorityAddsOnlyNewAppliedVariantCandidatesAfterControl() {
+		GroupBalancedBm25SearchService.Result candidate = new GroupBalancedBm25SearchService.Result(
+			GroupBalancedBm25SearchService.Status.APPLIED,
+			List.of(),
+			List.of("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+			Map.of("direct-evidence", 1),
+			List.of(new LexicalVariantFusion.Hit(
+				"law", 901, 90, 1.0 / 61.0, 1,
+				List.of("미제공", "제재"), Map.of("direct-evidence", 1)
+			)),
+			1, 2, 1
+		);
+		try (Harness harness = Harness.mocked(properties(false, false), false, false, disabled(), false)
+			.withVariantResult(candidate)
+			.withVariantAuthority(true)) {
+			LawAiDebugResponse result = harness.debug("공공데이터 미제공 시 제재는?");
+
+			assertThat(ids(result.merged())).containsExactly(301L, 101L, 901L);
+			assertThat(ids(result.reranked())).contains(901L);
+		}
+	}
+
+	@Test
+	void groupBalancedBm25AuthorityFailsClosedWhenVariantDidNotApply() {
+		GroupBalancedBm25SearchService.Result failed = new GroupBalancedBm25SearchService.Result(
+			GroupBalancedBm25SearchService.Status.FAILED,
+			List.of("VARIANT_SEARCH_FAILED"),
+			List.of(), Map.of(), List.of(), 0, 1, 0
+		);
+		try (
+			Harness baseline = Harness.mocked(properties(false, false), false, false, disabled(), false);
+			Harness authority = Harness.mocked(properties(false, false), false, false, disabled(), false)
+				.withVariantResult(failed)
+				.withVariantAuthority(true)
+		) {
+			LawAiDebugResponse baselineResult = baseline.debug("공공데이터 미제공 시 제재는?");
+			LawAiDebugResponse result = authority.debug("공공데이터 미제공 시 제재는?");
+
+			assertThat(ids(result.merged())).containsExactlyElementsOf(ids(baselineResult.merged()));
+			assertThat(ids(result.selected())).containsExactlyElementsOf(ids(baselineResult.selected()));
 		}
 	}
 
@@ -977,6 +1022,13 @@ class LawAiAnswerServiceDocumentExpansionTests {
 			GroupBalancedBm25SearchService variants = mock(GroupBalancedBm25SearchService.class);
 			when(variants.search(any(), anyList(), anyInt())).thenReturn(result);
 			service.configureGroupBalancedBm25SearchService(variants);
+			return this;
+		}
+
+		private Harness withVariantAuthority(boolean authoritative) {
+			service.configureLexicalVariantProperties(
+				new LawAiLexicalVariantProperties(true, authoritative, 4, 60.0)
+			);
 			return this;
 		}
 
