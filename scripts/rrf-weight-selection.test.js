@@ -7,6 +7,7 @@ const test = require('node:test');
 const { loadEvalCases } = require('./lib/rag-eval-cases');
 const {
   fuseRanks,
+  loadEvaluationManifest,
   loadTrainingManifest,
   measureFused,
   selectWeights,
@@ -81,6 +82,19 @@ test('training manifest rejects count mismatch, unknown cases, and cases without
     () => withManifest(manifest(['no-oracle'], [], 1), (file) => loadTrainingManifest(file, allCases)),
     /training case lacks explicit oracle: no-oracle/i,
   );
+});
+
+test('retrieval evaluation manifest accepts known cases without an explicit answer oracle', () => {
+  const allCases = [
+    ...fixtureCases(['oracle-case']),
+    { id: 'retrieval-only', requiredPropositionGroups: [], requiredConditionGroups: [] },
+  ];
+  const value = manifest(['retrieval-only', 'oracle-case'], [], 2);
+
+  const result = withManifest(value, (file) => loadEvaluationManifest(file, allCases));
+
+  assert.deepEqual(result.trainingCases.map((item) => item.id), ['retrieval-only', 'oracle-case']);
+  assert.equal(result.manifestHash.length, 64);
 });
 
 test('pure RRF replay uses hand-derived scores and merges audit groups across sources', () => {

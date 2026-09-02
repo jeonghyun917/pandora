@@ -5,8 +5,23 @@ const PROVENANCE_FIELDS = Object.freeze([
 ]);
 
 function selectGroupBalancedBm25Policy({ manifest, run1, run2 }) {
+  return evaluate({ manifest, run1, run2, requiredCount: 24 });
+}
+
+function evaluateGroupBalancedBm25RegressionGate({ manifest, run1, run2 }) {
+  const result = evaluate({ manifest, run1, run2 });
+  if (!['SELECTED', 'NO_IMPROVEMENT'].includes(result.status)) return result;
+  return {
+    ...result,
+    status: 'GATE_PASS',
+    eligible: true,
+    reason: undefined,
+  };
+}
+
+function evaluate({ manifest, run1, run2, requiredCount }) {
   const fail = (status, reason) => ({ schemaVersion: 1, status, eligible: false, reason });
-  const normalizedManifest = normalizeManifest(manifest);
+  const normalizedManifest = normalizeManifest(manifest, requiredCount);
   if (!normalizedManifest.valid) return fail('TRAINING_MANIFEST_MISMATCH', normalizedManifest.reason);
   const runs = validateRuns(normalizedManifest, run1, run2);
   if (!runs.valid) return fail(runs.status, runs.reason);
@@ -50,6 +65,7 @@ function selectGroupBalancedBm25Policy({ manifest, run1, run2 }) {
       policy: policy1,
       addedGroups: [],
       summaries,
+      provenance: Object.fromEntries(PROVENANCE_FIELDS.map((field) => [field, run1.provenance[field]])),
     };
   }
   return {
@@ -63,11 +79,18 @@ function selectGroupBalancedBm25Policy({ manifest, run1, run2 }) {
   };
 }
 
-function normalizeManifest(manifest) {
+function normalizeManifest(manifest, requiredCount) {
   const value = manifest?.manifest ?? manifest;
   const ids = value?.trainingCaseIds;
-  if (!Array.isArray(ids) || value?.expectedTrainingCount !== 24 || ids.length !== 24) {
-    return { valid: false, reason: 'training manifest must contain exactly 24 cases' };
+  const expectedCount = value?.expectedTrainingCount;
+  if (!Number.isSafeInteger(expectedCount) || expectedCount <= 0 || !Array.isArray(ids)
+    || ids.length !== expectedCount || (requiredCount != null && expectedCount !== requiredCount)) {
+    return {
+      valid: false,
+      reason: requiredCount == null
+        ? 'evaluation manifest count must be positive and match its case IDs'
+        : `training manifest must contain exactly ${requiredCount} cases`,
+    };
   }
   const normalized = ids.map((id) => String(id ?? '').trim());
   if (normalized.some((id) => !id) || new Set(normalized).size !== normalized.length) {
@@ -85,7 +108,8 @@ function validateRuns(manifest, run1, run2) {
     if (!run || run.complete !== true || !Array.isArray(run.requestErrors) || run.requestErrors.length !== 0) {
       return { valid: false, status: 'REQUEST_ERRORS', reason: `${label} is not a complete error-free capture` };
     }
-    if (run.selectedCases !== 24 || run.completedCases !== 24 || !sameIds(run.results, manifest.ids)) {
+    if (run.selectedCases !== manifest.ids.length || run.completedCases !== manifest.ids.length
+      || !sameIds(run.results, manifest.ids)) {
       return { valid: false, status: 'TRAINING_CAPTURE_MISMATCH', reason: `${label} does not match manifest order` };
     }
     if (PROVENANCE_FIELDS.filter((field) => !['qdrantReady', 'qdrantSearchFailureCount'].includes(field))
@@ -130,7 +154,7 @@ function normalizeResults(results, ids) {
 function normalizePresence(value, id, label) {
   const count = value?.requiredGroupCount;
   const source = value?.matchedRequiredGroupIndexes;
-  if (!Number.isSafeInteger(count) || count <= 0 || !Array.isArray(source)) {
+  if (!Number.isSafeInteger(count) || count < 0 || !Array.isArray(source)) {
     throw new Error(`case ${id} has invalid ${label} presence`);
   }
   const indexes = [...source].sort((left, right) => left - right);
@@ -182,7 +206,8 @@ function lostControlGroup(results) {
 function summarize(results) {
   const presence = (key) => ({
     caseCount: results.length,
-    allRequired: results.filter((item) => item[key].indexes.length === item[key].requiredGroupCount).length,
+    allRequired: results.filter((item) => item[key].requiredGroupCount > 0
+      && item[key].indexes.length === item[key].requiredGroupCount).length,
     anyRequired: results.filter((item) => item[key].indexes.length > 0).length,
     matchedGroups: results.reduce((sum, item) => sum + item[key].indexes.length, 0),
   });
@@ -201,4 +226,4 @@ function sameIds(results, ids) {
     && ids.every((id, index) => String(results[index]?.id ?? '') === id);
 }
 
-module.exports = { selectGroupBalancedBm25Policy };
+module.exports = { evaluateGroupBalancedBm25RegressionGate, selectGroupBalancedBm25Policy };

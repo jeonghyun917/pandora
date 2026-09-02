@@ -808,6 +808,16 @@ test('document expansion capture is bounded, audit-only, and rejects malformed e
   );
 });
 
+test('retrieval runner accepts a retrieval-only evaluation manifest', () => {
+  const options = retrievalRunner.parseOptions([
+    '--case-ids', 'guide-a,guide-b',
+    '--evaluation-manifest', 'src/main/resources/difficult.json',
+  ], {});
+
+  assert.equal(options.evaluationManifestPath, 'src/main/resources/difficult.json');
+  assert.equal(options.trainingManifestPath, null);
+});
+
 test('group-balanced BM25 capture is bounded, audit-only, and validates variant ranks', () => {
   const response = {
     bm25VariantStatus: 'APPLIED',

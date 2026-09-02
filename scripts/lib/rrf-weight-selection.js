@@ -29,7 +29,7 @@ function sha256Bytes(bytes) {
   return crypto.createHash('sha256').update(bytes).digest('hex');
 }
 
-function loadTrainingManifest(manifestPath, allCases) {
+function loadTrainingManifest(manifestPath, allCases, options = {}) {
   const bytes = fs.readFileSync(manifestPath);
   let manifest;
   try {
@@ -60,7 +60,7 @@ function loadTrainingManifest(manifestPath, allCases) {
     if (!item) {
       throw new Error(`unknown training case id: ${id}`);
     }
-    if (!hasExplicitOracle(item)) {
+    if (options.requireExplicitOracle !== false && !hasExplicitOracle(item)) {
       throw new Error(`training case lacks explicit oracle: ${id}`);
     }
     return item;
@@ -77,6 +77,10 @@ function loadTrainingManifest(manifestPath, allCases) {
     trainingCases,
     holdoutCases,
   };
+}
+
+function loadEvaluationManifest(manifestPath, allCases) {
+  return loadTrainingManifest(manifestPath, allCases, { requireExplicitOracle: false });
 }
 
 function validateManifestShape(manifest) {
@@ -471,6 +475,7 @@ function sameWeights(left, right) {
 
 module.exports = {
   fuseRanks,
+  loadEvaluationManifest,
   loadTrainingManifest,
   measureFused,
   selectWeights,

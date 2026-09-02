@@ -20,7 +20,7 @@ const {
   isRuntimeStable,
   selectionHash,
 } = require('./lib/rag-eval-provenance');
-const { loadTrainingManifest } = require('./lib/rrf-weight-selection');
+const { loadEvaluationManifest, loadTrainingManifest } = require('./lib/rrf-weight-selection');
 
 const DOCUMENT_EXPANSION_ANCHOR_TYPES = new Set([
   'EXPLICIT_TITLE',
@@ -89,9 +89,14 @@ async function main() {
   if (cases.length === 0) {
     throw new Error('no evaluation cases selected');
   }
+  if (options.trainingManifestPath && options.evaluationManifestPath) {
+    throw new Error('choose only one of --training-manifest or --evaluation-manifest');
+  }
   const trainingManifestInfo = options.trainingManifestPath
     ? loadTrainingManifest(options.trainingManifestPath, allCases)
-    : null;
+    : (options.evaluationManifestPath
+      ? loadEvaluationManifest(options.evaluationManifestPath, allCases)
+      : null);
   if (trainingManifestInfo) {
     assertTrainingSelection(trainingManifestInfo, cases);
   }
@@ -184,6 +189,7 @@ function parseOptions(argv = [], env = process.env) {
     k: positiveInteger(env.RAG_RETRIEVAL_K, 10),
     captureRankLimit: captureRankLimit(env.RAG_RETRIEVAL_CAPTURE_RANK_LIMIT),
     trainingManifestPath: env.RAG_RETRIEVAL_TRAINING_MANIFEST || null,
+    evaluationManifestPath: env.RAG_RETRIEVAL_EVALUATION_MANIFEST || null,
     outputPath: env.RAG_RETRIEVAL_OUTPUT || null,
     reportPath: env.RAG_RETRIEVAL_REPORT || null,
     baseUrl: env.RAG_RETRIEVAL_BASE_URL || env.RAG_EVAL_BASE_URL || 'http://127.0.0.1:8080',
@@ -219,6 +225,9 @@ function parseOptions(argv = [], env = process.env) {
         break;
       case '--training-manifest':
         values.trainingManifestPath = readValue();
+        break;
+      case '--evaluation-manifest':
+        values.evaluationManifestPath = readValue();
         break;
       case '--output':
         values.outputPath = readValue();

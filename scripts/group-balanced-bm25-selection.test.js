@@ -1,7 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { selectGroupBalancedBm25Policy } = require('./lib/group-balanced-bm25-selection');
+const {
+  evaluateGroupBalancedBm25RegressionGate,
+  selectGroupBalancedBm25Policy,
+} = require('./lib/group-balanced-bm25-selection');
 const selectorCli = require('./group-balanced-bm25-select');
 
 test('selector CLI requires immutable manifest, two runs, and a new output path', () => {
@@ -11,6 +14,58 @@ test('selector CLI requires immutable manifest, two runs, and a new output path'
     manifestPath: 'manifest.json', run1Path: 'run1.json', run2Path: 'run2.json', outputPath: 'selection.json',
   });
   assert.throws(() => selectorCli.parseCliOptions([]), /--manifest.*required/i);
+  assert.deepEqual(selectorCli.parseCliOptions([
+    '--manifest', 'manifest.json', '--run-1', 'run1.json', '--run-2', 'run2.json',
+    '--output', 'selection.json', '--mode', 'regression',
+  ]), {
+    manifestPath: 'manifest.json', run1Path: 'run1.json', run2Path: 'run2.json',
+    outputPath: 'selection.json', mode: 'regression',
+  });
+  assert.throws(() => selectorCli.parseCliOptions([
+    '--manifest', 'manifest.json', '--run-1', 'run1.json', '--run-2', 'run2.json',
+    '--output', 'selection.json', '--mode', 'unsafe',
+  ]), /mode.*training.*regression/i);
+});
+
+test('passes a deterministic 12-case regression gate without requiring improvement', () => {
+  const manifest = regressionManifest(12);
+  const run1 = capture(manifest.trainingCaseIds);
+  const gate = evaluateGroupBalancedBm25RegressionGate({ manifest, run1, run2: structuredClone(run1) });
+
+  assert.equal(gate.status, 'GATE_PASS');
+  assert.equal(gate.eligible, true);
+  assert.equal(gate.summaries.run1.control.caseCount, 12);
+  assert.deepEqual(gate.addedGroups, []);
+});
+
+test('passes retrieval-only regression cases with zero explicit answer groups', () => {
+  const manifest = regressionManifest(12);
+  const run1 = capture(manifest.trainingCaseIds);
+  for (const run of [run1]) {
+    for (const key of ['controlSourcePresence', 'variantPresence', 'shadowSourcePresence']) {
+      run.results[0].bm25Variant[key] = presence([] , 0);
+    }
+  }
+
+  const gate = evaluateGroupBalancedBm25RegressionGate({ manifest, run1, run2: structuredClone(run1) });
+
+  assert.equal(gate.status, 'GATE_PASS');
+});
+
+test('fails a regression gate on control loss or nondeterministic evidence', () => {
+  const manifest = regressionManifest(12);
+  const run1 = capture(manifest.trainingCaseIds);
+  const loss = structuredClone(run1);
+  loss.results[0].bm25Variant.shadowSourcePresence.matchedRequiredGroupIndexes = [0];
+  loss.results[0].bm25Variant.shadowSourcePresence.matchedRequiredGroupCount = 1;
+  assert.equal(evaluateGroupBalancedBm25RegressionGate({
+    manifest, run1: loss, run2: structuredClone(loss),
+  }).status, 'CONTROL_GROUP_REGRESSION');
+
+  const drift = structuredClone(run1);
+  drift.results[0].bm25Variant.capture.hits[0].candidateKey = 'law:999';
+  assert.equal(evaluateGroupBalancedBm25RegressionGate({ manifest, run1, run2: drift }).status,
+    'NONDETERMINISTIC_CAPTURE');
 });
 
 test('selects deterministic candidate that adds a missing required group without loss', () => {
@@ -83,6 +138,15 @@ function trainingManifest() {
   };
 }
 
+function regressionManifest(count) {
+  return {
+    schemaVersion: 1,
+    expectedTrainingCount: count,
+    manifestHash: 'manifest-hash',
+    trainingCaseIds: Array.from({ length: count }, (_, index) => `case-${index + 1}`),
+  };
+}
+
 function capture(ids, options = {}) {
   const provenance = {
     trainingManifestHash: 'manifest-hash',
@@ -99,8 +163,8 @@ function capture(ids, options = {}) {
   };
   return {
     complete: true,
-    selectedCases: 24,
-    completedCases: 24,
+    selectedCases: ids.length,
+    completedCases: ids.length,
     requestErrors: [],
     provenance,
     bm25VariantPolicy: { id: 'group-balanced-bm25-shadow-v1', configHash: 'config-hash' },
@@ -111,13 +175,6 @@ function capture(ids, options = {}) {
 function result(id, index, improves) {
   const controlIndexes = index < 7 ? [0, 1] : (index < 14 ? [0] : []);
   const shadowIndexes = improves ? [0, 1] : controlIndexes;
-  const presence = (indexes) => ({
-    requiredGroupCount: 2,
-    matchedRequiredGroupIndexes: indexes,
-    matchedRequiredGroupCount: indexes.length,
-    anyRequired: indexes.length > 0,
-    allRequired: indexes.length === 2,
-  });
   return {
     id,
     bm25Variant: {
@@ -140,5 +197,15 @@ function result(id, index, improves) {
         }],
       },
     },
+  };
+}
+
+function presence(indexes, requiredGroupCount = 2) {
+  return {
+    requiredGroupCount,
+    matchedRequiredGroupIndexes: indexes,
+    matchedRequiredGroupCount: indexes.length,
+    anyRequired: indexes.length > 0,
+    allRequired: requiredGroupCount > 0 && indexes.length === requiredGroupCount,
   };
 }

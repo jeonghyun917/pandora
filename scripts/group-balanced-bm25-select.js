@@ -2,8 +2,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { loadEvalCases } = require('./lib/rag-eval-cases');
-const { loadTrainingManifest } = require('./lib/rrf-weight-selection');
-const { selectGroupBalancedBm25Policy } = require('./lib/group-balanced-bm25-selection');
+const { loadEvaluationManifest, loadTrainingManifest } = require('./lib/rrf-weight-selection');
+const {
+  evaluateGroupBalancedBm25RegressionGate,
+  selectGroupBalancedBm25Policy,
+} = require('./lib/group-balanced-bm25-selection');
 
 const CASE_PATHS = [
   path.resolve('src/main/resources/rag-evaluation-cases.tsv'),
@@ -14,8 +17,13 @@ const ANSWER_ORACLE_PATH = path.resolve('src/main/resources/rag-answer-evaluatio
 function main(argv = process.argv.slice(2)) {
   const options = parseCliOptions(argv);
   const cases = loadEvalCases(CASE_PATHS, { answerOraclePath: ANSWER_ORACLE_PATH });
-  const manifest = loadTrainingManifest(options.manifestPath, cases);
-  const selection = selectGroupBalancedBm25Policy({
+  const manifest = options.mode === 'regression'
+    ? loadEvaluationManifest(options.manifestPath, cases)
+    : loadTrainingManifest(options.manifestPath, cases);
+  const evaluator = options.mode === 'regression'
+    ? evaluateGroupBalancedBm25RegressionGate
+    : selectGroupBalancedBm25Policy;
+  const selection = evaluator({
     manifest,
     run1: readJson(options.run1Path, 'run 1'),
     run2: readJson(options.run2Path, 'run 2'),
@@ -40,6 +48,7 @@ function parseCliOptions(argv) {
       case '--run-1': values.run1Path = readValue(); break;
       case '--run-2': values.run2Path = readValue(); break;
       case '--output': values.outputPath = readValue(); break;
+      case '--mode': values.mode = readValue(); break;
       default: throw new Error(`unknown option: ${flag}`);
     }
   }
@@ -48,6 +57,9 @@ function parseCliOptions(argv) {
     ['run2Path', '--run-2'], ['outputPath', '--output'],
   ]) {
     if (!values[property]) throw new Error(`${flag} is required`);
+  }
+  if (values.mode != null && !['training', 'regression'].includes(values.mode)) {
+    throw new Error('--mode must be training or regression');
   }
   return values;
 }
