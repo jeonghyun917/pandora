@@ -120,6 +120,29 @@ class LawAiAnswerServiceDocumentExpansionTests {
 	}
 
 	@Test
+	void groupBalancedBm25AllowsBoundedMultiVariantSearchToFinishWithinThreeSeconds() {
+		GroupBalancedBm25SearchService.Result candidate = new GroupBalancedBm25SearchService.Result(
+			GroupBalancedBm25SearchService.Status.APPLIED,
+			List.of(),
+			List.of("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+			Map.of("direct-evidence", 1),
+			List.of(new LexicalVariantFusion.Hit(
+				"law", 901, 90, 1.0 / 61.0, 1,
+				List.of("미제공", "제재"), Map.of("direct-evidence", 1)
+			)),
+			1, 1_500, 1
+		);
+		try (Harness harness = Harness.mocked(properties(false, false), false, false, disabled(), false)
+			.withDelayedVariantResult(candidate, 1_500)) {
+			LawAiDebugResponse result = harness.debug("개인정보 처리 목적은 어떻게 알려야 해?");
+
+			assertThat(result.bm25VariantStatus()).isEqualTo("APPLIED");
+			assertThat(result.bm25VariantReasonCodes()).isEmpty();
+			assertThat(ids(result.bm25VariantHits())).containsExactly(901L);
+		}
+	}
+
+	@Test
 	void bm25TitleFallbackRemainsShadowOnlyAndAddsNoExternalRequest() {
 		DocumentCandidateExpansion.Result seeded = new DocumentCandidateExpansion.Result(
 			List.of(chunk(901, 90, 1, "BM25 title sibling")),
@@ -961,6 +984,19 @@ class LawAiAnswerServiceDocumentExpansionTests {
 			GroupBalancedBm25SearchService variants = mock(GroupBalancedBm25SearchService.class);
 			when(variants.search(any(), anyList(), anyInt()))
 				.thenThrow(new IllegalStateException("shadow database failure"));
+			service.configureGroupBalancedBm25SearchService(variants);
+			return this;
+		}
+
+		private Harness withDelayedVariantResult(
+			GroupBalancedBm25SearchService.Result result,
+			long delayMillis
+		) {
+			GroupBalancedBm25SearchService variants = mock(GroupBalancedBm25SearchService.class);
+			when(variants.search(any(), anyList(), anyInt())).thenAnswer(ignored -> {
+				Thread.sleep(delayMillis);
+				return result;
+			});
 			service.configureGroupBalancedBm25SearchService(variants);
 			return this;
 		}

@@ -109,6 +109,7 @@ public class LawAiAnswerService {
 	private static final long FOCUSED_KEYWORD_SEARCH_TIMEOUT_MILLIS = 3_000L;
 	private static final long VECTOR_SHORTFALL_KEYWORD_SEARCH_TIMEOUT_MILLIS = 2_500L;
 	private static final long BM25_SHADOW_TIMEOUT_MILLIS = 1_250L;
+	private static final long GROUP_BALANCED_BM25_SHADOW_TIMEOUT_MILLIS = 3_000L;
 	private static final long DOCUMENT_EXPANSION_TIMEOUT_MILLIS = 1_250L;
 	private static final int MAX_DOCUMENT_EXPANSION_HITS = 24;
 	private static final double DOCUMENT_EXPANSION_RRF_WEIGHT = 1.0;
@@ -10818,10 +10819,13 @@ public class LawAiAnswerService {
 		CompletableFuture<GroupBalancedBm25SearchService.Result> future
 	) {
 		try {
-			return future.get(BM25_SHADOW_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+			return future.get(GROUP_BALANCED_BM25_SHADOW_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
 		} catch (TimeoutException exception) {
 			future.cancel(true);
-			log.warn("Group-balanced BM25 shadow timed out after {}ms.", BM25_SHADOW_TIMEOUT_MILLIS);
+			log.warn(
+				"Group-balanced BM25 shadow timed out after {}ms.",
+				GROUP_BALANCED_BM25_SHADOW_TIMEOUT_MILLIS
+			);
 			return failedBm25VariantResult("VARIANT_ASYNC_TIMEOUT");
 		} catch (InterruptedException exception) {
 			Thread.currentThread().interrupt();
