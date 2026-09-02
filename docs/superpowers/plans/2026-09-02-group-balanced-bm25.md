@@ -77,22 +77,21 @@
 - Create: `scripts/group-balanced-bm25-selection.test.js`
 - Create or update: immutable training manifest/evidence files under `docs/evidence/rag-quality/` (never `output/`).
 
-- [ ] Write Node RED tests requiring bounded `bm25VariantHits` capture and rejecting malformed status, hashes, ranks, identities, or unbounded lists.
-- [ ] Add evaluation-only required-group presence for control and shadow, ensuring oracle aliases never enter a request or production rank.
-- [ ] Write selector RED tests requiring two complete, error-free captures with identical manifests/provenance and deterministic shadow ranks.
-- [ ] Implement terminal decisions `SELECTED`, `NO_IMPROVEMENT`, and `INVALID`; reject any lost control group or inconsistent added group.
-- [ ] Run `node --test scripts/rag-retrieval-eval.test.js scripts/group-balanced-bm25-selection.test.js`.
+- [x] Write Node RED tests requiring bounded `bm25VariantHits` capture and rejecting malformed status, hashes, ranks, identities, or unbounded lists.
+- [x] Add evaluation-only required-group presence for control and shadow, ensuring oracle aliases never enter a request or production rank.
+- [x] Write selector RED tests requiring two complete, error-free captures with identical manifests/provenance and deterministic shadow ranks.
+- [x] Implement terminal decisions `SELECTED`, `NO_IMPROVEMENT`, and `INVALID`; reject any lost control group or inconsistent added group.
+- [x] Run `node --test scripts/rag-retrieval-eval.test.js scripts/group-balanced-bm25-selection.test.js`.
 
 ### Task 6: Verify and run the promotion ladder conditionally
 
 **Files:**
 - Modify only evidence/ledger files produced by the documented evaluation workflow.
 
-- [ ] Run all focused Java and Node tests.
-- [ ] Run `./mvnw.cmd test` once on the stable candidate commit and record totals and exact commit SHA.
-- [ ] Check runtime with `scripts/status-pandora.ps1`; use app-dev `8080` only, never touch `18080`, and never write `output/`.
-- [ ] Freeze the ordered 24-case training payload and provenance, review its exact hash/destination, then run two independent captures only when the required exact external-evaluation approval is present.
+- [x] Run all focused Java and Node tests.
+- [x] Run `./mvnw.cmd test` once on the stable candidate commit and record totals and exact commit SHA.
+- [x] Check runtime with `scripts/status-pandora.ps1`; use app-dev `8080` only, never touch `18080`, and never write `output/`.
+- [x] Freeze the ordered 24-case training payload and provenance, review its exact hash/destination, then run two independent captures only when the required exact external-evaluation approval is present.
 - [ ] Run the selector. If `NO_IMPROVEMENT`, keep authority false, archive evidence, and stop later gates. If `SELECTED`, run Difficult-12, holdout, Answer API evaluation, then the approximately 1,004-case release gate in that order.
 - [ ] Enable authority only in a separate commit after every prior gate passes; otherwise leave every authority flag false.
 - [ ] Use `superpowers:verification-before-completion`, self-review the exact diff, commit, push the feature branch, and report what changed, verification evidence, and any remaining risk.
-

@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "status": "SELECTED",
+  "eligible": true,
+  "policy": {
+    "id": "group-balanced-bm25-shadow-v1",
+    "configHash": "e7b08ced10e7fd56f1dbfda7822dccb019aec056cf31ea16fca24604cbd1576a"
+  },
+  "addedGroups": [
+    {
+      "id": "security-review-procedure",
+      "groupIndexes": [
+        1
+      ]
+    },
+    {
+      "id": "pipc-pseudonym-additional-info",
+      "groupIndexes": [
+        1
+      ]
+    }
+  ],
+  "summaries": {
+    "run1": {
+      "control": {
+        "caseCount": 24,
+        "allRequired": 7,
+        "anyRequired": 16,
+        "matchedGroups": 25
+      },
+      "shadow": {
+        "caseCount": 24,
+        "allRequired": 9,
+        "anyRequired": 16,
+        "matchedGroups": 27
+      }
+    },
+    "run2": {
+      "control": {
+        "caseCount": 24,
+        "allRequired": 7,
+        "anyRequired": 16,
+        "matchedGroups": 25
+      },
+      "shadow": {
+        "caseCount": 24,
+        "allRequired": 9,
+        "anyRequired": 16,
+        "matchedGroups": 27
+      }
+    }
+  },
+  "provenance": {
+    "trainingManifestHash": "3c5cc394524389d9c05c0e72e602232a8eb98a297f25a55c4f0c71a85ae2b2db",
+    "trainingSplitName": "task15-rrf-training-v1",
+    "datasetHash": "322dee52b2c78576754fe726ac3611a8b677bec9cbe7697684f9c1172d0308a6",
+    "selectionHash": "4e5546b95f079888138e7ef5d921b2a77c7f309aad16f2d269e8b83b9908bf22",
+    "runtimeInstanceId": "82ae43b3-b163-4311-afe4-d845a4f8b8dd",
+    "runtimeArtifactSha256": "84d029471157a445a2a30fef106d86a47044a208c5e1731c9943e4766abaa02e",
+    "runtimeConfigSha256": "e7b08ced10e7fd56f1dbfda7822dccb019aec056cf31ea16fca24604cbd1576a",
+    "indexRevision": "726f3c4dd53d09a99bb277ec85cae47270b7613618d23300c34a6c197eac7285",
+    "lexicalRevision": "da8d51cecea3bd10ce9ba7eb40c2a25015d2166e983d836018616377de9bb9aa",
+    "qdrantReady": true,
+    "qdrantSearchFailureCount": 0
+  }
+}
