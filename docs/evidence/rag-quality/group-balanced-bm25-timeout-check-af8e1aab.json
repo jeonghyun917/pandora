@@ -1,0 +1,5004 @@
+{
+  "schemaVersion": 2,
+  "k": 30,
+  "totalCases": 1,
+  "recallEligibleCases": 1,
+  "missingRetrievalGoldCases": 0,
+  "noGroundCases": 0,
+  "falseGround": {
+    "cases": 0,
+    "falseGrounds": 0,
+    "rate": null,
+    "ids": []
+  },
+  "stages": {
+    "vectorHits": {
+      "recallEligibleCases": 1,
+      "directHits": 0,
+      "directHitRate": 0,
+      "documentGoldCases": 1,
+      "documentHits": 1,
+      "documentHitRate": 1,
+      "documentTermCoverageAtK": 1,
+      "sectionParentGoldCases": 1,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": 0,
+      "sectionParentTermCoverageAtK": 0
+    },
+    "lexicalHits": {
+      "recallEligibleCases": 1,
+      "directHits": 0,
+      "directHitRate": 0,
+      "documentGoldCases": 1,
+      "documentHits": 1,
+      "documentHitRate": 1,
+      "documentTermCoverageAtK": 1,
+      "sectionParentGoldCases": 1,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": 0,
+      "sectionParentTermCoverageAtK": 0
+    },
+    "merged": {
+      "recallEligibleCases": 1,
+      "directHits": 0,
+      "directHitRate": 0,
+      "documentGoldCases": 1,
+      "documentHits": 1,
+      "documentHitRate": 1,
+      "documentTermCoverageAtK": 1,
+      "sectionParentGoldCases": 1,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": 0,
+      "sectionParentTermCoverageAtK": 0
+    },
+    "reranked": {
+      "recallEligibleCases": 1,
+      "directHits": 0,
+      "directHitRate": 0,
+      "documentGoldCases": 1,
+      "documentHits": 1,
+      "documentHitRate": 1,
+      "documentTermCoverageAtK": 1,
+      "sectionParentGoldCases": 1,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": 0,
+      "sectionParentTermCoverageAtK": 0.5
+    },
+    "intentFiltered": {
+      "recallEligibleCases": 1,
+      "directHits": 0,
+      "directHitRate": 0,
+      "documentGoldCases": 1,
+      "documentHits": 1,
+      "documentHitRate": 1,
+      "documentTermCoverageAtK": 1,
+      "sectionParentGoldCases": 1,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": 0,
+      "sectionParentTermCoverageAtK": 0
+    },
+    "judgeCandidates": {
+      "recallEligibleCases": 1,
+      "directHits": 0,
+      "directHitRate": 0,
+      "documentGoldCases": 1,
+      "documentHits": 1,
+      "documentHitRate": 1,
+      "documentTermCoverageAtK": 1,
+      "sectionParentGoldCases": 1,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": 0,
+      "sectionParentTermCoverageAtK": 0
+    },
+    "judged": {
+      "recallEligibleCases": 1,
+      "directHits": 0,
+      "directHitRate": 0,
+      "documentGoldCases": 1,
+      "documentHits": 1,
+      "documentHitRate": 1,
+      "documentTermCoverageAtK": 1,
+      "sectionParentGoldCases": 1,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": 0,
+      "sectionParentTermCoverageAtK": 0
+    },
+    "selected": {
+      "recallEligibleCases": 1,
+      "directHits": 0,
+      "directHitRate": 0,
+      "documentGoldCases": 1,
+      "documentHits": 1,
+      "documentHitRate": 1,
+      "documentTermCoverageAtK": 1,
+      "sectionParentGoldCases": 1,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": 0,
+      "sectionParentTermCoverageAtK": 0
+    }
+  },
+  "shadowStages": {
+    "bm25Hits": {
+      "recallEligibleCases": 1,
+      "directHits": 0,
+      "directHitRate": 0,
+      "documentGoldCases": 1,
+      "documentHits": 0,
+      "documentHitRate": 0,
+      "documentTermCoverageAtK": 0,
+      "sectionParentGoldCases": 1,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": 0,
+      "sectionParentTermCoverageAtK": 0
+    },
+    "bm25VariantHits": {
+      "recallEligibleCases": 1,
+      "directHits": 0,
+      "directHitRate": 0,
+      "documentGoldCases": 1,
+      "documentHits": 1,
+      "documentHitRate": 1,
+      "documentTermCoverageAtK": 1,
+      "sectionParentGoldCases": 1,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": 0,
+      "sectionParentTermCoverageAtK": 0
+    },
+    "fused": {
+      "recallEligibleCases": 1,
+      "directHits": 0,
+      "directHitRate": 0,
+      "documentGoldCases": 1,
+      "documentHits": 1,
+      "documentHitRate": 1,
+      "documentTermCoverageAtK": 1,
+      "sectionParentGoldCases": 1,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": 0,
+      "sectionParentTermCoverageAtK": 0
+    },
+    "coverageFused": {
+      "recallEligibleCases": 1,
+      "directHits": 0,
+      "directHitRate": 0,
+      "documentGoldCases": 1,
+      "documentHits": 1,
+      "documentHitRate": 1,
+      "documentTermCoverageAtK": 1,
+      "sectionParentGoldCases": 1,
+      "sectionParentHits": 0,
+      "sectionParentHitRate": 0,
+      "sectionParentTermCoverageAtK": 0
+    }
+  },
+  "stageSurvival": {
+    "candidateSources": {
+      "denominator": 1,
+      "survived": 0,
+      "rate": 0
+    },
+    "merged": {
+      "denominator": 0,
+      "survived": 0,
+      "rate": null
+    },
+    "reranked": {
+      "denominator": 0,
+      "survived": 0,
+      "rate": null
+    },
+    "intentFiltered": {
+      "denominator": 0,
+      "survived": 0,
+      "rate": null
+    },
+    "judgeCandidates": {
+      "denominator": 0,
+      "survived": 0,
+      "rate": null
+    },
+    "judged": {
+      "denominator": 0,
+      "survived": 0,
+      "rate": null
+    },
+    "selected": {
+      "denominator": 0,
+      "survived": 0,
+      "rate": null
+    }
+  },
+  "firstDropCounts": {
+    "candidateSources": 1
+  },
+  "selectedCases": 1,
+  "completedCases": 1,
+  "requestErrors": [],
+  "complete": true,
+  "provenance": {
+    "schemaVersion": 4,
+    "runScope": "targeted",
+    "gateProfile": "release",
+    "generatedAt": "2026-09-02T10:02:33.313Z",
+    "baseUrl": "http://127.0.0.1:8080",
+    "executionPort": 8080,
+    "gitCommit": "af8e1aabea9f6d0bb9e4ca70e7fc9608fc4f9840",
+    "gitDirty": false,
+    "datasetHash": "322dee52b2c78576754fe726ac3611a8b677bec9cbe7697684f9c1172d0308a6",
+    "selectionHash": "8771c93e03abc171f0f7b71d855dc1bd057f1227d8704bca36befdfe944516b6",
+    "baselineManifestId": null,
+    "selectedCaseCount": 1,
+    "totalCaseCount": 1003,
+    "indexVersion": "law_chunks+rag_chunks_v4",
+    "embeddingModel": "text-embedding-3-small",
+    "answerModel": "gpt-5-mini",
+    "lawCollection": "law_chunks",
+    "ragCollection": "rag_chunks_v4",
+    "runtimeArtifactKind": "jar",
+    "runtimeArtifactSha256": "84d029471157a445a2a30fef106d86a47044a208c5e1731c9943e4766abaa02e",
+    "runtimeArtifactSize": 67498868,
+    "runtimeInstanceId": "82ae43b3-b163-4311-afe4-d845a4f8b8dd",
+    "runtimeConfigSha256": "e7b08ced10e7fd56f1dbfda7822dccb019aec056cf31ea16fca24604cbd1576a",
+    "indexRevision": "726f3c4dd53d09a99bb277ec85cae47270b7613618d23300c34a6c197eac7285",
+    "lexicalRevision": "da8d51cecea3bd10ce9ba7eb40c2a25015d2166e983d836018616377de9bb9aa",
+    "qdrantReady": true,
+    "qdrantSearchFailureCount": 0,
+    "runtimeInfoSource": "server",
+    "runtimeInfoReadAttempts": 1
+  },
+  "runtimeVerifiedAtEnd": true,
+  "documentExpansionPolicy": {
+    "id": "document-expansion-shadow-v1",
+    "configHash": "e7b08ced10e7fd56f1dbfda7822dccb019aec056cf31ea16fca24604cbd1576a"
+  },
+  "bm25VariantPolicy": {
+    "id": "group-balanced-bm25-shadow-v1",
+    "configHash": "e7b08ced10e7fd56f1dbfda7822dccb019aec056cf31ea16fca24604cbd1576a"
+  },
+  "results": [
+    {
+      "id": "personal-info-purpose",
+      "k": 30,
+      "resultMsg": "OK",
+      "noGroundExpected": false,
+      "falseGround": false,
+      "recallEligible": true,
+      "exclusionReason": null,
+      "candidateEntryHit": false,
+      "firstDropStage": "candidateSources",
+      "stageSurvival": {
+        "candidateSources": false,
+        "merged": false,
+        "reranked": false,
+        "intentFiltered": false,
+        "judgeCandidates": false,
+        "judged": false,
+        "selected": false
+      },
+      "stages": {
+        "vectorHits": {
+          "candidates": 30,
+          "hasRetrievalGold": true,
+          "documentGoldCount": 1,
+          "documentMatchedCount": 1,
+          "documentMatchedTerms": [
+            "개인정보 보호법"
+          ],
+          "documentTermCoverage": 1,
+          "documentHit": true,
+          "sectionParentGoldCount": 2,
+          "sectionParentMatchedCount": 0,
+          "sectionParentMatchedTerms": [],
+          "sectionParentTermCoverage": 0,
+          "sectionParentHit": false,
+          "directHit": false
+        },
+        "lexicalHits": {
+          "candidates": 20,
+          "hasRetrievalGold": true,
+          "documentGoldCount": 1,
+          "documentMatchedCount": 1,
+          "documentMatchedTerms": [
+            "개인정보 보호법"
+          ],
+          "documentTermCoverage": 1,
+          "documentHit": true,
+          "sectionParentGoldCount": 2,
+          "sectionParentMatchedCount": 0,
+          "sectionParentMatchedTerms": [],
+          "sectionParentTermCoverage": 0,
+          "sectionParentHit": false,
+          "directHit": false
+        },
+        "merged": {
+          "candidates": 30,
+          "hasRetrievalGold": true,
+          "documentGoldCount": 1,
+          "documentMatchedCount": 1,
+          "documentMatchedTerms": [
+            "개인정보 보호법"
+          ],
+          "documentTermCoverage": 1,
+          "documentHit": true,
+          "sectionParentGoldCount": 2,
+          "sectionParentMatchedCount": 0,
+          "sectionParentMatchedTerms": [],
+          "sectionParentTermCoverage": 0,
+          "sectionParentHit": false,
+          "directHit": false
+        },
+        "reranked": {
+          "candidates": 30,
+          "hasRetrievalGold": true,
+          "documentGoldCount": 1,
+          "documentMatchedCount": 1,
+          "documentMatchedTerms": [
+            "개인정보 보호법"
+          ],
+          "documentTermCoverage": 1,
+          "documentHit": true,
+          "sectionParentGoldCount": 2,
+          "sectionParentMatchedCount": 1,
+          "sectionParentMatchedTerms": [
+            "requirement"
+          ],
+          "sectionParentTermCoverage": 0.5,
+          "sectionParentHit": false,
+          "directHit": false
+        },
+        "intentFiltered": {
+          "candidates": 30,
+          "hasRetrievalGold": true,
+          "documentGoldCount": 1,
+          "documentMatchedCount": 1,
+          "documentMatchedTerms": [
+            "개인정보 보호법"
+          ],
+          "documentTermCoverage": 1,
+          "documentHit": true,
+          "sectionParentGoldCount": 2,
+          "sectionParentMatchedCount": 0,
+          "sectionParentMatchedTerms": [],
+          "sectionParentTermCoverage": 0,
+          "sectionParentHit": false,
+          "directHit": false
+        },
+        "judgeCandidates": {
+          "candidates": 30,
+          "hasRetrievalGold": true,
+          "documentGoldCount": 1,
+          "documentMatchedCount": 1,
+          "documentMatchedTerms": [
+            "개인정보 보호법"
+          ],
+          "documentTermCoverage": 1,
+          "documentHit": true,
+          "sectionParentGoldCount": 2,
+          "sectionParentMatchedCount": 0,
+          "sectionParentMatchedTerms": [],
+          "sectionParentTermCoverage": 0,
+          "sectionParentHit": false,
+          "directHit": false
+        },
+        "judged": {
+          "candidates": 8,
+          "hasRetrievalGold": true,
+          "documentGoldCount": 1,
+          "documentMatchedCount": 1,
+          "documentMatchedTerms": [
+            "개인정보 보호법"
+          ],
+          "documentTermCoverage": 1,
+          "documentHit": true,
+          "sectionParentGoldCount": 2,
+          "sectionParentMatchedCount": 0,
+          "sectionParentMatchedTerms": [],
+          "sectionParentTermCoverage": 0,
+          "sectionParentHit": false,
+          "directHit": false
+        },
+        "selected": {
+          "candidates": 8,
+          "hasRetrievalGold": true,
+          "documentGoldCount": 1,
+          "documentMatchedCount": 1,
+          "documentMatchedTerms": [
+            "개인정보 보호법"
+          ],
+          "documentTermCoverage": 1,
+          "documentHit": true,
+          "sectionParentGoldCount": 2,
+          "sectionParentMatchedCount": 0,
+          "sectionParentMatchedTerms": [],
+          "sectionParentTermCoverage": 0,
+          "sectionParentHit": false,
+          "directHit": false
+        },
+        "bm25Hits": {
+          "candidates": 30,
+          "hasRetrievalGold": true,
+          "documentGoldCount": 1,
+          "documentMatchedCount": 0,
+          "documentMatchedTerms": [],
+          "documentTermCoverage": 0,
+          "documentHit": false,
+          "sectionParentGoldCount": 2,
+          "sectionParentMatchedCount": 0,
+          "sectionParentMatchedTerms": [],
+          "sectionParentTermCoverage": 0,
+          "sectionParentHit": false,
+          "directHit": false
+        },
+        "bm25VariantHits": {
+          "candidates": 30,
+          "hasRetrievalGold": true,
+          "documentGoldCount": 1,
+          "documentMatchedCount": 1,
+          "documentMatchedTerms": [
+            "개인정보 보호법"
+          ],
+          "documentTermCoverage": 1,
+          "documentHit": true,
+          "sectionParentGoldCount": 2,
+          "sectionParentMatchedCount": 0,
+          "sectionParentMatchedTerms": [],
+          "sectionParentTermCoverage": 0,
+          "sectionParentHit": false,
+          "directHit": false
+        },
+        "fused": {
+          "candidates": 30,
+          "hasRetrievalGold": true,
+          "documentGoldCount": 1,
+          "documentMatchedCount": 1,
+          "documentMatchedTerms": [
+            "개인정보 보호법"
+          ],
+          "documentTermCoverage": 1,
+          "documentHit": true,
+          "sectionParentGoldCount": 2,
+          "sectionParentMatchedCount": 0,
+          "sectionParentMatchedTerms": [],
+          "sectionParentTermCoverage": 0,
+          "sectionParentHit": false,
+          "directHit": false
+        },
+        "coverageFused": {
+          "candidates": 30,
+          "hasRetrievalGold": true,
+          "documentGoldCount": 1,
+          "documentMatchedCount": 1,
+          "documentMatchedTerms": [
+            "개인정보 보호법"
+          ],
+          "documentTermCoverage": 1,
+          "documentHit": true,
+          "sectionParentGoldCount": 2,
+          "sectionParentMatchedCount": 0,
+          "sectionParentMatchedTerms": [],
+          "sectionParentTermCoverage": 0,
+          "sectionParentHit": false,
+          "directHit": false
+        }
+      },
+      "shadowRanks": {
+        "bm25Hits": [
+          "admrul:11176427",
+          "admrul:11155643",
+          "admrul:11155641",
+          "admrul:11155642",
+          "admrul:11176428",
+          "law:11162879",
+          "admrul:11170909",
+          "law:10892608",
+          "admrul:10782377",
+          "admrul:11148579",
+          "admrul:11169665",
+          "admrul:11148586",
+          "admrul:11230966",
+          "admrul:11148622",
+          "admrul:11148603",
+          "admrul:11176424",
+          "admrul:11253772",
+          "admrul:11231024",
+          "admrul:11206536",
+          "admrul:11206537",
+          "admrul:11206540",
+          "admrul:11206539",
+          "admrul:11253715",
+          "admrul:11206534",
+          "admrul:11261501",
+          "admrul:11155297",
+          "admrul:10977338",
+          "admrul:11148598",
+          "admrul:11148625",
+          "admrul:11148593"
+        ],
+        "bm25VariantHits": [
+          "law:10938385",
+          "admrul:11237366",
+          "law:10930152",
+          "admrul:11237365",
+          "law:10938386",
+          "admrul:11237364",
+          "admrul:10988510",
+          "admrul:10970968",
+          "admrul:11032161",
+          "admrul:11142561",
+          "admrul:10989326",
+          "admrul:10989492",
+          "admrul:11073176",
+          "admrul:11032089",
+          "admrul:11032370",
+          "admrul:11073495",
+          "admrul:11116743",
+          "admrul:11043709",
+          "admrul:11132384",
+          "admrul:11073185",
+          "admrul:11032555",
+          "admrul:10966856",
+          "admrul:10979977",
+          "admrul:10989339",
+          "admrul:11031709",
+          "admrul:11001896",
+          "admrul:10979931",
+          "law:10998491",
+          "law:11189947",
+          "admrul:11079139"
+        ],
+        "fused": [
+          "admrul:11032161",
+          "law:10938385",
+          "admrul:10970968",
+          "law:10930152",
+          "admrul:11116743",
+          "admrul:10989492",
+          "admrul:11073176",
+          "admrul:11032089",
+          "admrul:10988510",
+          "admrul:10966856",
+          "admrul:11142561",
+          "admrul:11176427",
+          "law:10938363",
+          "admrul:10989326",
+          "admrul:11142555",
+          "admrul:11155643",
+          "admrul:11155641",
+          "admrul:11155642",
+          "admrul:11032160",
+          "admrul:11176428",
+          "admrul:11072847",
+          "law:11162879",
+          "law:10938386",
+          "admrul:11073495",
+          "admrul:11132384",
+          "admrul:10970964",
+          "admrul:11170909",
+          "admrul:11032164",
+          "law:10892608",
+          "admrul:10782377"
+        ],
+        "coverageFused": [
+          "admrul:11032161",
+          "law:10938385",
+          "admrul:10970968",
+          "law:10930152",
+          "admrul:11116743",
+          "admrul:10989492",
+          "admrul:11073176",
+          "admrul:11032089",
+          "admrul:10988510",
+          "admrul:10966856",
+          "admrul:11142561",
+          "admrul:11176427",
+          "law:10938363",
+          "admrul:10989326",
+          "admrul:11142555",
+          "admrul:11155643",
+          "admrul:11155641",
+          "admrul:11155642",
+          "admrul:11032160",
+          "admrul:11176428",
+          "admrul:11072847",
+          "law:11162879",
+          "law:10938386",
+          "admrul:11073495",
+          "admrul:11132384",
+          "admrul:10970964",
+          "admrul:11170909",
+          "admrul:11032164",
+          "law:10892608",
+          "admrul:10782377"
+        ]
+      },
+      "oraclePresence": {
+        "auditable": true,
+        "classification": "ABSENT_FROM_TOP_K_CANDIDATES",
+        "propositionGroupCount": 1,
+        "conditionGroupCount": 1,
+        "totalGroupCount": 2,
+        "firstLossStage": "candidateSources",
+        "stages": {
+          "candidateSources": {
+            "matchedGroupIndexes": [],
+            "missingGroupIndexes": [
+              0,
+              1
+            ],
+            "matchedGroupCount": 0,
+            "requiredGroupCount": 2,
+            "anyRequiredPresent": false,
+            "allRequiredPresent": false
+          },
+          "vectorHits": {
+            "matchedGroupIndexes": [],
+            "missingGroupIndexes": [
+              0,
+              1
+            ],
+            "matchedGroupCount": 0,
+            "requiredGroupCount": 2,
+            "anyRequiredPresent": false,
+            "allRequiredPresent": false
+          },
+          "lexicalHits": {
+            "matchedGroupIndexes": [],
+            "missingGroupIndexes": [
+              0,
+              1
+            ],
+            "matchedGroupCount": 0,
+            "requiredGroupCount": 2,
+            "anyRequiredPresent": false,
+            "allRequiredPresent": false
+          },
+          "merged": {
+            "matchedGroupIndexes": [],
+            "missingGroupIndexes": [
+              0,
+              1
+            ],
+            "matchedGroupCount": 0,
+            "requiredGroupCount": 2,
+            "anyRequiredPresent": false,
+            "allRequiredPresent": false
+          },
+          "reranked": {
+            "matchedGroupIndexes": [],
+            "missingGroupIndexes": [
+              0,
+              1
+            ],
+            "matchedGroupCount": 0,
+            "requiredGroupCount": 2,
+            "anyRequiredPresent": false,
+            "allRequiredPresent": false
+          },
+          "intentFiltered": {
+            "matchedGroupIndexes": [],
+            "missingGroupIndexes": [
+              0,
+              1
+            ],
+            "matchedGroupCount": 0,
+            "requiredGroupCount": 2,
+            "anyRequiredPresent": false,
+            "allRequiredPresent": false
+          },
+          "judgeCandidates": {
+            "matchedGroupIndexes": [],
+            "missingGroupIndexes": [
+              0,
+              1
+            ],
+            "matchedGroupCount": 0,
+            "requiredGroupCount": 2,
+            "anyRequiredPresent": false,
+            "allRequiredPresent": false
+          },
+          "judged": {
+            "matchedGroupIndexes": [],
+            "missingGroupIndexes": [
+              0,
+              1
+            ],
+            "matchedGroupCount": 0,
+            "requiredGroupCount": 2,
+            "anyRequiredPresent": false,
+            "allRequiredPresent": false
+          },
+          "selected": {
+            "matchedGroupIndexes": [],
+            "missingGroupIndexes": [
+              0,
+              1
+            ],
+            "matchedGroupCount": 0,
+            "requiredGroupCount": 2,
+            "anyRequiredPresent": false,
+            "allRequiredPresent": false
+          },
+          "bm25Hits": {
+            "matchedGroupIndexes": [],
+            "missingGroupIndexes": [
+              0,
+              1
+            ],
+            "matchedGroupCount": 0,
+            "requiredGroupCount": 2,
+            "anyRequiredPresent": false,
+            "allRequiredPresent": false
+          },
+          "bm25VariantHits": {
+            "matchedGroupIndexes": [],
+            "missingGroupIndexes": [
+              0,
+              1
+            ],
+            "matchedGroupCount": 0,
+            "requiredGroupCount": 2,
+            "anyRequiredPresent": false,
+            "allRequiredPresent": false
+          },
+          "fused": {
+            "matchedGroupIndexes": [],
+            "missingGroupIndexes": [
+              0,
+              1
+            ],
+            "matchedGroupCount": 0,
+            "requiredGroupCount": 2,
+            "anyRequiredPresent": false,
+            "allRequiredPresent": false
+          },
+          "coverageFused": {
+            "matchedGroupIndexes": [],
+            "missingGroupIndexes": [
+              0,
+              1
+            ],
+            "matchedGroupCount": 0,
+            "requiredGroupCount": 2,
+            "anyRequiredPresent": false,
+            "allRequiredPresent": false
+          }
+        }
+      },
+      "documentExpansion": {
+        "control": {
+          "requiredGroupCount": 2,
+          "matchedRequiredGroupIndexes": [],
+          "matchedRequiredGroupCount": 0,
+          "anyRequired": false,
+          "allRequired": false
+        },
+        "candidateSourcePresence": {
+          "requiredGroupCount": 2,
+          "matchedRequiredGroupIndexes": [],
+          "matchedRequiredGroupCount": 0,
+          "anyRequired": false,
+          "allRequired": false
+        },
+        "controlFusedPresence": {
+          "requiredGroupCount": 2,
+          "matchedRequiredGroupIndexes": [],
+          "matchedRequiredGroupCount": 0,
+          "anyRequired": false,
+          "allRequired": false
+        },
+        "expansionSourcePresence": {
+          "requiredGroupCount": 2,
+          "matchedRequiredGroupIndexes": [],
+          "matchedRequiredGroupCount": 0,
+          "anyRequired": false,
+          "allRequired": false
+        },
+        "shadowFusedPresence": {
+          "requiredGroupCount": 2,
+          "matchedRequiredGroupIndexes": [],
+          "matchedRequiredGroupCount": 0,
+          "anyRequired": false,
+          "allRequired": false
+        },
+        "firstDropStage": "candidateSources",
+        "status": "BM25_TITLE_NO_MATCH",
+        "reasonCodes": [
+          "BM25_TITLE_NO_MATCH",
+          "BM25_TITLE_DIAGNOSTIC_REASON_TITLE_MISMATCH",
+          "BM25_TITLE_PLANNED_TERM_COUNT_29",
+          "BM25_TITLE_INSPECTED_CANDIDATE_COUNT_100",
+          "BM25_TITLE_HYDRATED_CANDIDATE_COUNT_100",
+          "BM25_TITLE_MAX_MATCHED_TITLE_TERM_COUNT_1"
+        ],
+        "capture": {
+          "documentExpansionHits": [],
+          "documentExpansionFused": []
+        }
+      },
+      "bm25Variant": {
+        "status": "APPLIED",
+        "reasonCodes": [],
+        "variantHashes": [
+          "096ba02aa2d2e294c578aeed9e6995d126bc277af13b479f7146b40b5cefa8bd",
+          "cdd629414b5e4ef0769bb323f24434d46ef0c247c71d486291c1021a95fb9af7",
+          "14b53280b33eb128552487da68f712acc335e176f6bb22ce02cb6968cee67830"
+        ],
+        "controlSourcePresence": {
+          "requiredGroupCount": 2,
+          "matchedRequiredGroupIndexes": [],
+          "matchedRequiredGroupCount": 0,
+          "anyRequired": false,
+          "allRequired": false
+        },
+        "variantPresence": {
+          "requiredGroupCount": 2,
+          "matchedRequiredGroupIndexes": [],
+          "matchedRequiredGroupCount": 0,
+          "anyRequired": false,
+          "allRequired": false
+        },
+        "shadowSourcePresence": {
+          "requiredGroupCount": 2,
+          "matchedRequiredGroupIndexes": [],
+          "matchedRequiredGroupCount": 0,
+          "anyRequired": false,
+          "allRequired": false
+        },
+        "capture": {
+          "status": "APPLIED",
+          "reasonCodes": [],
+          "variantHashes": [
+            "096ba02aa2d2e294c578aeed9e6995d126bc277af13b479f7146b40b5cefa8bd",
+            "cdd629414b5e4ef0769bb323f24434d46ef0c247c71d486291c1021a95fb9af7",
+            "14b53280b33eb128552487da68f712acc335e176f6bb22ce02cb6968cee67830"
+          ],
+          "timings": {
+            "planningMs": 7,
+            "searchMs": 209,
+            "fusionMs": 13
+          },
+          "hits": [
+            {
+              "candidateKey": "law:10938385",
+              "documentId": 172,
+              "rank": 1,
+              "variantRanks": {
+                "direct-evidence": 1,
+                "entity-intent": 15,
+                "original-focused": 51
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11237366",
+              "documentId": 6408,
+              "rank": 2,
+              "variantRanks": {
+                "direct-evidence": 2,
+                "entity-intent": 16,
+                "original-focused": 52
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "law:10930152",
+              "documentId": 173,
+              "rank": 3,
+              "variantRanks": {
+                "direct-evidence": 3,
+                "entity-intent": 17,
+                "original-focused": 53
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11237365",
+              "documentId": 6408,
+              "rank": 4,
+              "variantRanks": {
+                "direct-evidence": 4,
+                "entity-intent": 19,
+                "original-focused": 56
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "law:10938386",
+              "documentId": 172,
+              "rank": 5,
+              "variantRanks": {
+                "direct-evidence": 5,
+                "entity-intent": 20,
+                "original-focused": 58
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11237364",
+              "documentId": 6408,
+              "rank": 6,
+              "variantRanks": {
+                "direct-evidence": 6,
+                "entity-intent": 21,
+                "original-focused": 64
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10988510",
+              "documentId": 7868,
+              "rank": 7,
+              "variantRanks": {
+                "direct-evidence": 7,
+                "entity-intent": 22,
+                "original-focused": 66
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10970968",
+              "documentId": 6350,
+              "rank": 8,
+              "variantRanks": {
+                "direct-evidence": 8,
+                "entity-intent": 23,
+                "original-focused": 67
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11032161",
+              "documentId": 15299,
+              "rank": 9,
+              "variantRanks": {
+                "direct-evidence": 9,
+                "entity-intent": 24,
+                "original-focused": 69
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11142561",
+              "documentId": 15388,
+              "rank": 10,
+              "variantRanks": {
+                "direct-evidence": 10,
+                "entity-intent": 25,
+                "original-focused": 70
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10989326",
+              "documentId": 23639,
+              "rank": 11,
+              "variantRanks": {
+                "direct-evidence": 11,
+                "entity-intent": 26,
+                "original-focused": 71
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10989492",
+              "documentId": 27922,
+              "rank": 12,
+              "variantRanks": {
+                "direct-evidence": 12,
+                "entity-intent": 27,
+                "original-focused": 72
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11073176",
+              "documentId": 15697,
+              "rank": 13,
+              "variantRanks": {
+                "direct-evidence": 13,
+                "entity-intent": 28,
+                "original-focused": 74
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11032089",
+              "documentId": 14487,
+              "rank": 14,
+              "variantRanks": {
+                "direct-evidence": 14,
+                "entity-intent": 29,
+                "original-focused": 76
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11032370",
+              "documentId": 16994,
+              "rank": 15,
+              "variantRanks": {
+                "direct-evidence": 15,
+                "entity-intent": 30,
+                "original-focused": 77
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11073495",
+              "documentId": 28694,
+              "rank": 16,
+              "variantRanks": {
+                "direct-evidence": 16,
+                "entity-intent": 31,
+                "original-focused": 78
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11116743",
+              "documentId": 12705,
+              "rank": 17,
+              "variantRanks": {
+                "direct-evidence": 17,
+                "entity-intent": 32,
+                "original-focused": 79
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11043709",
+              "documentId": 9808,
+              "rank": 18,
+              "variantRanks": {
+                "direct-evidence": 18,
+                "entity-intent": 33,
+                "original-focused": 80
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11132384",
+              "documentId": 28790,
+              "rank": 19,
+              "variantRanks": {
+                "direct-evidence": 19,
+                "entity-intent": 34,
+                "original-focused": 81
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11073185",
+              "documentId": 15697,
+              "rank": 20,
+              "variantRanks": {
+                "direct-evidence": 20,
+                "entity-intent": 35,
+                "original-focused": 85
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11032555",
+              "documentId": 20344,
+              "rank": 21,
+              "variantRanks": {
+                "direct-evidence": 21,
+                "entity-intent": 36,
+                "original-focused": 91
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10966856",
+              "documentId": 20258,
+              "rank": 22,
+              "variantRanks": {
+                "direct-evidence": 22,
+                "entity-intent": 37,
+                "original-focused": 92
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10979977",
+              "documentId": 11451,
+              "rank": 23,
+              "variantRanks": {
+                "direct-evidence": 23,
+                "entity-intent": 38,
+                "original-focused": 93
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10989339",
+              "documentId": 23939,
+              "rank": 24,
+              "variantRanks": {
+                "direct-evidence": 24,
+                "entity-intent": 40,
+                "original-focused": 94
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11031709",
+              "documentId": 7996,
+              "rank": 25,
+              "variantRanks": {
+                "direct-evidence": 25,
+                "entity-intent": 41,
+                "original-focused": 95
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11001896",
+              "documentId": 15584,
+              "rank": 26,
+              "variantRanks": {
+                "direct-evidence": 26,
+                "entity-intent": 42,
+                "original-focused": 96
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10979931",
+              "documentId": 11041,
+              "rank": 27,
+              "variantRanks": {
+                "direct-evidence": 35,
+                "entity-intent": 1
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "law:10998491",
+              "documentId": 3387,
+              "rank": 28,
+              "variantRanks": {
+                "direct-evidence": 49,
+                "entity-intent": 2
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "law:11189947",
+              "documentId": 2197,
+              "rank": 29,
+              "variantRanks": {
+                "direct-evidence": 100,
+                "entity-intent": 6
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11079139",
+              "documentId": 7078,
+              "rank": 30,
+              "variantRanks": {
+                "direct-evidence": 27,
+                "entity-intent": 43
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10976644",
+              "documentId": 10953,
+              "rank": 31,
+              "variantRanks": {
+                "direct-evidence": 28,
+                "entity-intent": 45
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11032373",
+              "documentId": 16994,
+              "rank": 32,
+              "variantRanks": {
+                "direct-evidence": 81,
+                "entity-intent": 13
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11079169",
+              "documentId": 8965,
+              "rank": 33,
+              "variantRanks": {
+                "direct-evidence": 29,
+                "entity-intent": 46
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11117107",
+              "documentId": 28385,
+              "rank": 34,
+              "variantRanks": {
+                "direct-evidence": 30,
+                "entity-intent": 47
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10980377",
+              "documentId": 26905,
+              "rank": 35,
+              "variantRanks": {
+                "direct-evidence": 31,
+                "entity-intent": 49
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10961488",
+              "documentId": 11194,
+              "rank": 36,
+              "variantRanks": {
+                "direct-evidence": 32,
+                "entity-intent": 51
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11032388",
+              "documentId": 17218,
+              "rank": 37,
+              "variantRanks": {
+                "direct-evidence": 33,
+                "entity-intent": 53
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11043800",
+              "documentId": 12310,
+              "rank": 38,
+              "variantRanks": {
+                "direct-evidence": 34,
+                "entity-intent": 55
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10980159",
+              "documentId": 16763,
+              "rank": 39,
+              "variantRanks": {
+                "direct-evidence": 36,
+                "entity-intent": 58
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11117038",
+              "documentId": 27418,
+              "rank": 40,
+              "variantRanks": {
+                "direct-evidence": 37,
+                "entity-intent": 60
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10994781",
+              "documentId": 23499,
+              "rank": 41,
+              "variantRanks": {
+                "direct-evidence": 38,
+                "entity-intent": 62
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10976518",
+              "documentId": 8495,
+              "rank": 42,
+              "variantRanks": {
+                "direct-evidence": 39,
+                "entity-intent": 63
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11043801",
+              "documentId": 12310,
+              "rank": 43,
+              "variantRanks": {
+                "direct-evidence": 40,
+                "entity-intent": 69
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10979754",
+              "documentId": 9207,
+              "rank": 44,
+              "variantRanks": {
+                "direct-evidence": 41,
+                "entity-intent": 70
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11032569",
+              "documentId": 20583,
+              "rank": 45,
+              "variantRanks": {
+                "direct-evidence": 42,
+                "entity-intent": 73
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11072849",
+              "documentId": 10916,
+              "rank": 46,
+              "variantRanks": {
+                "direct-evidence": 43,
+                "entity-intent": 74
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "law:10938359",
+              "documentId": 172,
+              "rank": 47,
+              "variantRanks": {
+                "direct-evidence": 44,
+                "entity-intent": 75
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10980158",
+              "documentId": 16763,
+              "rank": 48,
+              "variantRanks": {
+                "direct-evidence": 45,
+                "entity-intent": 76
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10961487",
+              "documentId": 11194,
+              "rank": 49,
+              "variantRanks": {
+                "direct-evidence": 46,
+                "entity-intent": 77
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10980376",
+              "documentId": 26905,
+              "rank": 50,
+              "variantRanks": {
+                "direct-evidence": 47,
+                "entity-intent": 79
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11117037",
+              "documentId": 27418,
+              "rank": 51,
+              "variantRanks": {
+                "direct-evidence": 48,
+                "entity-intent": 80
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11176427",
+              "documentId": 28126,
+              "rank": 52,
+              "variantRanks": {
+                "original-focused": 1
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11174759",
+              "documentId": 6925,
+              "rank": 53,
+              "variantRanks": {
+                "direct-evidence": 50,
+                "entity-intent": 81
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11155643",
+              "documentId": 20474,
+              "rank": 54,
+              "variantRanks": {
+                "original-focused": 2
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11032568",
+              "documentId": 20583,
+              "rank": 55,
+              "variantRanks": {
+                "direct-evidence": 51,
+                "entity-intent": 83
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11142563",
+              "documentId": 15388,
+              "rank": 56,
+              "variantRanks": {
+                "entity-intent": 3
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11155641",
+              "documentId": 20474,
+              "rank": 57,
+              "variantRanks": {
+                "original-focused": 3
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11209404",
+              "documentId": 7192,
+              "rank": 58,
+              "variantRanks": {
+                "direct-evidence": 52,
+                "entity-intent": 85
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11252951",
+              "documentId": 13403,
+              "rank": 59,
+              "variantRanks": {
+                "direct-evidence": 53,
+                "entity-intent": 86
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11116748",
+              "documentId": 12705,
+              "rank": 60,
+              "variantRanks": {
+                "entity-intent": 4
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11155642",
+              "documentId": 20474,
+              "rank": 61,
+              "variantRanks": {
+                "original-focused": 4
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11221293",
+              "documentId": 29687,
+              "rank": 62,
+              "variantRanks": {
+                "direct-evidence": 54,
+                "entity-intent": 88
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11032389",
+              "documentId": 17218,
+              "rank": 63,
+              "variantRanks": {
+                "direct-evidence": 55,
+                "entity-intent": 89
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10980160",
+              "documentId": 16763,
+              "rank": 64,
+              "variantRanks": {
+                "entity-intent": 5
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11176428",
+              "documentId": 28126,
+              "rank": 65,
+              "variantRanks": {
+                "original-focused": 5
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11198326",
+              "documentId": 17926,
+              "rank": 66,
+              "variantRanks": {
+                "direct-evidence": 56,
+                "entity-intent": 91
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "law:11162879",
+              "documentId": 2143,
+              "rank": 67,
+              "variantRanks": {
+                "original-focused": 6
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "law:10938417",
+              "documentId": 172,
+              "rank": 68,
+              "variantRanks": {
+                "direct-evidence": 57,
+                "entity-intent": 92
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11072848",
+              "documentId": 10916,
+              "rank": 69,
+              "variantRanks": {
+                "direct-evidence": 58,
+                "entity-intent": 93
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10966860",
+              "documentId": 20258,
+              "rank": 70,
+              "variantRanks": {
+                "entity-intent": 7
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11170909",
+              "documentId": 11226,
+              "rank": 71,
+              "variantRanks": {
+                "original-focused": 7
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10989325",
+              "documentId": 23639,
+              "rank": 72,
+              "variantRanks": {
+                "direct-evidence": 59,
+                "entity-intent": 94
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11079168",
+              "documentId": 8965,
+              "rank": 73,
+              "variantRanks": {
+                "direct-evidence": 60,
+                "entity-intent": 95
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "law:10892608",
+              "documentId": 4476,
+              "rank": 74,
+              "variantRanks": {
+                "original-focused": 8
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "law:11190942",
+              "documentId": 5416,
+              "rank": 75,
+              "variantRanks": {
+                "entity-intent": 8
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11116744",
+              "documentId": 12705,
+              "rank": 76,
+              "variantRanks": {
+                "direct-evidence": 61,
+                "entity-intent": 96
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11032090",
+              "documentId": 14487,
+              "rank": 77,
+              "variantRanks": {
+                "direct-evidence": 62,
+                "entity-intent": 97
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10782377",
+              "documentId": 28038,
+              "rank": 78,
+              "variantRanks": {
+                "original-focused": 9
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10976522",
+              "documentId": 8495,
+              "rank": 79,
+              "variantRanks": {
+                "entity-intent": 9
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10961481",
+              "documentId": 11194,
+              "rank": 80,
+              "variantRanks": {
+                "direct-evidence": 63,
+                "entity-intent": 98
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11032083",
+              "documentId": 14487,
+              "rank": 81,
+              "variantRanks": {
+                "direct-evidence": 64,
+                "entity-intent": 99
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11145380",
+              "documentId": 22709,
+              "rank": 82,
+              "variantRanks": {
+                "entity-intent": 10
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11148579",
+              "documentId": 16412,
+              "rank": 83,
+              "variantRanks": {
+                "original-focused": 10
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11032567",
+              "documentId": 20583,
+              "rank": 84,
+              "variantRanks": {
+                "direct-evidence": 65,
+                "entity-intent": 100
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11169665",
+              "documentId": 27968,
+              "rank": 85,
+              "variantRanks": {
+                "original-focused": 11
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11227121",
+              "documentId": 13688,
+              "rank": 86,
+              "variantRanks": {
+                "entity-intent": 11
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:10994778",
+              "documentId": 23499,
+              "rank": 87,
+              "variantRanks": {
+                "entity-intent": 12
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11148586",
+              "documentId": 16412,
+              "rank": 88,
+              "variantRanks": {
+                "original-focused": 12
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11230966",
+              "documentId": 28025,
+              "rank": 89,
+              "variantRanks": {
+                "original-focused": 13
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11145377",
+              "documentId": 22709,
+              "rank": 90,
+              "variantRanks": {
+                "entity-intent": 14
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11148622",
+              "documentId": 16412,
+              "rank": 91,
+              "variantRanks": {
+                "original-focused": 14
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11148603",
+              "documentId": 16412,
+              "rank": 92,
+              "variantRanks": {
+                "original-focused": 15
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11176424",
+              "documentId": 28126,
+              "rank": 93,
+              "variantRanks": {
+                "original-focused": 16
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11253772",
+              "documentId": 13812,
+              "rank": 94,
+              "variantRanks": {
+                "original-focused": 17
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11145372",
+              "documentId": 22709,
+              "rank": 95,
+              "variantRanks": {
+                "entity-intent": 18
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11231024",
+              "documentId": 28025,
+              "rank": 96,
+              "variantRanks": {
+                "original-focused": 18
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11206536",
+              "documentId": 22815,
+              "rank": 97,
+              "variantRanks": {
+                "original-focused": 19
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11206537",
+              "documentId": 22815,
+              "rank": 98,
+              "variantRanks": {
+                "original-focused": 20
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11206540",
+              "documentId": 22815,
+              "rank": 99,
+              "variantRanks": {
+                "original-focused": 21
+              },
+              "matchedAuditGroupIndexes": []
+            },
+            {
+              "candidateKey": "admrul:11206539",
+              "documentId": 22815,
+              "rank": 100,
+              "variantRanks": {
+                "original-focused": 22
+              },
+              "matchedAuditGroupIndexes": []
+            }
+          ]
+        }
+      },
+      "candidateLoss": {
+        "candidateTraces": [
+          {
+            "candidateKey": "law:10938363",
+            "target": "law",
+            "chunkId": 10938363,
+            "sourceRanks": {
+              "vector": 1,
+              "rrf": 13
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "intent",
+            "reasonCodes": [
+              "INTENT_FILTERED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11142555",
+            "target": "admrul",
+            "chunkId": 11142555,
+            "sourceRanks": {
+              "vector": 2,
+              "rrf": 15
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked",
+              "intent"
+            ],
+            "firstLossStage": "judgeCandidates",
+            "reasonCodes": [
+              "JUDGE_CANDIDATE_LIMIT"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11032161",
+            "target": "admrul",
+            "chunkId": 11032161,
+            "sourceRanks": {
+              "vector": 3,
+              "bm25": 69,
+              "rrf": 1
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "intent",
+            "reasonCodes": [
+              "INTENT_FILTERED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:10970968",
+            "target": "admrul",
+            "chunkId": 10970968,
+            "sourceRanks": {
+              "vector": 4,
+              "bm25": 67,
+              "rrf": 3
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "intent",
+            "reasonCodes": [
+              "INTENT_FILTERED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11032160",
+            "target": "admrul",
+            "chunkId": 11032160,
+            "sourceRanks": {
+              "vector": 5,
+              "rrf": 19
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked",
+              "intent",
+              "judgeCandidates",
+              "directEvidencePolicy"
+            ],
+            "firstLossStage": "judge",
+            "reasonCodes": [
+              "DIRECT_ATOM_REJECTED_SEMANTIC_MISMATCH",
+              "JUDGE_NOT_DIRECT"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11072847",
+            "target": "admrul",
+            "chunkId": 11072847,
+            "sourceRanks": {
+              "vector": 6,
+              "rrf": 21
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked",
+              "intent",
+              "judgeCandidates",
+              "judge",
+              "grounds",
+              "selected"
+            ],
+            "firstLossStage": null,
+            "reasonCodes": [],
+            "selected": true
+          },
+          {
+            "candidateKey": "admrul:10970964",
+            "target": "admrul",
+            "chunkId": 10970964,
+            "sourceRanks": {
+              "vector": 7,
+              "rrf": 26
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "intent",
+            "reasonCodes": [
+              "INTENT_FILTERED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11032164",
+            "target": "admrul",
+            "chunkId": 11032164,
+            "sourceRanks": {
+              "vector": 8,
+              "rrf": 28
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "intent",
+            "reasonCodes": [
+              "INTENT_FILTERED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "law:10938385",
+            "target": "law",
+            "chunkId": 10938385,
+            "sourceRanks": {
+              "vector": 9,
+              "bm25": 51,
+              "rrf": 2
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked",
+              "intent",
+              "judgeCandidates",
+              "judge",
+              "grounds",
+              "selected"
+            ],
+            "firstLossStage": null,
+            "reasonCodes": [],
+            "selected": true
+          },
+          {
+            "candidateKey": "admrul:11116743",
+            "target": "admrul",
+            "chunkId": 11116743,
+            "sourceRanks": {
+              "vector": 10,
+              "bm25": 79,
+              "rrf": 5
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "intent",
+            "reasonCodes": [
+              "INTENT_FILTERED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "law:10938372",
+            "target": "law",
+            "chunkId": 10938372,
+            "sourceRanks": {
+              "vector": 11,
+              "rrf": 33
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:10989492",
+            "target": "admrul",
+            "chunkId": 10989492,
+            "sourceRanks": {
+              "vector": 12,
+              "bm25": 72,
+              "rrf": 6
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "intent",
+            "reasonCodes": [
+              "INTENT_FILTERED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11043701",
+            "target": "admrul",
+            "chunkId": 11043701,
+            "sourceRanks": {
+              "vector": 13,
+              "rrf": 35
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked",
+              "intent",
+              "judgeCandidates",
+              "judge",
+              "grounds",
+              "selected"
+            ],
+            "firstLossStage": null,
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": true
+          },
+          {
+            "candidateKey": "admrul:11079168",
+            "target": "admrul",
+            "chunkId": 11079168,
+            "sourceRanks": {
+              "vector": 14,
+              "rrf": 37
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked",
+              "intent",
+              "judgeCandidates",
+              "judge",
+              "grounds",
+              "selected"
+            ],
+            "firstLossStage": null,
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": true
+          },
+          {
+            "candidateKey": "law:10930152",
+            "target": "law",
+            "chunkId": 10930152,
+            "sourceRanks": {
+              "vector": 15,
+              "bm25": 53,
+              "rrf": 4
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked",
+              "intent",
+              "judgeCandidates",
+              "directEvidencePolicy"
+            ],
+            "firstLossStage": "judge",
+            "reasonCodes": [
+              "DIRECT_ATOM_REJECTED_SEMANTIC_MISMATCH",
+              "JUDGE_NOT_DIRECT"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "law:10930135",
+            "target": "law",
+            "chunkId": 10930135,
+            "sourceRanks": {
+              "vector": 16,
+              "rrf": 41
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked",
+              "intent",
+              "judgeCandidates",
+              "directEvidencePolicy"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED",
+              "DIRECT_ATOM_REJECTED_SEMANTIC_MISMATCH"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11117106",
+            "target": "admrul",
+            "chunkId": 11117106,
+            "sourceRanks": {
+              "vector": 17,
+              "rrf": 42
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked",
+              "intent",
+              "judgeCandidates",
+              "directEvidencePolicy"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED",
+              "DIRECT_ATOM_REJECTED_SEMANTIC_MISMATCH"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11032554",
+            "target": "admrul",
+            "chunkId": 11032554,
+            "sourceRanks": {
+              "vector": 18,
+              "rrf": 44
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked",
+              "intent",
+              "judgeCandidates",
+              "directEvidencePolicy"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED",
+              "DIRECT_ATOM_REJECTED_SEMANTIC_MISMATCH"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11032388",
+            "target": "admrul",
+            "chunkId": 11032388,
+            "sourceRanks": {
+              "vector": 19,
+              "rrf": 46
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11073176",
+            "target": "admrul",
+            "chunkId": 11073176,
+            "sourceRanks": {
+              "vector": 20,
+              "bm25": 74,
+              "rrf": 7
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "intent",
+            "reasonCodes": [
+              "INTENT_FILTERED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:10989489",
+            "target": "admrul",
+            "chunkId": 10989489,
+            "sourceRanks": {
+              "vector": 21,
+              "rrf": 49
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked",
+              "intent",
+              "judgeCandidates",
+              "directEvidencePolicy"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED",
+              "DIRECT_ATOM_REJECTED_SEMANTIC_MISMATCH"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11117105",
+            "target": "admrul",
+            "chunkId": 11117105,
+            "sourceRanks": {
+              "vector": 22,
+              "rrf": 51
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11032159",
+            "target": "admrul",
+            "chunkId": 11032159,
+            "sourceRanks": {
+              "vector": 23,
+              "rrf": 53
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11032089",
+            "target": "admrul",
+            "chunkId": 11032089,
+            "sourceRanks": {
+              "vector": 24,
+              "bm25": 76,
+              "rrf": 8
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked",
+              "intent",
+              "judgeCandidates",
+              "judge",
+              "grounds",
+              "selected"
+            ],
+            "firstLossStage": null,
+            "reasonCodes": [],
+            "selected": true
+          },
+          {
+            "candidateKey": "admrul:10966856",
+            "target": "admrul",
+            "chunkId": 10966856,
+            "sourceRanks": {
+              "vector": 25,
+              "bm25": 92,
+              "rrf": 10
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked",
+              "intent",
+              "judgeCandidates",
+              "directEvidencePolicy"
+            ],
+            "firstLossStage": "judge",
+            "reasonCodes": [
+              "DIRECT_ATOM_REJECTED_SEMANTIC_MISMATCH",
+              "JUDGE_NOT_DIRECT"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11031708",
+            "target": "admrul",
+            "chunkId": 11031708,
+            "sourceRanks": {
+              "vector": 26,
+              "rrf": 57
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked",
+              "intent"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:10976513",
+            "target": "admrul",
+            "chunkId": 10976513,
+            "sourceRanks": {
+              "vector": 27,
+              "rrf": 59
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11072849",
+            "target": "admrul",
+            "chunkId": 11072849,
+            "sourceRanks": {
+              "vector": 28,
+              "rrf": 61
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked",
+              "intent",
+              "judgeCandidates",
+              "directEvidencePolicy"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED",
+              "DIRECT_ATOM_REJECTED_SEMANTIC_MISMATCH"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:10988510",
+            "target": "admrul",
+            "chunkId": 10988510,
+            "sourceRanks": {
+              "vector": 29,
+              "bm25": 66,
+              "rrf": 9
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "intent",
+            "reasonCodes": [
+              "INTENT_FILTERED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:10970965",
+            "target": "admrul",
+            "chunkId": 10970965,
+            "sourceRanks": {
+              "vector": 30,
+              "rrf": 64
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked",
+              "intent"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11072851",
+            "target": "admrul",
+            "chunkId": 11072851,
+            "sourceRanks": {
+              "vector": 31,
+              "rrf": 67
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked",
+              "intent",
+              "judgeCandidates",
+              "directEvidencePolicy"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "SOURCE_RANK_LIMIT",
+              "DIRECT_ATOM_REJECTED_SEMANTIC_MISMATCH"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11117037",
+            "target": "admrul",
+            "chunkId": 11117037,
+            "sourceRanks": {
+              "vector": 32,
+              "rrf": 68
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "SOURCE_RANK_LIMIT"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11079165",
+            "target": "admrul",
+            "chunkId": 11079165,
+            "sourceRanks": {
+              "vector": 33,
+              "rrf": 70
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "SOURCE_RANK_LIMIT"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:10979931",
+            "target": "admrul",
+            "chunkId": 10979931,
+            "sourceRanks": {
+              "vector": 34,
+              "rrf": 72
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked",
+              "intent",
+              "judgeCandidates",
+              "judge",
+              "grounds",
+              "selected"
+            ],
+            "firstLossStage": null,
+            "reasonCodes": [
+              "SOURCE_RANK_LIMIT"
+            ],
+            "selected": true
+          },
+          {
+            "candidateKey": "admrul:11079138",
+            "target": "admrul",
+            "chunkId": 11079138,
+            "sourceRanks": {
+              "vector": 35,
+              "rrf": 74
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked",
+              "intent",
+              "judgeCandidates",
+              "directEvidencePolicy"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "SOURCE_RANK_LIMIT",
+              "DIRECT_ATOM_REJECTED_SEMANTIC_MISMATCH"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:10989347",
+            "target": "admrul",
+            "chunkId": 10989347,
+            "sourceRanks": {
+              "vector": 36,
+              "rrf": 76
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "SOURCE_RANK_LIMIT"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11031707",
+            "target": "admrul",
+            "chunkId": 11031707,
+            "sourceRanks": {
+              "vector": 37,
+              "rrf": 78
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "SOURCE_RANK_LIMIT"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11205612",
+            "target": "admrul",
+            "chunkId": 11205612,
+            "sourceRanks": {
+              "keyword": 1
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11205613",
+            "target": "admrul",
+            "chunkId": 11205613,
+            "sourceRanks": {
+              "keyword": 2
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11221289",
+            "target": "admrul",
+            "chunkId": 11221289,
+            "sourceRanks": {
+              "keyword": 3
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11221290",
+            "target": "admrul",
+            "chunkId": 11221290,
+            "sourceRanks": {
+              "keyword": 4
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked",
+              "intent"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11221291",
+            "target": "admrul",
+            "chunkId": 11221291,
+            "sourceRanks": {
+              "keyword": 5
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked",
+              "intent"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11231106",
+            "target": "admrul",
+            "chunkId": 11231106,
+            "sourceRanks": {
+              "keyword": 6
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11131499",
+            "target": "admrul",
+            "chunkId": 11131499,
+            "sourceRanks": {
+              "keyword": 7
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11131501",
+            "target": "admrul",
+            "chunkId": 11131501,
+            "sourceRanks": {
+              "keyword": 8
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11131504",
+            "target": "admrul",
+            "chunkId": 11131504,
+            "sourceRanks": {
+              "keyword": 9
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11131507",
+            "target": "admrul",
+            "chunkId": 11131507,
+            "sourceRanks": {
+              "keyword": 10
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11221293",
+            "target": "admrul",
+            "chunkId": 11221293,
+            "sourceRanks": {
+              "keyword": 11
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked",
+              "intent"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11131500",
+            "target": "admrul",
+            "chunkId": 11131500,
+            "sourceRanks": {
+              "keyword": 12
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11131502",
+            "target": "admrul",
+            "chunkId": 11131502,
+            "sourceRanks": {
+              "keyword": 13
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11131506",
+            "target": "admrul",
+            "chunkId": 11131506,
+            "sourceRanks": {
+              "keyword": 14
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11205611",
+            "target": "admrul",
+            "chunkId": 11205611,
+            "sourceRanks": {
+              "keyword": 15
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11131503",
+            "target": "admrul",
+            "chunkId": 11131503,
+            "sourceRanks": {
+              "keyword": 16
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11131505",
+            "target": "admrul",
+            "chunkId": 11131505,
+            "sourceRanks": {
+              "keyword": 17
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11131508",
+            "target": "admrul",
+            "chunkId": 11131508,
+            "sourceRanks": {
+              "keyword": 18
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11221292",
+            "target": "admrul",
+            "chunkId": 11221292,
+            "sourceRanks": {
+              "keyword": 19
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11221288",
+            "target": "admrul",
+            "chunkId": 11221288,
+            "sourceRanks": {
+              "keyword": 20
+            },
+            "enteredStages": [
+              "loaded",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "ABSENT_FROM_SOURCE_UNION"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11176427",
+            "target": "admrul",
+            "chunkId": 11176427,
+            "sourceRanks": {
+              "bm25": 1,
+              "rrf": 12
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused"
+            ],
+            "firstLossStage": "merged",
+            "reasonCodes": [
+              "MERGE_NOT_SELECTED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11155643",
+            "target": "admrul",
+            "chunkId": 11155643,
+            "sourceRanks": {
+              "bm25": 2,
+              "rrf": 16
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused"
+            ],
+            "firstLossStage": "merged",
+            "reasonCodes": [
+              "MERGE_NOT_SELECTED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11155641",
+            "target": "admrul",
+            "chunkId": 11155641,
+            "sourceRanks": {
+              "bm25": 3,
+              "rrf": 17
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused"
+            ],
+            "firstLossStage": "merged",
+            "reasonCodes": [
+              "MERGE_NOT_SELECTED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11155642",
+            "target": "admrul",
+            "chunkId": 11155642,
+            "sourceRanks": {
+              "bm25": 4,
+              "rrf": 18
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused"
+            ],
+            "firstLossStage": "merged",
+            "reasonCodes": [
+              "MERGE_NOT_SELECTED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11176428",
+            "target": "admrul",
+            "chunkId": 11176428,
+            "sourceRanks": {
+              "bm25": 5,
+              "rrf": 20
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused"
+            ],
+            "firstLossStage": "merged",
+            "reasonCodes": [
+              "MERGE_NOT_SELECTED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "law:11162879",
+            "target": "law",
+            "chunkId": 11162879,
+            "sourceRanks": {
+              "bm25": 6,
+              "rrf": 22
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused"
+            ],
+            "firstLossStage": "merged",
+            "reasonCodes": [
+              "MERGE_NOT_SELECTED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11170909",
+            "target": "admrul",
+            "chunkId": 11170909,
+            "sourceRanks": {
+              "bm25": 7,
+              "rrf": 27
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused"
+            ],
+            "firstLossStage": "merged",
+            "reasonCodes": [
+              "MERGE_NOT_SELECTED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "law:10892608",
+            "target": "law",
+            "chunkId": 10892608,
+            "sourceRanks": {
+              "bm25": 8,
+              "rrf": 29
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused"
+            ],
+            "firstLossStage": "merged",
+            "reasonCodes": [
+              "MERGE_NOT_SELECTED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:10782377",
+            "target": "admrul",
+            "chunkId": 10782377,
+            "sourceRanks": {
+              "bm25": 9,
+              "rrf": 30
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused"
+            ],
+            "firstLossStage": "merged",
+            "reasonCodes": [
+              "MERGE_NOT_SELECTED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11148579",
+            "target": "admrul",
+            "chunkId": 11148579,
+            "sourceRanks": {
+              "bm25": 10,
+              "rrf": 31
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11169665",
+            "target": "admrul",
+            "chunkId": 11169665,
+            "sourceRanks": {
+              "bm25": 11,
+              "rrf": 32
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11148586",
+            "target": "admrul",
+            "chunkId": 11148586,
+            "sourceRanks": {
+              "bm25": 12,
+              "rrf": 34
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11230966",
+            "target": "admrul",
+            "chunkId": 11230966,
+            "sourceRanks": {
+              "bm25": 13,
+              "rrf": 36
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11148622",
+            "target": "admrul",
+            "chunkId": 11148622,
+            "sourceRanks": {
+              "bm25": 14,
+              "rrf": 38
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11148603",
+            "target": "admrul",
+            "chunkId": 11148603,
+            "sourceRanks": {
+              "bm25": 15,
+              "rrf": 39
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11176424",
+            "target": "admrul",
+            "chunkId": 11176424,
+            "sourceRanks": {
+              "bm25": 16,
+              "rrf": 40
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11253772",
+            "target": "admrul",
+            "chunkId": 11253772,
+            "sourceRanks": {
+              "bm25": 17,
+              "rrf": 43
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11231024",
+            "target": "admrul",
+            "chunkId": 11231024,
+            "sourceRanks": {
+              "bm25": 18,
+              "rrf": 45
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11206536",
+            "target": "admrul",
+            "chunkId": 11206536,
+            "sourceRanks": {
+              "bm25": 19,
+              "rrf": 47
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11206537",
+            "target": "admrul",
+            "chunkId": 11206537,
+            "sourceRanks": {
+              "bm25": 20,
+              "rrf": 48
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11206540",
+            "target": "admrul",
+            "chunkId": 11206540,
+            "sourceRanks": {
+              "bm25": 21,
+              "rrf": 50
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11206539",
+            "target": "admrul",
+            "chunkId": 11206539,
+            "sourceRanks": {
+              "bm25": 22,
+              "rrf": 52
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11253715",
+            "target": "admrul",
+            "chunkId": 11253715,
+            "sourceRanks": {
+              "bm25": 23,
+              "rrf": 54
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11206534",
+            "target": "admrul",
+            "chunkId": 11206534,
+            "sourceRanks": {
+              "bm25": 24,
+              "rrf": 55
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11261501",
+            "target": "admrul",
+            "chunkId": 11261501,
+            "sourceRanks": {
+              "bm25": 25,
+              "rrf": 56
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11155297",
+            "target": "admrul",
+            "chunkId": 11155297,
+            "sourceRanks": {
+              "bm25": 26,
+              "rrf": 58
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:10977338",
+            "target": "admrul",
+            "chunkId": 10977338,
+            "sourceRanks": {
+              "bm25": 27,
+              "rrf": 60
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11148598",
+            "target": "admrul",
+            "chunkId": 11148598,
+            "sourceRanks": {
+              "bm25": 28,
+              "rrf": 62
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11148625",
+            "target": "admrul",
+            "chunkId": 11148625,
+            "sourceRanks": {
+              "bm25": 29,
+              "rrf": 63
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11148593",
+            "target": "admrul",
+            "chunkId": 11148593,
+            "sourceRanks": {
+              "bm25": 30,
+              "rrf": 65
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "TOP_K_DISPLACED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:10977335",
+            "target": "admrul",
+            "chunkId": 10977335,
+            "sourceRanks": {
+              "bm25": 31,
+              "rrf": 66
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "SOURCE_RANK_LIMIT"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11148620",
+            "target": "admrul",
+            "chunkId": 11148620,
+            "sourceRanks": {
+              "bm25": 32,
+              "rrf": 69
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "SOURCE_RANK_LIMIT"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11206535",
+            "target": "admrul",
+            "chunkId": 11206535,
+            "sourceRanks": {
+              "bm25": 33,
+              "rrf": 71
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "SOURCE_RANK_LIMIT"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11206533",
+            "target": "admrul",
+            "chunkId": 11206533,
+            "sourceRanks": {
+              "bm25": 34,
+              "rrf": 73
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "SOURCE_RANK_LIMIT"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11230970",
+            "target": "admrul",
+            "chunkId": 11230970,
+            "sourceRanks": {
+              "bm25": 35,
+              "rrf": 75
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "SOURCE_RANK_LIMIT"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11231007",
+            "target": "admrul",
+            "chunkId": 11231007,
+            "sourceRanks": {
+              "bm25": 36,
+              "rrf": 77
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "SOURCE_RANK_LIMIT"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11262684",
+            "target": "admrul",
+            "chunkId": 11262684,
+            "sourceRanks": {
+              "bm25": 37,
+              "rrf": 79
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "SOURCE_RANK_LIMIT"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11148618",
+            "target": "admrul",
+            "chunkId": 11148618,
+            "sourceRanks": {
+              "bm25": 38,
+              "rrf": 80
+            },
+            "enteredStages": [
+              "loaded"
+            ],
+            "firstLossStage": "coverage-fused",
+            "reasonCodes": [
+              "SOURCE_RANK_LIMIT"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11142561",
+            "target": "admrul",
+            "chunkId": 11142561,
+            "sourceRanks": {
+              "rrf": 11
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "intent",
+            "reasonCodes": [
+              "INTENT_FILTERED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:10989326",
+            "target": "admrul",
+            "chunkId": 10989326,
+            "sourceRanks": {
+              "rrf": 14
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "intent",
+            "reasonCodes": [
+              "INTENT_FILTERED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "law:10938386",
+            "target": "law",
+            "chunkId": 10938386,
+            "sourceRanks": {
+              "rrf": 23
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked",
+              "intent",
+              "judgeCandidates",
+              "judge",
+              "grounds",
+              "selected"
+            ],
+            "firstLossStage": null,
+            "reasonCodes": [],
+            "selected": true
+          },
+          {
+            "candidateKey": "admrul:11073495",
+            "target": "admrul",
+            "chunkId": 11073495,
+            "sourceRanks": {
+              "rrf": 24
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "intent",
+            "reasonCodes": [
+              "INTENT_FILTERED"
+            ],
+            "selected": false
+          },
+          {
+            "candidateKey": "admrul:11132384",
+            "target": "admrul",
+            "chunkId": 11132384,
+            "sourceRanks": {
+              "rrf": 25
+            },
+            "enteredStages": [
+              "loaded",
+              "coverage-fused",
+              "merged",
+              "reranked"
+            ],
+            "firstLossStage": "intent",
+            "reasonCodes": [
+              "INTENT_FILTERED"
+            ],
+            "selected": false
+          }
+        ],
+        "oracleCandidateTraces": [],
+        "firstLossStageCounts": {
+          "intent": 13,
+          "judgeCandidates": 1,
+          "judge": 3,
+          "coverage-fused": 67,
+          "merged": 9
+        },
+        "reasonCodeCounts": {
+          "INTENT_FILTERED": 13,
+          "JUDGE_CANDIDATE_LIMIT": 1,
+          "DIRECT_ATOM_REJECTED_SEMANTIC_MISMATCH": 10,
+          "JUDGE_NOT_DIRECT": 3,
+          "TOP_K_DISPLACED": 35,
+          "SOURCE_RANK_LIMIT": 15,
+          "ABSENT_FROM_SOURCE_UNION": 20,
+          "MERGE_NOT_SELECTED": 9
+        }
+      },
+      "question": "개인정보 보호법상 개인정보 처리 목적은 어떻게 알려야 해?",
+      "targets": [
+        "law",
+        "admrul"
+      ],
+      "sourceRankSnapshot": {
+        "vector": [
+          {
+            "candidateKey": "law:10938363",
+            "documentId": 172,
+            "rank": 1,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11142555",
+            "documentId": 15388,
+            "rank": 2,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11032161",
+            "documentId": 15299,
+            "rank": 3,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10970968",
+            "documentId": 6350,
+            "rank": 4,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11032160",
+            "documentId": 15299,
+            "rank": 5,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11072847",
+            "documentId": 10916,
+            "rank": 6,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10970964",
+            "documentId": 6350,
+            "rank": 7,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11032164",
+            "documentId": 15299,
+            "rank": 8,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938385",
+            "documentId": 172,
+            "rank": 9,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11116743",
+            "documentId": 12705,
+            "rank": 10,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938372",
+            "documentId": 172,
+            "rank": 11,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10989492",
+            "documentId": 27922,
+            "rank": 12,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11043701",
+            "documentId": 9808,
+            "rank": 13,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11079168",
+            "documentId": 8965,
+            "rank": 14,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10930152",
+            "documentId": 173,
+            "rank": 15,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10930135",
+            "documentId": 173,
+            "rank": 16,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11117106",
+            "documentId": 28385,
+            "rank": 17,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11032554",
+            "documentId": 20344,
+            "rank": 18,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11032388",
+            "documentId": 17218,
+            "rank": 19,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11073176",
+            "documentId": 15697,
+            "rank": 20,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10989489",
+            "documentId": 27922,
+            "rank": 21,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11117105",
+            "documentId": 28385,
+            "rank": 22,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11032159",
+            "documentId": 15299,
+            "rank": 23,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11032089",
+            "documentId": 14487,
+            "rank": 24,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10966856",
+            "documentId": 20258,
+            "rank": 25,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11031708",
+            "documentId": 7996,
+            "rank": 26,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10976513",
+            "documentId": 8495,
+            "rank": 27,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11072849",
+            "documentId": 10916,
+            "rank": 28,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10988510",
+            "documentId": 7868,
+            "rank": 29,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10970965",
+            "documentId": 6350,
+            "rank": 30,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11072851",
+            "documentId": 10916,
+            "rank": 31,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11117037",
+            "documentId": 27418,
+            "rank": 32,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11079165",
+            "documentId": 8965,
+            "rank": 33,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10979931",
+            "documentId": 11041,
+            "rank": 34,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11079138",
+            "documentId": 7078,
+            "rank": 35,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10989347",
+            "documentId": 23939,
+            "rank": 36,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11031707",
+            "documentId": 7996,
+            "rank": 37,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11198326",
+            "documentId": 17926,
+            "rank": 38,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11142557",
+            "documentId": 15388,
+            "rank": 39,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11043800",
+            "documentId": 12310,
+            "rank": 40,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11142561",
+            "documentId": 15388,
+            "rank": 41,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10994719",
+            "documentId": 21972,
+            "rank": 42,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10979928",
+            "documentId": 11041,
+            "rank": 43,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10979974",
+            "documentId": 11451,
+            "rank": 44,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11032083",
+            "documentId": 14487,
+            "rank": 45,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10966851",
+            "documentId": 20258,
+            "rank": 46,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10976641",
+            "documentId": 10953,
+            "rank": 47,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10989101",
+            "documentId": 19945,
+            "rank": 48,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10989106",
+            "documentId": 19945,
+            "rank": 49,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10989325",
+            "documentId": 23639,
+            "rank": 50,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10970963",
+            "documentId": 6350,
+            "rank": 51,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938364",
+            "documentId": 172,
+            "rank": 52,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938396",
+            "documentId": 172,
+            "rank": 53,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11117104",
+            "documentId": 28385,
+            "rank": 54,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10979975",
+            "documentId": 11451,
+            "rank": 55,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10989326",
+            "documentId": 23639,
+            "rank": 56,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11032553",
+            "documentId": 20344,
+            "rank": 57,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11073173",
+            "documentId": 15697,
+            "rank": 58,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10988507",
+            "documentId": 7868,
+            "rank": 59,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10930177",
+            "documentId": 173,
+            "rank": 60,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10961484",
+            "documentId": 11194,
+            "rank": 61,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10989490",
+            "documentId": 27922,
+            "rank": 62,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10976644",
+            "documentId": 10953,
+            "rank": 63,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10989105",
+            "documentId": 19945,
+            "rank": 64,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10980376",
+            "documentId": 26905,
+            "rank": 65,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11132384",
+            "documentId": 28790,
+            "rank": 66,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938362",
+            "documentId": 172,
+            "rank": 67,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11073495",
+            "documentId": 28694,
+            "rank": 68,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10989319",
+            "documentId": 23639,
+            "rank": 69,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938377",
+            "documentId": 172,
+            "rank": 70,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10976518",
+            "documentId": 8495,
+            "rank": 71,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938374",
+            "documentId": 172,
+            "rank": 72,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938381",
+            "documentId": 172,
+            "rank": 73,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10961499",
+            "documentId": 11194,
+            "rank": 74,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11073498",
+            "documentId": 28694,
+            "rank": 75,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10989335",
+            "documentId": 23939,
+            "rank": 76,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10966852",
+            "documentId": 20258,
+            "rank": 77,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11116741",
+            "documentId": 12705,
+            "rank": 78,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11032385",
+            "documentId": 17218,
+            "rank": 79,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11116749",
+            "documentId": 12705,
+            "rank": 80,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11116740",
+            "documentId": 12705,
+            "rank": 81,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938414",
+            "documentId": 172,
+            "rank": 82,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11198327",
+            "documentId": 17926,
+            "rank": 83,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938376",
+            "documentId": 172,
+            "rank": 84,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11145372",
+            "documentId": 22709,
+            "rank": 85,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938359",
+            "documentId": 172,
+            "rank": 86,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11194696",
+            "documentId": 9216,
+            "rank": 87,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10930138",
+            "documentId": 173,
+            "rank": 88,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10930136",
+            "documentId": 173,
+            "rank": 89,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938378",
+            "documentId": 172,
+            "rank": 90,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938386",
+            "documentId": 172,
+            "rank": 91,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938371",
+            "documentId": 172,
+            "rank": 92,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938373",
+            "documentId": 172,
+            "rank": 93,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938375",
+            "documentId": 172,
+            "rank": 94,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10930176",
+            "documentId": 173,
+            "rank": 95,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:11189945",
+            "documentId": 2197,
+            "rank": 96,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938369",
+            "documentId": 172,
+            "rank": 97,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11145380",
+            "documentId": 22709,
+            "rank": 98,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938407",
+            "documentId": 172,
+            "rank": 99,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10930153",
+            "documentId": 173,
+            "rank": 100,
+            "matchedAuditGroupIndexes": []
+          }
+        ],
+        "bm25": [
+          {
+            "candidateKey": "admrul:11176427",
+            "documentId": 28126,
+            "rank": 1,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11155643",
+            "documentId": 20474,
+            "rank": 2,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11155641",
+            "documentId": 20474,
+            "rank": 3,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11155642",
+            "documentId": 20474,
+            "rank": 4,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11176428",
+            "documentId": 28126,
+            "rank": 5,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:11162879",
+            "documentId": 2143,
+            "rank": 6,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11170909",
+            "documentId": 11226,
+            "rank": 7,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10892608",
+            "documentId": 4476,
+            "rank": 8,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10782377",
+            "documentId": 28038,
+            "rank": 9,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11148579",
+            "documentId": 16412,
+            "rank": 10,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11169665",
+            "documentId": 27968,
+            "rank": 11,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11148586",
+            "documentId": 16412,
+            "rank": 12,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11230966",
+            "documentId": 28025,
+            "rank": 13,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11148622",
+            "documentId": 16412,
+            "rank": 14,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11148603",
+            "documentId": 16412,
+            "rank": 15,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11176424",
+            "documentId": 28126,
+            "rank": 16,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11253772",
+            "documentId": 13812,
+            "rank": 17,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11231024",
+            "documentId": 28025,
+            "rank": 18,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11206536",
+            "documentId": 22815,
+            "rank": 19,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11206537",
+            "documentId": 22815,
+            "rank": 20,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11206540",
+            "documentId": 22815,
+            "rank": 21,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11206539",
+            "documentId": 22815,
+            "rank": 22,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11253715",
+            "documentId": 13812,
+            "rank": 23,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11206534",
+            "documentId": 22815,
+            "rank": 24,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11261501",
+            "documentId": 9159,
+            "rank": 25,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11155297",
+            "documentId": 9324,
+            "rank": 26,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10977338",
+            "documentId": 28020,
+            "rank": 27,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11148598",
+            "documentId": 16412,
+            "rank": 28,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11148625",
+            "documentId": 16412,
+            "rank": 29,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11148593",
+            "documentId": 16412,
+            "rank": 30,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10977335",
+            "documentId": 28020,
+            "rank": 31,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11148620",
+            "documentId": 16412,
+            "rank": 32,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11206535",
+            "documentId": 22815,
+            "rank": 33,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11206533",
+            "documentId": 22815,
+            "rank": 34,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11230970",
+            "documentId": 28025,
+            "rank": 35,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11231007",
+            "documentId": 28025,
+            "rank": 36,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11262684",
+            "documentId": 21377,
+            "rank": 37,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11148618",
+            "documentId": 16412,
+            "rank": 38,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11148615",
+            "documentId": 16412,
+            "rank": 39,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10940068",
+            "documentId": 5455,
+            "rank": 40,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11176396",
+            "documentId": 28126,
+            "rank": 41,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10951582",
+            "documentId": 5457,
+            "rank": 42,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11148623",
+            "documentId": 16412,
+            "rank": 43,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11253496",
+            "documentId": 13812,
+            "rank": 44,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11218963",
+            "documentId": 14112,
+            "rank": 45,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11223561",
+            "documentId": 28122,
+            "rank": 46,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11195875",
+            "documentId": 29369,
+            "rank": 47,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11148607",
+            "documentId": 16412,
+            "rank": 48,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11172646",
+            "documentId": 5651,
+            "rank": 49,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11231015",
+            "documentId": 28025,
+            "rank": 50,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938385",
+            "documentId": 172,
+            "rank": 51,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11237366",
+            "documentId": 6408,
+            "rank": 52,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10930152",
+            "documentId": 173,
+            "rank": 53,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11148612",
+            "documentId": 16412,
+            "rank": 54,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11253591",
+            "documentId": 13812,
+            "rank": 55,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11237365",
+            "documentId": 6408,
+            "rank": 56,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11249923",
+            "documentId": 20543,
+            "rank": 57,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "law:10938386",
+            "documentId": 172,
+            "rank": 58,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11148616",
+            "documentId": 16412,
+            "rank": 59,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10953282",
+            "documentId": 27943,
+            "rank": 60,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11079766",
+            "documentId": 19591,
+            "rank": 61,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11253716",
+            "documentId": 13812,
+            "rank": 62,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11097621",
+            "documentId": 28120,
+            "rank": 63,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11237364",
+            "documentId": 6408,
+            "rank": 64,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11253686",
+            "documentId": 13812,
+            "rank": 65,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10988510",
+            "documentId": 7868,
+            "rank": 66,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10970968",
+            "documentId": 6350,
+            "rank": 67,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11230962",
+            "documentId": 28025,
+            "rank": 68,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11032161",
+            "documentId": 15299,
+            "rank": 69,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11142561",
+            "documentId": 15388,
+            "rank": 70,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10989326",
+            "documentId": 23639,
+            "rank": 71,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10989492",
+            "documentId": 27922,
+            "rank": 72,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11155870",
+            "documentId": 27990,
+            "rank": 73,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11073176",
+            "documentId": 15697,
+            "rank": 74,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11231000",
+            "documentId": 28025,
+            "rank": 75,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11032089",
+            "documentId": 14487,
+            "rank": 76,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11032370",
+            "documentId": 16994,
+            "rank": 77,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11073495",
+            "documentId": 28694,
+            "rank": 78,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11116743",
+            "documentId": 12705,
+            "rank": 79,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11043709",
+            "documentId": 9808,
+            "rank": 80,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11132384",
+            "documentId": 28790,
+            "rank": 81,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10940366",
+            "documentId": 6947,
+            "rank": 82,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10977337",
+            "documentId": 28020,
+            "rank": 83,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11230957",
+            "documentId": 28025,
+            "rank": 84,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11073185",
+            "documentId": 15697,
+            "rank": 85,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11002343",
+            "documentId": 20156,
+            "rank": 86,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11230968",
+            "documentId": 28025,
+            "rank": 87,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11230996",
+            "documentId": 28025,
+            "rank": 88,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11148605",
+            "documentId": 16412,
+            "rank": 89,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11230954",
+            "documentId": 28025,
+            "rank": 90,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11032555",
+            "documentId": 20344,
+            "rank": 91,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10966856",
+            "documentId": 20258,
+            "rank": 92,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10979977",
+            "documentId": 11451,
+            "rank": 93,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10989339",
+            "documentId": 23939,
+            "rank": 94,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11031709",
+            "documentId": 7996,
+            "rank": 95,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11001896",
+            "documentId": 15584,
+            "rank": 96,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10941603",
+            "documentId": 28249,
+            "rank": 97,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11230969",
+            "documentId": 28025,
+            "rank": 98,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:11231023",
+            "documentId": 28025,
+            "rank": 99,
+            "matchedAuditGroupIndexes": []
+          },
+          {
+            "candidateKey": "admrul:10782343",
+            "documentId": 28038,
+            "rank": 100,
+            "matchedAuditGroupIndexes": []
+          }
+        ]
+      }
+    }
+  ]
+}
