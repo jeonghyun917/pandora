@@ -71,6 +71,9 @@ const DOCUMENT_EXPANSION_OUTCOME_REASON_CODES = new Set([
 const MAX_DOCUMENT_EXPANSION_HITS = 24;
 const MAX_DOCUMENT_EXPANSION_HITS_PER_DOCUMENT = 8;
 const MAX_DOCUMENT_EXPANSION_DOCUMENTS = 3;
+const BM25_VARIANT_STATUSES = new Set(['DISABLED', 'APPLIED', 'EMPTY', 'FAILED', 'INVALID_CONFIG']);
+const MAX_BM25_VARIANTS = 4;
+const MAX_BM25_VARIANT_HITS = 100;
 
 const CASE_PATHS = [
   path.resolve('src/main/resources/rag-evaluation-cases.tsv'),
@@ -107,6 +110,7 @@ async function main() {
       const measurement = {
         ...measureRetrievalCase(evalCase, response, options.k),
         documentExpansion: measureDocumentExpansionCase(evalCase, response, options.k),
+		bm25Variant: measureBm25VariantCase(evalCase, response, options.k),
 		candidateLoss: extractCandidateLossAnalysis(response),
         question: evalCase.question,
         targets: evalCase.targets,
@@ -159,6 +163,10 @@ async function main() {
       id: 'document-expansion-shadow-v1',
       configHash: String(runtimeInfo.runtimeConfigSha256 ?? ''),
     },
+	bm25VariantPolicy: {
+		id: 'group-balanced-bm25-shadow-v1',
+		configHash: String(runtimeInfo.runtimeConfigSha256 ?? ''),
+	},
     results: successfulMeasurements,
   };
   writeJson(outputPaths.outputPath, body);
@@ -371,7 +379,125 @@ function assertDebugResponse(body, auditGroupCount = 0) {
 		}
 	}
 	assertDocumentExpansionCapture(body);
+	assertBm25VariantCapture(body);
   return body;
+}
+
+function assertBm25VariantCapture(response) {
+	if (!response || typeof response !== 'object' || Array.isArray(response)) {
+		throw new Error('BM25 variant capture response must be an object');
+	}
+	const status = String(response.bm25VariantStatus ?? '').trim();
+	if (!BM25_VARIANT_STATUSES.has(status)) {
+		throw new Error('debug search response bm25VariantStatus must be a known string');
+	}
+	const reasonCodes = response.bm25VariantReasonCodes;
+	if (!Array.isArray(reasonCodes) || reasonCodes.length > 8) {
+		throw new Error('debug search response bm25VariantReasonCodes must be an array with at most 8 items');
+	}
+	const normalizedReasons = reasonCodes.map((value) => String(value ?? '').trim());
+	if (normalizedReasons.some((value) => !/^[A-Z][A-Z0-9_]{1,119}$/.test(value))
+		|| new Set(normalizedReasons).size !== normalizedReasons.length) {
+		throw new Error('debug search response bm25VariantReasonCodes contains an invalid or duplicate value');
+	}
+	const hashes = response.bm25VariantHashes;
+	if (!Array.isArray(hashes) || hashes.length > MAX_BM25_VARIANTS
+		|| hashes.some((value) => !/^[0-9a-f]{64}$/.test(String(value ?? '')))
+		|| new Set(hashes).size !== hashes.length) {
+		throw new Error('debug search response bm25VariantHashes must contain unique SHA-256 hashes');
+	}
+	const timingFields = [
+		['planningMs', response.bm25VariantPlanningMs],
+		['searchMs', response.bm25VariantSearchMs],
+		['fusionMs', response.bm25VariantFusionMs],
+	];
+	if (timingFields.some(([, value]) => !Number.isSafeInteger(value) || value < 0 || value > 60_000)) {
+		throw new Error('debug search response BM25 variant timing must contain bounded non-negative integers');
+	}
+	const timings = Object.fromEntries(timingFields);
+	if (!Array.isArray(response.bm25VariantHits) || response.bm25VariantHits.length > MAX_BM25_VARIANT_HITS) {
+		throw new Error(`debug search response bm25VariantHits must be an array with at most ${MAX_BM25_VARIANT_HITS} items`);
+	}
+	const candidateKeys = new Set();
+	const hits = response.bm25VariantHits.map((item, index) => {
+		if (!item || typeof item !== 'object' || Array.isArray(item)) {
+			throw new Error(`bm25VariantHits[${index}] must be an object`);
+		}
+		const key = candidateKey(item);
+		if (!key || candidateKeys.has(key)) {
+			throw new Error(`bm25VariantHits[${index}] invalid or duplicate candidate key`);
+		}
+		candidateKeys.add(key);
+		if (!Number.isSafeInteger(item.documentId) || item.documentId <= 0) {
+			throw new Error(`bm25VariantHits[${index}] invalid documentId`);
+		}
+		const ranks = item.bm25VariantRanks;
+		if (!ranks || typeof ranks !== 'object' || Array.isArray(ranks)) {
+			throw new Error(`bm25VariantHits[${index}] variant ranks must be an object`);
+		}
+		const entries = Object.entries(ranks).sort(([left], [right]) => left.localeCompare(right));
+		if (entries.length < 1 || entries.length > MAX_BM25_VARIANTS
+			|| entries.some(([id, rank]) => !/^[a-z][a-z0-9-]{1,39}$/.test(id)
+				|| !Number.isSafeInteger(rank) || rank < 1 || rank > MAX_BM25_VARIANT_HITS)) {
+			throw new Error(`bm25VariantHits[${index}] contains an invalid variant rank`);
+		}
+		const sourceIndexes = item.matchedAuditGroupIndexes;
+		if (!Array.isArray(sourceIndexes)) {
+			throw new Error(`bm25VariantHits[${index}] matched audit group indexes must be an array`);
+		}
+		const matchedAuditGroupIndexes = Array.from(new Set(sourceIndexes))
+			.filter((value) => Number.isSafeInteger(value) && value >= 0)
+			.sort((left, right) => left - right);
+		if (matchedAuditGroupIndexes.length !== new Set(sourceIndexes).size) {
+			throw new Error(`bm25VariantHits[${index}] contains invalid matched audit group indexes`);
+		}
+		return {
+			candidateKey: key,
+			documentId: item.documentId,
+			rank: index + 1,
+			variantRanks: Object.fromEntries(entries),
+			matchedAuditGroupIndexes,
+		};
+	});
+	if (status !== 'APPLIED' && hits.length > 0) {
+		throw new Error('non-applied BM25 variant status must not contain hits');
+	}
+	return { status, reasonCodes: normalizedReasons, variantHashes: hashes.slice(), timings, hits };
+}
+
+function measureBm25VariantCase(evalCase, response, k = 10) {
+	const requiredGroupCount = buildAuditTermGroups(evalCase).length;
+	const capture = assertBm25VariantCapture(response);
+	const limit = Number.isSafeInteger(k) && k > 0 ? k : 10;
+	const bounded = (items) => Array.isArray(items) ? items.slice(0, limit) : [];
+	const controlItems = uniqueCandidateItems([
+		...bounded(response?.vectorHits),
+		...bounded(response?.lexicalHits),
+		...bounded(response?.bm25Hits),
+	]);
+	const variantItems = capture.hits.slice(0, limit);
+	const shadowItems = uniqueCandidateItems([...controlItems, ...variantItems]);
+	return {
+		status: capture.status,
+		reasonCodes: capture.reasonCodes,
+		variantHashes: capture.variantHashes,
+		controlSourcePresence: measureDocumentExpansionPresence(controlItems, requiredGroupCount),
+		variantPresence: measureDocumentExpansionPresence(variantItems, requiredGroupCount),
+		shadowSourcePresence: measureDocumentExpansionPresence(shadowItems, requiredGroupCount),
+		capture,
+	};
+}
+
+function uniqueCandidateItems(items) {
+	const seen = new Set();
+	const values = [];
+	for (const item of Array.isArray(items) ? items : []) {
+		const key = item?.candidateKey ?? candidateKey(item);
+		if (!key || seen.has(key)) continue;
+		seen.add(key);
+		values.push(item);
+	}
+	return values;
 }
 
 function assertDocumentExpansionOutcome(response) {
@@ -779,10 +905,12 @@ module.exports = {
   assertTrainingSelection,
   assertDebugResponse,
 	assertDocumentExpansionCapture,
+	assertBm25VariantCapture,
   buildDebugRequest,
 	captureSourceRankSnapshot,
 	extractCandidateLossAnalysis,
 	measureDocumentExpansionCase,
+	measureBm25VariantCase,
   loadRuntimeInfo,
   main,
   parseOptions,

@@ -7,6 +7,25 @@ import org.junit.jupiter.api.Test;
 class QuestionSearchPlanTests {
 
 	@Test
+	void buildsDeterministicGroupBalancedBm25Variants() {
+		QuestionSearchPlan plan = QuestionSearchPlan.from(
+			"공공기관이 공공데이터를 제공하지 않으면 어떤 불이익이 있어?"
+		);
+
+		var variants = plan.bm25Variants();
+
+		assertThat(variants).extracting(QuestionSearchPlan.LexicalVariant::id)
+			.containsExactly("original-focused", "entity-intent", "direct-evidence", "synonym-intent");
+		assertThat(variants.get(0).query()).isEqualTo(plan.question());
+		assertThat(variants.get(0).plannedKeywords()).isEqualTo(plan.focusedKeywords());
+		assertThat(variants.get(1).query()).contains("공공데이터", "제재");
+		assertThat(variants.get(2).query()).containsAnyOf("미제공", "제공하지", "불이익", "제재");
+		assertThat(variants).extracting(QuestionSearchPlan.LexicalVariant::tokenSetHash)
+			.doesNotHaveDuplicates()
+			.allSatisfy(hash -> assertThat(hash).matches("[0-9a-f]{64}"));
+	}
+
+	@Test
 	void derivesDocumentSearchAnchorWithoutChangingPlanConstruction() {
 		QuestionSearchPlan plan = QuestionSearchPlan.from("전자정부법 제67조의2에 따른 사전협의 대상은?");
 

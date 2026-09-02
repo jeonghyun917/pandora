@@ -45,35 +45,45 @@ public class KoreanBm25SearchService {
 		int limit
 	) {
 		long started = System.nanoTime();
-		String revision = readyRevision();
+		try {
+			return searchStrict(query, plannedKeywords, targets, limit);
+		} catch (RuntimeException exception) {
+			log.warn(
+				"Korean BM25 shadow failed closed. elapsedMs={} failureType={}",
+				elapsedMillis(started), exception.getClass().getSimpleName()
+			);
+			return List.of();
+		}
+	}
+
+	List<LexicalSearchHit> searchStrict(
+		String query,
+		List<String> plannedKeywords,
+		List<String> targets,
+		int limit
+	) {
+		long started = System.nanoTime();
+		String foundRevision = mapper.findReadyRevision();
+		String revision = foundRevision == null || foundRevision.isBlank() ? null : foundRevision;
 		List<String> terms = queryTerms(query, plannedKeywords);
 		if (revision == null || terms.isEmpty()) {
 			return List.of();
 		}
-		List<String> targetFilter = normalizedTargets(targets);
-		try {
-			List<String> postingTerms = selectPostingTerms(revision, terms);
-			if (postingTerms.isEmpty()) {
-				return List.of();
-			}
-			List<SemanticLexicalMapper.Bm25TermMatchRow> rows = mapper.findBm25TermMatches(
-				revision,
-				postingTerms,
-				targetFilter
-			);
-			List<LexicalSearchHit> results = rank(rows, boundedLimit(limit));
-			log.info(
-				"Korean BM25 shadow completed. revision={} termCount={} postingTermCount={} resultCount={} elapsedMs={}",
-				revision, terms.size(), postingTerms.size(), results.size(), elapsedMillis(started)
-			);
-			return results;
-		} catch (RuntimeException exception) {
-			log.warn(
-				"Korean BM25 shadow failed closed. revision={} termCount={} elapsedMs={} failureType={}",
-				revision, terms.size(), elapsedMillis(started), exception.getClass().getSimpleName()
-			);
+		List<String> postingTerms = selectPostingTerms(revision, terms);
+		if (postingTerms.isEmpty()) {
 			return List.of();
 		}
+		List<SemanticLexicalMapper.Bm25TermMatchRow> rows = mapper.findBm25TermMatches(
+			revision,
+			postingTerms,
+			normalizedTargets(targets)
+		);
+		List<LexicalSearchHit> results = rank(rows, boundedLimit(limit));
+		log.info(
+			"Korean BM25 shadow completed. revision={} termCount={} postingTermCount={} resultCount={} elapsedMs={}",
+			revision, terms.size(), postingTerms.size(), results.size(), elapsedMillis(started)
+		);
+		return results;
 	}
 
 	private List<String> selectPostingTerms(String revision, List<String> terms) {
@@ -98,15 +108,6 @@ public class KoreanBm25SearchService {
 			}
 		}
 		return List.copyOf(selected);
-	}
-
-	private String readyRevision() {
-		try {
-			String revision = mapper.findReadyRevision();
-			return revision == null || revision.isBlank() ? null : revision;
-		} catch (RuntimeException exception) {
-			return null;
-		}
 	}
 
 	private List<String> queryTerms(String query, List<String> plannedKeywords) {

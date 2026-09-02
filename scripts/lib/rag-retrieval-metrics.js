@@ -11,6 +11,7 @@ const STAGE_NAMES = [
 
 const SHADOW_STAGE_NAMES = [
   'bm25Hits',
+	'bm25VariantHits',
   'fused',
   'coverageFused',
 ];

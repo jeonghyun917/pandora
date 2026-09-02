@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.kaces.pandora.semantic.config.LawAiCoverageAwareProperties;
 import com.kaces.pandora.semantic.config.LawAiDocumentExpansionProperties;
 import com.kaces.pandora.semantic.config.LawAiLexicalProperties;
+import com.kaces.pandora.semantic.config.LawAiLexicalVariantProperties;
 import com.kaces.pandora.semantic.config.LawAiProperties;
 import com.kaces.pandora.semantic.config.LawAiRrfProperties;
 import org.junit.jupiter.api.Test;
@@ -116,6 +117,36 @@ class RuntimeConfigurationIdentityTests {
 		)).isNotEqualTo(fingerprint);
 		assertThat(RuntimeConfigurationIdentity.sha256(
 			base, lexical, rrf, coverage, expansion(true, 100, 2, 0.04)
+		)).isNotEqualTo(fingerprint);
+	}
+
+	@Test
+	void fingerprintsEveryGroupBalancedBm25PolicyField() {
+		LawAiProperties base = properties("secret", "http://127.0.0.1:6333");
+		LawAiLexicalProperties lexical = new LawAiLexicalProperties(1.2, 0.75, 8, 6, 7, 1, 24, 100);
+		LawAiRrfProperties rrf = new LawAiRrfProperties(true, false, 60, 1.0, 1.0, 100);
+		LawAiCoverageAwareProperties coverage = new LawAiCoverageAwareProperties(false, 0, 1, 30);
+		LawAiDocumentExpansionProperties expansion = new LawAiDocumentExpansionProperties(false, false, 0, 0, 0);
+		LawAiLexicalVariantProperties baseline = new LawAiLexicalVariantProperties(true, false, 4, 60.0);
+		String fingerprint = RuntimeConfigurationIdentity.sha256(
+			base, lexical, rrf, coverage, expansion, baseline
+		);
+
+		assertThat(RuntimeConfigurationIdentity.sha256(
+			base, lexical, rrf, coverage, expansion,
+			new LawAiLexicalVariantProperties(false, false, 4, 60.0)
+		)).isNotEqualTo(fingerprint);
+		assertThat(RuntimeConfigurationIdentity.sha256(
+			base, lexical, rrf, coverage, expansion,
+			new LawAiLexicalVariantProperties(true, true, 4, 60.0)
+		)).isNotEqualTo(fingerprint);
+		assertThat(RuntimeConfigurationIdentity.sha256(
+			base, lexical, rrf, coverage, expansion,
+			new LawAiLexicalVariantProperties(true, false, 3, 60.0)
+		)).isNotEqualTo(fingerprint);
+		assertThat(RuntimeConfigurationIdentity.sha256(
+			base, lexical, rrf, coverage, expansion,
+			new LawAiLexicalVariantProperties(true, false, 4, 61.0)
 		)).isNotEqualTo(fingerprint);
 	}
 

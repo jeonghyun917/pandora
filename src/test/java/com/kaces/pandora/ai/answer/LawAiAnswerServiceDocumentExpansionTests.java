@@ -27,7 +27,9 @@ import com.kaces.pandora.semantic.config.LawAiProperties;
 import com.kaces.pandora.semantic.config.LawAiRrfProperties;
 import com.kaces.pandora.semantic.config.LawAiSemanticSelectionProperties;
 import com.kaces.pandora.semantic.lexical.CoverageAwareFusion;
+import com.kaces.pandora.semantic.lexical.GroupBalancedBm25SearchService;
 import com.kaces.pandora.semantic.lexical.KoreanBm25SearchService;
+import com.kaces.pandora.semantic.lexical.LexicalVariantFusion;
 import com.kaces.pandora.semantic.lexical.LexicalSearchHit;
 import com.kaces.pandora.semantic.lexical.ReciprocalRankFusion;
 import com.kaces.pandora.semantic.retrieval.DocumentCandidateExpansion;
@@ -57,10 +59,65 @@ class LawAiAnswerServiceDocumentExpansionTests {
 	private static final LawSemanticChunkRow VECTOR_CHUNK = chunk(101, 10, 1, "전자정부법의 정의와 목적");
 	private static final LawSemanticChunkRow BM25_CHUNK = chunk(201, 20, 2, "전자정부법의 정의와 목적");
 	private static final LawSemanticChunkRow LEXICAL_CHUNK = chunk(301, 30, 3, "전자정부법의 정의와 목적");
+	private static final LawSemanticChunkRow VARIANT_CHUNK = chunk(901, 90, 4, "공공데이터 미제공 제재");
 	private static final List<QdrantSearchHit> VECTOR_HITS = List.of(new QdrantSearchHit("law", 101, 0.91));
 	private static final List<LexicalSearchHit> BM25_HITS = List.of(
 		new LexicalSearchHit("law", 201, 20, 4.2, 1, List.of("전자정부법"))
 	);
+
+	@Test
+	void groupBalancedBm25RemainsShadowOnlyAndAppearsInSeparateDebugStage() {
+		GroupBalancedBm25SearchService.Result candidate = new GroupBalancedBm25SearchService.Result(
+			GroupBalancedBm25SearchService.Status.APPLIED,
+			List.of(),
+			List.of("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+			Map.of("direct-evidence", 1),
+			List.of(new LexicalVariantFusion.Hit(
+				"law", 901, 90, 1.0 / 61.0, 1,
+				List.of("미제공", "제재"), Map.of("direct-evidence", 1)
+			)),
+			1, 2, 1
+		);
+		try (
+			Harness baseline = Harness.mocked(properties(false, false), false, false, disabled(), false);
+			Harness shadow = Harness.mocked(properties(false, false), false, false, disabled(), false)
+				.withVariantResult(candidate)
+		) {
+			LawAiDebugResponse baselineResult = baseline.debug("공공데이터 미제공 시 제재는?");
+			LawAiDebugResponse shadowResult = shadow.debug("공공데이터 미제공 시 제재는?");
+
+			assertThat(shadowResult.bm25VariantStatus()).isEqualTo("APPLIED");
+			assertThat(shadowResult.bm25VariantReasonCodes()).isEmpty();
+			assertThat(shadowResult.bm25VariantHashes()).hasSize(1);
+			assertThat(shadowResult.bm25VariantPlanningMs()).isEqualTo(1);
+			assertThat(shadowResult.bm25VariantSearchMs()).isEqualTo(2);
+			assertThat(shadowResult.bm25VariantFusionMs()).isEqualTo(1);
+			assertThat(ids(shadowResult.bm25VariantHits())).containsExactly(901L);
+			assertThat(shadowResult.bm25VariantHits().get(0).bm25VariantRanks())
+				.isEqualTo(Map.of("direct-evidence", 1));
+			assertThat(ids(shadowResult.bm25Hits())).isEqualTo(ids(baselineResult.bm25Hits()));
+			assertThat(ids(shadowResult.merged())).isEqualTo(ids(baselineResult.merged()));
+			assertThat(ids(shadowResult.selected())).isEqualTo(ids(baselineResult.selected()));
+		}
+	}
+
+	@Test
+	void groupBalancedBm25AsyncFailureCannotFailTheControlAnswerPath() {
+		try (
+			Harness baseline = Harness.mocked(properties(false, false), false, false, disabled(), false);
+			Harness failedShadow = Harness.mocked(properties(false, false), false, false, disabled(), false)
+				.withVariantFailure()
+		) {
+			LawAiDebugResponse baselineResult = baseline.debug("공공데이터 미제공 시 제재는?");
+			LawAiDebugResponse result = failedShadow.debug("공공데이터 미제공 시 제재는?");
+
+			assertThat(result.bm25VariantStatus()).isEqualTo("FAILED");
+			assertThat(result.bm25VariantReasonCodes()).containsExactly("VARIANT_ASYNC_FAILED");
+			assertThat(result.bm25VariantHits()).isEmpty();
+			assertThat(ids(result.merged())).isEqualTo(ids(baselineResult.merged()));
+			assertThat(ids(result.selected())).isEqualTo(ids(baselineResult.selected()));
+		}
+	}
 
 	@Test
 	void bm25TitleFallbackRemainsShadowOnlyAndAddsNoExternalRequest() {
@@ -770,7 +827,7 @@ class LawAiAnswerServiceDocumentExpansionTests {
 				if ("findSemanticChunksByIds".equals(method)) {
 					List<Long> requestedIds = invocation.getArgument(0);
 					lawHydrationChunkIds.set(List.copyOf(requestedIds));
-					return List.of(VECTOR_CHUNK, BM25_CHUNK).stream()
+					return List.of(VECTOR_CHUNK, BM25_CHUNK, VARIANT_CHUNK).stream()
 						.filter(chunk -> requestedIds.contains(chunk.chunkId()))
 						.toList();
 				}
@@ -891,6 +948,21 @@ class LawAiAnswerServiceDocumentExpansionTests {
 				documentExpansionProperties,
 				seedSelector
 			);
+		}
+
+		private Harness withVariantResult(GroupBalancedBm25SearchService.Result result) {
+			GroupBalancedBm25SearchService variants = mock(GroupBalancedBm25SearchService.class);
+			when(variants.search(any(), anyList(), anyInt())).thenReturn(result);
+			service.configureGroupBalancedBm25SearchService(variants);
+			return this;
+		}
+
+		private Harness withVariantFailure() {
+			GroupBalancedBm25SearchService variants = mock(GroupBalancedBm25SearchService.class);
+			when(variants.search(any(), anyList(), anyInt()))
+				.thenThrow(new IllegalStateException("shadow database failure"));
+			service.configureGroupBalancedBm25SearchService(variants);
+			return this;
 		}
 
 		private LawAiDebugResponse debug(String question) {

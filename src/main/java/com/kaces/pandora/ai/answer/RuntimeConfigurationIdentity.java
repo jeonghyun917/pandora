@@ -1,6 +1,7 @@
 package com.kaces.pandora.ai.answer;
 
 import com.kaces.pandora.semantic.config.LawAiLexicalProperties;
+import com.kaces.pandora.semantic.config.LawAiLexicalVariantProperties;
 import com.kaces.pandora.semantic.config.LawAiCoverageAwareProperties;
 import com.kaces.pandora.semantic.config.LawAiDocumentExpansionProperties;
 import com.kaces.pandora.semantic.config.LawAiProperties;
@@ -28,7 +29,8 @@ public final class RuntimeConfigurationIdentity {
 			new LawAiLexicalProperties(1.2, 0.75, 8, 6, 7, 1, 24, 100),
 			new LawAiRrfProperties(false, false, 60, 1.0, 1.0, 100),
 			new LawAiCoverageAwareProperties(false, 0, 1, 30),
-			disabledDocumentExpansion()
+			disabledDocumentExpansion(),
+			disabledLexicalVariant()
 		);
 	}
 
@@ -37,7 +39,10 @@ public final class RuntimeConfigurationIdentity {
 		LawAiLexicalProperties lexical,
 		LawAiRrfProperties rrf
 	) {
-		return sha256(properties, lexical, rrf, new LawAiCoverageAwareProperties(false, 0, 1, 30), disabledDocumentExpansion());
+		return sha256(
+			properties, lexical, rrf, new LawAiCoverageAwareProperties(false, 0, 1, 30),
+			disabledDocumentExpansion(), disabledLexicalVariant()
+		);
 	}
 
 	static String sha256(
@@ -46,7 +51,7 @@ public final class RuntimeConfigurationIdentity {
 		LawAiRrfProperties rrf,
 		LawAiCoverageAwareProperties coverage
 	) {
-		return sha256(properties, lexical, rrf, coverage, disabledDocumentExpansion());
+		return sha256(properties, lexical, rrf, coverage, disabledDocumentExpansion(), disabledLexicalVariant());
 	}
 
 	static String sha256(
@@ -55,6 +60,17 @@ public final class RuntimeConfigurationIdentity {
 		LawAiRrfProperties rrf,
 		LawAiCoverageAwareProperties coverage,
 		LawAiDocumentExpansionProperties documentExpansion
+	) {
+		return sha256(properties, lexical, rrf, coverage, documentExpansion, disabledLexicalVariant());
+	}
+
+	static String sha256(
+		LawAiProperties properties,
+		LawAiLexicalProperties lexical,
+		LawAiRrfProperties rrf,
+		LawAiCoverageAwareProperties coverage,
+		LawAiDocumentExpansionProperties documentExpansion,
+		LawAiLexicalVariantProperties lexicalVariant
 	) {
 		LawAiProperties.OpenAi openAi = properties.openai();
 		LawAiProperties.Qdrant qdrant = properties.qdrant();
@@ -94,7 +110,11 @@ public final class RuntimeConfigurationIdentity {
 			"documentExpansion.bm25TitleEnabled=" + documentExpansion.bm25TitleEnabled(),
 			"documentExpansion.bm25TitleMaxHits=" + documentExpansion.bm25TitleMaxHits(),
 			"documentExpansion.bm25TitleMinimumTerms=" + documentExpansion.bm25TitleMinimumTerms(),
-			"documentExpansion.bm25TitleAmbiguityRatio=" + documentExpansion.bm25TitleAmbiguityRatio()
+			"documentExpansion.bm25TitleAmbiguityRatio=" + documentExpansion.bm25TitleAmbiguityRatio(),
+			"lexicalVariant.shadowEnabled=" + lexicalVariant.shadowEnabled(),
+			"lexicalVariant.authoritative=" + lexicalVariant.authoritative(),
+			"lexicalVariant.maxVariants=" + lexicalVariant.maxVariants(),
+			"lexicalVariant.rrfK=" + lexicalVariant.rrfK()
 		);
 		try {
 			MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -106,6 +126,10 @@ public final class RuntimeConfigurationIdentity {
 
 	private static LawAiDocumentExpansionProperties disabledDocumentExpansion() {
 		return new LawAiDocumentExpansionProperties(false, false, 0, 0, 0);
+	}
+
+	private static LawAiLexicalVariantProperties disabledLexicalVariant() {
+		return new LawAiLexicalVariantProperties(false, false, 4, 60.0);
 	}
 
 	private static String value(String value) {

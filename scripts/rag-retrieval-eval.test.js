@@ -328,6 +328,7 @@ test('retrieval metrics preserve BM25, fused, and coverage shadow ranks for dete
   assert.equal(measured.stages.coverageFused.directHit, true);
   assert.deepEqual(measured.shadowRanks, {
     bm25Hits: ['law:8', 'law:7'],
+    bm25VariantHits: [],
     fused: ['law:7', 'law:8'],
     coverageFused: ['law:8', 'law:7'],
   });
@@ -622,6 +623,13 @@ test('debug response validator requires resultMsg and every retrieval stage arra
   valid.documentExpansionReasonCodes = ['DOCUMENT_NOT_ANCHORED'];
   valid.documentExpansionHits = [];
   valid.documentExpansionFused = [];
+  valid.bm25VariantStatus = 'DISABLED';
+  valid.bm25VariantReasonCodes = [];
+  valid.bm25VariantHashes = [];
+  valid.bm25VariantPlanningMs = 0;
+  valid.bm25VariantSearchMs = 0;
+  valid.bm25VariantFusionMs = 0;
+  valid.bm25VariantHits = [];
 
   assert.equal(retrievalRunner.assertDebugResponse(valid), valid);
   assert.throws(
@@ -800,6 +808,95 @@ test('document expansion capture is bounded, audit-only, and rejects malformed e
   );
 });
 
+test('group-balanced BM25 capture is bounded, audit-only, and validates variant ranks', () => {
+  const response = {
+    bm25VariantStatus: 'APPLIED',
+    bm25VariantReasonCodes: [],
+    bm25VariantHashes: ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
+    bm25VariantPlanningMs: 3,
+    bm25VariantSearchMs: 12,
+    bm25VariantFusionMs: 1,
+    bm25VariantHits: [{
+      target: 'law',
+      chunkId: 7,
+      documentId: 207,
+      bm25VariantRanks: { 'direct-evidence': 1, 'entity-intent': 2 },
+      matchedAuditGroupIndexes: [1, 0, 1],
+      title: 'must not be captured',
+      snippet: 'must not be captured',
+    }],
+  };
+
+  assert.deepEqual(retrievalRunner.assertBm25VariantCapture(response), {
+    status: 'APPLIED',
+    reasonCodes: [],
+    variantHashes: response.bm25VariantHashes,
+    timings: { planningMs: 3, searchMs: 12, fusionMs: 1 },
+    hits: [{
+      candidateKey: 'law:7',
+      documentId: 207,
+      rank: 1,
+      variantRanks: { 'direct-evidence': 1, 'entity-intent': 2 },
+      matchedAuditGroupIndexes: [0, 1],
+    }],
+  });
+  assert.equal(JSON.stringify(retrievalRunner.assertBm25VariantCapture(response)).includes('must not be captured'), false);
+
+  assert.throws(
+    () => retrievalRunner.assertBm25VariantCapture({ ...response, bm25VariantStatus: 'UNKNOWN' }),
+    /bm25VariantStatus.*known/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertBm25VariantCapture({
+      ...response,
+      bm25VariantHits: [{ ...response.bm25VariantHits[0], bm25VariantRanks: { 'direct-evidence': 0 } }],
+    }),
+    /variant rank/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertBm25VariantCapture({
+      ...response,
+      bm25VariantHashes: [...response.bm25VariantHashes, response.bm25VariantHashes[0]],
+    }),
+    /hash/i,
+  );
+  assert.throws(
+    () => retrievalRunner.assertBm25VariantCapture({ ...response, bm25VariantSearchMs: -1 }),
+    /timing/i,
+  );
+});
+
+test('group-balanced BM25 measurement reports only evaluation-time required-group presence', () => {
+  const evalCase = {
+    requiredPropositionGroups: [['의무']],
+    requiredConditionGroups: [['예외']],
+  };
+  const item = (target, chunkId, groups, variantRanks = {}) => ({
+    target, chunkId, documentId: 100 + chunkId,
+    matchedAuditGroupIndexes: groups,
+    bm25VariantRanks: variantRanks,
+  });
+  const response = {
+    vectorHits: [item('law', 1, [0])],
+    lexicalHits: [],
+    bm25Hits: [],
+    bm25VariantStatus: 'APPLIED',
+    bm25VariantReasonCodes: [],
+    bm25VariantHashes: ['bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'],
+    bm25VariantPlanningMs: 1,
+    bm25VariantSearchMs: 2,
+    bm25VariantFusionMs: 1,
+    bm25VariantHits: [item('law', 2, [1], { 'direct-evidence': 1 })],
+  };
+
+  const measured = retrievalRunner.measureBm25VariantCase(evalCase, response, 10);
+
+  assert.deepEqual(measured.controlSourcePresence.matchedRequiredGroupIndexes, [0]);
+  assert.deepEqual(measured.variantPresence.matchedRequiredGroupIndexes, [1]);
+  assert.deepEqual(measured.shadowSourcePresence.matchedRequiredGroupIndexes, [0, 1]);
+  assert.equal(measured.shadowSourcePresence.allRequired, true);
+});
+
 test('BM25 title expansion capture requires bounded seed metadata and known outcomes', () => {
   const bm25Title = {
     target: 'law',
@@ -883,6 +980,13 @@ test('BM25 title expansion capture requires bounded seed metadata and known outc
     ...validDebug,
     documentExpansionStatus: 'BM25_TITLE_APPLIED',
     documentExpansionReasonCodes: [],
+    bm25VariantStatus: 'DISABLED',
+    bm25VariantReasonCodes: [],
+    bm25VariantHashes: [],
+    bm25VariantPlanningMs: 0,
+    bm25VariantSearchMs: 0,
+    bm25VariantFusionMs: 0,
+    bm25VariantHits: [],
     documentExpansionHits: [bm25Title],
     documentExpansionFused: [bm25Title],
   }));
@@ -1462,5 +1566,12 @@ function validDebugResponse() {
     documentExpansionReasonCodes: ['DOCUMENT_NOT_ANCHORED'],
     documentExpansionHits: [],
     documentExpansionFused: [],
+    bm25VariantStatus: 'DISABLED',
+    bm25VariantReasonCodes: [],
+    bm25VariantHashes: [],
+    bm25VariantPlanningMs: 0,
+    bm25VariantSearchMs: 0,
+    bm25VariantFusionMs: 0,
+    bm25VariantHits: [],
   };
 }

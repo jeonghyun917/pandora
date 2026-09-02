@@ -1,6 +1,7 @@
 package com.kaces.pandora.ai.answer;
 
 import java.util.List;
+import java.util.Map;
 
 public record LawAiDebugResponse(
 	String resultCode,
@@ -15,9 +16,16 @@ public record LawAiDebugResponse(
 	List<Stage> stages,
 	String documentExpansionStatus,
 	List<String> documentExpansionReasonCodes,
+	String bm25VariantStatus,
+	List<String> bm25VariantReasonCodes,
+	List<String> bm25VariantHashes,
+	long bm25VariantPlanningMs,
+	long bm25VariantSearchMs,
+	long bm25VariantFusionMs,
 	List<Item> vectorHits,
 	List<Item> lexicalHits,
 	List<Item> bm25Hits,
+	List<Item> bm25VariantHits,
 	List<Item> documentExpansionHits,
 	List<Item> fused,
 	List<Item> documentExpansionFused,
@@ -59,6 +67,7 @@ public record LawAiDebugResponse(
 		String sourcePath,
 		Integer vectorRank,
 		Integer lexicalRank,
+		Map<String, Integer> bm25VariantRanks,
 		Integer fusedRank,
 		Integer coverageFusedRank,
 		String coverageAnchorCandidateKey,

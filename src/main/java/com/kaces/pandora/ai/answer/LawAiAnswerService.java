@@ -18,12 +18,15 @@ import com.kaces.pandora.rag.search.RagChunkSearchIndexService;
 import com.kaces.pandora.semantic.config.LawAiCoverageAwareProperties;
 import com.kaces.pandora.semantic.config.LawAiDocumentExpansionProperties;
 import com.kaces.pandora.semantic.config.LawAiLexicalProperties;
+import com.kaces.pandora.semantic.config.LawAiLexicalVariantProperties;
 import com.kaces.pandora.semantic.config.LawAiProperties;
 import com.kaces.pandora.semantic.config.LawAiRrfProperties;
 import com.kaces.pandora.semantic.config.LawAiSemanticSelectionProperties;
 import com.kaces.pandora.semantic.lexical.CoverageAwareFusion;
+import com.kaces.pandora.semantic.lexical.GroupBalancedBm25SearchService;
 import com.kaces.pandora.semantic.lexical.KoreanBm25SearchService;
 import com.kaces.pandora.semantic.lexical.LexicalSearchHit;
+import com.kaces.pandora.semantic.lexical.LexicalVariantFusion;
 import com.kaces.pandora.semantic.lexical.ReciprocalRankFusion;
 import com.kaces.pandora.semantic.lexical.SemanticLexicalIndexService;
 import com.kaces.pandora.semantic.provenance.IndexContentSnapshot;
@@ -161,6 +164,9 @@ public class LawAiAnswerService {
 	private final DocumentExpansionSearchService documentExpansionSearchService;
 	private final LawAiDocumentExpansionProperties documentExpansionProperties;
 	private final Bm25TitleDocumentSeedSelector bm25TitleDocumentSeedSelector;
+	private GroupBalancedBm25SearchService groupBalancedBm25SearchService;
+	private LawAiLexicalVariantProperties lexicalVariantProperties =
+		new LawAiLexicalVariantProperties(false, false, 4, 60.0);
 	private final Map<String, CachedAnswer> answerCache = new ConcurrentHashMap<>();
 	private final ExecutorService streamExecutor;
 	private final ExecutorService searchExecutor;
@@ -465,6 +471,16 @@ public class LawAiAnswerService {
 		searchExecutor.shutdownNow();
 	}
 
+	@Autowired(required = false)
+	void configureGroupBalancedBm25SearchService(GroupBalancedBm25SearchService service) {
+		this.groupBalancedBm25SearchService = service;
+	}
+
+	@Autowired(required = false)
+	void configureLexicalVariantProperties(LawAiLexicalVariantProperties properties) {
+		this.lexicalVariantProperties = properties;
+	}
+
 	public LawAiRuntimeInfo runtimeInfo() {
 		String lawCollection = properties.qdrant().collection();
 		String ragCollection = properties.qdrant().ragCollection();
@@ -491,7 +507,8 @@ public class LawAiAnswerService {
 				lexicalProperties,
 				rrfProperties,
 				coverageAwareProperties,
-				documentExpansionProperties
+				documentExpansionProperties,
+				lexicalVariantProperties
 			),
 			indexIdentity == null ? null : indexIdentity.revision(),
 			lexicalRevision(),
@@ -1154,6 +1171,17 @@ public class LawAiAnswerService {
 				searchExecutor
 			)
 			: CompletableFuture.completedFuture(List.of());
+		CompletableFuture<GroupBalancedBm25SearchService.Result> bm25VariantFuture =
+			groupBalancedBm25SearchService == null
+				? CompletableFuture.completedFuture(disabledBm25VariantResult())
+				: CompletableFuture.supplyAsync(
+					() -> groupBalancedBm25SearchService.search(
+						queryPlan,
+						targets,
+						rrfProperties.rrfFusedLimit()
+					),
+					searchExecutor
+				);
 		CompletableFuture<List<List<Double>>> embeddingFuture = CompletableFuture.supplyAsync(() -> {
 			long start = System.nanoTime();
 			try {
@@ -1185,6 +1213,7 @@ public class LawAiAnswerService {
 			List.of(),
 			BM25_SHADOW_TIMEOUT_MILLIS
 		);
+		GroupBalancedBm25SearchService.Result bm25Variant = joinBm25VariantFuture(bm25VariantFuture);
 		Set<Long> lawChunkIdSet = new LinkedHashSet<>();
 		Set<Long> ragChunkIdSet = new LinkedHashSet<>();
 		for (QdrantSearchHit hit : hits) {
@@ -1195,6 +1224,13 @@ public class LawAiAnswerService {
 			}
 		}
 		for (LexicalSearchHit hit : bm25Hits) {
+			if (isLawTarget(hit.target())) {
+				lawChunkIdSet.add(hit.chunkId());
+			} else if (isRagTarget(hit.target())) {
+				ragChunkIdSet.add(hit.chunkId());
+			}
+		}
+		for (LexicalVariantFusion.Hit hit : bm25Variant.fusedHits()) {
 			if (isLawTarget(hit.target())) {
 				lawChunkIdSet.add(hit.chunkId());
 			} else if (isRagTarget(hit.target())) {
@@ -1234,6 +1270,10 @@ public class LawAiAnswerService {
 			.toList();
 		List<LawSemanticChunkRow> vectorChunks = searchedChunks;
 		List<LawSemanticChunkRow> bm25Chunks = bm25Hits.stream()
+			.map(hit -> chunkById.get(scoreKey(hit.target(), hit.chunkId())))
+			.filter(chunk -> chunk != null)
+			.toList();
+		List<LawSemanticChunkRow> bm25VariantChunks = bm25Variant.fusedHits().stream()
 			.map(hit -> chunkById.get(scoreKey(hit.target(), hit.chunkId())))
 			.filter(chunk -> chunk != null)
 			.toList();
@@ -1322,6 +1362,8 @@ public class LawAiAnswerService {
 			bm25Hits,
 			fusedHits,
 			bm25Chunks,
+			bm25Variant,
+			bm25VariantChunks,
 			fusedChunks,
 			documentExpansion.hits(),
 			documentExpansion.chunks(),
@@ -1994,6 +2036,12 @@ public class LawAiAnswerService {
 				new LawAiDebugResponse.Stage("keyword", retrieval.lexicalChunks().size(), "Lexical keyword candidates"),
 				new LawAiDebugResponse.Stage("bm25", retrieval.hybrid().bm25Chunks().size(), "Common Korean BM25 shadow candidates"),
 				new LawAiDebugResponse.Stage(
+					"bm25Variants",
+					retrieval.hybrid().bm25VariantChunks().size(),
+					"Group-balanced BM25 shadow. status=" + retrieval.hybrid().bm25Variant().status()
+						+ ", reasons=" + retrieval.hybrid().bm25Variant().reasonCodes()
+				),
+				new LawAiDebugResponse.Stage(
 					RetrievalCandidateTrace.DOCUMENT_EXPANSION_STAGE,
 					retrieval.hybrid().documentExpansionChunks().size(),
 					"Bounded document expansion shadow. status=" + retrieval.hybrid().documentExpansionStatus()
@@ -2017,9 +2065,16 @@ public class LawAiAnswerService {
 			),
 			retrieval.hybrid().documentExpansionStatus().name(),
 			retrieval.hybrid().documentExpansionReasonCodes(),
+			retrieval.hybrid().bm25Variant().status().name(),
+			retrieval.hybrid().bm25Variant().reasonCodes(),
+			retrieval.hybrid().bm25Variant().variantHashes(),
+			retrieval.hybrid().bm25Variant().planningMillis(),
+			retrieval.hybrid().bm25Variant().searchMillis(),
+			retrieval.hybrid().bm25Variant().fusionMillis(),
 			toDebugItems(retrieval.vectorChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.lexicalChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.hybrid().bm25Chunks(), retrieval, selectedKeys, auditTermGroups),
+			toDebugItems(retrieval.hybrid().bm25VariantChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.hybrid().documentExpansionChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(retrieval.hybrid().fusedChunks(), retrieval, selectedKeys, auditTermGroups),
 			toDebugItems(
@@ -2085,6 +2140,7 @@ public class LawAiAnswerService {
 				String key = scoreKey(chunk.target(), chunk.chunkId());
 				Integer vectorRank = vectorRank(retrieval.qdrantHits(), key);
 				LexicalSearchHit bm25Hit = retrieval.hybrid().bm25Hit(key);
+				LexicalVariantFusion.Hit bm25VariantHit = retrieval.hybrid().bm25VariantHit(key);
 				ReciprocalRankFusion.RrfHit fusedHit = documentExpansionFused
 					? retrieval.hybrid().documentExpansionFusedHit(key)
 					: retrieval.hybrid().fusedHit(key);
@@ -2111,6 +2167,7 @@ public class LawAiAnswerService {
 					chunk.sourcePath(),
 					vectorRank,
 					bm25Hit == null ? null : bm25Hit.rank(),
+					bm25VariantHit == null ? Map.of() : bm25VariantHit.variantRanks(),
 					fusedHit == null ? null : fusedRank,
 					retrieval.hybrid().coverageRank(key),
 					coverageRescue == null ? null : coverageRescue.anchorCandidateKey(),
@@ -10744,6 +10801,54 @@ public class LawAiAnswerService {
 		);
 	}
 
+	private GroupBalancedBm25SearchService.Result disabledBm25VariantResult() {
+		return new GroupBalancedBm25SearchService.Result(
+			GroupBalancedBm25SearchService.Status.DISABLED,
+			List.of(),
+			List.of(),
+			Map.of(),
+			List.of(),
+			0,
+			0,
+			0
+		);
+	}
+
+	private GroupBalancedBm25SearchService.Result joinBm25VariantFuture(
+		CompletableFuture<GroupBalancedBm25SearchService.Result> future
+	) {
+		try {
+			return future.get(BM25_SHADOW_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+		} catch (TimeoutException exception) {
+			future.cancel(true);
+			log.warn("Group-balanced BM25 shadow timed out after {}ms.", BM25_SHADOW_TIMEOUT_MILLIS);
+			return failedBm25VariantResult("VARIANT_ASYNC_TIMEOUT");
+		} catch (InterruptedException exception) {
+			Thread.currentThread().interrupt();
+			return failedBm25VariantResult("VARIANT_ASYNC_INTERRUPTED");
+		} catch (java.util.concurrent.ExecutionException exception) {
+			Throwable cause = exception.getCause();
+			log.warn(
+				"Group-balanced BM25 shadow failed closed. failureType={}",
+				cause == null ? exception.getClass().getSimpleName() : cause.getClass().getSimpleName()
+			);
+			return failedBm25VariantResult("VARIANT_ASYNC_FAILED");
+		}
+	}
+
+	private GroupBalancedBm25SearchService.Result failedBm25VariantResult(String reasonCode) {
+		return new GroupBalancedBm25SearchService.Result(
+			GroupBalancedBm25SearchService.Status.FAILED,
+			List.of(reasonCode),
+			List.of(),
+			Map.of(),
+			List.of(),
+			0,
+			0,
+			0
+		);
+	}
+
 	private DocumentCandidateExpansion.Result fallbackDocumentExpansionResult() {
 		return new DocumentCandidateExpansion.Result(
 			List.of(),
@@ -11029,6 +11134,8 @@ public class LawAiAnswerService {
 		List<LexicalSearchHit> bm25Hits,
 		List<ReciprocalRankFusion.RrfHit> fusedHits,
 		List<LawSemanticChunkRow> bm25Chunks,
+		GroupBalancedBm25SearchService.Result bm25Variant,
+		List<LawSemanticChunkRow> bm25VariantChunks,
 		List<LawSemanticChunkRow> fusedChunks,
 		List<DocumentCandidateExpansion.Hit> documentExpansionHits,
 		List<LawSemanticChunkRow> documentExpansionChunks,
@@ -11045,6 +11152,8 @@ public class LawAiAnswerService {
 			bm25Hits = bm25Hits == null ? List.of() : List.copyOf(bm25Hits);
 			fusedHits = fusedHits == null ? List.of() : List.copyOf(fusedHits);
 			bm25Chunks = bm25Chunks == null ? List.of() : List.copyOf(bm25Chunks);
+			bm25Variant = bm25Variant == null ? disabledBm25Variant() : bm25Variant;
+			bm25VariantChunks = bm25VariantChunks == null ? List.of() : List.copyOf(bm25VariantChunks);
 			fusedChunks = fusedChunks == null ? List.of() : List.copyOf(fusedChunks);
 			documentExpansionHits = documentExpansionHits == null ? List.of() : List.copyOf(documentExpansionHits);
 			documentExpansionChunks = documentExpansionChunks == null ? List.of() : List.copyOf(documentExpansionChunks);
@@ -11068,15 +11177,29 @@ public class LawAiAnswerService {
 
 		private static HybridRetrieval empty() {
 			return new HybridRetrieval(
-				List.of(), List.of(), List.of(), List.of(),
+				List.of(), List.of(), List.of(), disabledBm25Variant(), List.of(), List.of(),
 				List.of(), List.of(), List.of(), List.of(), DocumentCandidateExpansion.Status.DISABLED, List.of(),
 				List.of(), List.of(), List.of(), CoverageAwareFusion.Status.DISABLED
+			);
+		}
+
+		private static GroupBalancedBm25SearchService.Result disabledBm25Variant() {
+			return new GroupBalancedBm25SearchService.Result(
+				GroupBalancedBm25SearchService.Status.DISABLED,
+				List.of(), List.of(), Map.of(), List.of(), 0, 0, 0
 			);
 		}
 
 		private LexicalSearchHit bm25Hit(String candidateKey) {
 			return bm25Hits.stream()
 				.filter(hit -> (hit.target() + ':' + hit.chunkId()).equals(candidateKey))
+				.findFirst()
+				.orElse(null);
+		}
+
+		private LexicalVariantFusion.Hit bm25VariantHit(String candidateKey) {
+			return bm25Variant.fusedHits().stream()
+				.filter(hit -> hit.candidateKey().equals(candidateKey))
 				.findFirst()
 				.orElse(null);
 		}

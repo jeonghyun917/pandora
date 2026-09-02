@@ -1,9 +1,14 @@
 package com.kaces.pandora.common.text;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 
 public record QuestionSearchPlan(
 	String question,
@@ -20,12 +25,73 @@ public record QuestionSearchPlan(
 	private static final int MAX_LEXICAL_KEYWORDS = 48;
 	private static final int MAX_FOCUSED_KEYWORDS = 18;
 	private static final int MAX_EXPANDED_QUERIES = 4;
+	private static final int MAX_BM25_VARIANTS = 4;
+
+	public record LexicalVariant(
+		String id,
+		String query,
+		List<String> plannedKeywords,
+		String tokenSetHash
+	) {
+		public LexicalVariant {
+			plannedKeywords = plannedKeywords == null ? List.of() : List.copyOf(plannedKeywords);
+		}
+	}
 
 	public List<String> bm25Keywords() {
 		LinkedHashSet<String> prioritized = new LinkedHashSet<>();
 		addAll(prioritized, focusedKeywords);
 		addAll(prioritized, lexicalKeywords);
 		return cleanKeywords(prioritized, MAX_LEXICAL_KEYWORDS);
+	}
+
+	public List<LexicalVariant> bm25Variants() {
+		List<VariantDraft> drafts = new ArrayList<>();
+		drafts.add(new VariantDraft("original-focused", question, focusedKeywords));
+
+		List<String> intentTypes = prioritizedIntentTypes(question, profile.intentTypes());
+		LinkedHashSet<String> entityIntentTerms = new LinkedHashSet<>();
+		if (!profile.entities().isEmpty()) {
+			QuestionEntity entity = profile.entities().get(0);
+			addTerm(entityIntentTerms, entity.label());
+			addLimitedTerms(entityIntentTerms, entity.focusedKeywords(), 3);
+		} else {
+			addFirstTerms(entityIntentTerms, profile.conceptGroups(), 2);
+		}
+		addIntentTerms(entityIntentTerms, intentTypes, 4);
+		drafts.add(draft("entity-intent", entityIntentTerms));
+
+		LinkedHashSet<String> directEvidenceTerms = new LinkedHashSet<>();
+		addFirstTerms(directEvidenceTerms, profile.directEvidenceGroups(), 4);
+		if (!profile.entities().isEmpty()) {
+			addTerm(directEvidenceTerms, profile.entities().get(0).label());
+		} else {
+			addFirstTerms(directEvidenceTerms, profile.conceptGroups(), 2);
+		}
+		drafts.add(draft("direct-evidence", directEvidenceTerms));
+
+		LinkedHashSet<String> synonymIntentTerms = new LinkedHashSet<>();
+		addFirstTerms(synonymIntentTerms, profile.synonymGroups(), 4);
+		addIntentTerms(synonymIntentTerms, intentTypes, 4);
+		drafts.add(draft("synonym-intent", synonymIntentTerms));
+
+		LinkedHashSet<String> hashes = new LinkedHashSet<>();
+		List<LexicalVariant> variants = new ArrayList<>();
+		for (VariantDraft draft : drafts) {
+			TreeSet<String> tokens = substantiveTokens(draft.query(), draft.plannedKeywords());
+			if (tokens.isEmpty()) {
+				continue;
+			}
+			String hash = sha256(String.join("\n", tokens));
+			if (!hashes.add(hash)) {
+				continue;
+			}
+			variants.add(new LexicalVariant(draft.id(), draft.query(), draft.plannedKeywords(), hash));
+			if (variants.size() >= MAX_BM25_VARIANTS) {
+				break;
+			}
+		}
+		return List.copyOf(variants);
 	}
 
 	public DocumentSearchAnchor documentSearchAnchor() {
@@ -130,6 +196,54 @@ public record QuestionSearchPlan(
 					queries.add(query);
 				}
 			}
+		}
+	}
+
+	private static void addIntentTerms(Set<String> target, List<String> intentTypes, int limit) {
+		if (intentTypes == null || limit <= 0) {
+			return;
+		}
+		for (String intentType : intentTypes) {
+			addLimitedTerms(target, QuestionIntentDictionary.values("intent." + intentType + ".terms", List.of()), limit);
+			if (target.size() >= limit) {
+				return;
+			}
+		}
+	}
+
+	private static VariantDraft draft(String id, Set<String> terms) {
+		List<String> keywords = terms == null ? List.of() : List.copyOf(terms);
+		return new VariantDraft(id, queryFromTerms(terms, 10), keywords);
+	}
+
+	private static TreeSet<String> substantiveTokens(String query, List<String> plannedKeywords) {
+		TreeSet<String> tokens = new TreeSet<>();
+		List<String> sources = new ArrayList<>();
+		sources.add(query);
+		if (plannedKeywords != null) {
+			sources.addAll(plannedKeywords);
+		}
+		for (String source : sources) {
+			if (source == null || source.isBlank()) {
+				continue;
+			}
+			for (String part : source.replaceAll("[^\\p{IsHangul}\\p{Alnum}]+", " ").trim().split("\\s+")) {
+				String normalized = KoreanQueryNormalizer.normalizeQueryTerm(part);
+				if (normalized.length() >= 2 && !KoreanQueryNormalizer.isWeakQuestionTerm(normalized)) {
+					tokens.add(normalized);
+				}
+			}
+		}
+		return tokens;
+	}
+
+	private static String sha256(String value) {
+		try {
+			return HexFormat.of().formatHex(
+				MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))
+			);
+		} catch (NoSuchAlgorithmException exception) {
+			throw new IllegalStateException("SHA-256 unavailable", exception);
 		}
 	}
 
@@ -374,5 +488,13 @@ public record QuestionSearchPlan(
 			.distinct()
 			.limit(limit)
 			.toList();
+	}
+
+	private record VariantDraft(String id, String query, List<String> plannedKeywords) {
+		private VariantDraft {
+			id = id == null ? "" : id.trim();
+			query = query == null ? "" : query.replaceAll("\\s+", " ").trim();
+			plannedKeywords = plannedKeywords == null ? List.of() : List.copyOf(plannedKeywords);
+		}
 	}
 }

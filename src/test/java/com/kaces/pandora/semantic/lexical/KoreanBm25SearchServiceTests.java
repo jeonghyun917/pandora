@@ -1,6 +1,7 @@
 package com.kaces.pandora.semantic.lexical;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -90,7 +91,12 @@ class KoreanBm25SearchServiceTests {
 		when(mapper.findBm25TermMatches(eq("revision-c"), anyList(), anyList()))
 			.thenThrow(new IllegalStateException("query timeout"));
 
-		assertThat(service(mapper).search("검사", List.of("law"), 10)).isEmpty();
+		KoreanBm25SearchService service = service(mapper);
+
+		assertThat(service.search("검사", List.of("law"), 10)).isEmpty();
+		assertThatThrownBy(() -> service.searchStrict("검사", List.of(), List.of("law"), 10))
+			.isInstanceOf(IllegalStateException.class)
+			.hasMessageContaining("query timeout");
 	}
 
 	@Test
