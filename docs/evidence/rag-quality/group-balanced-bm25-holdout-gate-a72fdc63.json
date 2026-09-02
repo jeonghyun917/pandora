@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "status": "GATE_PASS",
+  "eligible": true,
+  "policy": {
+    "id": "group-balanced-bm25-shadow-v1",
+    "configHash": "e7b08ced10e7fd56f1dbfda7822dccb019aec056cf31ea16fca24604cbd1576a"
+  },
+  "addedGroups": [],
+  "summaries": {
+    "run1": {
+      "control": {
+        "caseCount": 57,
+        "allRequired": 10,
+        "anyRequired": 18,
+        "matchedGroups": 42
+      },
+      "shadow": {
+        "caseCount": 57,
+        "allRequired": 10,
+        "anyRequired": 18,
+        "matchedGroups": 42
+      }
+    },
+    "run2": {
+      "control": {
+        "caseCount": 57,
+        "allRequired": 10,
+        "anyRequired": 18,
+        "matchedGroups": 42
+      },
+      "shadow": {
+        "caseCount": 57,
+        "allRequired": 10,
+        "anyRequired": 18,
+        "matchedGroups": 42
+      }
+    }
+  },
+  "provenance": {
+    "trainingManifestHash": "70a5057f4db3ba1c909a6de715382e90982e68e54d7b8eaaac376f7178557acc",
+    "trainingSplitName": "task15-group-balanced-bm25-holdout-v1",
+    "datasetHash": "322dee52b2c78576754fe726ac3611a8b677bec9cbe7697684f9c1172d0308a6",
+    "selectionHash": "0bd9f9d3516038bd91c7b091b5e68e9e7a1f00b555263890563d802202ee93a9",
+    "runtimeInstanceId": "82ae43b3-b163-4311-afe4-d845a4f8b8dd",
+    "runtimeArtifactSha256": "84d029471157a445a2a30fef106d86a47044a208c5e1731c9943e4766abaa02e",
+    "runtimeConfigSha256": "e7b08ced10e7fd56f1dbfda7822dccb019aec056cf31ea16fca24604cbd1576a",
+    "indexRevision": "726f3c4dd53d09a99bb277ec85cae47270b7613618d23300c34a6c197eac7285",
+    "lexicalRevision": "da8d51cecea3bd10ce9ba7eb40c2a25015d2166e983d836018616377de9bb9aa",
+    "qdrantReady": true,
+    "qdrantSearchFailureCount": 0
+  }
+}
