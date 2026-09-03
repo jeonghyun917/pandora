@@ -23,14 +23,19 @@ class ProcedureEvidenceCompletenessPolicyTests {
 		LawSemanticChunkRow complete = chunk(
 			102L,
 			"정보화사업 보안성 검토 안내서",
-			"요청기관이 보안성 검토를 요청하면 검토기관이 검토를 수행한 뒤 요청기관에 결과를 통보한다."
+			"요청기관이 보안성 검토를 요청하면 검토기관이 검토를 수행한 뒤 요청기관에 검토 결과를 통보한다."
+		);
+		LawSemanticChunkRow looseWordMatch = chunk(
+			103L,
+			"정보화사업 보안성 검토 안내서",
+			"검토 요청 후 조치 결과를 반영한다. 관련 일반 사항은 담당자에게 별도로 통보한다."
 		);
 
 		ProcedureEvidenceCompletenessPolicy.Result result = policy.apply(
 			"보안성검토 절차는 어떻게 돼?",
 			List.of(partial),
-			List.of(partial, complete),
-			Map.of("official_doc:101", 8.0, "official_doc:102", 3.0),
+			List.of(partial, looseWordMatch, complete),
+			Map.of("official_doc:101", 8.0, "official_doc:102", 3.0, "official_doc:103", 4.0),
 			10
 		);
 

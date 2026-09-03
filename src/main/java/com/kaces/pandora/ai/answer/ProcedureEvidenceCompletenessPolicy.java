@@ -14,9 +14,9 @@ import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 final class ProcedureEvidenceCompletenessPolicy {
 
 	private static final List<List<String>> PROCEDURE_STAGE_GROUPS = List.of(
-		List.of("요청", "신청", "제출"),
-		List.of("검토", "심사", "협의"),
-		List.of("결과통보", "통보", "회신")
+		List.of("검토요청", "검토를요청", "검토신청", "검토를신청", "신청", "제출"),
+		List.of("검토수행", "검토를수행", "검토실시", "검토를실시", "총괄검토", "검토기관"),
+		List.of("결과통보", "결과를통보", "검토결과통보", "결과회신", "결과를회신")
 	);
 	private static final Set<String> GENERIC_QUERY_TERMS = Set.of(
 		"절차", "방법", "어떻게", "언제", "시기", "기한", "기간", "처리", "진행",
