@@ -338,6 +338,42 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void securityReviewTargetPreferenceDoesNotMutateImmutableJudgeScores() {
+		LawSemanticChunkRow existing = chunk(
+			401L,
+			"law",
+			"정보통신기반 보호법",
+			"대상",
+			"정보시스템 보호에 관한 일반 규정입니다."
+		);
+		LawSemanticChunkRow officialGuide = chunk(
+			402L,
+			"official_doc",
+			"정보화사업 보안성검토 가이드",
+			"보안성 검토 대상",
+			"민감정보 및 고유식별정보를 처리하는 정보시스템은 보안성 검토 대상입니다."
+		);
+		Map<String, Double> immutableJudgeScores = Map.of("law:401", 1.0);
+		LawAiAnswerService service = service();
+		try {
+			LawAiAnswerService.SecurityReviewEvidencePreference preferred =
+				service.preferOfficialSecurityReviewTargetEvidence(
+					"민감정보를 처리하는 시스템이면 보안성검토 대상이야?",
+					List.of(existing),
+					List.of(existing, officialGuide),
+					immutableJudgeScores,
+					Map.of("official_doc:402", 0.8)
+				);
+
+			assertThat(preferred.evidenceChunks()).containsExactly(officialGuide, existing);
+			assertThat(preferred.finalScoreByChunkId()).containsEntry("official_doc:402", 4.0);
+			assertThat(immutableJudgeScores).containsExactlyEntriesOf(Map.of("law:401", 1.0));
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void rejectsDirectEvidenceThatMissesConfiguredEntityAnchor() throws Exception {
 		String question = "전자정부 성과관리 실행계획의 예비검토는 어떤 사업을 대상으로 하는거야?";
 		LawSemanticChunkRow unrelatedSecurityReview = chunk(

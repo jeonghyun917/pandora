@@ -1576,13 +1576,15 @@ public class LawAiAnswerService {
 			evidenceChunks = discoveryPreservedChunks;
 		}
 		evidenceChunks = filterConfiguredEntityAnchorChunks(evidenceChunks, queryPlan.profile());
-		evidenceChunks = preferOfficialSecurityReviewTargetEvidence(
+		SecurityReviewEvidencePreference securityReviewPreference = preferOfficialSecurityReviewTargetEvidence(
 			normalized.query(),
 			evidenceChunks,
 			judgeContextChunks,
 			finalScoreByChunkId,
 			combinedScoreByChunkId
 		);
+		evidenceChunks = securityReviewPreference.evidenceChunks();
+		finalScoreByChunkId = securityReviewPreference.finalScoreByChunkId();
 		List<LawSemanticChunkRow> evidenceAfterNoiseFilter = evidenceChunks.stream()
 			.filter(chunk -> !isForcedExcludedAnswerContextChunk(chunk, normalized.query()))
 			.filter(chunk -> !isLowValueAnswerContextChunk(chunk, normalized.query())
@@ -5957,7 +5959,7 @@ public class LawAiAnswerService {
 		return Map.copyOf(scores);
 	}
 
-	private List<LawSemanticChunkRow> preferOfficialSecurityReviewTargetEvidence(
+	SecurityReviewEvidencePreference preferOfficialSecurityReviewTargetEvidence(
 		String query,
 		List<LawSemanticChunkRow> evidenceChunks,
 		List<LawSemanticChunkRow> candidateChunks,
@@ -5965,17 +5967,18 @@ public class LawAiAnswerService {
 		Map<String, Double> combinedScoreByChunkId
 	) {
 		if (!isSecurityReviewQuestion(queryTerms(query)) || !normalizeForMatch(query).contains("대상")) {
-			return evidenceChunks;
+			return new SecurityReviewEvidencePreference(evidenceChunks, finalScoreByChunkId);
 		}
 		List<LawSemanticChunkRow> officialGuideChunks = candidateChunks.stream()
 			.filter(this::isOfficialSecurityReviewGuideTargetChunk)
 			.limit(2)
 			.toList();
 		if (officialGuideChunks.isEmpty()) {
-			return evidenceChunks;
+			return new SecurityReviewEvidencePreference(evidenceChunks, finalScoreByChunkId);
 		}
+		Map<String, Double> preferredScores = new HashMap<>(finalScoreByChunkId);
 		double bestEvidenceScore = evidenceChunks.stream()
-			.mapToDouble(chunk -> finalScoreByChunkId.getOrDefault(scoreKey(chunk.target(), chunk.chunkId()), 0.0))
+			.mapToDouble(chunk -> preferredScores.getOrDefault(scoreKey(chunk.target(), chunk.chunkId()), 0.0))
 			.max()
 			.orElse(0.0);
 		java.util.LinkedHashMap<String, LawSemanticChunkRow> ordered = new java.util.LinkedHashMap<>();
@@ -5986,13 +5989,22 @@ public class LawAiAnswerService {
 				key,
 				combinedScoreByChunkId.getOrDefault(key, 0.0)
 			);
-			finalScoreByChunkId.put(key, Math.max(currentScore, bestEvidenceScore + 3.0 - (i * 0.05)));
+			preferredScores.put(key, Math.max(currentScore, bestEvidenceScore + 3.0 - (i * 0.05)));
 			ordered.put(key, chunk);
 		}
 		for (LawSemanticChunkRow chunk : evidenceChunks) {
 			ordered.putIfAbsent(scoreKey(chunk.target(), chunk.chunkId()), chunk);
 		}
-		return List.copyOf(ordered.values());
+		return new SecurityReviewEvidencePreference(
+			List.copyOf(ordered.values()),
+			Map.copyOf(preferredScores)
+		);
+	}
+
+	record SecurityReviewEvidencePreference(
+		List<LawSemanticChunkRow> evidenceChunks,
+		Map<String, Double> finalScoreByChunkId
+	) {
 	}
 
 	private boolean isOfficialSecurityReviewGuideTargetChunk(LawSemanticChunkRow chunk) {
