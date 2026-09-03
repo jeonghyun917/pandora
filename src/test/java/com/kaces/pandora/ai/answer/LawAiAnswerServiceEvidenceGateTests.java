@@ -70,6 +70,37 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void authoritativeAlreadyCompleteProcedureMarksEarlierConceptSelectionAsDirect() throws Exception {
+		LawSemanticChunkRow complete = chunk(
+			103L,
+			"official_doc",
+			"정보화사업 보안성 검토 안내서",
+			"절차",
+			"요청기관이 보안성 검토를 요청하면 검토기관이 검토한 뒤 결과를 통보한다."
+		);
+		EvidenceJudge.Result judged = result(
+			List.of(complete), false, true, false, true, 1, 1, 1, "concept_relevant"
+		);
+		LawAiAnswerService service = service();
+		try {
+			service.configureLexicalVariantProperties(new LawAiLexicalVariantProperties(true, true, 4, 60.0));
+
+			EvidenceJudge.Result preserved = preserveCompleteProcedureEvidenceChunks(
+				service,
+				judged,
+				List.of(complete),
+				"보안성검토 절차는 어떻게 돼?"
+			);
+
+			assertThat(preserved.selectionPolicy()).endsWith("+complete_procedure_preserve");
+			assertThat(LawAiAnswerService.evidenceRoleForSelectionPolicy(preserved.selectionPolicy()))
+				.isEqualTo("direct");
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void controlLexicalVariantDoesNotChangeProcedureGrounds() throws Exception {
 		LawSemanticChunkRow partial = chunk(
 			201L, "official_doc", "정보화사업 보안성 검토 안내서", "절차", "검토를 요청하고 수행한다."

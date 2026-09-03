@@ -5565,7 +5565,7 @@ public class LawAiAnswerService {
 			finalScoreByChunkId,
 			DEFAULT_LIMIT
 		);
-		if (!result.changed()) {
+		if (!result.changed() && !"COMPLETE_PROCEDURE_ALREADY_SELECTED".equals(result.reason())) {
 			return judgedEvidence;
 		}
 		return new EvidenceJudge.Result(

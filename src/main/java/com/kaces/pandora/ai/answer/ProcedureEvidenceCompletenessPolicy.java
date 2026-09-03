@@ -36,9 +36,13 @@ final class ProcedureEvidenceCompletenessPolicy {
 			return Result.unchanged(selected, scores);
 		}
 		QuestionIntentProfile profile = QuestionIntentProfile.from(query);
-		if (!profile.intentTypes().contains("procedure")
-			|| selected.stream().limit(limit).anyMatch(this::coversCompleteProcedure)) {
+		if (!profile.intentTypes().contains("procedure")) {
 			return Result.unchanged(selected, scores);
+		}
+		if (selected.stream().limit(limit).anyMatch(chunk ->
+			coversCompleteProcedure(chunk) && alignsWithQuestionDomain(chunk, profile)
+		)) {
+			return new Result(selected, scores, false, "COMPLETE_PROCEDURE_ALREADY_SELECTED");
 		}
 
 		LawSemanticChunkRow completeCandidate = candidateChunks.stream()
