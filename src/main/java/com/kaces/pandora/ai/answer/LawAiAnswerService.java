@@ -3366,6 +3366,10 @@ public class LawAiAnswerService {
 	}
 
 	private String contextSnippet(LawSemanticChunkRow chunk, String query, int limit) {
+		String numberedProcedure = completeNumberedProcedureSnippet(chunk, query);
+		if (!numberedProcedure.isBlank()) {
+			return prependMeaningfulChunkHeading(chunk, numberedProcedure);
+		}
 		String value = contextSnippet(chunk.chunkText(), query, limit);
 		return prependMeaningfulChunkHeading(chunk, value);
 	}

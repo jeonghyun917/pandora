@@ -147,6 +147,32 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void completeNumberedProcedureAnswerContextStartsAtTheProcedureFlow() throws Exception {
+		String prefix = ("보안성 검토 대상 사업 식별과 담당기관 역할을 설명한다. ").repeat(30);
+		LawSemanticChunkRow complete = chunk(
+			311L,
+			"official_doc",
+			"정보화사업 보안성 검토 안내서",
+			"추진절차",
+			prefix
+				+ "② 보안성 검토요청: 자체 보안대책과 사업계획서를 첨부하여 검토를 요청한다. "
+				+ "③ 보안성 검토 수행: 검토기관이 보안대책의 적절성을 검토한다. "
+				+ "④ 검토결과 통보: 검토기관이 요청기관에 검토결과를 통보한다."
+		);
+		LawAiAnswerService service = service();
+		try {
+			String context = contextSnippet(service, complete, "보안성검토 절차는 어떻게 돼?", 820);
+
+			assertThat(context)
+				.contains("② 보안성 검토요청")
+				.contains("③ 보안성 검토 수행")
+				.contains("④ 검토결과 통보");
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void shadowModePreservesTheExistingControlCandidateOrder() throws Exception {
 		LawSemanticChunkRow first = chunk(10L, "law", "첫째", "제1조", "첫째 본문");
 		LawSemanticChunkRow second = chunk(20L, "law", "둘째", "제2조", "둘째 본문");
@@ -2516,6 +2542,22 @@ class LawAiAnswerServiceEvidenceGateTests {
 		);
 		method.setAccessible(true);
 		return (String) method.invoke(service, chunk, query);
+	}
+
+	private String contextSnippet(
+		LawAiAnswerService service,
+		LawSemanticChunkRow chunk,
+		String query,
+		int limit
+	) throws Exception {
+		Method method = LawAiAnswerService.class.getDeclaredMethod(
+			"contextSnippet",
+			LawSemanticChunkRow.class,
+			String.class,
+			int.class
+		);
+		method.setAccessible(true);
+		return (String) method.invoke(service, chunk, query, limit);
 	}
 
 	private boolean shouldJudgeExactCandidateText(LawAiAnswerService service, String query) throws Exception {
