@@ -374,6 +374,88 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void securityReviewExceptionPrefersOfficialSystemAccessCondition() {
+		LawSemanticChunkRow genericDefinition = chunk(
+			403L,
+			"admrul",
+			"정보보안 기본지침",
+			"정의",
+			"정보보안은 정보시스템을 보호하는 일체의 활동입니다."
+		);
+		LawSemanticChunkRow officialAccessCondition = chunk(
+			404L,
+			"official_doc",
+			"2025년 문화정보화 수준평가 매뉴얼",
+			"보안성 검토 대상",
+			"DB 구축, 콘텐츠 제작 등 용역사업 참여인력이 시스템에 접근하지 않는 사업은 보안성 검토 대상에서 제외됩니다. "
+				+ "다만 데이터 입력과 가공을 위해 시스템에 접근하는 사업은 보안성 검토 대상입니다."
+		);
+		Map<String, Double> immutableJudgeScores = Map.of("admrul:403", 1.0);
+		LawAiAnswerService service = service();
+		try {
+			LawAiAnswerService.SecurityReviewEvidencePreference preferred =
+				service.preferOfficialSecurityReviewTargetEvidence(
+					"보안성검토 생략 가능한 경우는?",
+					List.of(genericDefinition),
+					List.of(genericDefinition, officialAccessCondition),
+					immutableJudgeScores,
+					Map.of("official_doc:404", 0.8)
+				);
+
+			assertThat(preferred.evidenceChunks()).containsExactly(officialAccessCondition, genericDefinition);
+			assertThat(preferred.finalScoreByChunkId()).containsEntry("official_doc:404", 4.0);
+			assertThat(immutableJudgeScores).containsExactlyEntriesOf(Map.of("admrul:403", 1.0));
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void answerFocusSeparatesProjectReviewFromPreConsultation() throws Exception {
+		LawAiAnswerService service = service();
+		try {
+			String focus = answerFocusInstruction(service, "과업심의 한 사업은 사전협의도 꼭 해야돼?");
+
+			assertThat(focus)
+				.contains("별도 제도")
+				.contains("각 제도의 대상사업 여부를 각각 확인")
+				.contains("자동으로 충족하거나 면제");
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void answerFocusKeepsPreConsultationExceptionAndNewProjectConditionTogether() throws Exception {
+		LawAiAnswerService service = service();
+		try {
+			String focus = answerFocusInstruction(service, "정보화사업 사전협의 제외 대상은?");
+
+			assertThat(focus)
+				.contains("기관별 기준금액")
+				.contains("신규 사업")
+				.contains("함께 답하세요");
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void answerFocusKeepsSecurityReviewAccessExceptionTwoSided() throws Exception {
+		LawAiAnswerService service = service();
+		try {
+			String focus = answerFocusInstruction(service, "보안성검토 생략 가능한 경우는?");
+
+			assertThat(focus)
+				.contains("시스템 접근 여부")
+				.contains("접근하지 않는 조건")
+				.contains("접근하는 경우");
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void rejectsDirectEvidenceThatMissesConfiguredEntityAnchor() throws Exception {
 		String question = "전자정부 성과관리 실행계획의 예비검토는 어떤 사업을 대상으로 하는거야?";
 		LawSemanticChunkRow unrelatedSecurityReview = chunk(
@@ -2640,6 +2722,12 @@ class LawAiAnswerServiceEvidenceGateTests {
 		);
 		method.setAccessible(true);
 		return (String) method.invoke(service, chunk, query, limit);
+	}
+
+	private String answerFocusInstruction(LawAiAnswerService service, String query) throws Exception {
+		Method method = LawAiAnswerService.class.getDeclaredMethod("answerFocusInstruction", String.class);
+		method.setAccessible(true);
+		return (String) method.invoke(service, query);
 	}
 
 	private boolean shouldJudgeExactCandidateText(LawAiAnswerService service, String query) throws Exception {

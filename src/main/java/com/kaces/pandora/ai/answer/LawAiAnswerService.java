@@ -3397,13 +3397,35 @@ public class LawAiAnswerService {
 	// 메소드 설명: answerFocusInstruction 처리 흐름을 수행합니다.
 	private String answerFocusInstruction(String query) {
 		List<String> configuredInstructions = QuestionSearchPlan.from(query).answerFocusInstructions();
+		String normalized = normalizeForMatch(query);
+		if (isProjectReviewPreConsultationRelationQuestion(normalized)) {
+			return """
+				- 과업심의와 정보화사업 사전협의는 별도 제도입니다. 과업심의를 했다는 사실만으로 사전협의를 자동으로 충족하거나 면제한다고 답하지 마세요.
+				- 선택된 근거에서 과업심의 대상사업과 사전협의 대상사업을 나누어 설명하고, 각 제도의 대상사업 여부를 각각 확인해야 한다고 답하세요.
+				- 질문에 없는 금액, 예외 또는 세부 절차는 덧붙이지 마세요.
+				""".stripIndent().trim();
+		}
+		boolean exceptionQuestion = containsAny(normalized, "예외", "제외", "비대상", "면제", "생략", "안해도");
+		if (exceptionQuestion && isSecurityReviewQuestion(queryTerms(query))) {
+			return """
+				- 질문 의도는 보안성 검토 생략 또는 제외 조건입니다. 선택된 근거에서 시스템 접근 여부를 기준으로 답하세요.
+				- 참여 인력이 시스템에 접근하지 않는 조건과, 데이터 입력·가공 등을 위해 시스템에 접근하는 경우를 반드시 함께 대비해 답하세요.
+				- 일반적인 보안성 검토 대상 목록이나 검토 절차는 결론보다 앞세우지 마세요.
+				""".stripIndent().trim();
+		}
+		if (exceptionQuestion && isInformationSystemPreConsultationQuestion(normalized)) {
+			return """
+				- 질문 의도는 정보화사업 사전협의 제외 조건입니다. 선택된 근거의 기관별 기준금액과 제외 조건을 먼저 답하세요.
+				- 기준금액 미만이더라도 신규 사업으로 다시 대상에 포함되는 조건을 반드시 함께 답하세요.
+				- 선택된 근거에 없는 금액이나 예외는 만들지 마세요.
+				""".stripIndent().trim();
+		}
 		if (!configuredInstructions.isEmpty()) {
 			return configuredInstructions.stream()
 				.map(instruction -> instruction.startsWith("-") ? instruction : "- " + instruction)
 				.reduce((left, right) -> left + "\n" + right)
 				.orElse("");
 		}
-		String normalized = normalizeForMatch(query);
 		if (isTemporalQuestion(normalized)) {
 			return "- 질문 의도는 시기, 기간 또는 기한입니다. 평가기간, 제출기한, 완료기한처럼 날짜나 기간을 직접 말하는 근거를 먼저 답하세요.";
 		}
@@ -3425,6 +3447,7 @@ public class LawAiAnswerService {
 			if (isSecurityReviewQuestion(queryTerms(query))) {
 				return """
 					- 질문 의도는 보안성 검토의 대상 시스템 또는 대상 사업입니다. 국가정보원 검토 대상, 부처 검토 대상, 생략 대상을 구분해 먼저 답하세요.
+					- 선택된 공식 근거의 대상 목록에서 정보시스템 구축, 민감정보·고유식별정보 처리, 주요정보통신기반시설 같은 구체적 대상 유형을 직접 답하세요.
 					- 누출금지 대상정보, AI모델 공격유형, 보안관리 항목은 보안대책/검토내용입니다. 사용자가 검토 항목을 묻지 않았다면 대상 시스템의 결론으로 쓰지 마세요.
 					- 근거에 대상 범위가 불충분하면 단정하지 말고 확인이 필요한 범위를 짧게 말하세요.
 					""".stripIndent().trim();
@@ -5966,11 +5989,21 @@ public class LawAiAnswerService {
 		Map<String, Double> finalScoreByChunkId,
 		Map<String, Double> combinedScoreByChunkId
 	) {
-		if (!isSecurityReviewQuestion(queryTerms(query)) || !normalizeForMatch(query).contains("대상")) {
+		String normalizedQuery = normalizeForMatch(query);
+		if (!isSecurityReviewQuestion(queryTerms(query))) {
+			return new SecurityReviewEvidencePreference(evidenceChunks, finalScoreByChunkId);
+		}
+		boolean exceptionQuestion = containsAny(
+			normalizedQuery,
+			"예외", "제외", "비대상", "면제", "생략", "안해도"
+		);
+		if (!normalizedQuery.contains("대상") && !exceptionQuestion) {
 			return new SecurityReviewEvidencePreference(evidenceChunks, finalScoreByChunkId);
 		}
 		List<LawSemanticChunkRow> officialGuideChunks = candidateChunks.stream()
-			.filter(this::isOfficialSecurityReviewGuideTargetChunk)
+			.filter(chunk -> exceptionQuestion
+				? isOfficialSecurityReviewAccessExceptionChunk(chunk)
+				: isOfficialSecurityReviewGuideTargetChunk(chunk))
 			.limit(2)
 			.toList();
 		if (officialGuideChunks.isEmpty()) {
@@ -6016,6 +6049,27 @@ public class LawAiAnswerService {
 			|| title.contains("정보화사업보안성검토가이드")
 			|| (title.contains("보안성검토") && title.contains("가이드"));
 		return guideTitle && isSecurityReviewTargetChunk(chunk);
+	}
+
+	private boolean isOfficialSecurityReviewAccessExceptionChunk(LawSemanticChunkRow chunk) {
+		if (chunk == null || !"official_doc".equals(chunk.target())) {
+			return false;
+		}
+		String text = normalizedChunkEvidenceText(chunk);
+		boolean relevantWork = containsAny(text, "db구축", "데이터베이스구축", "콘텐츠제작");
+		boolean noAccessException = containsAny(
+			text,
+			"시스템에접근하지않는사업",
+			"시스템에접근하지않으면",
+			"시스템접근이없는"
+		);
+		boolean accessIncluded = containsAny(
+			text,
+			"시스템에접근하는사업은보안성검토대상",
+			"시스템에접근하면보안성검토대상",
+			"시스템접근이있으면보안성검토대상"
+		);
+		return relevantWork && noAccessException && accessIncluded;
 	}
 
 	private List<LawSemanticChunkRow> filterByQuestionIntent(List<LawSemanticChunkRow> chunks, String query) {
