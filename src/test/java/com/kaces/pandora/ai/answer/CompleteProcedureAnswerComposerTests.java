@@ -62,11 +62,31 @@ class CompleteProcedureAnswerComposerTests {
 		assertThat(answer).contains("② 보안성 검토요청", "③ 보안성 검토", "④ 검토결과 통보");
 	}
 
+	@Test
+	void treatsAValidatedCompleteProcedureViewAsDirectEvenWhenTheLegacyRoleIsRelatedDefinition() {
+		String answer = CompleteProcedureAnswerComposer.compose(
+			"보안성검토 절차는 어떻게 돼?",
+			List.of(ground(
+				"보안성 검토 대상 사업 식별",
+				"② 보안성 검토요청: 신청서를 제출한다. "
+					+ "③ 보안성 검토: 보안대책의 적절성을 검토한다. "
+					+ "④ 검토결과 통보: 결과서를 사업부서에 통보한다.",
+				"related_definition"
+			))
+		);
+
+		assertThat(answer).contains("② 보안성 검토요청", "③ 보안성 검토", "④ 검토결과 통보");
+	}
+
 	private LawAiAnswerGround ground(String text) {
 		return ground(text, text);
 	}
 
 	private LawAiAnswerGround ground(String matchedChildText, String snippet) {
+		return ground(matchedChildText, snippet, "direct");
+	}
+
+	private LawAiAnswerGround ground(String matchedChildText, String snippet, String evidenceRole) {
 		return new LawAiAnswerGround(
 			1,
 			84923,
@@ -88,7 +108,7 @@ class CompleteProcedureAnswerComposerTests {
 			null,
 			List.of(84923L),
 			"matched_child_only",
-			"direct"
+			evidenceRole
 		);
 	}
 }

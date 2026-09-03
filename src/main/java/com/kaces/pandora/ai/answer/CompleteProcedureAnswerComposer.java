@@ -29,7 +29,7 @@ final class CompleteProcedureAnswerComposer {
 			return null;
 		}
 		for (LawAiAnswerGround ground : grounds) {
-			if (ground == null || !"direct".equalsIgnoreCase(String.valueOf(ground.evidenceRole()))) {
+			if (ground == null) {
 				continue;
 			}
 			for (String source : candidateSources(ground)) {
