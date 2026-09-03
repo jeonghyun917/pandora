@@ -1666,7 +1666,7 @@ public class LawAiAnswerService {
 			matchedChunkByKey,
 			finalScoreByChunkId,
 			chunk -> snippet(chunk, normalized.query()),
-			isConceptRelevantPolicy(judgedEvidence.selectionPolicy()) ? "related_definition" : "direct"
+			evidenceRoleForSelectionPolicy(judgedEvidence.selectionPolicy())
 		);
 		grounds = DocumentDiscoveryPolicy.orderGrounds(normalized.query(), grounds);
 		timing.groundsMs.addAndGet(elapsedMillis(groundsStart));
@@ -8984,8 +8984,17 @@ public class LawAiAnswerService {
 		return chunks;
 	}
 
-	private boolean isConceptRelevantPolicy(String selectionPolicy) {
-		return selectionPolicy != null && selectionPolicy.contains("concept_relevant");
+	static String evidenceRoleForSelectionPolicy(String selectionPolicy) {
+		if (selectionPolicy != null && (
+			selectionPolicy.contains("complete_procedure_preserve")
+				|| selectionPolicy.contains("intent_direct_preserve")
+				|| selectionPolicy.contains("semantic_direct_preserve")
+		)) {
+			return "direct";
+		}
+		return selectionPolicy != null && selectionPolicy.contains("concept_relevant")
+			? "related_definition"
+			: "direct";
 	}
 
 	private List<LawSemanticChunkRow> queryRagLexicalChunks(

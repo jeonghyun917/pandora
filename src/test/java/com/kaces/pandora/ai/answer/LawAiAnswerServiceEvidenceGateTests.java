@@ -18,6 +18,21 @@ import org.mockito.ArgumentCaptor;
 class LawAiAnswerServiceEvidenceGateTests {
 
 	@Test
+	void directPreservationPolicyOverridesEarlierConceptRelevantClassification() {
+		assertThat(LawAiAnswerService.evidenceRoleForSelectionPolicy("concept_relevant"))
+			.isEqualTo("related_definition");
+		assertThat(LawAiAnswerService.evidenceRoleForSelectionPolicy(
+			"concept_relevant+complete_procedure_preserve"
+		)).isEqualTo("direct");
+		assertThat(LawAiAnswerService.evidenceRoleForSelectionPolicy(
+			"concept_relevant+intent_direct_preserve"
+		)).isEqualTo("direct");
+		assertThat(LawAiAnswerService.evidenceRoleForSelectionPolicy(
+			"concept_relevant+semantic_direct_preserve"
+		)).isEqualTo("direct");
+	}
+
+	@Test
 	void authoritativeLexicalVariantPreservesCompleteProcedureGround() throws Exception {
 		LawSemanticChunkRow partial = chunk(
 			101L,
