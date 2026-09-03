@@ -100,7 +100,11 @@ class LawAiEvaluationCaseCatalogTests {
 
 		LawAiEvalRequest.EvalCase preConsultation = find(cases, "pre-consultation-exception");
 		assertThat(preConsultation.requiredPropositionGroups()).containsExactly(
-			List.of("기관별 사업금액 기준 미만인 사업은 제외", "기관별 기준금액 미만 사업은 사전협의 제외")
+			List.of(
+				"기관별 사업금액 기준 미만인 사업은 제외",
+				"기관별 기준금액 미만 사업은 사전협의 제외",
+				"사업금액이 아래에 해당하는 사업은 제외하되"
+			)
 		);
 		assertThat(preConsultation.requiredConditionGroups()).containsExactly(
 			List.of("신규 사업은 금액 기준 미만이어도 사전협의 대상", "신규로 추진하는 사업은 대상에 포함")

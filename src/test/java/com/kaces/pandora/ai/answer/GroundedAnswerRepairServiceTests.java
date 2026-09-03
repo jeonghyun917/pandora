@@ -906,6 +906,57 @@ class GroundedAnswerRepairServiceTests {
 	}
 
 	@Test
+	void configuredPreConsultationExceptionRepairsFromThresholdAndOverrideAtoms() {
+		String question = "정보화사업 사전협의 제외 대상은?";
+		String premise = "사업금액이 아래에 해당하는 사업은 제외하되";
+		String central = "(중앙·공공기관) 10억원 미만.";
+		String metropolitan = "(광역·공기업) 2억원 미만.";
+		String local = "(기초·공기업) 1억원 미만.";
+		String override = "신규로 추진하는 사업은 대상에 포함.";
+		String evidence = String.join(" ", premise, central, metropolitan, local, override);
+		RecordingRewriter rewriter = RecordingRewriter.returning(evidence);
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(
+			realVerificationService(),
+			rewriter
+		);
+
+		GroundedAnswerRepairService.Result result = service.verifyAndRepair(
+			question,
+			"사전협의에서 제외되는 사업은 없습니다.",
+			List.of(ground(1, evidence, "2024년 정보화사업 사전협의 안내자료", null))
+		);
+
+		assertThat(result.insufficientEvidence()).as(result.toString()).isFalse();
+		assertThat(rewriter.atomCalls().get(0))
+			.anySatisfy(atom -> assertThat(atom).contains(premise, central))
+			.contains(metropolitan, local, override);
+	}
+
+	@Test
+	void configuredSecurityReviewExceptionRepairsFromExactAccessBoundaryAtoms() {
+		String question = "보안성검토 생략 가능한 경우는?";
+		String excludedBoundary =
+			"보안성 검토 대상: DB구축, 콘텐츠 제작 등 용역사업 참여인력이 시스템에 접근하지 않는 사업 외 모든 정보화사업.";
+		String accessOverride =
+			"단 DB구축, 콘텐츠 제작 수행 시 데이터 입력, 가공, 서비스 등을 위해 시스템에 접근하는 사업은 보안성 검토 대상.";
+		String evidence = excludedBoundary + " " + accessOverride;
+		RecordingRewriter rewriter = RecordingRewriter.returning(evidence);
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(
+			realVerificationService(),
+			rewriter
+		);
+
+		GroundedAnswerRepairService.Result result = service.verifyAndRepair(
+			question,
+			"보안성 검토는 모두 생략할 수 있습니다.",
+			List.of(ground(1, evidence, "2025년 문화정보화 수준평가 매뉴얼", null))
+		);
+
+		assertThat(result.insufficientEvidence()).as(result.toString()).isFalse();
+		assertThat(rewriter.atomCalls().get(0)).contains(excludedBoundary, accessOverride);
+	}
+
+	@Test
 	void autonomyProcedureFallsBackToTheThreeVerifiedOfficialProcedureAtoms() {
 		String question = "자치분권 사전협의 요청할 때 어떤 절차로 검토돼?";
 		String request =

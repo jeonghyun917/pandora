@@ -21,6 +21,43 @@ class QuestionIntentProfileQualityPolicyTests {
 	}
 
 	@Test
+	void preConsultationExceptionPolicyPreservesThresholdsAndNewProjectOverride() {
+		QuestionIntentProfile profile = QuestionIntentProfile.from(
+			"정보화사업 사전협의 제외 대상은?"
+		);
+
+		assertThat(profile.matchedPolicyIds()).contains("pre_consultation_exception");
+		assertThat(profile.configuredAnswerCoverageGroups()).containsExactly(
+			List.of("사업금액이 아래에 해당하는 사업은 제외", "사업금액이 아래에 해당하는 사업은 제외하되"),
+			List.of("중앙·공공기관) 10억원 미만", "중앙·공공기관 10억원 미만"),
+			List.of("광역·공기업) 2억원 미만", "광역·공기업 2억원 미만"),
+			List.of("기초·공기업) 1억원 미만", "기초·공기업 1억원 미만"),
+			List.of("신규로 추진하는 사업은 대상에 포함", "신규 사업은 대상에 포함")
+		);
+		assertThat(profile.policySearchKeywords()).isEmpty();
+	}
+
+	@Test
+	void securityReviewExceptionPolicyPreservesAccessBoundary() {
+		QuestionIntentProfile profile = QuestionIntentProfile.from(
+			"보안성검토 생략 가능한 경우는?"
+		);
+
+		assertThat(profile.matchedPolicyIds()).contains("security_review_exception");
+		assertThat(profile.configuredAnswerCoverageGroups()).containsExactly(
+			List.of(
+				"시스템에 접근하지 않는 사업 외 모든 정보화사업",
+				"참여인력이 시스템에 접근하지 않는 사업 외 모든 정보화사업"
+			),
+			List.of(
+				"시스템에 접근하는 사업은 보안성 검토 대상",
+				"시스템에 접근하는 사업은 보안성검토 대상"
+			)
+		);
+		assertThat(profile.policySearchKeywords()).isEmpty();
+	}
+
+	@Test
 	void permissionManagementPolicyRequiresLifecycleEvidenceBeyondNavigationText() {
 		QuestionIntentProfile discovery = QuestionIntentProfile.from("IRM 사용자 권한 가이드");
 		assertThat(discovery.documentDiscoveryQuestion()).isTrue();
