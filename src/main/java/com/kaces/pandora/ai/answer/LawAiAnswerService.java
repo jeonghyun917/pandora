@@ -3436,7 +3436,17 @@ public class LawAiAnswerService {
 		List<LawSemanticChunkRow> forcedFiltered = selected.stream()
 			.filter(chunk -> !isForcedExcludedAnswerContextChunk(chunk, query))
 			.toList();
-		return forcedFiltered.isEmpty() ? List.copyOf(selected) : forcedFiltered;
+		List<LawSemanticChunkRow> finalSelected = forcedFiltered.isEmpty() ? List.copyOf(selected) : forcedFiltered;
+		if (!lexicalVariantProperties.authoritative() || finalSelected.isEmpty()) {
+			return finalSelected;
+		}
+		return procedureEvidenceCompletenessPolicy.apply(
+			query,
+			finalSelected,
+			displayChunks,
+			Map.of(),
+			finalSelected.size()
+		).chunks();
 	}
 
 	private List<LawSemanticChunkRow> answerContextCandidates(List<LawSemanticChunkRow> displayChunks, String query) {

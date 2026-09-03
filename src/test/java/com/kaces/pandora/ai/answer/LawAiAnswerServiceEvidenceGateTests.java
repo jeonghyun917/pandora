@@ -83,6 +83,44 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void authoritativeLexicalVariantPromotesCompleteProcedureGroundIntoFinalAnswerContext() throws Exception {
+		List<LawSemanticChunkRow> displayChunks = new java.util.ArrayList<>();
+		for (long chunkId = 301L; chunkId <= 308L; chunkId++) {
+			displayChunks.add(chunk(
+				chunkId,
+				"official_doc",
+				"정보화사업 보안성 검토 안내서",
+				"절차",
+				"보안성 검토 요청과 관련된 일부 안내다."
+			));
+		}
+		LawSemanticChunkRow complete = chunk(
+			309L,
+			"official_doc",
+			"정보화사업 보안성 검토 안내서",
+			"추진절차",
+			"보안성 검토를 요청하고 검토기관이 총괄 검토한 뒤 검토 결과를 통보한다."
+		);
+		displayChunks.add(complete);
+		LawAiAnswerService service = service();
+		try {
+			service.configureLexicalVariantProperties(new LawAiLexicalVariantProperties(true, true, 4, 60.0));
+
+			List<LawSemanticChunkRow> selected = selectAnswerContextChunks(
+				service,
+				displayChunks,
+				"보안성검토 절차는 어떻게 돼?"
+			);
+
+			assertThat(selected).hasSize(8);
+			assertThat(selected).extracting(LawSemanticChunkRow::chunkId)
+				.containsExactly(309L, 301L, 302L, 303L, 304L, 305L, 306L, 307L);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void shadowModePreservesTheExistingControlCandidateOrder() throws Exception {
 		LawSemanticChunkRow first = chunk(10L, "law", "첫째", "제1조", "첫째 본문");
 		LawSemanticChunkRow second = chunk(20L, "law", "둘째", "제2조", "둘째 본문");
@@ -2422,6 +2460,21 @@ class LawAiAnswerServiceEvidenceGateTests {
 	) throws Exception {
 		Method method = LawAiAnswerService.class.getDeclaredMethod(
 			"filterByQuestionIntent",
+			List.class,
+			String.class
+		);
+		method.setAccessible(true);
+		return (List<LawSemanticChunkRow>) method.invoke(service, chunks, query);
+	}
+
+	@SuppressWarnings("unchecked")
+	private List<LawSemanticChunkRow> selectAnswerContextChunks(
+		LawAiAnswerService service,
+		List<LawSemanticChunkRow> chunks,
+		String query
+	) throws Exception {
+		Method method = LawAiAnswerService.class.getDeclaredMethod(
+			"selectAnswerContextChunks",
 			List.class,
 			String.class
 		);
