@@ -65,7 +65,7 @@ final class ProcedureEvidenceCompletenessPolicy {
 		return new Result(preserved, Map.copyOf(updatedScores), true, "COMPLETE_PROCEDURE_GROUND_PRESERVED");
 	}
 
-	private boolean coversCompleteProcedure(LawSemanticChunkRow chunk) {
+	boolean coversCompleteProcedure(LawSemanticChunkRow chunk) {
 		String text = normalizedChunkText(chunk);
 		int searchFrom = 0;
 		for (List<String> group : PROCEDURE_STAGE_GROUPS) {

@@ -3846,7 +3846,51 @@ public class LawAiAnswerService {
 	}
 
 	private String snippet(LawSemanticChunkRow chunk, String query) {
+		String numberedProcedure = completeNumberedProcedureSnippet(chunk, query);
+		if (!numberedProcedure.isBlank()) {
+			return prependMeaningfulChunkHeading(chunk, numberedProcedure);
+		}
 		return prependMeaningfulChunkHeading(chunk, snippet(chunk.chunkText(), query));
+	}
+
+	private String completeNumberedProcedureSnippet(LawSemanticChunkRow chunk, String query) {
+		if (chunk == null
+			|| chunk.chunkText() == null
+			|| !QuestionIntentProfile.from(query).intentTypes().contains("procedure")
+			|| !procedureEvidenceCompletenessPolicy.coversCompleteProcedure(chunk)) {
+			return "";
+		}
+		String text = cleanDisplayText(chunk.chunkText());
+		int requestStage = numberedStageIndex(text, 2, 0);
+		int reviewStage = numberedStageIndex(text, 3, Math.max(0, requestStage + 1));
+		int resultStage = numberedStageIndex(text, 4, Math.max(0, reviewStage + 1));
+		if (requestStage < 0 || reviewStage < 0 || resultStage < 0
+			|| !containsAny(normalizeForMatch(text.substring(requestStage, reviewStage)), "요청", "신청", "제출")
+			|| !normalizeForMatch(text.substring(reviewStage, resultStage)).contains("검토")) {
+			return "";
+		}
+		int nextStage = numberedStageIndex(text, 5, resultStage + 1);
+		int end = nextStage >= 0 ? nextStage : Math.min(text.length(), requestStage + 900);
+		String resultText = normalizeForMatch(text.substring(resultStage, end));
+		if (!resultText.contains("결과") || !containsAny(resultText, "통보", "회신")) {
+			return "";
+		}
+		String value = text.substring(requestStage, end).trim();
+		return (requestStage > 0 ? "..." : "") + value + (end < text.length() ? "..." : "");
+	}
+
+	private int numberedStageIndex(String text, int stage, int searchFrom) {
+		String circled = switch (stage) {
+			case 2 -> "②";
+			case 3 -> "③";
+			case 4 -> "④";
+			case 5 -> "⑤";
+			default -> "";
+		};
+		java.util.regex.Matcher matcher = java.util.regex.Pattern
+			.compile("(?:" + java.util.regex.Pattern.quote(circled) + "|(?<!\\d)" + stage + "[.)])")
+			.matcher(text);
+		return matcher.find(Math.max(0, searchFrom)) ? matcher.start() : -1;
 	}
 
 	private String prependMeaningfulChunkHeading(LawSemanticChunkRow chunk, String value) {
