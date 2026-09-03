@@ -74,7 +74,8 @@ final class ClaimEvidenceAtomizer {
 	);
 	private static final Pattern INDEPENDENT_ASSERTION_ENDING = Pattern.compile(
 		"(?:합니다|됩니다|입니다|있습니다|없습니다|아닙니다"
-			+ "|한다|된다|이다|있다|없다|아니다|함|됨|임)[.!?\\s]*$"
+			+ "|한다|된다|이다|있다|없다|아니다|함|됨|임"
+			+ "|대상(?:에)?\\s*포함|대상|제외)[.!?\\s]*$"
 	);
 	private static final Pattern RESTRICTIVE_REMAINDER = Pattern.compile(
 		"(?:필요(?:합니다|하다|함)|요건(?:입니다|이다|임)|조건(?:입니다|이다|임)"

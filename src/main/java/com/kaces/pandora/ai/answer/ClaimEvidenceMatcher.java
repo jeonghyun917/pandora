@@ -438,6 +438,14 @@ public class ClaimEvidenceMatcher {
 				&& !requiredItemEnumerationAligned(claimSemantics, evidenceSemantics)) {
 				continue;
 			}
+			if (universalComplementContradictsIncludedSubject(
+				claimSemantics,
+				evidenceSemantics,
+				sentence.anchorContext()
+			)) {
+				contradicted.add(new Candidate(sentence, overlap, coverage, overlap + (coverage * 3.0d) + 2.0d));
+				continue;
+			}
 			Relation relation = relation(claimSemantics, evidenceSemantics, sentence.anchorContext());
 			double score = overlap + (coverage * 3.0d)
 				+ (relation == Relation.COMPATIBLE ? 1.5d : 0.0d)
@@ -554,6 +562,32 @@ public class ClaimEvidenceMatcher {
 		}
 		return (double) overlapCount(propositionTokens, evidenceTokens)
 			/ new LinkedHashSet<>(propositionTokens).size();
+	}
+
+	private boolean universalComplementContradictsIncludedSubject(
+		ClaimSemantics claim,
+		ClaimSemantics evidence,
+		String evidenceAnchorContext
+	) {
+		String claimText = claim.normalizedText();
+		String evidenceText = evidence.normalizedText();
+		int complement = evidenceText.indexOf("외모든");
+		if (complement <= 0
+			|| claim.targetMode() != TargetMode.INCLUDED
+			|| !claimText.contains("않")) {
+			return false;
+		}
+		String excludedPrefix = evidenceText.substring(0, complement);
+		int subjectEnd = claimText.indexOf("사업도");
+		String excludedSubject = subjectEnd < 0
+			? ""
+			: claimText.substring(0, subjectEnd + "사업".length());
+		Set<String> contextScopes = ClaimSemantics.namedTargetScopes(evidenceAnchorContext);
+		return excludedPrefix.contains("않")
+			&& excludedSubject.length() >= 6
+			&& excludedPrefix.contains(excludedSubject)
+			&& !contextScopes.isEmpty()
+			&& contextScopes.stream().anyMatch(claimText::contains);
 	}
 
 	private boolean isStructuralOnlyEvidence(String text) {
@@ -1701,6 +1735,10 @@ public class ClaimEvidenceMatcher {
 			if (targetMode == TargetMode.UNSPECIFIED && normalized.endsWith("대상")) {
 				targetMode = TargetMode.INCLUDED;
 			}
+			if (targetMode == TargetMode.UNSPECIFIED
+				&& sourceText.matches("(?s)^\\s*.{2,40}대상\\s*[:：].+")) {
+				targetMode = TargetMode.INCLUDED;
+			}
 			if (targetMode == TargetMode.INCLUDED
 				&& GENERIC_TARGET_DEFINITION_LABEL.matcher(normalized).matches()) {
 				targetMode = TargetMode.UNSPECIFIED;
@@ -2161,6 +2199,9 @@ public class ClaimEvidenceMatcher {
 				.replaceFirst("[.!?]+$", "")
 				.replaceAll("^.*\\s+", "");
 			String terminalSurface = KoreanQueryNormalizer.normalizeForMatch(terminalToken);
+			if (Set.of("포함", "제외", "대상").contains(terminalSurface)) {
+				return Set.of(terminalSurface);
+			}
 			if (PERMISSION_PREDICATE_TERMS.stream().anyMatch(terminalSurface::contains)) {
 				return Set.of();
 			}
@@ -2344,6 +2385,11 @@ public class ClaimEvidenceMatcher {
 						continue;
 					}
 					inspected++;
+					String splitCandidate = splitTargetScopeCandidate(tokens, candidateIndex, candidate);
+					if (isNamedTargetScope(splitCandidate)) {
+						anchors.add(canonicalTargetScopeAnchor(splitCandidate));
+						break;
+					}
 					if (isNamedTargetScope(candidate)) {
 						anchors.add(qualifiedTargetScopeAnchor(tokens, candidateIndex, candidate));
 						break;
@@ -2369,8 +2415,30 @@ public class ClaimEvidenceMatcher {
 				else if (isNamedTargetScope(candidate)) {
 					anchors.add(qualifiedTargetScopeAnchor(tokens, index, candidate));
 				}
+				else {
+					String splitCandidate = splitTargetScopeCandidate(tokens, index, candidate);
+					if (isNamedTargetScope(splitCandidate)) {
+						anchors.add(canonicalTargetScopeAnchor(splitCandidate));
+					}
+				}
 			}
 			return Set.copyOf(anchors);
+		}
+
+		private static String splitTargetScopeCandidate(
+			String[] tokens,
+			int scopeIndex,
+			String candidate
+		) {
+			if (scopeIndex <= 0
+				|| tokens[scopeIndex].endsWith("의")
+				|| !TARGET_SCOPE_SUFFIXES.contains(candidate)) {
+				return "";
+			}
+			String qualifier = KoreanQueryNormalizer.normalizeQueryTerm(tokens[scopeIndex - 1]);
+			return isUsableTargetScopeQualifier(qualifier)
+				? qualifier + candidate
+				: "";
 		}
 
 		private static String targetScopeSearchableText(String text) {
@@ -2478,6 +2546,12 @@ public class ClaimEvidenceMatcher {
 				.replace("소프트웨어사업", "sw")
 				.replace("소프트웨어", "sw")
 				.replace("sw사업", "sw");
+			if (canonical.endsWith("사전협의")) {
+				String qualifier = canonical.substring(0, canonical.length() - "사전협의".length());
+				if (Set.of("정보화", "정보화사업", "전자정부", "전자정부사업").contains(qualifier)) {
+					return "사전협의";
+				}
+			}
 			if (canonical.endsWith("과업심의")) {
 				String qualifier = canonical.substring(0, canonical.length() - "과업심의".length());
 				if (Set.of("sw", "공공sw").contains(qualifier)) {

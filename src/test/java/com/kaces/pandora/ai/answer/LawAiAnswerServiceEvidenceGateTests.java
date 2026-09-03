@@ -219,6 +219,36 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void securityReviewTargetAnswerContextStartsAtTheOfficialTargetList() throws Exception {
+		String prefix = ("보안성 검토 절차와 담당자 연락처를 설명한다. ").repeat(30);
+		LawSemanticChunkRow targetList = chunk(
+			312L,
+			"official_doc",
+			"정보화사업 보안성 검토 안내서",
+			"국가정보원 검토 대상",
+			prefix
+				+ "국가정보원 검토 대상 "
+				+ "1. 비밀·대외비를 유통·관리하기 위한 정보통신망 또는 정보시스템 구축 "
+				+ "2. 국가정보원장이 안전성을 확인한 암호자재를 적용하는 정보시스템 구축 "
+				+ "3. 외교·국방 등 국가안보상 중요한 정보시스템 구축 "
+				+ "4. 100만명 이상의 민감정보 또는 고유식별정보를 처리하는 정보시스템 구축 "
+				+ "5. 주요정보통신기반시설로 지정이 필요한 정보통신기반시설 구축"
+		);
+		LawAiAnswerService service = service();
+		try {
+			String context = contextSnippet(service, targetList, "보안성검토 대상 시스템은?", 820);
+
+			assertThat(context)
+				.contains("1. 비밀·대외비")
+				.contains("4. 100만명 이상의 민감정보")
+				.contains("5. 주요정보통신기반시설")
+				.doesNotContain("담당자 연락처");
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void shadowModePreservesTheExistingControlCandidateOrder() throws Exception {
 		LawSemanticChunkRow first = chunk(10L, "law", "첫째", "제1조", "첫째 본문");
 		LawSemanticChunkRow second = chunk(20L, "law", "둘째", "제2조", "둘째 본문");
@@ -433,7 +463,7 @@ class LawAiAnswerServiceEvidenceGateTests {
 
 			assertThat(focus)
 				.contains("기관별 기준금액")
-				.contains("신규 사업")
+				.contains("신규로 추진하는 사업")
 				.contains("함께 답하세요");
 		} finally {
 			service.shutdownExecutors();
@@ -447,9 +477,9 @@ class LawAiAnswerServiceEvidenceGateTests {
 			String focus = answerFocusInstruction(service, "보안성검토 생략 가능한 경우는?");
 
 			assertThat(focus)
-				.contains("시스템 접근 여부")
-				.contains("접근하지 않는 조건")
-				.contains("접근하는 경우");
+				.contains("보안성 검토 대상: 참여 인력이 시스템에 접근하지 않는 사업 외 모든 정보화사업")
+				.contains("시스템에 접근하는 사업도 대상")
+				.contains("반대로 추론해 바꾸지 마세요");
 		} finally {
 			service.shutdownExecutors();
 		}

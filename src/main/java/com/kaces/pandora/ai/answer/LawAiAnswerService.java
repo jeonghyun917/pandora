@@ -3386,6 +3386,10 @@ public class LawAiAnswerService {
 	}
 
 	private String contextSnippet(LawSemanticChunkRow chunk, String query, int limit) {
+		String securityReviewTargets = completeSecurityReviewTargetSnippet(chunk, query, limit);
+		if (!securityReviewTargets.isBlank()) {
+			return prependMeaningfulChunkHeading(chunk, securityReviewTargets);
+		}
 		String numberedProcedure = completeNumberedProcedureSnippet(chunk, query);
 		if (!numberedProcedure.isBlank()) {
 			return prependMeaningfulChunkHeading(chunk, numberedProcedure);
@@ -3408,15 +3412,17 @@ public class LawAiAnswerService {
 		boolean exceptionQuestion = containsAny(normalized, "예외", "제외", "비대상", "면제", "생략", "안해도");
 		if (exceptionQuestion && isSecurityReviewQuestion(queryTerms(query))) {
 			return """
-				- 질문 의도는 보안성 검토 생략 또는 제외 조건입니다. 선택된 근거에서 시스템 접근 여부를 기준으로 답하세요.
-				- 참여 인력이 시스템에 접근하지 않는 조건과, 데이터 입력·가공 등을 위해 시스템에 접근하는 경우를 반드시 함께 대비해 답하세요.
+				- 질문 의도는 보안성 검토 생략 또는 제외 조건입니다. 선택된 근거의 표제를 보존해 '보안성 검토 대상: 참여 인력이 시스템에 접근하지 않는 사업 외 모든 정보화사업'이라고 답하세요.
+				- DB구축·콘텐츠 제작 중 데이터 입력·가공·서비스를 위해 시스템에 접근하는 사업도 대상이라는 조건을 반드시 함께 답하세요.
+				- '생략할 수 있다'처럼 근거의 '외 모든 사업이 대상' 문구를 반대로 추론해 바꾸지 마세요.
 				- 일반적인 보안성 검토 대상 목록이나 검토 절차는 결론보다 앞세우지 마세요.
 				""".stripIndent().trim();
 		}
 		if (exceptionQuestion && isInformationSystemPreConsultationQuestion(normalized)) {
 			return """
 				- 질문 의도는 정보화사업 사전협의 제외 조건입니다. 선택된 근거의 기관별 기준금액과 제외 조건을 먼저 답하세요.
-				- 기준금액 미만이더라도 신규 사업으로 다시 대상에 포함되는 조건을 반드시 함께 답하세요.
+				- 신규로 추진하는 사업은 사전협의 대상에 포함된다는 조건을 반드시 함께 답하세요.
+				- '기준금액 미만 사업'처럼 근거 문구를 일반화해 요약하지 말고, 기관별 금액 기준을 근거에 적힌 그대로 바로 열거하세요.
 				- 선택된 근거에 없는 금액이나 예외는 만들지 마세요.
 				""".stripIndent().trim();
 		}
@@ -3893,6 +3899,10 @@ public class LawAiAnswerService {
 	}
 
 	private String snippet(LawSemanticChunkRow chunk, String query) {
+		String securityReviewTargets = completeSecurityReviewTargetSnippet(chunk, query, 900);
+		if (!securityReviewTargets.isBlank()) {
+			return prependMeaningfulChunkHeading(chunk, securityReviewTargets);
+		}
 		String numberedProcedure = completeNumberedProcedureSnippet(chunk, query);
 		if (!numberedProcedure.isBlank()) {
 			return prependMeaningfulChunkHeading(chunk, numberedProcedure);
@@ -3924,6 +3934,46 @@ public class LawAiAnswerService {
 		}
 		String value = text.substring(requestStage, end).trim();
 		return (requestStage > 0 ? "..." : "") + value + (end < text.length() ? "..." : "");
+	}
+
+	private String completeSecurityReviewTargetSnippet(
+		LawSemanticChunkRow chunk,
+		String query,
+		int limit
+	) {
+		if (chunk == null
+			|| chunk.chunkText() == null
+			|| !isSecurityReviewQuestion(queryTerms(query))
+			|| !normalizeForMatch(query).contains("대상")) {
+			return "";
+		}
+		String text = cleanDisplayText(chunk.chunkText());
+		String marker = "국가정보원검토대상";
+		int start = indexOfNormalizedPhrase(text, marker);
+		if (start < 0) {
+			return "";
+		}
+		String tail = text.substring(start);
+		if (!tail.matches("(?s).*1[.]\\s*.*4[.]\\s*.*5[.]\\s*.*")) {
+			return "";
+		}
+		int end = Math.min(text.length(), start + Math.max(500, limit));
+		String value = text.substring(start, end).trim();
+		return (start > 0 ? "..." : "") + value + (end < text.length() ? "..." : "");
+	}
+
+	private int indexOfNormalizedPhrase(String text, String normalizedPhrase) {
+		StringBuilder normalized = new StringBuilder();
+		List<Integer> sourceIndexes = new java.util.ArrayList<>();
+		for (int index = 0; index < text.length(); index++) {
+			char value = text.charAt(index);
+			if (Character.isLetterOrDigit(value)) {
+				normalized.append(Character.toLowerCase(value));
+				sourceIndexes.add(index);
+			}
+		}
+		int index = normalized.indexOf(normalizedPhrase);
+		return index < 0 || index >= sourceIndexes.size() ? -1 : sourceIndexes.get(index);
 	}
 
 	private int numberedStageIndex(String text, int stage, int searchFrom) {

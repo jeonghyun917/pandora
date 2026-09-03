@@ -254,11 +254,71 @@ class ClaimEvidenceMatcherArtifactRegressionTests {
 		assertThat(result.verifiedAnswer()).isEqualTo(answer);
 	}
 
+	@Test
+	void preConsultationThresholdAndNewProjectOverrideSurviveOfficialGuideWording() {
+		String answer = """
+			중앙·공공기관은 10억원 미만, 광역·공기업은 2억원 미만, 기초·공기업은 1억원 미만입니다.
+			신규로 추진하는 사업은 사전협의 대상에 포함됩니다.
+			""".strip();
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(answer, List.of(ground(
+			"2024년 정보화사업 사전협의 안내자료",
+			"대상 사업",
+			"사전협의의 대상사업은 대상기관이 추진하는 모든 정보화사업임. "
+				+ "사업금액이 아래에 해당하는 사업은 제외하되, 신규로 추진하는 사업은 대상에 포함. "
+				+ "(중앙·공공기관) 10억원 미만, (광역·공기업) 2억원 미만, "
+				+ "(기초·공기업) 1억원 미만."
+		)));
+
+		assertThat(result.unsupportedClaims()).isEmpty();
+		assertThat(result.insufficientEvidence()).isFalse();
+		assertThat(result.verifiedAnswer()).isEqualTo(answer);
+	}
+
+	@Test
+	void universalTargetComplementDoesNotSupportTheOppositeClassification() {
+		String answer = "시스템에 접근하지 않는 사업도 보안성검토 대상입니다.";
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(answer, List.of(ground(
+			"정보화사업 보안성 검토 안내",
+			"보안성 검토 대상",
+			"DB구축, 콘텐츠 제작 등 용역사업 참여인력이 시스템에 접근하지 않는 사업 외 "
+				+ "모든 정보화사업은 보안성 검토 대상입니다."
+		)));
+
+		assertThat(result.verifiedAnswer()).isEqualTo(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE);
+	}
+
+	@Test
+	void securityReviewAccessExceptionSurvivesOfficialTwoSidedCondition() {
+		String answer = """
+			보안성 검토 대상: DB구축, 콘텐츠 제작 등 용역사업 참여인력이 시스템에 접근하지 않는 사업 외 모든 정보화사업.
+			데이터 입력, 가공, 서비스 등을 위해 시스템에 접근하는 DB구축·콘텐츠 제작 사업도 보안성검토 대상입니다.
+			""".strip();
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(answer, List.of(ground(
+			"정보화사업 보안성 검토 안내",
+			"보안성 검토 대상",
+			"보안성 검토 대상: DB구축, 콘텐츠 제작 등 용역사업 참여인력이 "
+				+ "시스템에 접근하지 않는 사업 외 모든 정보화사업. "
+				+ "단 DB구축, 콘텐츠 제작 수행 시 데이터 입력, 가공, 서비스 등을 위해 "
+				+ "시스템에 접근하는 사업은 보안성 검토 대상."
+		)));
+
+		assertThat(result.unsupportedClaims()).isEmpty();
+		assertThat(result.insufficientEvidence()).isFalse();
+		assertThat(result.verifiedAnswer()).isEqualTo(answer);
+	}
+
 	private LawAiAnswerGround ground(String snippet) {
 		return ground("공식 문서", snippet);
 	}
 
 	private LawAiAnswerGround ground(String title, String snippet) {
+		return ground(title, "근거", snippet);
+	}
+
+	private LawAiAnswerGround ground(String title, String chunkTitle, String snippet) {
 		return new LawAiAnswerGround(
 			1,
 			1,
@@ -270,7 +330,7 @@ class ClaimEvidenceMatcherArtifactRegressionTests {
 			null,
 			null,
 			"page 1",
-			"근거",
+			chunkTitle,
 			1,
 			snippet,
 			null,
