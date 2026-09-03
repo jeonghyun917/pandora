@@ -135,6 +135,33 @@ class ProcedureEvidenceCompletenessPolicyTests {
 			.containsExactly(409L, 401L, 402L, 403L, 404L, 405L, 406L, 407L);
 	}
 
+	@Test
+	void doesNotTreatOutOfOrderProcedureTermsAsACompleteProcedure() {
+		LawSemanticChunkRow misleading = chunk(
+			501L,
+			"국가정보보안기본지침 제출 문서",
+			"관련 문서를 제출하여야 한다. 검토결과를 통보받은 경우 보완하고, "
+				+ "보안성 검토 기관의 장은 반영 여부를 확인할 수 있다."
+		);
+		LawSemanticChunkRow complete = chunk(
+			502L,
+			"정보화사업 보안성 검토 안내서",
+			"보안성 검토를 신청하고 검토기관이 총괄 검토한 뒤 검토결과를 통보한다."
+		);
+
+		ProcedureEvidenceCompletenessPolicy.Result result = policy.apply(
+			"보안성검토 절차는 어떻게 돼?",
+			List.of(misleading),
+			List.of(misleading, complete),
+			Map.of(),
+			8
+		);
+
+		assertThat(result.changed()).isTrue();
+		assertThat(result.chunks()).extracting(LawSemanticChunkRow::chunkId)
+			.containsExactly(502L, 501L);
+	}
+
 	private LawSemanticChunkRow chunk(long chunkId, String title, String text) {
 		return new LawSemanticChunkRow(
 			chunkId,

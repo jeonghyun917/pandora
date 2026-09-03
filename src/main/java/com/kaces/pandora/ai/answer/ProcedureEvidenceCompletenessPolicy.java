@@ -67,8 +67,27 @@ final class ProcedureEvidenceCompletenessPolicy {
 
 	private boolean coversCompleteProcedure(LawSemanticChunkRow chunk) {
 		String text = normalizedChunkText(chunk);
-		return PROCEDURE_STAGE_GROUPS.stream()
-			.allMatch(group -> group.stream().map(this::normalize).anyMatch(text::contains));
+		int searchFrom = 0;
+		for (List<String> group : PROCEDURE_STAGE_GROUPS) {
+			int matchedEnd = earliestMatchEnd(text, group, searchFrom);
+			if (matchedEnd < 0) {
+				return false;
+			}
+			searchFrom = matchedEnd;
+		}
+		return true;
+	}
+
+	private int earliestMatchEnd(String text, List<String> phrases, int searchFrom) {
+		int earliestEnd = Integer.MAX_VALUE;
+		for (String phrase : phrases) {
+			String normalizedPhrase = normalize(phrase);
+			int index = text.indexOf(normalizedPhrase, searchFrom);
+			if (index >= 0) {
+				earliestEnd = Math.min(earliestEnd, index + normalizedPhrase.length());
+			}
+		}
+		return earliestEnd == Integer.MAX_VALUE ? -1 : earliestEnd;
 	}
 
 	private boolean alignsWithQuestionDomain(LawSemanticChunkRow chunk, QuestionIntentProfile profile) {
