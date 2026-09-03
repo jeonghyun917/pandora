@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 class ShadowActivationConfigurationTests {
 
 	@Test
-	void enablesSelectedLexicalAuthorityWithoutGrantingOtherAuthoritativeControl() throws Exception {
+	void keepsRejectedLexicalPolicyInShadowOnlyMode() throws Exception {
 		Properties properties = new Properties();
 		try (InputStream input = getClass().getResourceAsStream("/application.properties")) {
 			assertThat(input).isNotNull();
@@ -17,7 +17,7 @@ class ShadowActivationConfigurationTests {
 		}
 
 		assertThat(properties.getProperty("law-ai.retrieval.lexical-variant.shadow-enabled")).isEqualTo("true");
-		assertThat(properties.getProperty("law-ai.retrieval.lexical-variant.authoritative")).isEqualTo("true");
+		assertThat(properties.getProperty("law-ai.retrieval.lexical-variant.authoritative")).isEqualTo("false");
 		assertThat(properties.getProperty("law-ai.retrieval.rrf-shadow-enabled")).isEqualTo("true");
 		assertThat(properties.getProperty("law-ai.retrieval.rrf-authoritative")).isEqualTo("false");
 		assertThat(properties.getProperty("law-ai.retrieval.coverage-aware.enabled")).isEqualTo("false");
