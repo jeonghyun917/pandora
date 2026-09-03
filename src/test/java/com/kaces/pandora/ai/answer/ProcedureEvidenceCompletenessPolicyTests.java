@@ -104,6 +104,37 @@ class ProcedureEvidenceCompletenessPolicyTests {
 		assertThat(alreadyComplete.chunks()).containsExactly(complete);
 	}
 
+	@Test
+	void promotesCompleteProcedureGroundWhenItWouldFallOutsideAnswerLimit() {
+		List<LawSemanticChunkRow> selected = new java.util.ArrayList<>();
+		for (long chunkId = 401L; chunkId <= 408L; chunkId++) {
+			selected.add(chunk(
+				chunkId,
+				"정보화사업 보안성 검토 안내서",
+				"보안성 검토 요청과 관련된 일부 안내다."
+			));
+		}
+		LawSemanticChunkRow complete = chunk(
+			409L,
+			"정보화사업 보안성 검토 안내서",
+			"보안성 검토를 요청하고 검토기관이 총괄 검토한 뒤 검토 결과를 통보한다."
+		);
+		selected.add(complete);
+
+		ProcedureEvidenceCompletenessPolicy.Result result = policy.apply(
+			"보안성검토 절차는 어떻게 돼?",
+			selected,
+			selected,
+			Map.of(),
+			8
+		);
+
+		assertThat(result.changed()).isTrue();
+		assertThat(result.chunks()).hasSize(8);
+		assertThat(result.chunks()).extracting(LawSemanticChunkRow::chunkId)
+			.containsExactly(409L, 401L, 402L, 403L, 404L, 405L, 406L, 407L);
+	}
+
 	private LawSemanticChunkRow chunk(long chunkId, String title, String text) {
 		return new LawSemanticChunkRow(
 			chunkId,

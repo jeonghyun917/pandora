@@ -36,7 +36,8 @@ final class ProcedureEvidenceCompletenessPolicy {
 			return Result.unchanged(selected, scores);
 		}
 		QuestionIntentProfile profile = QuestionIntentProfile.from(query);
-		if (!profile.intentTypes().contains("procedure") || selected.stream().anyMatch(this::coversCompleteProcedure)) {
+		if (!profile.intentTypes().contains("procedure")
+			|| selected.stream().limit(limit).anyMatch(this::coversCompleteProcedure)) {
 			return Result.unchanged(selected, scores);
 		}
 
@@ -46,7 +47,7 @@ final class ProcedureEvidenceCompletenessPolicy {
 			.filter(chunk -> alignsWithQuestionDomain(chunk, profile))
 			.findFirst()
 			.orElse(null);
-		if (completeCandidate == null || selected.stream().anyMatch(chunk -> sameCandidate(chunk, completeCandidate))) {
+		if (completeCandidate == null) {
 			return Result.unchanged(selected, scores);
 		}
 
@@ -113,10 +114,6 @@ final class ProcedureEvidenceCompletenessPolicy {
 
 	private boolean hasUsefulText(LawSemanticChunkRow chunk) {
 		return chunk != null && chunk.chunkText() != null && !chunk.chunkText().isBlank();
-	}
-
-	private boolean sameCandidate(LawSemanticChunkRow left, LawSemanticChunkRow right) {
-		return left != null && right != null && candidateKey(left).equals(candidateKey(right));
 	}
 
 	private String candidateKey(LawSemanticChunkRow chunk) {
