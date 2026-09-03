@@ -615,10 +615,10 @@ public class LawAiAnswerService {
 		);
 		String deterministicAnswer = documentDiscoveryAnswer != null
 			? documentDiscoveryAnswer
-			: DocumentIdentityAnswerComposer.compose(
-				retrieval.query(),
-				retrieval.grounds()
-			);
+			: DocumentIdentityAnswerComposer.compose(retrieval.query(), retrieval.grounds());
+		if (deterministicAnswer == null) {
+			deterministicAnswer = CompleteProcedureAnswerComposer.compose(retrieval.query(), retrieval.grounds());
+		}
 		String answer = deterministicAnswer != null
 			? deterministicAnswer
 			: answerClient.answer(
@@ -739,10 +739,10 @@ public class LawAiAnswerService {
 			);
 			String deterministicAnswer = documentDiscoveryAnswer != null
 				? documentDiscoveryAnswer
-				: DocumentIdentityAnswerComposer.compose(
-					retrieval.query(),
-					retrieval.grounds()
-				);
+				: DocumentIdentityAnswerComposer.compose(retrieval.query(), retrieval.grounds());
+			if (deterministicAnswer == null) {
+				deterministicAnswer = CompleteProcedureAnswerComposer.compose(retrieval.query(), retrieval.grounds());
+			}
 			String answer = deterministicAnswer != null
 				? deterministicAnswer
 				: answerClient.answerStreaming(
@@ -2462,6 +2462,9 @@ public class LawAiAnswerService {
 				retrieval.query(),
 				retrieval.grounds()
 			);
+			if (deterministicAnswer == null) {
+				deterministicAnswer = CompleteProcedureAnswerComposer.compose(retrieval.query(), retrieval.grounds());
+			}
 			String answer = deterministicAnswer != null
 				? deterministicAnswer
 				: answerClient.answer(
