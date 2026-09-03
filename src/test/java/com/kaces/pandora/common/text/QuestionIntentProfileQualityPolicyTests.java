@@ -9,6 +9,18 @@ import org.junit.jupiter.api.Test;
 class QuestionIntentProfileQualityPolicyTests {
 
 	@Test
+	void securityReviewTargetPolicyRequiresThreeConcreteOfficialTargetGroups() {
+		QuestionIntentProfile profile = QuestionIntentProfile.from("보안성검토 대상 시스템은?");
+
+		assertThat(profile.matchedPolicyIds()).contains("security_review_target_scope");
+		assertThat(profile.configuredAnswerCoverageGroups()).containsExactly(
+			List.of("정보통신망 또는 정보시스템 구축", "정보시스템 구축"),
+			List.of("민감정보 또는 고유식별정보를 처리", "민감정보", "고유식별정보"),
+			List.of("주요정보통신기반시설")
+		);
+	}
+
+	@Test
 	void permissionManagementPolicyRequiresLifecycleEvidenceBeyondNavigationText() {
 		QuestionIntentProfile discovery = QuestionIntentProfile.from("IRM 사용자 권한 가이드");
 		assertThat(discovery.documentDiscoveryQuestion()).isTrue();

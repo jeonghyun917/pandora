@@ -879,6 +879,33 @@ class GroundedAnswerRepairServiceTests {
 	}
 
 	@Test
+	void configuredSecurityReviewTargetRepairsFromThreeConcreteOfficialTargetAtoms() {
+		String question = "보안성검토 대상 시스템은?";
+		String system = "비밀·대외비를 유통·관리하기 위한 정보통신망 또는 정보시스템 구축.";
+		String sensitive = "100만명 이상의 민감정보 또는 고유식별정보를 처리하는 정보시스템 구축.";
+		String infrastructure = "주요정보통신기반시설로 지정이 필요한 정보통신기반시설 구축.";
+		String evidence = String.join(" ", system, sensitive, infrastructure);
+		RecordingRewriter rewriter = RecordingRewriter.returning(evidence);
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(
+			realVerificationService(),
+			rewriter
+		);
+
+		GroundedAnswerRepairService.Result result = service.verifyAndRepair(
+			question,
+			"보안성 검토 담당자와 먼저 사전 협의해야 합니다.",
+			List.of(ground(1, evidence, "2026년 정보화사업 보안성 검토 가이드", null))
+		);
+
+		assertThat(result.insufficientEvidence()).as(result.toString()).isFalse();
+		assertThat(rewriter.atomCalls()).hasSize(1);
+		assertThat(rewriter.atomCalls().get(0))
+			.anySatisfy(atom -> assertThat(atom).contains("정보통신망 또는 정보시스템 구축"))
+			.anySatisfy(atom -> assertThat(atom).contains("민감정보 또는 고유식별정보"))
+			.anySatisfy(atom -> assertThat(atom).contains("주요정보통신기반시설"));
+	}
+
+	@Test
 	void autonomyProcedureFallsBackToTheThreeVerifiedOfficialProcedureAtoms() {
 		String question = "자치분권 사전협의 요청할 때 어떤 절차로 검토돼?";
 		String request =

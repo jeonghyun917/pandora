@@ -462,9 +462,9 @@ class LawAiAnswerServiceEvidenceGateTests {
 			String focus = answerFocusInstruction(service, "정보화사업 사전협의 제외 대상은?");
 
 			assertThat(focus)
-				.contains("기관별 기준금액")
+				.contains("사업금액이 아래에 해당하는 사업은 제외하되")
 				.contains("신규로 추진하는 사업")
-				.contains("함께 답하세요");
+				.contains("중앙·공공기관) 10억원 미만");
 		} finally {
 			service.shutdownExecutors();
 		}
@@ -477,8 +477,8 @@ class LawAiAnswerServiceEvidenceGateTests {
 			String focus = answerFocusInstruction(service, "보안성검토 생략 가능한 경우는?");
 
 			assertThat(focus)
-				.contains("보안성 검토 대상: 참여 인력이 시스템에 접근하지 않는 사업 외 모든 정보화사업")
-				.contains("시스템에 접근하는 사업도 대상")
+				.contains("보안성 검토 대상: DB구축, 콘텐츠 제작 등 용역사업 참여인력이 시스템에 접근하지 않는 사업 외 모든 정보화사업")
+				.contains("단 DB구축, 콘텐츠 제작 수행 시 데이터 입력, 가공, 서비스 등을 위해 시스템에 접근하는 사업은 보안성 검토 대상")
 				.contains("반대로 추론해 바꾸지 마세요");
 		} finally {
 			service.shutdownExecutors();

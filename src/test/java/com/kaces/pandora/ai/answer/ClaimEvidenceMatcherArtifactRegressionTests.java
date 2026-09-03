@@ -270,9 +270,53 @@ class ClaimEvidenceMatcherArtifactRegressionTests {
 				+ "(기초·공기업) 1억원 미만."
 		)));
 
-		assertThat(result.unsupportedClaims()).isEmpty();
+		assertThat(result.unsupportedClaims()).as(result.toString()).isEmpty();
 		assertThat(result.insufficientEvidence()).isFalse();
 		assertThat(result.verifiedAnswer()).isEqualTo(answer);
+	}
+
+	@Test
+	void preConsultationLiveBulletAnswerWithoutTheSharedExclusionPremiseFailsClosed() {
+		String answer = """
+			- 제외 대상은 중앙·공공기관 10억원 미만, 광역·공기업 2억원 미만, 기초·공기업 1억원 미만 사업입니다.
+			다만 신규로 추진하는 사업은 사전협의 대상에 포함됩니다.
+			""".strip();
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(answer, List.of(ground(
+			"2024년 정보화사업 사전협의 안내자료(배포용)",
+			"p.28 대상 사업",
+			"대상 사업 p.28 대상 사업 대상 사업 p.28 대상 사업 사전협의의 대상사업은 "
+				+ "예산과목 및 계약방식과 관계없이 대상기관이 추진하는 모든 정보화사업임. "
+				+ "사업금액이 아래에 해당하는 사업은 제외하되, 신규로 추진하는 사업은 대상에 포함. "
+				+ "(중앙·공공기관) 10억원 미만, (광역·공기업) 2억원 미만, "
+				+ "(기초·공기업) 1억원 미만."
+		)));
+
+		assertThat(result.unsupportedClaims()).contains(answer.lines().findFirst().orElseThrow());
+		assertThat(result.verifiedAnswer()).doesNotContain("10억원 미만");
+	}
+
+	@Test
+	void preConsultationSourceStructuredAnswerPreservesTheSharedExclusionPremise() {
+		String answer = """
+			사업금액이 아래에 해당하는 사업은 제외하되, 신규로 추진하는 사업은 사전협의 대상에 포함됩니다.
+			(중앙·공공기관) 10억원 미만, (광역·공기업) 2억원 미만, (기초·공기업) 1억원 미만.
+			""".strip();
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(answer, List.of(ground(
+			"2024년 정보화사업 사전협의 안내자료(배포용)",
+			"p.28 대상 사업",
+			"사업금액이 아래에 해당하는 사업은 제외하되, 신규로 추진하는 사업은 대상에 포함. "
+				+ "(중앙·공공기관) 10억원 미만, (광역·공기업) 2억원 미만, "
+				+ "(기초·공기업) 1억원 미만."
+		)));
+
+		assertThat(result.unsupportedClaims()).as(result.toString()).isEmpty();
+		assertThat(result.insufficientEvidence()).isFalse();
+		assertThat(result.verifiedAnswer())
+			.contains("사업금액이 아래에 해당하는 사업은 제외하되")
+			.contains("신규로 추진하는 사업은 사전협의 대상에 포함됩니다")
+			.contains("중앙·공공기관) 10억원 미만");
 	}
 
 	@Test
@@ -306,6 +350,47 @@ class ClaimEvidenceMatcherArtifactRegressionTests {
 		)));
 
 		assertThat(result.unsupportedClaims()).isEmpty();
+		assertThat(result.insufficientEvidence()).isFalse();
+		assertThat(result.verifiedAnswer()).isEqualTo(answer);
+	}
+
+	@Test
+	void securityReviewAccessExceptionParaphraseThatChangesPerformanceToParticipationFailsClosed() {
+		String answer = """
+			보안성 검토 대상: DB구축, 콘텐츠 제작 등 용역사업 참여인력이 시스템에 접근하지 않는 사업 외 모든 정보화사업.
+			DB구축·콘텐츠 제작 등 용역사업 참여 시 데이터 입력·가공·서비스 등을 위해 시스템에 접근하는 사업도 보안성 검토 대상입니다.
+			""".strip();
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(answer, List.of(ground(
+			"[붙임1]2025년 문화정보화 수준평가 매뉴얼(배포용)",
+			"p.2 보안성 검토 대상:",
+			"보안성 검토 대상: DB구축, 콘텐츠 제작 등 용역사업 참여인력이 "
+				+ "시스템에 접근하지 않는 사업 외 모든 정보화사업. "
+				+ "단 DB구축, 콘텐츠 제작 수행 시 데이터 입력, 가공, 서비스 등을 위해 "
+				+ "시스템에 접근하는 사업은 보안성 검토 대상."
+		)));
+
+		assertThat(result.unsupportedClaims()).contains(answer.lines().skip(1).findFirst().orElseThrow());
+		assertThat(result.verifiedAnswer()).doesNotContain("참여 시");
+	}
+
+	@Test
+	void securityReviewSourceStructuredAnswerPreservesTheOfficialScopeAndActions() {
+		String answer = """
+			보안성 검토 대상: DB구축, 콘텐츠 제작 등 용역사업 참여인력이 시스템에 접근하지 않는 사업 외 모든 정보화사업.
+			단 DB구축, 콘텐츠 제작 수행 시 데이터 입력, 가공, 서비스 등을 위해 시스템에 접근하는 사업은 보안성 검토 대상입니다.
+			""".strip();
+
+		ClaimVerifier.VerificationResult result = verifier.verifyDetailed(answer, List.of(ground(
+			"[붙임1]2025년 문화정보화 수준평가 매뉴얼(배포용)",
+			"p.2 보안성 검토 대상:",
+			"보안성 검토 대상: DB구축, 콘텐츠 제작 등 용역사업 참여인력이 "
+				+ "시스템에 접근하지 않는 사업 외 모든 정보화사업. "
+				+ "단 DB구축, 콘텐츠 제작 수행 시 데이터 입력, 가공, 서비스 등을 위해 "
+				+ "시스템에 접근하는 사업은 보안성 검토 대상."
+		)));
+
+		assertThat(result.unsupportedClaims()).as(result.toString()).isEmpty();
 		assertThat(result.insufficientEvidence()).isFalse();
 		assertThat(result.verifiedAnswer()).isEqualTo(answer);
 	}
