@@ -32,29 +32,25 @@ final class CompleteProcedureAnswerComposer {
 			if (ground == null || !"direct".equalsIgnoreCase(String.valueOf(ground.evidenceRole()))) {
 				continue;
 			}
-			String source = preferredSource(ground);
-			if (source.isBlank() || !alignsWithQuestionDomain(ground, source, profile)) {
-				continue;
-			}
-			String procedure = extractCompleteProcedure(source);
-			if (procedure != null) {
-				return "절차는 다음 순서입니다.\n" + procedure;
+			for (String source : candidateSources(ground)) {
+				if (!alignsWithQuestionDomain(ground, source, profile)) {
+					continue;
+				}
+				String procedure = extractCompleteProcedure(source);
+				if (procedure != null) {
+					return "절차는 다음 순서입니다.\n" + procedure;
+				}
 			}
 		}
 		return null;
 	}
 
-	private static String preferredSource(LawAiAnswerGround ground) {
-		for (String value : List.of(
+	private static List<String> candidateSources(LawAiAnswerGround ground) {
+		return List.of(
 			nullToEmpty(ground.matchedChildText()),
 			nullToEmpty(ground.snippet()),
 			nullToEmpty(ground.parentContextText())
-		)) {
-			if (!value.isBlank()) {
-				return value;
-			}
-		}
-		return "";
+		).stream().filter(value -> !value.isBlank()).distinct().toList();
 	}
 
 	private static String extractCompleteProcedure(String source) {

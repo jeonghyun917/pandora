@@ -46,7 +46,27 @@ class CompleteProcedureAnswerComposerTests {
 		)).isNull();
 	}
 
+	@Test
+	void usesTheCompleteDisplaySnippetWhenTheMatchedChildTextIsIncomplete() {
+		String completeSnippet = """
+			② 보안성 검토요청: 신청서와 사업계획서를 제출한다.
+			③ 보안성 검토: 보안대책의 적절성을 검토한다.
+			④ 검토결과 통보: 결과서를 사업부서에 통보한다.
+			""";
+
+		String answer = CompleteProcedureAnswerComposer.compose(
+			"보안성검토 절차는 어떻게 돼?",
+			List.of(ground("보안성 검토 대상 사업 식별", completeSnippet))
+		);
+
+		assertThat(answer).contains("② 보안성 검토요청", "③ 보안성 검토", "④ 검토결과 통보");
+	}
+
 	private LawAiAnswerGround ground(String text) {
+		return ground(text, text);
+	}
+
+	private LawAiAnswerGround ground(String matchedChildText, String snippet) {
 		return new LawAiAnswerGround(
 			1,
 			84923,
@@ -60,11 +80,11 @@ class CompleteProcedureAnswerComposerTests {
 			"page 2",
 			"보안성 검토 절차",
 			2,
-			text,
+			snippet,
 			null,
 			null,
 			1.0,
-			text,
+			matchedChildText,
 			null,
 			List.of(84923L),
 			"matched_child_only",
