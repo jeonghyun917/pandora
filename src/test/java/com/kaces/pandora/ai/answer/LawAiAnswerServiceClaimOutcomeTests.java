@@ -47,17 +47,20 @@ class LawAiAnswerServiceClaimOutcomeTests {
 	private OpenAiAnswerClient answerClient;
 	private QdrantClient qdrantClient;
 	private AnswerVerificationService answerVerificationService;
+	private LawChunkMapper lawChunkMapper;
+	private RagDocumentMapper ragDocumentMapper;
+	private EvidenceJudge evidenceJudge;
 	private LawAiAnswerService service;
 
 	@BeforeEach
 	void setUp() {
 		LawSemanticChunkRow chunk = chunk();
-		LawChunkMapper lawChunkMapper = mock(LawChunkMapper.class);
-		RagDocumentMapper ragDocumentMapper = mock(RagDocumentMapper.class);
+		lawChunkMapper = mock(LawChunkMapper.class);
+		ragDocumentMapper = mock(RagDocumentMapper.class);
 		OpenAiEmbeddingClient embeddingClient = mock(OpenAiEmbeddingClient.class);
 		qdrantClient = mock(QdrantClient.class);
 		answerClient = mock(OpenAiAnswerClient.class);
-		EvidenceJudge evidenceJudge = mock(EvidenceJudge.class);
+		evidenceJudge = mock(EvidenceJudge.class);
 		answerVerificationService = mock(AnswerVerificationService.class);
 
 		when(embeddingClient.embed(anyList())).thenReturn(List.of(List.of(0.1d)));
@@ -129,6 +132,58 @@ class LawAiAnswerServiceClaimOutcomeTests {
 			.doesNotContain(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE);
 		assertThat(response.grounds()).extracting(LawAiAnswerGround::title)
 			.containsExactly("근로기준법");
+		verifyNoInteractions(answerClient, answerVerificationService);
+	}
+
+	@Test
+	void completeProcedureUsesTheValidatedGroundViewWithoutGenerativeRepair() {
+		stubCompleteProcedureRetrieval();
+
+		LawAiAnswerResponse response = service.answer(procedureRequest());
+
+		assertThat(response.resultMsg()).isEqualTo("OK");
+		assertThat(response.answer())
+			.startsWith("절차는 다음 순서입니다.")
+			.contains("② 보안성 검토요청", "③ 보안성 검토", "④ 검토결과 통보");
+		verifyNoInteractions(answerClient, answerVerificationService);
+	}
+
+	@Test
+	void evaluationUsesTheSameValidatedCompleteProcedureWithoutGenerativeRepair() {
+		stubCompleteProcedureRetrieval();
+		LawAiEvalRequest.EvalCase evalCase = new LawAiEvalRequest.EvalCase(
+			"complete-procedure-eval-path",
+			"보안성검토 절차는 어떻게 돼?",
+			List.of("official_doc"),
+			List.of("보안성 검토", "절차"),
+			1,
+			List.of("보안성 검토"),
+			List.of("procedure"),
+			List.of(),
+			List.of("보안성 검토"),
+			List.of(),
+			List.of("절차"),
+			"검토 요청부터 결과 통보까지 절차 순서로 답한다",
+			List.of("OK"),
+			true,
+			List.of("보안성 검토요청", "검토결과 통보"),
+			List.of(),
+			List.of(
+				List.of("보안성 검토요청"),
+				List.of("보안성 검토"),
+				List.of("검토결과 통보")
+			),
+			List.of()
+		);
+
+		LawAiEvalResponse.CaseResult result = service.evaluate(
+			new LawAiEvalRequest(List.of(evalCase), List.of(), null)
+		).results().get(0);
+
+		assertThat(result.passed()).isTrue();
+		assertThat(result.verifiedAnswer())
+			.startsWith("절차는 다음 순서입니다.")
+			.contains("② 보안성 검토요청", "③ 보안성 검토", "④ 검토결과 통보");
 		verifyNoInteractions(answerClient, answerVerificationService);
 	}
 
@@ -505,6 +560,37 @@ class LawAiAnswerServiceClaimOutcomeTests {
 		return new LawAiAnswerRequest("law", List.of("law"), DISCOVERY_QUESTION, 1, false);
 	}
 
+	private LawAiAnswerRequest procedureRequest() {
+		return new LawAiAnswerRequest(
+			"official_doc",
+			List.of("official_doc"),
+			"보안성검토 절차는 어떻게 돼?",
+			1,
+			false
+		);
+	}
+
+	private void stubCompleteProcedureRetrieval() {
+		LawSemanticChunkRow procedure = procedureChunk();
+		when(qdrantClient.searchBalanced(anyList(), anyList(), anyInt(), anyInt()))
+			.thenReturn(List.of(new QdrantSearchHit("official_doc", procedure.chunkId(), 0.99d)));
+		when(ragDocumentMapper.findSemanticChunksByIds(anyList())).thenReturn(List.of(procedure));
+		when(ragDocumentMapper.findSemanticContextChunks(procedure.documentId(), procedure.sortOrder(), 18))
+			.thenReturn(List.of(procedure));
+		when(evidenceJudge.judge(anyString(), anyList(), anyMap(), anyInt())).thenReturn(new EvidenceJudge.Result(
+			List.of(procedure),
+			Map.of("official_doc:" + procedure.chunkId(), 0.99d),
+			false,
+			true,
+			false,
+			false,
+			1,
+			1,
+			1,
+			"direct"
+		));
+	}
+
 	private AnswerVerificationService.Result verificationResult(
 		String guardedAnswer,
 		String verifiedAnswer,
@@ -591,6 +677,32 @@ class LawAiAnswerServiceClaimOutcomeTests {
 			"hash-101",
 			"제60조 연차 유급휴가",
 			"requirement"
+		);
+	}
+
+	private LawSemanticChunkRow procedureChunk() {
+		return new LawSemanticChunkRow(
+			84923L,
+			8L,
+			"official_doc",
+			"official-8",
+			"2026년 정보화사업 보안성 검토 가이드",
+			"행정안전부",
+			"공식 가이드 문서",
+			"20260101",
+			"CURRENT",
+			"page 2",
+			"보안성 검토 절차",
+			"② 보안성 검토요청: 신청서를 제출한다. "
+				+ "③ 보안성 검토: 보안대책의 적절성을 검토한다. "
+				+ "④ 검토결과 통보: 결과서를 사업부서에 통보한다.",
+			2,
+			"",
+			"",
+			1,
+			"hash-84923",
+			"보안성 검토 절차",
+			"procedure"
 		);
 	}
 

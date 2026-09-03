@@ -613,12 +613,15 @@ public class LawAiAnswerService {
 			retrieval.query(),
 			retrieval.grounds()
 		);
+		String documentIdentityAnswer = documentDiscoveryAnswer == null
+			? DocumentIdentityAnswerComposer.compose(retrieval.query(), retrieval.grounds())
+			: null;
+		String completeProcedureAnswer = documentDiscoveryAnswer == null && documentIdentityAnswer == null
+			? CompleteProcedureAnswerComposer.compose(retrieval.query(), retrieval.grounds())
+			: null;
 		String deterministicAnswer = documentDiscoveryAnswer != null
 			? documentDiscoveryAnswer
-			: DocumentIdentityAnswerComposer.compose(retrieval.query(), retrieval.grounds());
-		if (deterministicAnswer == null) {
-			deterministicAnswer = CompleteProcedureAnswerComposer.compose(retrieval.query(), retrieval.grounds());
-		}
+			: documentIdentityAnswer != null ? documentIdentityAnswer : completeProcedureAnswer;
 		String answer = deterministicAnswer != null
 			? deterministicAnswer
 			: answerClient.answer(
@@ -629,8 +632,8 @@ public class LawAiAnswerService {
 		timing.answerMs.set(elapsedMillis(answerStart));
 		String guardedAnswer;
 		boolean claimUnsupported;
-		if (documentDiscoveryAnswer != null) {
-			guardedAnswer = documentDiscoveryAnswer;
+		if (documentDiscoveryAnswer != null || completeProcedureAnswer != null) {
+			guardedAnswer = deterministicAnswer;
 			claimUnsupported = false;
 		} else {
 			long verifyStart = System.nanoTime();
@@ -737,12 +740,15 @@ public class LawAiAnswerService {
 				retrieval.query(),
 				retrieval.grounds()
 			);
+			String documentIdentityAnswer = documentDiscoveryAnswer == null
+				? DocumentIdentityAnswerComposer.compose(retrieval.query(), retrieval.grounds())
+				: null;
+			String completeProcedureAnswer = documentDiscoveryAnswer == null && documentIdentityAnswer == null
+				? CompleteProcedureAnswerComposer.compose(retrieval.query(), retrieval.grounds())
+				: null;
 			String deterministicAnswer = documentDiscoveryAnswer != null
 				? documentDiscoveryAnswer
-				: DocumentIdentityAnswerComposer.compose(retrieval.query(), retrieval.grounds());
-			if (deterministicAnswer == null) {
-				deterministicAnswer = CompleteProcedureAnswerComposer.compose(retrieval.query(), retrieval.grounds());
-			}
+				: documentIdentityAnswer != null ? documentIdentityAnswer : completeProcedureAnswer;
 			String answer = deterministicAnswer != null
 				? deterministicAnswer
 				: answerClient.answerStreaming(
@@ -755,8 +761,8 @@ public class LawAiAnswerService {
 			timing.answerMs.set(elapsedMillis(answerStart));
 			String guardedAnswer;
 			boolean claimUnsupported;
-			if (documentDiscoveryAnswer != null) {
-				guardedAnswer = documentDiscoveryAnswer;
+			if (documentDiscoveryAnswer != null || completeProcedureAnswer != null) {
+				guardedAnswer = deterministicAnswer;
 				claimUnsupported = false;
 			} else {
 				long verifyStart = System.nanoTime();
@@ -2453,20 +2459,29 @@ public class LawAiAnswerService {
 				forbiddenAnswerTerms
 			);
 		}
+		String documentIdentityAnswer = DocumentIdentityAnswerComposer.compose(
+			retrieval.query(),
+			retrieval.grounds()
+		);
+		String completeProcedureAnswer = documentIdentityAnswer == null
+			? CompleteProcedureAnswerComposer.compose(retrieval.query(), retrieval.grounds())
+			: null;
+		if (completeProcedureAnswer != null) {
+			return evaluateMetadataOnlyAnswer(
+				evalCase,
+				completeProcedureAnswer,
+				expectedTerms,
+				expectedAnswerTerms,
+				forbiddenAnswerTerms
+			);
+		}
 		if (answerClient == null) {
 			return AnswerEvalResult.failed("Answer client is not available for answer-level evaluation.");
 		}
 		try {
 			AnswerGenerationProfile answerProfile = answerGenerationProfile(retrieval);
-			String deterministicAnswer = DocumentIdentityAnswerComposer.compose(
-				retrieval.query(),
-				retrieval.grounds()
-			);
-			if (deterministicAnswer == null) {
-				deterministicAnswer = CompleteProcedureAnswerComposer.compose(retrieval.query(), retrieval.grounds());
-			}
-			String answer = deterministicAnswer != null
-				? deterministicAnswer
+			String answer = documentIdentityAnswer != null
+				? documentIdentityAnswer
 				: answerClient.answer(
 					retrieval.query(),
 					buildAnswerContext(retrieval, answerProfile),
