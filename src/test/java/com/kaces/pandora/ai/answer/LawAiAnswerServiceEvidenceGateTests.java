@@ -7,6 +7,7 @@ import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
 import com.kaces.pandora.rag.persistence.RagDocumentMapper;
 import com.kaces.pandora.rag.search.RagChunkSearchIndexService;
+import com.kaces.pandora.semantic.config.LawAiLexicalVariantProperties;
 import com.kaces.pandora.semantic.config.LawAiProperties;
 import java.lang.reflect.Method;
 import java.util.List;
@@ -15,6 +16,71 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
+
+	@Test
+	void authoritativeLexicalVariantPreservesCompleteProcedureGround() throws Exception {
+		LawSemanticChunkRow partial = chunk(
+			101L,
+			"official_doc",
+			"정보화사업 보안성 검토 안내서",
+			"절차",
+			"요청기관은 보안성 검토를 요청하고 검토기관은 검토한다."
+		);
+		LawSemanticChunkRow complete = chunk(
+			102L,
+			"official_doc",
+			"정보화사업 보안성 검토 안내서",
+			"절차",
+			"요청기관이 보안성 검토를 요청하면 검토기관이 검토한 뒤 결과를 통보한다."
+		);
+		EvidenceJudge.Result judged = result(
+			List.of(partial), false, true, false, true, 1, 1, 1, "judge"
+		);
+		LawAiAnswerService service = service();
+		try {
+			service.configureLexicalVariantProperties(new LawAiLexicalVariantProperties(true, true, 4, 60.0));
+
+			EvidenceJudge.Result preserved = preserveCompleteProcedureEvidenceChunks(
+				service,
+				judged,
+				List.of(partial, complete),
+				"보안성검토 절차는 어떻게 돼?"
+			);
+
+			assertThat(preserved.chunks()).extracting(LawSemanticChunkRow::chunkId).containsExactly(102L, 101L);
+			assertThat(preserved.selectionPolicy()).endsWith("+complete_procedure_preserve");
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void controlLexicalVariantDoesNotChangeProcedureGrounds() throws Exception {
+		LawSemanticChunkRow partial = chunk(
+			201L, "official_doc", "정보화사업 보안성 검토 안내서", "절차", "검토를 요청하고 수행한다."
+		);
+		LawSemanticChunkRow complete = chunk(
+			202L, "official_doc", "정보화사업 보안성 검토 안내서", "절차", "검토를 요청하고 수행한 뒤 결과를 통보한다."
+		);
+		EvidenceJudge.Result judged = result(
+			List.of(partial), false, true, false, true, 1, 1, 1, "judge"
+		);
+		LawAiAnswerService service = service();
+		try {
+			service.configureLexicalVariantProperties(new LawAiLexicalVariantProperties(true, false, 4, 60.0));
+
+			EvidenceJudge.Result preserved = preserveCompleteProcedureEvidenceChunks(
+				service,
+				judged,
+				List.of(partial, complete),
+				"보안성검토 절차는 어떻게 돼?"
+			);
+
+			assertThat(preserved).isSameAs(judged);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
 
 	@Test
 	void shadowModePreservesTheExistingControlCandidateOrder() throws Exception {
@@ -2256,6 +2322,23 @@ class LawAiAnswerServiceEvidenceGateTests {
 		String query
 	) throws Exception {
 		return preserveIntentDirectEvidenceChunks(service, judged, chunks, query, Map.of());
+	}
+
+	private EvidenceJudge.Result preserveCompleteProcedureEvidenceChunks(
+		LawAiAnswerService service,
+		EvidenceJudge.Result judged,
+		List<LawSemanticChunkRow> chunks,
+		String query
+	) throws Exception {
+		Method method = LawAiAnswerService.class.getDeclaredMethod(
+			"preserveCompleteProcedureEvidenceChunks",
+			EvidenceJudge.Result.class,
+			List.class,
+			String.class,
+			Map.class
+		);
+		method.setAccessible(true);
+		return (EvidenceJudge.Result) method.invoke(service, judged, chunks, query, Map.of());
 	}
 
 	private EvidenceJudge.Result preserveIntentDirectEvidenceChunks(

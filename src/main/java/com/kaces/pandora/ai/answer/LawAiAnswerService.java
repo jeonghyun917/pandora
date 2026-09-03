@@ -143,6 +143,8 @@ public class LawAiAnswerService {
 	private final EvidenceJudge evidenceJudge;
 	private final EvidenceReranker evidenceReranker = new EvidenceReranker();
 	private final DirectEvidenceSelectionPolicy directEvidenceSelectionPolicy = new DirectEvidenceSelectionPolicy();
+	private final ProcedureEvidenceCompletenessPolicy procedureEvidenceCompletenessPolicy =
+		new ProcedureEvidenceCompletenessPolicy();
 	private final AnswerGuard answerGuard;
 	private final ClaimVerifier claimVerifier;
 	private final AnswerVerificationService answerVerificationService;
@@ -1500,6 +1502,14 @@ public class LawAiAnswerService {
 			normalized.query(),
 			finalScoreByChunkId,
 			combinedScoreByChunkId
+		);
+		finalScoreByChunkId = judgedEvidence.scoreByChunkId();
+		evidenceChunks = judgedEvidence.chunks();
+		judgedEvidence = preserveCompleteProcedureEvidenceChunks(
+			judgedEvidence,
+			judgeContextChunks,
+			normalized.query(),
+			finalScoreByChunkId
 		);
 		finalScoreByChunkId = judgedEvidence.scoreByChunkId();
 		evidenceChunks = judgedEvidence.chunks();
@@ -5476,6 +5486,39 @@ public class LawAiAnswerService {
 		boolean authoritative
 	) {
 		return authoritative ? List.copyOf(fusedOrder) : List.copyOf(controlOrder);
+	}
+
+	private EvidenceJudge.Result preserveCompleteProcedureEvidenceChunks(
+		EvidenceJudge.Result judgedEvidence,
+		List<LawSemanticChunkRow> judgeContextChunks,
+		String query,
+		Map<String, Double> finalScoreByChunkId
+	) {
+		if (judgedEvidence == null || !lexicalVariantProperties.authoritative()) {
+			return judgedEvidence;
+		}
+		ProcedureEvidenceCompletenessPolicy.Result result = procedureEvidenceCompletenessPolicy.apply(
+			query,
+			judgedEvidence.chunks(),
+			judgeContextChunks,
+			finalScoreByChunkId,
+			DEFAULT_LIMIT
+		);
+		if (!result.changed()) {
+			return judgedEvidence;
+		}
+		return new EvidenceJudge.Result(
+			result.chunks(),
+			result.scoreByCandidateKey(),
+			judgedEvidence.directEvidenceRequired(),
+			true,
+			judgedEvidence.conceptEvidenceRequired(),
+			judgedEvidence.conceptEvidenceFound(),
+			Math.max(judgedEvidence.topicAlignedCount(), result.chunks().size()),
+			Math.max(judgedEvidence.relevantCount(), result.chunks().size()),
+			Math.max(judgedEvidence.directEvidenceCount(), 1),
+			judgedEvidence.selectionPolicy() + "+complete_procedure_preserve"
+		);
 	}
 
 	private List<LawSemanticChunkRow> applyLexicalVariantAuthority(
