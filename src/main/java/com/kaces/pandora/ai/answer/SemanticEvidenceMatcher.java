@@ -75,15 +75,36 @@ public class SemanticEvidenceMatcher {
 			return SemanticMatch.insufficient("CLAIM_PARSE_INCOMPLETE");
 		}
 		for (IndexedAtom evidence : evidenceIndex == null ? List.<IndexedAtom>of() : evidenceIndex.atoms()) {
-			if (evidence.atom().parseStatus() != EvidenceAtom.ParseStatus.AMBIGUOUS
-				&& expected.equals(canonical(evidence.atom().sourceText()))) {
+			if (evidence.atom().parseStatus() == EvidenceAtom.ParseStatus.AMBIGUOUS) {
+				continue;
+			}
+			boolean exact = expected.equals(canonical(evidence.atom().sourceText()));
+			boolean explanatoryPrefix = expected.length() >= 20
+				&& claim.polarity() == evidence.atom().polarity()
+				&& evidence.atom().numericAnchors().containsAll(claim.numericAnchors())
+				&& isExplanatoryPrefix(claim.sourceText(), evidence.atom().sourceText());
+			if (exact || explanatoryPrefix) {
 				return new SemanticMatch(
 					ClaimEvidenceMatcher.Status.SUPPORTED, Set.of("exactText"), evidence.groundNumber(),
-					evidence.sentence(), 1.0d, "EXACT_PARTIAL_TEXT"
+					evidence.sentence(), 1.0d,
+					exact ? "EXACT_PARTIAL_TEXT" : "EXPLANATORY_PREFIX_PARTIAL_TEXT"
 				);
 			}
 		}
 		return SemanticMatch.insufficient("CLAIM_PARSE_INCOMPLETE");
+	}
+
+	private boolean isExplanatoryPrefix(String claim, String evidence) {
+		String expected = String.valueOf(claim == null ? "" : claim)
+			.trim()
+			.replaceFirst("[.!?。！？]+$", "")
+			.trim();
+		String actual = String.valueOf(evidence == null ? "" : evidence).trim();
+		if (expected.isBlank() || !actual.startsWith(expected)) {
+			return false;
+		}
+		String continuation = actual.substring(expected.length()).stripLeading();
+		return continuation.matches("^(?:-|–|—|:)\\s+\\S.*");
 	}
 
 	public SemanticMatch match(PropositionTemplate template, EvidenceAtom evidence) {

@@ -82,6 +82,21 @@ class LawAiEvaluationCaseCatalogTests {
 	void preservesRepresentativeExceptionAndPeriodOracleSemantics() {
 		List<LawAiEvalRequest.EvalCase> cases = LawAiEvaluationCaseCatalog.loadDefaultCases();
 
+		LawAiEvalRequest.EvalCase relation = find(cases, "project-review-pre-consultation-relation");
+		assertThat(relation.requiredPropositionGroups()).containsExactly(
+			List.of(
+				"국가기관 등이 발주하는 모든 SW사업",
+				"국가기관 등이 발주하는 소프트웨어사업"
+			)
+		);
+		assertThat(relation.requiredConditionGroups()).containsExactly(
+			List.of(
+				"대상기관이 추진하는 모든 정보화사업",
+				"사전협의의 대상사업은 대상기관이 추진하는 모든 정보화사업"
+			)
+		);
+		assertThat(relation.forbiddenAnswerTerms()).contains("과업심의와 사전협의는 별도 제도");
+
 		LawAiEvalRequest.EvalCase hardware = find(cases, "project-review-hardware-exclusion");
 		assertThat(hardware.requiredPropositionGroups()).containsExactly(
 			List.of("소프트웨어사업으로 볼 수 없는", "비대상")

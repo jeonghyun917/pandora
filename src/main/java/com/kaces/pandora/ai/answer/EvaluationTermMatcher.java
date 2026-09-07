@@ -44,6 +44,21 @@ final class EvaluationTermMatcher {
 		return matches >= requiredMatches;
 	}
 
+	static boolean matchesForbiddenEvidenceTerm(LawAiAnswerGround ground, String forbiddenTerm) {
+		if (ground == null || forbiddenTerm == null || forbiddenTerm.isBlank()) {
+			return false;
+		}
+		String directEvidence = String.join(
+			"\n",
+			String.valueOf(ground.title() == null ? "" : ground.title()),
+			String.valueOf(ground.chunkTitle() == null ? "" : ground.chunkTitle()),
+			String.valueOf(ground.matchedChildText() == null ? "" : ground.matchedChildText())
+		);
+		String normalizedForbidden = KoreanQueryNormalizer.normalizeForMatch(forbiddenTerm);
+		return !normalizedForbidden.isBlank()
+			&& KoreanQueryNormalizer.normalizeForMatch(directEvidence).contains(normalizedForbidden);
+	}
+
 	private static String canonical(String value) {
 		return KoreanQueryNormalizer.normalizeForMatch(value)
 			.replace("및", "")

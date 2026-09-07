@@ -441,15 +441,17 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
-	void answerFocusSeparatesProjectReviewFromPreConsultation() throws Exception {
+	void answerFocusLimitsProjectReviewPreConsultationAnswerToGroundedScopes() throws Exception {
 		LawAiAnswerService service = service();
 		try {
 			String focus = answerFocusInstruction(service, "과업심의 한 사업은 사전협의도 꼭 해야돼?");
 
 			assertThat(focus)
-				.contains("별도 제도")
-				.contains("각 제도의 대상사업 여부를 각각 확인")
-				.contains("자동으로 충족하거나 면제");
+				.contains("국가기관 등이 발주하는 모든 SW사업(상용SW포함)")
+				.contains("사전협의의 대상사업은 예산과목 및 계약방식과 관계없이 대상기관이 추진하는 모든 정보화사업임")
+				.contains("위 두 근거 문장만 그대로 답하세요")
+				.contains("확인할 수 없다는 설명도 덧붙이지 마세요")
+				.doesNotContain("별도 제도입니다");
 		} finally {
 			service.shutdownExecutors();
 		}

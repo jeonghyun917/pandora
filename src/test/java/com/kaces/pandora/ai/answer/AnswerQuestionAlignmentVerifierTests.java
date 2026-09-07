@@ -567,6 +567,30 @@ class AnswerQuestionAlignmentVerifierTests {
 	}
 
 	@Test
+	void configuredCrossPolicyScopeQuestionRequiresBothPolicyScopesTogether() {
+		String question = "과업심의 한 사업은 사전협의도 꼭 해야돼?";
+		String projectReviewScope = "국가기관 등이 발주하는 모든 SW사업(상용SW포함).";
+		String preConsultationScope =
+			"사전협의의 대상사업은 예산과목 및 계약방식과 관계없이 대상기관이 추진하는 모든 정보화사업임.";
+
+		AnswerQuestionAlignmentVerifier.AlignmentResult complete = verifier.verify(
+			question,
+			claimResult(
+				supported(projectReviewScope, projectReviewScope),
+				supported(preConsultationScope, preConsultationScope)
+			)
+		);
+		AnswerQuestionAlignmentVerifier.AlignmentResult incomplete = verifier.verify(
+			question,
+			claimResult(supported(projectReviewScope, projectReviewScope))
+		);
+
+		assertThat(complete.aligned()).as(complete.toString()).isTrue();
+		assertThat(incomplete.aligned()).as(incomplete.toString()).isFalse();
+		assertThat(incomplete.reasonCode()).isNotEqualTo("ALIGNED");
+	}
+
+	@Test
 	void configuredTrafficCrosswalkStopRequiresPedestrianConditionAndStopDutyTogether() {
 		String question = "운전중 우회전할때 횡단보도에서 멈춰야 하나?";
 		String direct =

@@ -2,6 +2,7 @@ package com.kaces.pandora.ai.answer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class EvaluationTermMatcherTests {
@@ -27,5 +28,31 @@ class EvaluationTermMatcherTests {
 
 		assertThat(EvaluationTermMatcher.matchesAnswerTerm(answer, "동의를 거부할 권리")).isFalse();
 		assertThat(EvaluationTermMatcher.matchesAnswerTerm(answer, "개인정보의 항목")).isFalse();
+	}
+
+	@Test
+	void forbiddenEvidenceIgnoresIncidentalParentContextButChecksTheMatchedChild() {
+		LawAiAnswerGround directGround = ground(
+			"사전협의의 대상사업은 대상기관이 추진하는 모든 정보화사업임",
+			"부록: 제안요청서 작성 예시"
+		);
+		LawAiAnswerGround templateGround = ground(
+			"부록: 제안요청서 작성 예시",
+			null
+		);
+
+		assertThat(EvaluationTermMatcher.matchesForbiddenEvidenceTerm(directGround, "작성 예시"))
+			.isFalse();
+		assertThat(EvaluationTermMatcher.matchesForbiddenEvidenceTerm(templateGround, "작성 예시"))
+			.isTrue();
+	}
+
+	private LawAiAnswerGround ground(String matchedChildText, String parentContextText) {
+		return new LawAiAnswerGround(
+			1, 1L, 1L, "official_doc", "정보화사업 안내서", "", "", "", "CURRENT",
+			"p.1", "대상사업", 1, matchedChildText, "", "", 1.0,
+			matchedChildText, parentContextText, List.of(1L),
+			parentContextText == null ? "matched_child_only" : "parent_context_expanded"
+		);
 	}
 }

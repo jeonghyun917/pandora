@@ -76,6 +76,30 @@ class SemanticEvidenceMatcherTests {
 	}
 
 	@Test
+	void supportsAVerbatimNominalScopeFollowedOnlyByAnExplanatoryDefinition() {
+		EvidenceAtom claim = parser.parse("국가기관 등이 발주하는 모든 SW사업(상용SW포함).");
+		EvidenceAtom evidence = parser.parse(
+			"국가기관 등이 발주하는 모든 SW사업(상용SW포함) - "
+				+ "소프트웨어의 개발, 제작, 생산, 유통, 운영 및 유지·관리 등과 관련된 경제활동"
+		);
+
+		assertThat(claim.parseStatus()).isEqualTo(EvidenceAtom.ParseStatus.PARTIAL);
+		assertThat(matcher.match(claim, SemanticEvidenceMatcher.EvidenceIndex.of(evidence)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void doesNotTreatANegatedContinuationAsAnExplanatoryPrefixMatch() {
+		EvidenceAtom claim = parser.parse("국가기관 등이 발주하는 모든 SW사업(상용SW포함)");
+		EvidenceAtom evidence = parser.parse(
+			"국가기관 등이 발주하는 모든 SW사업(상용SW포함)은 적용 대상이 아닙니다."
+		);
+
+		assertThat(matcher.match(claim, SemanticEvidenceMatcher.EvidenceIndex.of(evidence)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
 	void alignsAnActionBearingPartialClaimWithCompleteEvidenceThatSuppliesTheImplicitSubject() {
 		EvidenceAtom claim = parser.parse(
 			"결론부터 말하면, 사업계획을 수립한 후 지체 없이 사업계획서 등을 제출하여 사전협의를 요청해야 합니다."

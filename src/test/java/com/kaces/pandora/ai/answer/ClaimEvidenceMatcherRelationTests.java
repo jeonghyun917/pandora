@@ -78,6 +78,25 @@ class ClaimEvidenceMatcherRelationTests {
 	}
 
 	@Test
+	void supportsVerbatimProjectReviewAndPreConsultationScopeStatements() {
+		assertThat(matcher.match(
+			"국가기관 등이 발주하는 모든 SW사업(상용SW포함)",
+			List.of(ground(
+				"공공소프트웨어사업 과업심의 가이드",
+				"국가기관 등이 발주하는 모든 SW사업(상용SW포함)"
+			))
+		).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+
+		assertThat(matcher.match(
+			"사전협의의 대상사업은 예산과목 및 계약방식과 관계없이 대상기관이 추진하는 모든 정보화사업임",
+			List.of(ground(
+				"정보화사업 사전협의 안내",
+				"사전협의의 대상사업은 예산과목 및 계약방식과 관계없이 대상기관이 추진하는 모든 정보화사업임"
+			))
+		).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
 	void concessiveRadoDoesNotCreateAnAdditiveRelationAnchor() {
 		ClaimEvidenceMatcher.Match match = matcher.match(
 			"단순 소프트웨어 구매라도 그 사업이 소프트웨어사업에 해당하면 과업심의 대상이다.",

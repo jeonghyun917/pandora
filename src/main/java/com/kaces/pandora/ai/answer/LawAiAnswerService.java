@@ -2335,7 +2335,10 @@ public class LawAiAnswerService {
 		List<String> missingParentTerms = expectedParentTerms.stream()
 			.filter(term -> !matchedParentTerms.contains(term))
 			.toList();
-		List<String> forbiddenMatchedTerms = matchedExpectedTerms(selectedText, forbiddenTerms);
+		List<String> forbiddenMatchedTerms = forbiddenTerms.stream()
+			.filter(term -> retrieval.grounds().stream()
+				.anyMatch(ground -> EvaluationTermMatcher.matchesForbiddenEvidenceTerm(ground, term)))
+			.toList();
 		String topText = retrieval.answerChunks().stream()
 			.findFirst()
 			.map(this::textForEvaluation)
@@ -3404,8 +3407,9 @@ public class LawAiAnswerService {
 		String normalized = normalizeForMatch(query);
 		if (isProjectReviewPreConsultationRelationQuestion(normalized)) {
 			return """
-				- 과업심의와 정보화사업 사전협의는 별도 제도입니다. 과업심의를 했다는 사실만으로 사전협의를 자동으로 충족하거나 면제한다고 답하지 마세요.
-				- 선택된 근거에서 과업심의 대상사업과 사전협의 대상사업을 나누어 설명하고, 각 제도의 대상사업 여부를 각각 확인해야 한다고 답하세요.
+				- 위 두 근거 문장만 그대로 답하세요: '국가기관 등이 발주하는 모든 SW사업(상용SW포함)' 및 '사전협의의 대상사업은 예산과목 및 계약방식과 관계없이 대상기관이 추진하는 모든 정보화사업임'.
+				- 문장 앞에 '과업심의 대상은', '사전협의 대상은', '결론' 같은 표지를 새로 붙이지 마세요.
+				- 별도 제도, 자동 충족·면제 여부, 또는 제공된 문서로 확인할 수 없다는 설명도 덧붙이지 마세요.
 				- 질문에 없는 금액, 예외 또는 세부 절차는 덧붙이지 마세요.
 				""".stripIndent().trim();
 		}

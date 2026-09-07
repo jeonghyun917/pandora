@@ -3,7 +3,7 @@ project-review-target	과업심의 대상은?	official_doc|internal_doc	적용 �
 project-review-simple-software	단순 소프트웨어 구매면 과업심의 안해도 돼?	official_doc|internal_doc	국가기관 등이 발주하는 모든 SW사업|소프트웨어사업|비대상|단순 H/W	2	과업심의	target_scope	간소화 심의|위원회 회의	공공소프트웨어사업 과업심의	5	적용 대상 사업	단순 구매 자체가 아니라 SW사업 여부와 예외 대상을 구분해 답한다
 project-review-hardware-exclusion	공공소프트웨어사업에서 단순 하드웨어 구매는 소프트웨어사업에 포함되나요?	official_doc|internal_doc	단순 H/W|소프트웨어사업으로 볼 수 없는|비대상	1	과업심의	target_scope	위원회 회의	공공소프트웨어사업 과업심의	5	적용 대상 사업	단순 H/W 도입 설치는 비대상임을 먼저 답한다
 project-review-sns-operation	SNS운영 사업도 과업심의 받아야해?	official_doc|internal_doc|admrul|law	국가기관 등이 발주하는 모든 SW사업|국가기관등의 장이 발주하는 소프트웨어사업|소프트웨어사업|대상사업	2	과업심의|공공SW사업	target_scope	위원회 회의|위원의 제척|SNS 소통민원창구	공공소프트웨어사업 과업심의|공공SW사업 법제도 관리감독	5	대상 사업	SNS라는 단어가 있는 문서를 찾지 말고 SW사업 대상 여부 기준으로 답한다
-project-review-pre-consultation-relation	과업심의 한 사업은 사전협의도 꼭 해야돼?	official_doc|internal_doc|admrul|law	과업심의|사전협의|대상사업|정보화사업	2	과업심의|사전협의	target_scope	작성 예시	과업심의|사전협의		대상사업	과업심의와 사전협의는 별도 제도임을 구분해 답한다
+project-review-pre-consultation-relation	과업심의 한 사업은 사전협의도 꼭 해야돼?	official_doc|internal_doc|admrul|law	과업심의|사전협의|대상사업|정보화사업	2	과업심의|사전협의	target_scope	작성 예시	과업심의|사전협의		대상사업	선택 근거에 직접 적힌 각 제도의 대상 범위만 설명하고 상호 충족·면제는 단정하지 않는다
 pre-consultation-target	기타공공기관 사전협의 대상 알려줘	official_doc|internal_doc|admrul|law	사전협의의 대상사업|대상기관|추진하는 모든 정보화사업	2	사전협의	target_scope	제안서 평가 방법	사전협의		사전협의 대상	대상기관과 대상사업을 먼저 답한다
 pre-consultation-when	정보화사업 사전협의는 언제 해야해?	official_doc|internal_doc|admrul|law	사전협의|예산|사업계획|검토	2	사전협의	procedure	제안서 평가 방법	사전협의		시기|절차	언제 제출 또는 협의해야 하는지 절차 중심으로 답한다
 pre-consultation-exception	정보화사업 사전협의 제외 대상은?	official_doc|internal_doc|admrul|law	사전협의|제외|제외대상|대상사업	2	사전협의	exception	제안서 작성 예시	사전협의		제외 대상	제외 대상과 확인 필요 조건을 구분해 답한다
