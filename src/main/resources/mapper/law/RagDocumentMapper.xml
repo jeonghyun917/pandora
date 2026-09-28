@@ -823,20 +823,20 @@
   </select>
 
   <select id="findSemanticChunksByText" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="3">
-    WITH query_terms(query_term) AS (
-      <foreach collection="keywords" item="keyword" separator=" UNION ALL ">
-        SELECT #{keyword}
-      </foreach>
-    ),
-    matched_terms AS (
+    WITH matched_terms AS (
       SELECT
         search_term.chunk_id,
-        COUNT(DISTINCT query_term.query_term) AS matched_term_count,
-        SUM(search_term.weight + CASE WHEN search_term.term = query_term.query_term THEN 2 ELSE 0 END) AS term_score
-      FROM query_terms query_term
-      JOIN rag_chunk_search_terms search_term
-        ON search_term.term = query_term.query_term
-        OR search_term.term LIKE CONCAT(query_term.query_term, '%')
+        COUNT(DISTINCT search_term.query_term) AS matched_term_count,
+        SUM(search_term.weight + CASE WHEN search_term.term = search_term.query_term THEN 2 ELSE 0 END) AS term_score
+      FROM (
+        <!-- Bind each prefix as a constant range. A LIKE join against query-term rows
+             makes MariaDB scan the entire term index instead of using its term key. -->
+        <foreach collection="keywords" item="keyword" separator=" UNION ALL ">
+          SELECT chunk_id, term, weight, #{keyword} AS query_term
+          FROM rag_chunk_search_terms
+          WHERE term LIKE CONCAT(#{keyword}, '%')
+        </foreach>
+      ) search_term
       JOIN rag_document_chunks c ON c.chunk_id = search_term.chunk_id
       JOIN rag_documents doc ON doc.document_id = c.document_id
       WHERE doc.use_yn = 'Y'

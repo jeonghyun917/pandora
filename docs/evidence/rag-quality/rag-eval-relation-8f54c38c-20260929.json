@@ -1,0 +1,355 @@
+{
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "passRate": 0,
+  "gatePassed": false,
+  "minimumPassed": 1,
+  "blockingFailureIds": [
+    "project-review-pre-consultation-relation"
+  ],
+  "semanticShadowDisagreementCount": 0,
+  "unsafeSemanticShadowDisagreementCount": 0,
+  "results": [
+    {
+      "id": "project-review-pre-consultation-relation",
+      "question": "과업심의 한 사업은 사전협의도 꼭 해야돼?",
+      "targets": [
+        "official_doc",
+        "internal_doc",
+        "admrul",
+        "law"
+      ],
+      "passed": false,
+      "requiredMatches": 2,
+      "matchedTerms": [
+        "과업심의",
+        "사전협의",
+        "대상사업",
+        "정보화사업"
+      ],
+      "missingTerms": [],
+      "matchedTitleTerms": [
+        "과업심의",
+        "사전협의"
+      ],
+      "missingTitleTerms": [],
+      "matchedSectionTypes": [
+        "target_scope"
+      ],
+      "missingSectionTypes": [],
+      "matchedDocumentTerms": [
+        "과업심의",
+        "사전협의"
+      ],
+      "missingDocumentTerms": [],
+      "matchedPageNumbers": [],
+      "missingPageNumbers": [],
+      "matchedParentTerms": [
+        "대상사업"
+      ],
+      "missingParentTerms": [],
+      "forbiddenMatchedTerms": [],
+      "topMatchedTerms": [
+        "과업심의",
+        "대상사업"
+      ],
+      "answerDirection": "선택 근거에 직접 적힌 각 제도의 대상 범위만 설명하고 상호 충족·면제는 단정하지 않는다",
+      "expectedResultMsgs": [],
+      "resultMsg": "OK",
+      "message": "OK | answer claims are not supported by selected grounds | missing proposition groups=국가기관 등이 발주하는 모든 SW사업|국가기관 등이 발주하는 소프트웨어사업; missing condition groups=대상기관이 추진하는 모든 정보화사업|사전협의의 대상사업은 대상기관이 추진하는 모든 정보화사업",
+      "selected": [
+        {
+          "rank": 1,
+          "chunkId": 84023,
+          "documentId": 1,
+          "target": "official_doc",
+          "title": "공공소프트웨어사업 과업심의 가이드(2022. 12.)",
+          "categoryName": "공식 가이드 문서",
+          "agencyName": "Ministry of Science and ICT",
+          "chunkNo": "page 5",
+          "chunkTitle": "p.5 적용 대상 사업",
+          "parentSectionTitle": "적용 대상 사업",
+          "sectionType": "target_scope",
+          "pageNo": 5,
+          "sourcePath": "$.v4.pages[5]",
+          "vectorRank": 1,
+          "lexicalRank": 25,
+          "bm25VariantRanks": {
+            "direct-evidence": 61,
+            "original-focused": 25,
+            "synonym-intent": 76,
+            "entity-intent": 1
+          },
+          "fusedRank": 2,
+          "coverageFusedRank": 2,
+          "coverageAnchorCandidateKey": null,
+          "coverageReason": null,
+          "documentExpansionRank": null,
+          "documentExpansionAnchorType": null,
+          "documentExpansionReason": null,
+          "documentExpansionOverlap": null,
+          "documentExpansionSeedTermCount": null,
+          "documentExpansionSeedBm25Score": null,
+          "documentExpansionSeedBm25Rank": null,
+          "vectorScore": 0.7397137,
+          "bm25Score": 24.936620219698035,
+          "rrfScore": 0.02815814850530376,
+          "keywordScore": 0,
+          "metadataScore": 32.747,
+          "combinedScore": 33.4867137,
+          "baseScore": 0.7397137,
+          "finalScore": 45.986713699999996,
+          "selected": true,
+          "matchedTerms": [
+            "과업심의",
+            "사업"
+          ],
+          "matchedAuditGroupIndexes": [],
+          "matchedAuditAliases": [],
+          "snippet": "적용 대상 사업 — 국가기관 등이 발주하는 모든 SW사업(상용SW포함) - 소프트웨어의 개발, 제작, 생산, 유통, 운영 및 유지·관리 등과 그 밖에 소프트웨어와 관련된 서비스를 제공하는 산업과 관련된 경제활동(‘소프트웨어 진흥법’제2조) ※ 단순 H/W(Appliance 포함) 도입·설치, 단순 동영상 제작, 네트워크 등 인프라 수수료와 같이 소프트웨어사업으로 볼 수 없는 경우는 비대상"
+        },
+        {
+          "rank": 2,
+          "chunkId": 84726,
+          "documentId": 6,
+          "target": "official_doc",
+          "title": "공공SW사업 법제도 관리감독 및 지원 가이드(2024. 12.)",
+          "categoryName": "공식 가이드 문서",
+          "agencyName": "Ministry of Science and ICT",
+          "chunkNo": "page 8",
+          "chunkTitle": "p.8 대상 사업",
+          "parentSectionTitle": "대상 사업",
+          "sectionType": "target_scope",
+          "pageNo": 8,
+          "sourcePath": "$.v4.pages[8]",
+          "vectorRank": 2,
+          "lexicalRank": null,
+          "bm25VariantRanks": {},
+          "fusedRank": 7,
+          "coverageFusedRank": 7,
+          "coverageAnchorCandidateKey": null,
+          "coverageReason": null,
+          "documentExpansionRank": null,
+          "documentExpansionAnchorType": null,
+          "documentExpansionReason": null,
+          "documentExpansionOverlap": null,
+          "documentExpansionSeedTermCount": null,
+          "documentExpansionSeedBm25Score": null,
+          "documentExpansionSeedBm25Rank": null,
+          "vectorScore": 0.70084345,
+          "bm25Score": 0,
+          "rrfScore": 0.016129032258064516,
+          "keywordScore": 0,
+          "metadataScore": 17.935000000000002,
+          "combinedScore": 18.635843450000003,
+          "baseScore": 0.70084345,
+          "finalScore": 43.986713699999996,
+          "selected": true,
+          "matchedTerms": [
+            "사업"
+          ],
+          "matchedAuditGroupIndexes": [],
+          "matchedAuditAliases": [],
+          "snippet": "대상사업 : 국가기관등의 장이 발주하는 소프트웨어사업 [ 국가기관등 ] [소프트웨어 진흥법 시행령] 제21조(국가기관등의 범위) 법 제21조제4항에서 \"대통령령으로 정하는 기관\"이란 다음 각 호의 기관을 말한다. 1. 국가기관 2. 지방자치단체 3. 「공공기관의 운영에 관한 법률」 제4조에 따른 공공기관 4. 정부가 자본금을 출자하여 최대지분을 보유하고 있는 기관 또는 단체. 다만, 정부가 자본금의 2분의 1 미만을 출자한 금융기관은 제외한다. 5. 「정부출연연구기관 등의 설립ㆍ운영 및 육성에 관한 법률」 제2조에 따른 정부출연연구기관 또는 「과학기술분야 정부출연연구기관 등의 설립ㆍ운영 및 육성에 관한 법률」 제2조에 따른 과학기술분야 정부 출연연구기관 6. 법령에 따라 정부로부터 출연금을 받는 기관 또는 단체 7. 「지방공기업법」에 따라 지방자치단체가 자본금의 2분의 1 이상을 출자한 지방공사 또는 지방공단 ＊..."
+        },
+        {
+          "rank": 3,
+          "chunkId": 84758,
+          "documentId": 6,
+          "target": "official_doc",
+          "title": "공공SW사업 법제도 관리감독 및 지원 가이드(2024. 12.)",
+          "categoryName": "공식 가이드 문서",
+          "agencyName": "Ministry of Science and ICT",
+          "chunkNo": "page 26",
+          "chunkTitle": "p.26 대상 사업",
+          "parentSectionTitle": "대상 사업",
+          "sectionType": "target_scope",
+          "pageNo": 26,
+          "sourcePath": "$.v4.pages[26]",
+          "vectorRank": 56,
+          "lexicalRank": null,
+          "bm25VariantRanks": {},
+          "fusedRank": null,
+          "coverageFusedRank": null,
+          "coverageAnchorCandidateKey": null,
+          "coverageReason": null,
+          "documentExpansionRank": null,
+          "documentExpansionAnchorType": null,
+          "documentExpansionReason": null,
+          "documentExpansionOverlap": null,
+          "documentExpansionSeedTermCount": null,
+          "documentExpansionSeedBm25Score": null,
+          "documentExpansionSeedBm25Rank": null,
+          "vectorScore": 0.6323185,
+          "bm25Score": 0,
+          "rrfScore": 0,
+          "keywordScore": 0,
+          "metadataScore": 15.415000000000003,
+          "combinedScore": 16.047318500000003,
+          "baseScore": 0.6323185,
+          "finalScore": 43.986713699999996,
+          "selected": true,
+          "matchedTerms": [
+            "사업"
+          ],
+          "matchedAuditGroupIndexes": [],
+          "matchedAuditAliases": [],
+          "snippet": "대상 사업 p.26 대상 사업 대상 사업 p.26 대상 사업 < 민간투자대상사업으로 지정되어 관보에 고시된 사업에 포함된 소프트웨어 사업 > ㅇ 본 사업은 「소프트웨어 진흥법」 제48조(중소 소프트웨어사업자의 사업참여 지원) 제3항 제3호에 따른 p.22 대상 사업 참조! ㅇ 대상사업 변경(상용SW 구매금액) : 5천만원 이상 ⇒ 1억원 이상 ㅇ ‘SW품질성능 평가시험 대상 상용SW분야 34종’ 추가 o 개요 - 경쟁입찰을 통한 직접구매 대상 상용SW 구매 시 SW 품질성능 평가시험(BMT) 의무화(직접 또는 지정시험기관* 의뢰) * 「소프트웨어 품질성능 평가시험 운영에 관한 지침」, 지정시험기관: 한국정보통신기술협회(TTA) o 법적근거 - 「소프트웨어 진흥법」 제55조(상용소프트웨어 품질성능 평가시험), 같은 법 시행령 제50조, 제51조, 시행규칙 제16조, 「소프트웨어 품질성능 평가시험 운영에 관한 지침」..."
+        },
+        {
+          "rank": 4,
+          "chunkId": 87916,
+          "documentId": 21,
+          "target": "official_doc",
+          "title": "사전협의 사전협의 개요1. 사전협의 신청2.",
+          "categoryName": "공식 가이드 문서",
+          "agencyName": "Ministry of the Interior and Safety",
+          "chunkNo": "page 2",
+          "chunkTitle": "p.2 대상 기관",
+          "parentSectionTitle": "대상 기관",
+          "sectionType": "target_scope",
+          "pageNo": 2,
+          "sourcePath": "$.v4.pages[2]",
+          "vectorRank": 32,
+          "lexicalRank": null,
+          "bm25VariantRanks": {},
+          "fusedRank": 63,
+          "coverageFusedRank": 63,
+          "coverageAnchorCandidateKey": null,
+          "coverageReason": null,
+          "documentExpansionRank": null,
+          "documentExpansionAnchorType": null,
+          "documentExpansionReason": null,
+          "documentExpansionOverlap": null,
+          "documentExpansionSeedTermCount": null,
+          "documentExpansionSeedBm25Score": null,
+          "documentExpansionSeedBm25Rank": null,
+          "vectorScore": 0.6418663,
+          "bm25Score": 0,
+          "rrfScore": 0.010869565217391304,
+          "keywordScore": 0,
+          "metadataScore": 19.115,
+          "combinedScore": 19.7568663,
+          "baseScore": 0.6418663,
+          "finalScore": 34.7018663,
+          "selected": true,
+          "matchedTerms": [
+            "사업",
+            "사전협의"
+          ],
+          "matchedAuditGroupIndexes": [],
+          "matchedAuditAliases": [],
+          "snippet": "대상 기관 — 대상사업을 기관별 정보화사업 사전협의 추진계획에 ( ) 「 」 포함하여 제출 ※ 중앙행정기관 및 지방자치단체의 정보화 업무를 출연 위탁받은 공공기관 공기업 정보화사업도 포함하여 제출· · 사전협의 신청(2) - 정보화사업을 발주하고자 하는 기관은 사전협의 대상사업에 대해 사업발주 일 이전에 30"
+        }
+      ],
+      "answerVerificationRequired": true,
+      "answerVerified": false,
+      "matchedAnswerTerms": [],
+      "missingAnswerTerms": [
+        "국가기관 등이 발주하는 모든 SW사업|국가기관 등이 발주하는 소프트웨어사업",
+        "대상기관이 추진하는 모든 정보화사업|사전협의의 대상사업은 대상기관이 추진하는 모든 정보화사업"
+      ],
+      "forbiddenAnswerMatchedTerms": [],
+      "unsupportedAnswerClaims": [
+        "사전협의의 대상사업은 예산과목 및 계약방식과 관계없이 대상기관이 추진하는 모든 정보화사업임."
+      ],
+      "contradictedAnswerClaims": [],
+      "claimEvidenceLinks": [
+        {
+          "claim": "국가기관 등이 발주하는 모든 SW사업(상용SW포함).",
+          "relation": "SUPPORTED",
+          "groundNumber": 1,
+          "evidenceSentence": "국가기관 등이 발주하는 모든 SW사업(상용SW포함) - 소프트웨어의 개발, 제작, 생산, 유통, 운영 및 유지·관리 등과 그 밖에 소프트웨어와 관련된 서비스를 제공하는 산업과 관련된 경제활동(‘소프트웨어 진흥법’제2조)",
+          "overlapCount": 6,
+          "coverage": 1,
+          "score": 11
+        }
+      ],
+      "semanticShadowDisagreements": [],
+      "unsafeSemanticShadowDisagreementCount": 0,
+      "verifiedAnswer": "제공된 근거만으로는 답변을 확정하기 어렵습니다. 관련 법령명이나 문서 범위를 더 구체적으로 입력해 주세요."
+    }
+  ],
+  "blockingGates": {
+    "curated": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "passRate": 0,
+      "gatePassed": false,
+      "blockingFailureIds": [
+        "project-review-pre-consultation-relation"
+      ]
+    },
+    "answerOracle": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "passRate": 0,
+      "gatePassed": false,
+      "blockingFailureIds": [
+        "project-review-pre-consultation-relation"
+      ]
+    },
+    "noGrounds": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "passRate": 0,
+      "gatePassed": false,
+      "blockingFailureIds": []
+    }
+  },
+  "provenance": {
+    "schemaVersion": 4,
+    "runScope": "targeted",
+    "gateProfile": "release",
+    "generatedAt": "2026-09-28T22:44:26.913Z",
+    "baseUrl": "http://127.0.0.1:8080",
+    "executionPort": 8080,
+    "gitCommit": "8f54c38c188c2103b30342cd10aba08e00465bb0",
+    "gitDirty": false,
+    "datasetHash": "6b85990a6395c501138628877d4c9efda61c218afde4d0ab5a886f3588ce044c",
+    "selectionHash": "d549e3da6f8ddb39d559b41e34cb99938aab1b2035d2f366dce94ef36c683093",
+    "baselineManifestId": null,
+    "selectedCaseCount": 1,
+    "totalCaseCount": 1003,
+    "indexVersion": "law_chunks+rag_chunks_v4",
+    "embeddingModel": "text-embedding-3-small",
+    "answerModel": "gpt-5-mini",
+    "lawCollection": "law_chunks",
+    "ragCollection": "rag_chunks_v4",
+    "runtimeArtifactKind": "jar",
+    "runtimeArtifactSha256": "4b3da9c5a0012e10c0076c843a56e8eb238788848952ed1ccfd8c9b71eedde92",
+    "runtimeArtifactSize": 67522136,
+    "runtimeInstanceId": "22f67524-cc06-456d-a86c-5ef12d8ffcc3",
+    "runtimeConfigSha256": "e7b08ced10e7fd56f1dbfda7822dccb019aec056cf31ea16fca24604cbd1576a",
+    "indexRevision": "726f3c4dd53d09a99bb277ec85cae47270b7613618d23300c34a6c197eac7285",
+    "lexicalRevision": "da8d51cecea3bd10ce9ba7eb40c2a25015d2166e983d836018616377de9bb9aa",
+    "qdrantReady": true,
+    "qdrantSearchFailureCount": 0,
+    "runtimeInfoSource": "server",
+    "runtimeInfoReadAttempts": 1
+  },
+  "breakdown": {
+    "curated": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "passRate": 0
+    },
+    "generated": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "passRate": 0
+    },
+    "answerVerification": {
+      "required": 1,
+      "passed": 0,
+      "failed": 1,
+      "unsupportedClaimCases": 1
+    }
+  }
+}

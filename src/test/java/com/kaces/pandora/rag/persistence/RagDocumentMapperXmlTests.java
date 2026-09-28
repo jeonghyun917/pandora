@@ -166,15 +166,33 @@ class RagDocumentMapperXmlTests {
 
 		assertThat(sql)
 			.contains("rag_chunk_search_terms")
-			.contains("WITH query_terms(query_term) AS")
-			.contains("COUNT(DISTINCT query_term.query_term) AS matched_term_count")
-			.contains("search_term.term LIKE CONCAT(query_term.query_term, '%')")
+			.contains("COUNT(DISTINCT search_term.query_term) AS matched_term_count")
+			.contains("WHERE term LIKE CONCAT(?, '%')")
 			.contains("ORDER BY matched_term_count DESC, term_score DESC");
 		assertThat(sql).doesNotContain("chunk_text LIKE CONCAT('%'");
 		String finalOrderBy = sql.substring(sql.lastIndexOf("ORDER BY")).replaceAll("\\s+", " ");
 		assertThat(finalOrderBy)
 			.contains("matched.matched_term_count DESC")
 			.contains("matched.term_score DESC");
+	}
+
+	@Test
+	void textSearchBindsEachPrefixInItsOwnIndexRangeBeforeJoiningChunks() throws Exception {
+		MappedStatement statement = parseMapper().getMappedStatement(TEXT_STATEMENT);
+		Map<String, Object> parameters = Map.of(
+			"documentTypes", List.of("official_doc"),
+			"keywords", List.of("사전협의", "대상사업", "대상기관"),
+			"limit", 40
+		);
+		String sql = normalizedSql(statement, parameters);
+		assertThat(sql.split("WHERE term LIKE CONCAT\\(\\?, '%'\\)", -1)).hasSize(4);
+		assertThat(sql)
+			.contains("UNION ALL", "COUNT(DISTINCT search_term.query_term)")
+			.contains("CASE WHEN search_term.term = search_term.query_term THEN 2 ELSE 0 END")
+			.doesNotContain("LIKE CONCAT(query_term.query_term", "FROM query_terms query_term");
+		assertThat(statement.getBoundSql(parameters).getParameterMappings().stream()
+			.filter(mapping -> mapping.getProperty().startsWith("__frch_keyword_")))
+			.hasSize(6);
 	}
 
 	@Test
