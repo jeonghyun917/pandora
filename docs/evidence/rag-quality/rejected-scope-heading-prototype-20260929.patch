@@ -1,0 +1,81 @@
+warning: in the working copy of 'src/test/java/com/kaces/pandora/ai/answer/GroundedAnswerRepairServiceTests.java', LF will be replaced by CRLF the next time Git touches it
+diff --git a/src/main/java/com/kaces/pandora/ai/answer/GroundedAnswerRepairService.java b/src/main/java/com/kaces/pandora/ai/answer/GroundedAnswerRepairService.java
+index 0445b3ad..0cfbb36d 100644
+--- a/src/main/java/com/kaces/pandora/ai/answer/GroundedAnswerRepairService.java
++++ b/src/main/java/com/kaces/pandora/ai/answer/GroundedAnswerRepairService.java
+@@ -339,7 +339,7 @@ public class GroundedAnswerRepairService {
+ 				continue;
+ 			}
+ 			for (CandidateAtom candidate : rankedCandidates) {
+-				String atom = clean(candidate.text());
++				String atom = withSourceHeading(candidate, grounds);
+ 				String normalizedAtom = normalize(atom);
+ 				if (atom.isBlank()
+ 					|| atom.length() > MAX_ATOM_CHARACTERS
+@@ -415,7 +415,7 @@ public class GroundedAnswerRepairService {
+ 			if (oneAtomPerGround && selectedGroundIndexes.contains(candidate.groundIndex())) {
+ 				continue;
+ 			}
+-			String atom = clean(candidate.text());
++			String atom = withSourceHeading(candidate, grounds);
+ 			if (oneAtomPerGround) {
+ 				atom = stripLeadingArticleHeadings(atom);
+ 			}
+@@ -461,6 +461,23 @@ public class GroundedAnswerRepairService {
+ 		return List.copyOf(selectedByKey.values());
+ 	}
+ 
++	private String withSourceHeading(CandidateAtom candidate, List<LawAiAnswerGround> grounds) {
++		String atom = clean(candidate.text());
++		LawAiAnswerGround ground = grounds.get(candidate.groundIndex());
++		String heading = clean(String.valueOf(ground.chunkTitle() == null ? "" : ground.chunkTitle())
++			.replaceFirst("(?i)^p\\.\\d+\\s*", ""));
++		String source = normalize(matchedChildText(ground));
++		if (!"direct".equalsIgnoreCase(ground.evidenceRole()) || heading.isBlank()
++			|| heading.length() > 80 || ARTICLE_HEADING_ONLY.matcher(heading).matches()
++			|| !source.startsWith(normalize(heading)) || !source.contains(normalize(atom))
++			|| normalize(atom).contains(normalize(heading))) {
++			return atom;
++		}
++		// Keep only a heading present in this exact child; the combined claim is
++		// subsequently subjected to the same support and alignment checks as any atom.
++		return heading + ": " + atom;
++	}
++
+ 	private String stripLeadingArticleHeadings(String atom) {
+ 		return clean(LEADING_ARTICLE_HEADINGS.matcher(clean(atom)).replaceFirst(""));
+ 	}
+diff --git a/src/test/java/com/kaces/pandora/ai/answer/GroundedAnswerRepairServiceTests.java b/src/test/java/com/kaces/pandora/ai/answer/GroundedAnswerRepairServiceTests.java
+index 867a0723..98e657d0 100644
+--- a/src/test/java/com/kaces/pandora/ai/answer/GroundedAnswerRepairServiceTests.java
++++ b/src/test/java/com/kaces/pandora/ai/answer/GroundedAnswerRepairServiceTests.java
+@@ -905,6 +905,29 @@ class GroundedAnswerRepairServiceTests {
+ 			.anySatisfy(atom -> assertThat(atom).contains("주요정보통신기반시설"));
+ 	}
+ 
++	@Test
++	void repairRetainsSourceScopeHeadingForEnumeratedTargetAtoms() {
++		String heading = "국가정보원 검토 대상";
++		String system = "비밀·대외비를 유통·관리하기 위한 정보통신망 또는 정보시스템 구축.";
++		String sensitive = "100만명 이상의 민감정보 또는 고유식별정보를 처리하는 정보시스템 구축.";
++		String infrastructure = "주요정보통신기반시설로 지정이 필요한 정보통신기반시설 구축.";
++		String source = heading + " p.2 " + heading + " p.2 " + heading + " 1. "
++			+ system + " 2. " + sensitive + " 3. " + infrastructure;
++		LawAiAnswerGround scoped = new LawAiAnswerGround(1, 84918, 8, "official_doc",
++			"2026년 정보화사업 보안성 검토 가이드", "", "", "20260101", null,
++			"page 2", "p.2 " + heading, 2, source, "", "", 1.0);
++		GroundedAnswerRepairService service = new GroundedAnswerRepairService(realVerificationService(),
++			new GroundedAnswerRewriter() {
++				@Override public String rewrite(String question, List<String> atoms) {
++					return String.join("\n", atoms);
++				}
++			});
++		var result = service.verifyAndRepair("보안성검토 대상 시스템은?",
++			"보안성 검토 담당자와 먼저 사전 협의해야 합니다.", List.of(scoped));
++		assertThat(result.insufficientEvidence()).as(result.toString()).isFalse();
++		assertThat(result.verifiedAnswer()).contains(heading, "민감정보", "주요정보통신기반시설");
++	}
++
+ 	@Test
+ 	void configuredPreConsultationExceptionRepairsFromThresholdAndOverrideAtoms() {
+ 		String question = "정보화사업 사전협의 제외 대상은?";
