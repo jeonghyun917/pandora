@@ -10,6 +10,41 @@ class ClaimEvidenceMatcherRelationTests {
 	private final ClaimEvidenceMatcher matcher = new ClaimEvidenceMatcher();
 
 	@Test
+	void retainsExplicitNumberedListScopeFromTheSourceHeading() {
+		var evidence = groundWithChunkTitleAndContext("p.2 국가정보원 검토 대상",
+			"국가정보원 검토 대상\n1. 비밀 정보를 관리하는 정보시스템 구축\n"
+				+ "2. 주요정보통신기반시설 구축", "");
+		assertThat(matcher.match("국가정보원 검토 대상: 주요정보통신기반시설 구축",
+			List.of(evidence)).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void doesNotCarryListScopeAcrossANewHeading() {
+		var evidence = groundWithChunkTitleAndContext("p.2 국가정보원 검토 대상",
+			"국가정보원 검토 대상\n1. 비밀 정보를 관리하는 정보시스템 구축\n"
+				+ "기관 자체 검토 대상\n1. 일반 홈페이지 구축", "");
+		assertThat(matcher.match("국가정보원 검토 대상: 일반 홈페이지 구축",
+			List.of(evidence)).status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void aSharedListHeadingDoesNotSupportAnAbsentItem() {
+		var evidence = groundWithChunkTitleAndContext("p.2 국가정보원 검토 대상",
+			"국가정보원 검토 대상\n1. 비밀 정보를 관리하는 정보시스템 구축\n"
+				+ "2. 주요정보통신기반시설 구축", "");
+		assertThat(matcher.match("국가정보원 검토 대상: 일반 홈페이지 구축",
+			List.of(evidence)).status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void aCompleteAssertionInsideAListKeepsItsOriginalSupport() {
+		var evidence = groundWithChunkTitleAndContext("신청 절차",
+			"신청 절차\n1. 신청자는 신청서와 사업계획서를 제출해야 합니다.", "");
+		assertThat(matcher.match("신청자는 신청서와 사업계획서를 제출해야 합니다.",
+			List.of(evidence)).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
 	void exactDocumentIdentityClaimCanUseTheSelectedDocumentTitle() {
 		ClaimEvidenceMatcher.Match match = matcher.match(
 			"결론부터 말씀드리면, 찾으시는 문서는 "

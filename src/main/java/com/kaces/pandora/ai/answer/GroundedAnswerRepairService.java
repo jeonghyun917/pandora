@@ -571,7 +571,7 @@ public class GroundedAnswerRepairService {
 		List<CandidateAtom> fallback = new ArrayList<>();
 		for (int groundIndex = 0; groundIndex < grounds.size(); groundIndex++) {
 			LawAiAnswerGround ground = grounds.get(groundIndex);
-			List<String> atoms = atomize(matchedChildText(ground));
+			List<String> atoms = atomizer.atomizeSource(matchedChildText(ground), ground.chunkTitle());
 			for (int atomIndex = 0; atomIndex < atoms.size(); atomIndex++) {
 				fallback.add(new CandidateAtom(groundIndex, atomIndex, atoms.get(atomIndex)));
 			}

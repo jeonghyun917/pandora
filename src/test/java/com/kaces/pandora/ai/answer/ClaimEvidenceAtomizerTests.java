@@ -10,6 +10,43 @@ class ClaimEvidenceAtomizerTests {
 	private final ClaimEvidenceAtomizer atomizer = new ClaimEvidenceAtomizer();
 
 	@Test
+	void sourceScopePreservesCompleteItemsBeforeAnAmbiguousWrappedItem() {
+		assertThat(atomizer.atomizeSource("기관 검토 대상\n1. 비밀 정보시스템 구축\n2.\n"
+			+ "민감정보 처리 시스템 구축\n3. 주요 기반시설 구축\n4. 행정정보 등\n"
+			+ "국가 차원의 데이터베이스 구축\n5. 홈페이지 구축\n※", "기관 검토 대상"))
+			.contains("기관 검토 대상: 비밀 정보시스템 구축", "기관 검토 대상: 민감정보 처리 시스템 구축",
+				"기관 검토 대상: 주요 기반시설 구축")
+			.doesNotContain("기관 검토 대상: 행정정보 등", "기관 검토 대상: 홈페이지 구축");
+	}
+
+	@Test
+	void standaloneListNumberDoesNotCarryScopeIntoAnotherHeading() {
+		assertThat(atomizer.atomizeSource("기관 검토 대상\n1. 비밀 정보시스템 구축\n2.\n"
+			+ "기관 자체 검토 대상\n1. 홈페이지 구축", "기관 검토 대상"))
+			.doesNotContain("기관 검토 대상: 홈페이지 구축");
+	}
+
+	@Test
+	void sourceScopeRequiresTheHeadingInTheBodyNotJustMetadata() {
+		assertThat(atomizer.atomizeSource("1. 정보시스템 구축\n2. 기반시설 구축", "국가정보원 검토 대상"))
+			.containsExactly("정보시스템 구축", "기반시설 구축");
+	}
+
+	@Test
+	void sourceScopeDoesNotCrossNumberingReset() {
+		assertThat(atomizer.atomizeSource("국가정보원 검토 대상\n1. 정보시스템 구축\n1. 홈페이지 구축",
+			"국가정보원 검토 대상"))
+			.doesNotContain("국가정보원 검토 대상: 홈페이지 구축");
+	}
+
+	@Test
+	void sourceScopeDoesNotDistributeOverAnExceptionClause() {
+		assertThat(atomizer.atomizeSource("기관 검토 대상\n1. 시스템은 검토 대상이며, 다만 단순 교체는 제외됩니다.",
+			"기관 검토 대상"))
+			.noneMatch(atom -> atom.startsWith("기관 검토 대상: 다만"));
+	}
+
+	@Test
 	void separatesBroadRuleFromItsException() {
 		assertThat(atomizer.atomize(
 			"모든 소프트웨어사업은 과업심의 대상이며, 단순 H/W 도입은 비대상입니다."

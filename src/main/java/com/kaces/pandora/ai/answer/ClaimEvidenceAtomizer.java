@@ -131,6 +131,55 @@ final class ClaimEvidenceAtomizer {
 		return atomize(text, false);
 	}
 
+	/** Carry only an explicit source heading over its contiguous numbered list. */
+	List<String> atomizeSource(String text, String chunkTitle) {
+		if (text == null || chunkTitle == null) {
+			return atomize(text);
+		}
+		String heading = chunkTitle.replaceFirst("(?i)^p[.]\\d+\\s+", "").trim();
+		if (heading.length() < 2 || heading.length() > 60
+			|| !SAFE_OCR_HEADING.matcher(heading).matches()) {
+			return atomize(text);
+		}
+		String listText = text.replaceAll("(?m)^(\\d{1,2}[.)])[ \\t]*\\R[ \\t]*(?=\\S)", "$1 ");
+		String[] parts = listText.split("\\R+|[ \\t]+(?=\\d{1,2}[.)]\\s)");
+		List<String> result = new ArrayList<>();
+		boolean inList = false;
+		boolean scopedAny = false;
+		int expected = 1;
+		StringBuilder prefix = new StringBuilder();
+		for (int partIndex = 0; partIndex < parts.length; partIndex++) {
+			String value = parts[partIndex].trim();
+			Matcher item = Pattern.compile("^(\\d{1,2})[.)]\\s+(.+)$").matcher(value);
+			if (!inList && expected == 1 && item.matches()) {
+				String explicitHeading = OCR_PAGE_MARKER.matcher(prefix).replaceAll("")
+					.replace(heading, "").trim();
+				inList = prefix.indexOf(heading) >= 0 && explicitHeading.isBlank();
+			}
+			if (inList && item.matches() && Integer.parseInt(item.group(1)) == expected) {
+				List<String> atoms = atomize(item.group(2));
+				// Do not distribute scope over compound rules or exception clauses.
+				boolean completeItem = partIndex + 1 == parts.length
+					|| parts[partIndex + 1].trim().matches("\\d{1,2}[.)]\\s+.+");
+				if (atoms.size() == 1 && completeItem) {
+					result.add(heading + ": " + atoms.get(0));
+					scopedAny = true;
+				} else {
+					result.addAll(atoms);
+				}
+				expected++;
+			} else {
+				if (expected > 1) {
+					inList = false;
+					expected = -1;
+				}
+				prefix.append(value).append(' ');
+				result.addAll(atomize(value));
+			}
+		}
+		return scopedAny ? List.copyOf(result) : atomize(text);
+	}
+
 	List<String> atomizeForAlignment(String text) {
 		return atomize(text, true);
 	}

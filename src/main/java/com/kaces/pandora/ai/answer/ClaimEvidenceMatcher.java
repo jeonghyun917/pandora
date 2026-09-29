@@ -393,6 +393,11 @@ public class ClaimEvidenceMatcher {
 		List<Candidate> supported = new ArrayList<>();
 		List<Candidate> contradicted = new ArrayList<>();
 		for (EvidenceSentence sentence : sentences) {
+			// A reconstructed list scope is safe for verbatim repair, not fuzzy
+			// entailment: shared heading words must not support an absent item.
+			if (sentence.scopedListItem() && !normalize(claim).equals(normalize(sentence.text()))) {
+				continue;
+			}
 			if (sentence.documentTitleMetadata()) {
 				if (isDocumentIdentityClaim(
 					claim,
@@ -755,6 +760,7 @@ public class ClaimEvidenceMatcher {
 				unique,
 				ground.number(),
 				ground.matchedChildText(),
+				ground.chunkTitle(),
 				anchorContext,
 				denseStructuralContext
 			);
@@ -762,6 +768,7 @@ public class ClaimEvidenceMatcher {
 				unique,
 				ground.number(),
 				ground.snippet(),
+				ground.chunkTitle(),
 				anchorContext,
 				denseStructuralContext
 			);
@@ -769,6 +776,7 @@ public class ClaimEvidenceMatcher {
 				unique,
 				ground.number(),
 				ground.parentContextText(),
+				null,
 				anchorContext,
 				denseStructuralContext
 			);
@@ -799,7 +807,8 @@ public class ClaimEvidenceMatcher {
 				ClaimNumericNormalizer.orderedTokens(cleaned),
 				anchorContext,
 				false,
-				true
+				true,
+				false
 			)
 		);
 	}
@@ -808,13 +817,17 @@ public class ClaimEvidenceMatcher {
 		Map<String, EvidenceSentence> unique,
 		int groundNumber,
 		String text,
+		String chunkTitle,
 		String anchorContext,
 		boolean denseStructuralContext
 	) {
 		if (text == null || text.isBlank()) {
 			return;
 		}
-		for (String fragment : atomizer.atomize(text)) {
+		Set<String> unscopedAtoms = new LinkedHashSet<>(atomizer.atomize(text));
+		Set<String> fragments = new LinkedHashSet<>(unscopedAtoms);
+		fragments.addAll(atomizer.atomizeSource(text, chunkTitle));
+		for (String fragment : fragments) {
 			String cleaned = fragment.replaceAll("\\s+", " ").trim();
 			if (cleaned.length() < 4) {
 				continue;
@@ -830,7 +843,8 @@ public class ClaimEvidenceMatcher {
 					ClaimNumericNormalizer.orderedTokens(cleaned),
 					anchorContext,
 					denseStructuralContext,
-					false
+					false,
+					!unscopedAtoms.contains(fragment)
 				));
 			}
 		}
@@ -1665,7 +1679,8 @@ public class ClaimEvidenceMatcher {
 		List<String> orderedNumbers,
 		String anchorContext,
 		boolean denseStructuralSource,
-		boolean documentTitleMetadata
+		boolean documentTitleMetadata,
+		boolean scopedListItem
 	) {
 	}
 
