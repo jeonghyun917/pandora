@@ -10,6 +10,31 @@ class ClaimEvidenceAtomizerTests {
 	private final ClaimEvidenceAtomizer atomizer = new ClaimEvidenceAtomizer();
 
 	@Test
+	void embeddedQualifiedHeadingPreservesAgencyInsteadOfGenericMetadata() {
+		assertThat(atomizer.atomizeSource("사전 협의 후 의뢰한다.\n문화체육관광부 검토 대상\n"
+			+ "1. 위임받은 사업\n2. 홈페이지 및 웹메일 등 웹기반 정보시스템 구축\n"
+			+ "3. 인터넷전화시스템 구축", "p.2 검토 대상"))
+			.contains("문화체육관광부 검토 대상: 홈페이지 및 웹메일 등 웹기반 정보시스템 구축")
+			.doesNotContain("검토 대상: 홈페이지 및 웹메일 등 웹기반 정보시스템 구축");
+	}
+
+	@Test
+	void embeddedHeadingDoesNotCrossExceptionOrSecondAgency() {
+		assertThat(atomizer.atomizeSource("설명 문단.\n가기관 검토 대상\n1. 서버 구축\n2. 망 구축\n"
+			+ "검토 생략 대상\n1. 단순 교체\n나기관 검토 대상\n1. 홈페이지 구축", "검토 대상"))
+			.contains("가기관 검토 대상: 서버 구축")
+			.doesNotContain("가기관 검토 대상: 단순 교체", "가기관 검토 대상: 홈페이지 구축");
+	}
+
+	@Test
+	void embeddedHeadingRequiresMatchingMetadataAndImmediateFirstItem() {
+		assertThat(atomizer.atomizeSource("설명.\n가기관 검토 대상\n주의 문단\n1. 서버 구축", "검토 대상"))
+			.doesNotContain("가기관 검토 대상: 서버 구축");
+		assertThat(atomizer.atomizeSource("설명.\n가기관 검토 대상\n1. 서버 구축", "제출 절차"))
+			.doesNotContain("가기관 검토 대상: 서버 구축");
+	}
+
+	@Test
 	void sourceScopePreservesCompleteItemsBeforeAnAmbiguousWrappedItem() {
 		assertThat(atomizer.atomizeSource("기관 검토 대상\n1. 비밀 정보시스템 구축\n2.\n"
 			+ "민감정보 처리 시스템 구축\n3. 주요 기반시설 구축\n4. 행정정보 등\n"

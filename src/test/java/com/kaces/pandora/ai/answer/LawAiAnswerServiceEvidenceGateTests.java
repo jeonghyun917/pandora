@@ -18,6 +18,21 @@ import org.mockito.ArgumentCaptor;
 class LawAiAnswerServiceEvidenceGateTests {
 
 	@Test
+	void parentExpansionPreservesExplicitAgencyListHeading() throws Exception {
+		LawSemanticChunkRow child = chunk(84919L, "official_doc", "정보화사업 보안성 검토 가이드", "p.2 검토 대상",
+			"국가정보원 검토 대상에 관한 앞 문단입니다.\n문화체육관광부 검토 대상\n"
+				+ "1. 홈페이지 및 웹메일 등 웹기반 정보시스템 구축\n2. 인터넷전화시스템 구축");
+		LawAiAnswerService service = service();
+		try {
+			Method method = LawAiAnswerService.class.getDeclaredMethod("buildParentContextText", LawSemanticChunkRow.class, List.class, String.class);
+			method.setAccessible(true);
+			String expanded = (String) method.invoke(service, child, List.of(child), "보안성검토 대상 시스템은?");
+			assertThat(new ClaimEvidenceAtomizer().atomizeSource(expanded, child.chunkTitle()))
+				.contains("문화체육관광부 검토 대상: 홈페이지 및 웹메일 등 웹기반 정보시스템 구축");
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void directPreservationPolicyOverridesEarlierConceptRelevantClassification() {
 		assertThat(LawAiAnswerService.evidenceRoleForSelectionPolicy("concept_relevant"))
 			.isEqualTo("related_definition");

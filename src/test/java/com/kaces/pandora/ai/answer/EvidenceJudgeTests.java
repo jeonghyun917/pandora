@@ -753,6 +753,31 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void targetListIsNotDiscardedBecauseLaterProcedureMentionsAnApplicationForm() {
+		LawSemanticChunkRow target = chunk(1, "official_doc", "정보화사업 보안성 검토 가이드",
+			"검토 대상", "문화체육관광부 검토 대상\n1. 홈페이지 및 웹메일 등 웹기반 정보시스템 구축\n"
+				+ "2. 인터넷전화시스템 구축\n검토 절차\n신청서를 제출한다.", "검토 대상", "target_scope");
+		assertThat(judge.judge("보안성검토 대상 시스템은?", List.of(target), Map.of(), 6).chunks())
+			.contains(target);
+	}
+
+	@Test
+	void applicationFormFieldLabelsAloneAreNotTargetRules() {
+		LawSemanticChunkRow form = chunk(1, "official_doc", "정보화사업 보안성 검토 가이드",
+			"신청서", "신청서 항목: 보안성검토 대상, 정보시스템 구축, 사업명, 예산을 입력한다.",
+			"신청서", "form");
+		assertThat(judge.judge("보안성검토 대상 시스템은?", List.of(form), Map.of(), 6).chunks()).isEmpty();
+	}
+
+	@Test
+	void fieldLabelsBeforeApplicationFormWordAreStillNotTargetRules() {
+		LawSemanticChunkRow form = chunk(1, "official_doc", "정보화사업 보안성 검토 가이드",
+			"신청서", "입력 항목: 보안성검토 대상, 정보시스템 구축, 사업명, 예산을 신청서에 입력한다.",
+			"신청서", "form");
+		assertThat(judge.judge("보안성검토 대상 시스템은?", List.of(form), Map.of(), 6).chunks()).isEmpty();
+	}
+
+	@Test
 	// 메소드 설명: securityReviewTargetQuestionRejectsAdministrativeEntryInstructions 처리 흐름을 수행합니다.
 	void securityReviewTargetQuestionRejectsAdministrativeEntryInstructions() {
 		LawSemanticChunkRow directTarget = chunk(

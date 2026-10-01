@@ -102,7 +102,11 @@ public class GroundedAnswerRepairService {
 		} catch (RuntimeException exception) {
 			return result(initial, true, false, "REVERIFY_EXCEPTION", selectedAtoms.size());
 		}
-		if (reverified.insufficientEvidence()) {
+		String normalizedRewrite = normalize(rewritten);
+		boolean droppedTargetScope = selectedAtoms.stream()
+			.filter(atom -> !explicitTargetScope(atom).isBlank())
+			.anyMatch(atom -> !normalizedRewrite.contains(normalize(atom)));
+		if (reverified.insufficientEvidence() || droppedTargetScope) {
 			AnswerVerificationService.Result atomFallback = verifyConfiguredLawPolicyAtomFallback(
 				question,
 				rewritten,
@@ -118,7 +122,8 @@ public class GroundedAnswerRepairService {
 					selectedAtoms.size()
 				);
 			}
-			return result(reverified, true, false, "REWRITE_VERIFICATION_FAILED", selectedAtoms.size());
+			return result(droppedTargetScope ? initial : reverified, true, false,
+				droppedTargetScope ? "SOURCE_SCOPE_NOT_PRESERVED" : "REWRITE_VERIFICATION_FAILED", selectedAtoms.size());
 		}
 		return result(reverified, true, true, "REWRITE_ACCEPTED", selectedAtoms.size());
 	}
@@ -320,6 +325,7 @@ public class GroundedAnswerRepairService {
 		List<CandidateAtom> rankedCandidates = candidates.stream()
 			.sorted(
 				Comparator.comparingInt(CandidateAtom::groundIndex)
+					.thenComparing(candidate -> explicitTargetScope(clean(candidate.text())).isBlank())
 					.thenComparingInt(CandidateAtom::sourceOrder)
 			)
 			.toList();
@@ -380,6 +386,35 @@ public class GroundedAnswerRepairService {
 			}
 		}
 
+		Set<String> selectedScopes = new LinkedHashSet<>();
+		selectedByKey.values().stream().map(this::explicitTargetScope)
+			.filter(scope -> !scope.isBlank()).forEach(selectedScopes::add);
+		if (!selectedScopes.isEmpty()) {
+			for (CandidateAtom candidate : rankedCandidates) {
+				String atom = clean(candidate.text());
+				String scope = explicitTargetScope(atom);
+				String normalizedAtom = normalize(atom);
+				if (scope.isBlank() || selectedScopes.contains(scope)
+					|| atom.length() > MAX_ATOM_CHARACTERS
+					|| reusesRejectedDraft(normalizedAtom, normalizedRejectedDraft)
+					|| coverageGroups.stream().flatMap(List::stream).noneMatch(normalizedAtom::contains)) {
+					continue;
+				}
+				try {
+					AnswerVerificationService.Result verified = verificationService.verify(question, atom, grounds);
+					if (!isFullyClaimSupported(verified)) { continue; }
+					String value = clean(verified.claimResult().verifiedAnswer());
+					if (!scope.equals(explicitTargetScope(value)) || value.length() > MAX_ATOM_CHARACTERS) { continue; }
+					if (selectedByKey.size() >= MAX_SELECTED_ATOMS
+						|| totalCharacters + value.length() > MAX_TOTAL_ATOM_CHARACTERS) { break; }
+					selectedByKey.put(normalize(value), value);
+					selectedScopes.add(scope);
+					totalCharacters += value.length();
+				} catch (RuntimeException exception) {
+					continue;
+				}
+			}
+		}
 		List<String> selected = List.copyOf(selectedByKey.values());
 		if (selected.isEmpty()) {
 			return List.of();
@@ -394,6 +429,13 @@ public class GroundedAnswerRepairService {
 		} catch (RuntimeException exception) {
 			return List.of();
 		}
+	}
+
+	private String explicitTargetScope(String atom) {
+		int separator = atom == null ? -1 : atom.indexOf(':');
+		if (separator <= 0 || separator > 60) { return ""; }
+		String heading = atom.substring(0, separator).trim();
+		return heading.endsWith(" 대상") ? normalize(heading) : "";
 	}
 
 	private List<String> selectVerifiedAtoms(

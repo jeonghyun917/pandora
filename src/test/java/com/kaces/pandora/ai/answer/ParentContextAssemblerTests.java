@@ -51,6 +51,16 @@ class ParentContextAssemblerTests {
 		assertThat(grounds.get(0).contextPolicy()).isEqualTo("matched_child_only");
 	}
 
+	@Test
+	void preservesBodyHeadingAndNumberedListBoundariesForSourceScope() {
+		LawSemanticChunkRow child = chunk(12, "p.2 검토 대상",
+			"국가정보원 검토 대상에 관한 앞 문단입니다.\n문화체육관광부 검토 대상\n"
+				+ "1. 홈페이지 및 웹메일 등 웹기반 정보시스템 구축\n2. 인터넷전화시스템 구축");
+		LawAiAnswerGround ground = assembler.toGrounds(List.of(child), Map.of(), Map.of(), row -> "검토 대상").get(0);
+		assertThat(new ClaimEvidenceAtomizer().atomizeSource(ground.matchedChildText(), ground.chunkTitle()))
+			.contains("문화체육관광부 검토 대상: 홈페이지 및 웹메일 등 웹기반 정보시스템 구축");
+	}
+
 	private LawSemanticChunkRow chunk(long id, String title, String text) {
 		return new LawSemanticChunkRow(
 			id,

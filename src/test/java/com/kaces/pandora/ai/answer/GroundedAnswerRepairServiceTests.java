@@ -929,6 +929,65 @@ class GroundedAnswerRepairServiceTests {
 	}
 
 	@Test
+	void configuredCoveragePreservesAnotherExplicitTargetScope() {
+		String national = "국가정보원 검토 대상\n1. 비밀·대외비를 유통·관리하기 위한 정보통신망 또는 정보시스템 구축."
+			+ "\n2. 100만명 이상의 민감정보 또는 고유식별정보를 처리하는 정보시스템 구축."
+			+ "\n3. 주요정보통신기반시설로 지정이 필요한 정보통신기반시설 구축.";
+		String ministry = "문화체육관광부 검토 대상\n1. 홈페이지 및 웹메일 등 웹기반 정보시스템 구축.\n2. 인터넷전화시스템 구축.";
+		LawAiAnswerGround a = new LawAiAnswerGround(1, 1, 8, "official_doc", "정보화사업 보안성 검토 가이드", "", "", "20260101", null,
+			"page 2", "국가정보원 검토 대상", 2, national, "", "", 1.0);
+		LawAiAnswerGround b = new LawAiAnswerGround(2, 2, 8, "official_doc", "정보화사업 보안성 검토 가이드", "", "", "20260101", null,
+			"page 2", "문화체육관광부 검토 대상", 2, ministry, "", "", 1.0);
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(realVerificationService(),
+			new GroundedAnswerRewriter() {
+				@Override public String rewrite(String question, List<String> atoms) { return String.join("\n", atoms); }
+			});
+		var result = service.verifyAndRepair("보안성검토 대상 시스템은?", "담당자에게 먼저 문의해야 합니다.", List.of(a, b));
+		assertThat(result.insufficientEvidence()).as(result.toString()).isFalse();
+		assertThat(result.verifiedAnswer()).contains("국가정보원 검토 대상", "문화체육관광부 검토 대상: 홈페이지");
+	}
+
+	@Test
+	void scopedTargetAtomFallsBackWhenRewriterDropsItsHeading() {
+		String heading = "국가정보원 검토 대상";
+		String source = heading + "\n1. 비밀·대외비를 유통·관리하기 위한 정보통신망 또는 정보시스템 구축."
+			+ "\n2. 100만명 이상의 민감정보 또는 고유식별정보를 처리하는 정보시스템 구축."
+			+ "\n3. 주요정보통신기반시설로 지정이 필요한 정보통신기반시설 구축.";
+		LawAiAnswerGround scoped = new LawAiAnswerGround(1, 1, 8, "official_doc", "정보화사업 보안성 검토 가이드", "", "", "20260101", null,
+			"page 2", heading, 2, source, "", "", 1.0);
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(realVerificationService(),
+			new GroundedAnswerRewriter() {
+				@Override public String rewrite(String question, List<String> atoms) {
+					return String.join("\n", atoms).replaceFirst(heading + ": ", "");
+				}
+			});
+		var result = service.verifyAndRepair("보안성검토 대상 시스템은?", "담당자에게 문의해야 합니다.", List.of(scoped));
+		assertThat(result.insufficientEvidence()).as(result.toString()).isFalse();
+		assertThat(result.verifiedAnswer()).startsWith(heading + ": ");
+	}
+
+	@Test
+	void configuredTargetCoveragePrefersScopedChildOverUnscopedParentFragment() {
+		String heading = "국가정보원 검토 대상";
+		String source = heading + "\n1. 비밀ㆍ대외비를 유통ㆍ관리하기 위한 정보통신망 또는 정보시스템 구축"
+			+ "\n2.\n국가정보원장이 개발하거나 안전성을 확인한 암호자재를 적용하는 정보통신망 또는 정보시스템 구축"
+			+ "\n3. 외교ㆍ국방 등 국가안보상 중요한 정보통신망 또는 정보시스템 구축"
+			+ "\n4.\n100만명 이상의 개인에 대한「개인정보보호법」상 민감정보 또는 고유식별정보를 처리하는 정보시스템 구축"
+			+ "\n5. 주요정보통신기반시설로 지정이 필요한 정보통신기반시설 구축";
+		String parent = source.substring(source.indexOf("1. ") + 3);
+		LawAiAnswerGround scoped = new LawAiAnswerGround(1, 1, 8, "official_doc", "정보화사업 보안성 검토 가이드", "", "", "20260101", null,
+			"page 2", heading, 2, source, "", "", 1.0,
+			source, parent, List.of(1L), "parent_context_expanded", "direct");
+		GroundedAnswerRepairService service = new GroundedAnswerRepairService(realVerificationService(),
+			new GroundedAnswerRewriter() {
+				@Override public String rewrite(String question, List<String> atoms) { return String.join("\n", atoms); }
+			});
+		var result = service.verifyAndRepair("보안성검토 대상 시스템은?", "담당자에게 문의해야 합니다.", List.of(scoped));
+		assertThat(result.insufficientEvidence()).as(result.toString()).isFalse();
+		assertThat(result.verifiedAnswer()).startsWith(heading + ": ").contains("민감정보", "주요정보통신기반시설");
+	}
+
+	@Test
 	void configuredPreConsultationExceptionRepairsFromThresholdAndOverrideAtoms() {
 		String question = "정보화사업 사전협의 제외 대상은?";
 		String premise = "사업금액이 아래에 해당하는 사업은 제외하되";

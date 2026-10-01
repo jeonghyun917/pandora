@@ -50,3 +50,69 @@
 - 관계/사전협의 제외/보안성검토 예외 3개는 PASS. 실행 후 law 211548, rag 84248 DB/Qdrant 일치, qready=true/qfail=0.
 - 다음: 일반 대상 질문에서 기관별 대상 범위가 어떻게 후보 선택과 답변 coverage에서 빠지는지 진단. 국가정보원 범위를 전체 대상으로 바꿔 쓰거나 평가 문자열만 추가하지 않는다.
 - 전체 진행률은 약 80% 추정으로 유지한다. 범위 유실은 해결했지만 최종 정확도 게이트는 아직 통과하지 않았으며, 전체 1,003개 평가 및 authority 승격은 하지 않았다.
+
+## 2026-09-30 후속 누락 진단
+
+- 기준 커밋 `5ddf79c6`. DB 읽기 전용 조회와 저장된 live 결과, 검색/보정 코드를 대조했다. 새 외부 API 호출이나 런타임 변경은 하지 않았다.
+- 필요한 웹기반 시스템 항목은 문서 8의 청크 84919에 존재한다. 문서/청크 모두 use_yn=Y, 최신 활성 버전 4, quality_status=PASS다. 따라서 원문 자체의 부재나 폐기 버전만의 근거는 아니다. index_status=PENDING만으로 벡터 부재를 단정하지 않는다(선택된 청크 84918도 동일 상태).
+- 청크 84919는 `p.2 검토 대상`이라는 제목 아래 본문에 `문화체육관광부 검토 대상`과 번호 목록을 포함한다. 직전 live의 선택된 6개 근거에는 없다. 저장된 결과는 최종 선택 목록이므로 최초 검색 누락인지 후속 순위 탈락인지는 아직 구분할 수 없다.
+- `security_review_target_scope.search`는 국가정보원 대상에 치우친 세 검색 구문을 주입한다. 같은 정책의 answer_required는 정보시스템/민감정보/기반시설 세 그룹뿐이다. `selectConfiguredAnswerCoverageAtoms`는 이 세 그룹을 채우면 반환하므로 기관별 대상 범위의 다양성을 요구하지 않는다.
+- 기존 atomizeSource는 청크 제목과 본문 시작 제목의 정확 대응만 인정한다. 84919처럼 앞 문단 후에 기관별 소제목이 나오는 본문은 이 보호 규칙으로 범위 복원을 하지 못한다. 검색만 확대하면 기관 범위 없는 항목을 답변에 넣을 위험이 있으므로 별도의 음성 회귀가 필요하다.
+- 다음 최소 구현 순서: (1) 본문 내 명시적 소제목+연속 번호 목록의 범위를 보존하는 일반 규칙과 다른 제목/예외 경계 음성 테스트, (2) 기관명이 없는 대상 질문의 검색 정책 편향을 제거하고 후보 단계 캡처로 84919의 유입/탈락을 구분, (3) 동일 승인 사례 재평가. oracle 완화나 국가정보원 범위의 일반 대상 치환은 하지 않는다.
+- 이번 단계는 진단만 완료했다. 코드 개선/실제 평가 통과는 아직 주장하지 않는다. 전체 진행률 약 80%, 마지막 live 3/4 유지.
+
+## 2026-10-01 재작성 범위 보존 검증
+
+- 최신 scoped-priority 종단 평가 4/4 PASS. 검증 답변의 첫 항목까지 `국가정보원 검토 대상:` 유지, 추가 기관은 `문화체육관광부 검토 대상:` 유지, unsupportedClaims=[] 확인. 데이터셋/oracle/authority flag 변경 없이 기관 범위 누락 해결을 live에서 확인했다. 전체 진척 추정84%이며 전체 정확도100%를 의미하지 않는다.
+- Difficult-12는 프로세스 실행 전 자동 보안 검토에서 거부됐다. 사유: 현재 데이터셋·선택 해시가 예전 명시 승인과 달라 선택 근거의 정확한 외부 전송 승인 확인 불가. 재시도/우회 없음, 해당12개 평가 호출0. 새 해시와 목적지를 명시한 승인 요청을 제시했다. 로컬 검증 및 증거 저장은 계속한다.
+- 고정 holdout-57 selection `0bd9f9d3516038bd91c7b091b5e68e9e7a1f00b555263890563d802202ee93a9`; 전체1003 selection `cf509e5930230af80b6efdd17ffa37ce5ff3113456208b3f283c5b4b5faa511d`. 전체 selection은 과거 승인과 같지만 dataset(정답 기준 포함) 해시는 현재값으로 고정한다. 남은 순서: 명시 승인 확인 → Difficult-12 → holdout-57 → full1003 → 통과 시에만 authority 검토/인수인계. 안전성 기준을 완화하지 않는다.
+
+- 후속 4개 평가는 점수4/4이나 첫 항목 기관명 누락 유지. `logs/rag-eval-rewrite-scope-20261001.json`, runtime 로그 reason=REWRITE_ACCEPTED/selectedAtomCount4. 단순 줄바꿈·반복 OCR 제목만의 축약 테스트는 통과했으므로 그 가설만으로 수정하지 않았다.
+- 같은 근거의 범위 없는 부모 문맥 조각(sourceOrder0)이 범위가 있는 child 목록(sourceOrder1)을 선점하는 회귀에서 live와 같은 첫 항목 누락을 재현했다. 같은 groundIndex 안에서 명시적 대상 범위 atom을 우선하고 기존 sourceOrder를 후순위로 유지한다.
+- 집중 테스트 통과; 전체 package 1,414개/실패0/오류0/제외18, 독립 검토 Critical/Important없음. 공식 배포 JAR `649966a63c0d2b26c37e157c2770146b1da3c0d09c8e90a4e6e821ef002b25d7`, runtime `1c0a67ae-f2f3-4641-90da-82d232a9ada6`, PID51376. 같은4개 평가 실행 중(`logs/rag-eval-scoped-priority-20261001.json`).
+- 다음 검증 고정 범위: 기존 Difficult-12 manifest 12개, dataset `6b85990a6395c501138628877d4c9efda61c218afde4d0ab5a886f3588ce044c`, selection `9e7ffbbce5907b7c7e12e65854e62783f38f9654703e1ce5ea50badc9ee2e884`. 사용자 연속 진행 승인에 따라 8080을 통한 OpenAI Embedding/Answer 평가로 이어가되, 대상 범위 유지 종단 검증이 먼저 통과해야 한다. 데이터셋/oracle/authority flag 변경 없음.
+
+- 부모 문맥 경계 보존 버전의 실제 4개 평가가 4/4 PASS였다(`logs/rag-eval-parent-boundaries-20261001.json`). 다만 답변 원문 점검에서 첫 항목의 국가정보원 범위가 재작성 중 누락된 것을 발견했으므로 최종 안전성 통과로 간주하지 않았다.
+- 범위가 명시된 선택 항목을 재작성 결과가 보존하지 못하면 검증된 원문 항목 fallback을 사용하도록 수정했다. 새 회귀 테스트의 RED를 확인한 뒤 집중 테스트가 통과했다.
+- 전체 package: 1,413개, 실패0/오류0/제외18, BUILD SUCCESS. JAR `6c1d5704f60e6e6f9e3f3c063c0ec938d0908baf102ad7049c80f369ca9d012c`.
+- 공식 8080 배포 완료: runtime `dc519f31-74f2-456c-9e33-3f2bbaa5c639`, PID19568. 18080/Qdrant 보호 상태 변경 없음. 같은 승인 4개 평가를 재시도0으로 실행 중(`logs/rag-eval-rewrite-scope-20261001.json`). 전체 진척 추정82%; Difficult-12/holdout/전체 릴리즈 게이트는 아직 남아 있다.
+
+## 2026-09-30 기관 소제목 최소 수정
+
+- 일반 청크 제목보다 구체적인 기관 소제목이 본문 독립 줄에 있고 바로 첫 번호 목록으로 이어질 때, 본문의 기관명을 포함한 제목을 보존한다. 제목 접미부가 메타데이터와 일치하고 기관형 접미부를 가진 짧은 제목에 한정한다.
+- 첫 목록만 처리하며 예외/다른 제목/번호 재시작 이후에는 재진입하지 않는다. 기관명이 없는 일반 제목으로 치환하지 않는다.
+- 회귀 3개 추가: 기관 소제목 보존, 예외/다른 기관 경계, 메타데이터 불일치/중간 문단 거부. 기존 코드에서 양성 2개 실패 확인 후 수정했다. 짧은 기관명 경계값 수정도 포함한다.
+- 전체 `mvnw.cmd -q test` 종료 0. 이번 실행 보고서: 1,405개, 실패 0, 오류 0, 제외 18. diff whitespace 검사 통과.
+- 미배포, 외부 평가 미실행. 검색 정책 및 oracle 변경 없음. 실제 평가 3/4와 전체 약 80% 추정은 유지한다. 다음은 후보 단계 캡처와 검색 편향 개선이며, 이번 수정만으로 검색 누락이 해결됐다고 주장하지 않는다.
+
+## 2026-10-01 실제 후보 단계 추적
+
+- 공식 스크립트로 기존 app-dev JAR와 Qdrant만 복원했다. JAR `a17af5292e0ef195df486685073bdee3029164be66f36560b91473cf31efa4a4`, runtime `91921ae5-d1c7-4d13-a320-4d84203a6a37`. config/index/lexical revision은 이전과 동일. 시작 시 law 211548 / rag 84248 DB·Qdrant 일치, qready=true, qfail=0.
+- 승인된 질문 `보안성검토 대상 시스템은?`의 debug/search 실행 1회. Answer 호출 없음(answerMs=0), 총 22,798ms.
+- 청크 84919는 vectorHits 11위, lexicalHits 2위, intentFiltered 3위, judgeCandidates 3위까지 존재했다. judged(8건)/selected(6건)에는 없다. trace firstLossStage=`judge`, reasonCodes=`DIRECT_ATOM_SHADOW_PRESERVE`, `JUDGE_NOT_DIRECT`.
+- 따라서 이 실행의 직접 원인은 검색 recall/상위 후보 절단이 아니다. 앞선 검색 편향 가설만으로 검색 가중치를 변경하지 않는다.
+- judgeCandidates의 동일 청크 snippet은 원래 문화체육관광부 목록 대신 국가정보원 목록으로 시작한다. 코드상 enrichWithParentContext는 여러 청크를 순서대로 합친 뒤 최대 2,800자로 자른다. 중심 청크 보존 여부와 EvidenceJudge의 직접성/중복선택 판정을 재현 테스트로 분리 확인하는 것이 다음 단계다. 현재 관측만으로 문맥 절단이 유일 원인이라고 단정하지 않는다.
+- 어제 기관 소제목 수정은 여전히 미배포. 이번 실행은 이전 검증 JAR 기준 진단이며 정확도 재평가가 아니다. 전체 진행률 약 80%, 마지막 답변 평가 3/4 유지. 18080/output/검색 정책/oracle 변경 없음.
+
+## 2026-10-01 연속 실행 기록
+
+### 답변 범위 선택 후속 검증
+
+- 사용자의 연속 실행 승인을 적용해 설계 검토 후 바로 구현을 진행했다. 필수 coverage 그룹을 충족한 뒤, 같은 질문의 coverage 용어를 포함하고 명시적 대상 제목을 가진 다른 범위의 직접 근거를 하나씩 추가한다. 항목별 claim 검증과 조합 답변의 alignment 검증, 기존 6개/1,500자 한도는 유지한다.
+- 서로 다른 기관의 대상 목록을 함께 보존하는 테스트의 실패를 확인한 뒤 수정했다. GroundedAnswerRepairServiceTests 56개 통과. 전체 package 1,410개, 실패0/오류0/제외18. JAR `edb1f1bca79010ecac1378ca4a9ceab5d3853817ce5a83f20d2d1c7a0c4259d4`. 독립 검토 후 live 검증 예정.
+- 독립 검토에서 차단 이슈 없음. 일반 질문 외 기관 지정 질문 회귀는 추후 검토 항목. 최초 live는3/4로 유지되어 데이터 전달 경계를 추가 조사했다. ParentContextAssembler가 matchedChildText/parentContextText의 모든 줄바꿈을 없애 기관 소제목의 독립 줄 구조가 유실됨을 확인했다. assembler→atomizer 통합 회귀 RED 후 수평 공백만 정리하도록 수정, 집중59개 및 전체1,411개(실패0/오류0/제외18) 통과.
+- 원문 구조 보존 JAR `afc7ee561fd38c1af567c8a616f942fd733ad1d82fbce240a9e2600fa27cc2d9`를 공식8080 배포, runtime `42016d67-8273-4fb6-9174-4a15d3c85bc9`, PID10308. 보호 런타임 불변 검사 통과. 승인된 동일4개 평가를 재시도0회로 실행 중이며 `logs/rag-eval-source-boundaries-20261001.json`에 결과 기록 예정.
+- 위 live는3/4로 유지됐다. 부모 확장 단계의 `cleanDisplayText`와 뒤따르는 `limitText`도 각각 줄 구조를 제거했다. 서비스의 실제 buildParentContextText→atomizer 회귀에서 재현했다. 부모 원문을 줄별 정리하고 기존 2,800자 경계를 수평 공백 축약 없이 적용해 집중138개 통과. 독립 검토 차단 이슈 없음. 최종 package 및 live 재검증 진행 중.
+- 최종 전체 package1,412개/실패0/오류0/제외18. JAR `73c7abe4e49769edb3024773fdab25c298a35f609aaf793fa51632232f93d9df`, 공식8080 배포 runtime `28305b46-10e2-411b-a25a-34acc93091b4`, PID62340. 보호 런타임 불변 검사 통과. 승인된4개 평가 `logs/rag-eval-parent-boundaries-20261001.json` 실행 중.
+
+- 사용자 요청: 통상 단계 승인을 반복하지 않고 남은 검증을 연속 진행. 순서: 근거 판정 회귀 수정 → 전체 테스트/독립 검토 → 8080 적용/승인된 4개 사례 → 통과 시 Difficult-12 → holdout → 전체 릴리즈 게이트. 실패한 안전성 기준을 완화하거나 authority를 선승격하지 않는다.
+- 읽기 전용 DB 확인: 84919 본문 1,669자 중 1,426번째에 신청서 등장. EvidenceJudge의 adminEntryOnly는 본문 내 신청서 하나로 전체 규정을 배제한다. 축약 회귀에서 대상 목록 뒤 신청서 절차를 붙였을 때 빈 근거로 재현했다.
+- 검색 편향을 수정하지 않기로 결정: 실제 청크가 judgeCandidates 3위이므로 검색 수정은 현 단계 원인과 무관하다. 부모 문맥 문제는 별도 가설이며 현재 회귀의 직접 원인은 후행 신청서 안내에 의한 전역 배제다.
+- 대상 규정이 행정 안내보다 앞서 본문에 명시된 경우만 예외를 허용하는 최소 수정. 필드명만 있는 신청서 음성 사례 유지. EvidenceJudgeTests 80개 통과, 전체 package 1,407개/실패0/오류0/제외18 통과. 독립 검토 진행 중이며 아직 배포 전이다.
+- 독립 검토에서 대상·시스템 필드명이 신청서라는 단어보다 앞에 있는 입력 안내가 허용되는 Important 문제를 발견했다. 추가 음성 테스트의 실패를 확인한 뒤, 원문에 명시적인 검토 대상 제목과 첫 번호 항목이 있는 경우로 한정했다. 최종 package 1,408개/실패0/오류0/제외18, diff 검사 통과.
+- 최종 JAR `aefe30ac74031748ead9550a71ce92019f659f18f92ee5e3842e2cc615993019`를 공식 스크립트로 app-dev 8080에 배포했다. 기존 콘솔 PID 파일 누락으로 최초 배포는 변경 전 중단됐고, PID 6008의 명령행·경로를 확인한 뒤 공식 stop 스크립트로 종료했다. 배포 runtime `b246f79a-141c-4220-9d54-f2592370a997`, PID 46292. 보호 런타임 불변 검사 통과. 승인된 4개 답변 평가를 재시도 0회로 실행 중이다.
+- 실제 4개 평가 완료: 3/4, security-review-target의 범위 누락 유지. 결과는 `logs/rag-eval-admin-scope-20261001.json`. 판정 기준은 변경하지 않았다. 후속 동일 질문 debug/search(answerMs=0)에서 84919는 judge까지 통과하고 grounds에서 GROUND_NOT_BUILT로 탈락한다. 따라서 판정 수정 자체는 live에서 확인됐지만 최종 정확도는 아직 개선되지 않았다.
+- 후속 중복 제거 원인: EvidenceCandidateDiversifier.exactKey는 chunkId 대신 문서/제목/chunkNo/page를 사용하여 같은 페이지의 다른 기관 목록도 제거한다. 서로 다른 제목·본문의 동일 페이지 회귀가 실패하는 것을 확인했다. exactKey를 target/documentId/chunkId로 바꾸고 실제 동일 ID 중복 및 동일 본문 중복 제거 테스트는 유지했다. 집중 테스트 4개 통과; 전체 package 검증 진행 중.
+- 후속 전체 package 성공: 1,409개, 실패0/오류0/제외18. JAR `6ba496b3d0a563086bf53fa206bd79cdaef29058d0684b85c7046fb3651361a5`, 공식 8080 배포 runtime `a43326c9-5812-4ce0-96ed-6e2e2b65cdb1`, PID 90932. 18080/Qdrant 보호 상태 불변.
+- 동일 4개 재평가에서 security-review-target은 여전히 FAIL이나, selectedIds에 84919가 포함되어 근거 복구는 확인됐다. 검증된 답변은 국가정보원 대상 세 항목만 포함한다. 이 결과를 전체 정확도 개선 성공으로 보고하지 않는다. `logs/rag-eval-chunk-identity-20261001.json` 및 checkpoint에 증거 보존.
+- 남은 병목은 검색/판정/청크 식별자가 아니라 답변 coverage 정책이다. `security_review_target_scope.answer_required`가 국가정보원 대상의 세 그룹만 요구하고 `selectConfiguredAnswerCoverageAtoms`가 충족 즉시 반환한다. 기관별 범위가 다른 복수 근거를 일반 질문에 어떻게 제시할지 설계가 필요하다. 평가 문구를 하드코딩하거나 특정 기관의 대상을 전국 공통 기준으로 확장하지 않는다. 연속 국소 수정 후에도 종단 게이트가 실패하므로 systematic-debugging 원칙에 따라 추가 증상 패치를 중단하고 범위 인식 답변 설계를 검토한다. Difficult-12/holdout/전체1003/authority 승격은 미실행, 전체 진행률 약80% 유지.

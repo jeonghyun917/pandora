@@ -289,7 +289,7 @@ public class EvidenceJudge {
 			}
 		}
 		if (isSecurityReviewTargetQuestion(normalizedQuestion)
-			&& !isSecurityReviewTargetAnswerChunk(body, documentTitle, chunkHeading)) {
+			&& !isSecurityReviewTargetAnswerChunk(body, documentTitle, chunkHeading, chunk.chunkText())) {
 			return false;
 		}
 		if (profile.trafficCrosswalkStopQuestion()) {
@@ -560,7 +560,7 @@ public class EvidenceJudge {
 		boolean preConsultationGeneralScopeChunk = isPreConsultationGeneralScopeChunk(body, chunkHeading);
 		boolean preConsultationSpecificQaChunk = isPreConsultationSpecificQaChunk(body, chunkHeading);
 		boolean securityReviewTargetAnswerChunk = securityReviewTargetQuestion
-			&& isSecurityReviewTargetAnswerChunk(body, documentTitle, chunkHeading);
+			&& isSecurityReviewTargetAnswerChunk(body, documentTitle, chunkHeading, chunk.chunkText());
 		boolean preferredSection = profile.prefersSection(chunk.sectionType());
 		boolean procurementCatalogContractQuestion = KoreanQueryNormalizer.isProcurementCatalogContractQuestion(profile.normalizedQuestion());
 		boolean procurementCatalogContractChunk = isProcurementCatalogContractContextChunk(body, documentTitle, chunkHeading);
@@ -1241,7 +1241,7 @@ public class EvidenceJudge {
 		boolean guideTitle = title.contains("보안성검토가이드")
 			|| title.contains("정보화사업보안성검토")
 			|| title.contains("정보화사업보안성검토가이드");
-		return guideTitle && isSecurityReviewTargetAnswerChunk(body, title, heading);
+		return guideTitle && isSecurityReviewTargetAnswerChunk(body, title, heading, chunk.chunkText());
 	}
 
 	private boolean isExploratoryLookupQuestion(String normalizedQuestion) {
@@ -2608,7 +2608,7 @@ public class EvidenceJudge {
 			&& normalized.contains("대상");
 	}
 
-	private static boolean isSecurityReviewTargetAnswerChunk(String body, String documentTitle, String chunkHeading) {
+	private static boolean isSecurityReviewTargetAnswerChunk(String body, String documentTitle, String chunkHeading, String rawBody) {
 		String text = documentTitle + chunkHeading + body;
 		boolean securityReviewContext = text.contains("보안성검토")
 			|| text.contains("정보화사업보안성검토")
@@ -2634,10 +2634,21 @@ public class EvidenceJudge {
 			|| text.contains("고유식별정보")
 			|| text.contains("대외비")
 			|| text.contains("비밀");
-		boolean adminEntryOnly = text.contains("발주정보등록")
-			|| text.contains("입력한다")
-			|| text.contains("화면에서")
-			|| text.contains("신청서");
+		int firstAdminCue = body.length();
+		for (String cue : List.of("발주정보등록", "입력한다", "화면에서", "신청서")) {
+			int index = body.indexOf(cue);
+			if (index >= 0) {
+				firstAdminCue = Math.min(firstAdminCue, index);
+			}
+		}
+		// A later application procedure must not erase an earlier explicit target list.
+		// Field labels alone, or a heading supplied only by metadata, are not a rule.
+		boolean priorTargetRule = rawBody != null
+			&& rawBody.matches("(?s).*검토\\s*대상\\s*1[.)]\\s*.+")
+			&& body.substring(0, firstAdminCue).matches(
+			"(?s).*검토대상.{0,300}(?:정보시스템구축|정보통신망구축|기반시설구축).*"
+		);
+		boolean adminEntryOnly = firstAdminCue < body.length() && !priorTargetRule;
 		return securityReviewContext && explicitTargetCue && concreteSystemScope && !adminEntryOnly;
 	}
 

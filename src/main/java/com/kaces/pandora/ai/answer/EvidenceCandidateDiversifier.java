@@ -38,13 +38,10 @@ public class EvidenceCandidateDiversifier {
 	}
 
 	private String exactKey(LawSemanticChunkRow chunk) {
-		String page = chunk.pageNo() == null ? "" : String.valueOf(chunk.pageNo());
 		return String.join("|",
 			nullToEmpty(chunk.target()),
 			String.valueOf(chunk.documentId()),
-			normalize(chunk.title()),
-			normalize(chunk.chunkNo()),
-			page
+			String.valueOf(chunk.chunkId())
 		);
 	}
 

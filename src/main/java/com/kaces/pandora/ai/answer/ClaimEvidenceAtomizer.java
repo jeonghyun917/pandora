@@ -150,6 +150,18 @@ final class ClaimEvidenceAtomizer {
 		StringBuilder prefix = new StringBuilder();
 		for (int partIndex = 0; partIndex < parts.length; partIndex++) {
 			String value = parts[partIndex].trim();
+			// A standalone agency-qualified body heading may be more specific than
+			// the chunk metadata. Only enter the first list, never resume after a boundary.
+			if (expected == 1 && !inList && heading.endsWith(" 대상")
+				&& value.endsWith(" " + heading) && value.length() <= 60
+				&& SAFE_OCR_HEADING.matcher(value).matches()
+				&& value.substring(0, value.length() - heading.length()).trim()
+					.matches("[가-힣A-Za-z]{1,30}(?:부|청|원|기관|위원회)")
+				&& partIndex + 1 < parts.length
+				&& parts[partIndex + 1].trim().matches("1[.)]\\s+.+")) {
+				heading = value;
+				prefix.setLength(0);
+			}
 			Matcher item = Pattern.compile("^(\\d{1,2})[.)]\\s+(.+)$").matcher(value);
 			if (!inList && expected == 1 && item.matches()) {
 				String explicitHeading = OCR_PAGE_MARKER.matcher(prefix).replaceAll("")

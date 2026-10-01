@@ -13,7 +13,7 @@ class EvidenceCandidateDiversifierTests {
 	@Test
 	void preservesRankingWhileRemovingExactAndNearDuplicateCandidates() {
 		LawSemanticChunkRow first = chunk(1, 10, "첫 문서", "적용 대상", "국가기관이 추진하는 정보화사업은 적용 대상입니다.");
-		LawSemanticChunkRow exactDuplicate = chunk(2, 10, "첫 문서", "적용 대상", "서로 다른 추출 텍스트");
+		LawSemanticChunkRow exactDuplicate = chunk(1, 10, "첫 문서", "적용 대상", "서로 다른 추출 텍스트");
 		LawSemanticChunkRow textDuplicate = chunk(3, 11, "복제 문서", "다른 제목", "국가기관이 추진하는 정보화사업은 적용 대상입니다.");
 		LawSemanticChunkRow second = chunk(4, 12, "둘째 문서", "제외 대상", "단순 하드웨어 도입은 제외 대상입니다.");
 
@@ -23,6 +23,13 @@ class EvidenceCandidateDiversifierTests {
 		);
 
 		assertThat(result).containsExactly(first, second);
+	}
+
+	@Test
+	void preservesDifferentRulesOnTheSamePage() {
+		LawSemanticChunkRow first = chunk(1, 10, "검토 가이드", "중앙기관 검토 대상", "중앙기관 검토 대상: 중요 정보시스템 구축");
+		LawSemanticChunkRow second = chunk(2, 10, "검토 가이드", "소관기관 검토 대상", "소관기관 검토 대상: 웹기반 정보시스템 구축");
+		assertThat(diversifier.diversify(List.of(first, second), 3)).containsExactly(first, second);
 	}
 
 	@Test

@@ -3268,7 +3268,9 @@ public class LawAiAnswerService {
 		}
 		for (LawSemanticChunkRow contextChunk : contextChunks) {
 			String heading = cleanDisplayText(contextChunk.chunkTitle());
-			String text = cleanDisplayText(contextChunk.chunkText());
+			String text = cleanHwpxText(contextChunk.chunkText()).lines()
+				.map(this::cleanDisplayText)
+				.collect(java.util.stream.Collectors.joining("\n"));
 			if (text.isBlank()) {
 				continue;
 			}
@@ -3283,12 +3285,13 @@ public class LawAiAnswerService {
 		}
 		int queryIndex = bestSnippetIndex(expanded, query);
 		if (queryIndex < 0 || queryIndex < 1_800) {
-			return limitText(expanded, 2_800);
+			return expanded.length() <= 2_800 ? expanded : expanded.substring(0, 2_800) + "...";
 		}
 		int start = Math.max(0, queryIndex - 1_200);
 		start = moveToReadableBoundary(expanded, start, -1);
 		String value = expanded.substring(start).trim();
-		return (start > 0 ? "..." : "") + limitText(value, 2_800);
+		return (start > 0 ? "..." : "")
+			+ (value.length() <= 2_800 ? value : value.substring(0, 2_800) + "...");
 	}
 
 	private LawSemanticChunkRow copyWithChunkText(LawSemanticChunkRow chunk, String chunkText) {
