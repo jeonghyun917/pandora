@@ -10,6 +10,43 @@ class ClaimEvidenceAtomizerTests {
 	private final ClaimEvidenceAtomizer atomizer = new ClaimEvidenceAtomizer();
 
 	@Test
+	void sourceWrappedSubjectAndPredicateRemainOneCompleteClaim() {
+		assertThat(atomizer.atomizeSource("발간 목적\n이 안내서는 현장에서 이해하기 쉽도록 개인정보\n"
+			+ "처리 시 준수해야 하는 사항을 안내할 목적으로 마련되었습니다.\n제개정 이력", "처리"))
+			.contains("이 안내서는 현장에서 이해하기 쉽도록 개인정보 처리 시 준수해야 하는 사항을 안내할 목적으로 마련되었습니다.")
+			.doesNotContain("처리 시 준수해야 하는 사항을 안내할 목적으로 마련되었습니다.");
+	}
+
+	@Test
+	void sourceContinuationPreservesNewSubjectExceptionAndBlankLineBoundaries() {
+		assertThat(atomizer.atomizeSource("기관은 처리 기준을\n- 준수해야 했습니다.", "기준"))
+			.contains("기관은 처리 기준을", "- 준수해야 했습니다.");
+		assertThat(atomizer.atomizeSource("기관은 처리 기준을\n가. 준수해야 했습니다.", "기준"))
+			.doesNotContain("기관은 처리 기준을 가. 준수해야 했습니다.");
+		assertThat(atomizer.atomizeSource("기관은 처리 기준을\n다른 기관은 별도 기준을 적용합니다.", "기준"))
+			.contains("기관은 처리 기준을", "다른 기관은 별도 기준을 적용합니다.");
+		assertThat(atomizer.atomizeSource("기관은 처리 기준을\n다만 승인을 받아야 합니다.", "기준"))
+			.contains("기관은 처리 기준을", "다만 승인을 받아야 합니다.");
+		assertThat(atomizer.atomizeSource("기관은 처리 기준을\n\n준수해야 합니다.", "기준"))
+			.contains("기관은 처리 기준을", "준수해야 합니다.");
+	}
+
+	@Test
+	void preservesCommaContinuedSourceConditionAcrossWrappedLine() {
+		assertThat(atomizer.atomizeSource("※ 등록요청 수 및 등록완료 수는 평가기간 동안 집계된 요청 수,\n"
+			+ "완료 수를 모두 합산하여 산정\n○ 다음 평가기준", "평가방법"))
+			.contains("등록요청 수 및 등록완료 수는 평가기간 동안 집계된 요청 수, 완료 수를 모두 합산하여 산정")
+			.doesNotContain("등록요청 수 및 등록완료 수는 평가기간 동안 집계된 요청 수,");
+	}
+
+	@Test
+	void commaContinuationDoesNotMergeIndependentSourceListItems() {
+		assertThat(atomizer.atomizeSource("※ 요청 수,\n○ 별도 평가기준\n1. 등록 대상,\n2. 제외 대상", "평가방법"))
+			.contains("요청 수,", "별도 평가기준", "등록 대상,", "제외 대상")
+			.doesNotContain("요청 수, ○ 별도 평가기준", "등록 대상, 2. 제외 대상");
+	}
+
+	@Test
 	void embeddedQualifiedHeadingPreservesAgencyInsteadOfGenericMetadata() {
 		assertThat(atomizer.atomizeSource("사전 협의 후 의뢰한다.\n문화체육관광부 검토 대상\n"
 			+ "1. 위임받은 사업\n2. 홈페이지 및 웹메일 등 웹기반 정보시스템 구축\n"

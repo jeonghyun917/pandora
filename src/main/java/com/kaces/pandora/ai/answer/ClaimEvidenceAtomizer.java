@@ -133,6 +133,10 @@ final class ClaimEvidenceAtomizer {
 
 	/** Carry only an explicit source heading over its contiguous numbered list. */
 	List<String> atomizeSource(String text, String chunkTitle) {
+		if (text != null) {
+			text = text.replaceAll("([,，])[ \\t]*\\R[ \\t]*(?![①-⑳•‣□○※*∙]|\\d{1,2}[.)])(?=\\S)", "$1 ");
+			text = joinWrappedSourceSentencePairs(text);
+		}
 		if (text == null || chunkTitle == null) {
 			return atomize(text);
 		}
@@ -194,6 +198,32 @@ final class ClaimEvidenceAtomizer {
 
 	List<String> atomizeForAlignment(String text) {
 		return atomize(text, true);
+	}
+
+	private String joinWrappedSourceSentencePairs(String text) {
+		String[] lines = text.split("\\R", -1);
+		List<String> joined = new ArrayList<>();
+		for (int index = 0; index < lines.length; index++) {
+			String left = lines[index].trim();
+			if (index + 1 < lines.length) {
+				String right = lines[index + 1].trim();
+				if (!sourceContinuationBoundary(left) && !sourceContinuationBoundary(right)
+					&& !left.matches(".*[.!?]$") && !hasCompleteAssertion(left)
+					&& !explicitSubjects(left, false).isEmpty()
+					&& explicitSubjects(right, true).isEmpty()
+					&& right.matches(".*(?:습니다|한다|된다|이다|했다|하였다|되었다)[.!?]$")) {
+					joined.add(left + " " + right);
+					index++;
+					continue;
+				}
+			}
+			joined.add(lines[index]);
+		}
+		return String.join("\n", joined);
+	}
+
+	private boolean sourceContinuationBoundary(String line) {
+		return line.isBlank() || line.matches("^(?:[①-⑳•‣□○※*∙]|[-–—]\\s|[가-힣][.)]\\s|\\d{1,2}[.)]|다만|예외적으로|그러나|하지만|반면).*");
 	}
 
 	List<EvidenceAtom> parseAtoms(String text) {

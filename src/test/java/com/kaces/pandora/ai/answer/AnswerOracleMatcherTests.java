@@ -155,7 +155,7 @@ class AnswerOracleMatcherTests {
 	@Test
 	void acceptsTheOfficialIntegratedGuidePurposeWording() {
 		AnswerOracleMatcher.Result result = AnswerOracleMatcher.evaluate(
-			"이 안내서는 개인정보처리자가 개인정보 처리와 관련한 개편 내용에 대하여 "
+			"발간 목적이 안내서는 개인정보처리자가 개인정보 처리와 관련한 개편 내용에 대하여 "
 				+ "현장에서 이해하기 쉽도록 개인정보 처리 시 준수해야 하는 사항을 "
 				+ "안내할 목적으로 마련되었습니다.",
 			defaultCase("privacy-integrated-guide-purpose")
