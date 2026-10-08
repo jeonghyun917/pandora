@@ -2,6 +2,12 @@
 
 ## 2026-10-01 조건 보존 평가 후속 진단
 
+- 2026-10-08 12:41 KST28234 안정tree 전체backend exit0/단일membership전제·결론분리 관련83232·54500PASS/정적C/I0. 이는명시issuer·business·actor·timing조건보존 안전파서수정만이며 readonly 실제maincontrol/semanticINSUFFICIENT/예외sourceAMBIGUOUS 그대로/실제SNSPASS없음. 배포/API반복보류하고 source명시closed문맥의주체·조건연결을별도진단/최종threshold·oracle·dataset·authority변경없음/37411keepalive73844/Q89980 유지.
+
+- 2026-10-08 12:39 KST83232·54500 parser/semantic exit0: 명시membership결론 issuer·business·actor·timing변경/조건삭제거부PASS/독립C/I0. 새일반질문 readonly 실제원문 재소비exit0:mainparse subjects국가기관등의장/relations·scopes빈값/전체membership조건보존 확인. 그러나 control·semantic 모두INSUFFICIENT 그대로,예외source actor없음AMBIGUOUS로NO_ALIGNED/추측actor추가없음. 파서슬롯혼합해결은실제SNS PASS가아님/외부API재평가안함. 안정tree전체backend실행중/현재37411keepalive73844/Q89980유지/holdoutfull미진입/100%아님.
+
+- 2026-10-08 12:36 KSTe766773ba47af103c9fe9889ef096b824e6224d3 commit/push/lsremote동일(예외trigger·주체분리/전체1538PASS). 새membership parser52791 actualRED1 조건내사업actor누출→바로이어지는명시actor결론투영30820관련exit0. 독립Important 후행문장의행위/actor혼합21224actualRED1→source시작premise·내부문장부호없는단일결론에만투영/83232회귀진행/새생산dirty미배포. 전체전제conditions불변/명목scope-only와주체생략은기존경로/최종matcher·verifier완화없음. sharedmain3792766b/main불변/37411keepalive73844/Q89980실제유지/holdoutfull금지/100%아님.
+
 - 2026-10-08 12:33 KST79844 전체backend exit0/잔여XML1538 실패0오류0제외19/96142 관련exit0/정적C/I0/diffcheck통과. 예외trigger·actor·conclusion 분리 및조건내일반·복합명사 주체누출차단 검증; 실제SNS main membership조건의relation/scope혼합과source생략주체는미해결/해결주장없음. 새코드미배포/현재94b671bf·37411KEEPALIVE73844/Q89980보존/실제68301·53184FAIL재생금지/holdoutfull금지/100%아님.
 
 - 2026-10-08 12:32 KST4346 compound조건주체 actualRED1 확인→일반·복합SUBJECT 모두 동일trigger위치필터 적용/독립잔여C/I0. 안정96142 parser·semantic exit0/외부평가없음. 전체backend 회귀진행/생산소스추가편집보류. 생략주체추론·semantic matcher·최종verifier 완화없음/현재배포94b671bf·37411keepalive73844/Q89980유지/실제SNS·penalty미완료/holdoutfull미진입.

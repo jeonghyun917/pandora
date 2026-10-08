@@ -9,6 +9,24 @@ import org.junit.jupiter.api.Test;
 class KoreanEvidenceAtomParserTests {
 
 	@Test
+	void membershipProjectionCannotBorrowAnActionFromAnEarlierSentence() {
+		var atom = new KoreanEvidenceAtomParser().parse(
+			"민간기관은 자료를 공개해야 한다. 사업이 SW사업에 해당하면 발주기관은 심의를 해야 한다.");
+		assertThat(atom.subjects()).contains("민간기관", "발주기관");
+	}
+
+	@Test
+	void membershipPremiseIsNotAConclusionRelationOrActor() {
+		var atom = new KoreanEvidenceAtomParser().parse(
+			"만약 온라인 운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW 포함)에 해당하는 경우, 발주기관은 자료를 통지해야 한다.");
+		assertThat(atom.subjects()).containsExactly("발주기관");
+		assertThat(atom.relations()).doesNotContain("해당", "포함");
+		assertThat(atom.targetScopes()).isEmpty();
+		assertThat(atom.conditions()).anySatisfy(condition ->
+			assertThat(condition).contains("국가기관", "발주", "sw사업", "상용sw", "해당"));
+	}
+
+	@Test
 	void exceptionConditionInstitutionHeadIsNotTheConclusionActor() {
 		var atom = new KoreanEvidenceAtomParser().parse(
 			"다만 국가기관등의 장은 참석할 수 없는 경우에는 발주기관은 자료를 통지해야 한다.");

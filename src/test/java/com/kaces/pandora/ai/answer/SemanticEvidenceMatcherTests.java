@@ -13,6 +13,23 @@ class SemanticEvidenceMatcherTests {
 	private final SemanticEvidenceMatcher matcher = new SemanticEvidenceMatcher();
 
 	@Test
+	void explicitMembershipConclusionPreservesIssuerBusinessActorAndTiming() {
+		String rule = "만약 온라인 운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW 포함)에 해당하는 경우, 발주기관은 계약체결 전까지 자료를 통지해야 한다.";
+		var index = matcher.index(List.of(ground(rule)));
+		assertThat(matcher.match(parser.parse(rule), index).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		for (String claim : List.of(
+			rule.replace("국가기관", "민간기관"),
+			rule.replace("모든 SW사업", "모든 건설사업"),
+			rule.replace("발주기관은", "수급기관은"),
+			rule.replace("계약체결 전까지", "계약체결 후까지"),
+			"발주기관은 계약체결 전까지 자료를 통지해야 한다.")) {
+			assertThat(matcher.match(parser.parse(claim), index).status()).as(claim)
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
 	void explicitExceptionCannotLoseItsTriggerActorOrDeadline() {
 		String rule = "다만 일정이 부족한 경우에는 발주기관은 계약체결 전까지 심의를 받아야 한다.";
 		assertThat(parser.parse(rule).subjects()).containsExactly("발주기관");

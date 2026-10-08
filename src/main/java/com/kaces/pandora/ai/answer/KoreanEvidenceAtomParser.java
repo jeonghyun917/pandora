@@ -82,7 +82,8 @@ public class KoreanEvidenceAtomParser {
 		String source = Normalizer.normalize(String.valueOf(sourceText == null ? "" : sourceText), Normalizer.Form.NFKC)
 			.replaceAll("\\s+", " ")
 			.trim();
-		Set<String> subjects = subjects(source);
+		String propositionSource = explicitMembershipConclusion(source);
+		Set<String> subjects = subjects(propositionSource);
 		Set<String> objects = matches(source, OBJECT, 1);
 		Set<String> recipients = matches(source, RECIPIENT, 1);
 		Set<String> actions = matches(source, ACTION, 1);
@@ -126,15 +127,15 @@ public class KoreanEvidenceAtomParser {
 			}
 		}
 		Set<String> scopes = new LinkedHashSet<>();
-		matches(source, EXCLUDED_SCOPE, 1).forEach(value -> scopes.add(value + "제외"));
-		matches(source, INCLUDED_SCOPE, 1).forEach(value -> scopes.add(value + "포함"));
+		matches(propositionSource, EXCLUDED_SCOPE, 1).forEach(value -> scopes.add(value + "제외"));
+		matches(propositionSource, INCLUDED_SCOPE, 1).forEach(value -> scopes.add(value + "포함"));
 		for (String exception : exceptions) {
 			String excluded = exception.replaceFirst("(?:은|는|이|가)?제외.*$", "");
 			if (!excluded.equals(exception) && excluded.length() >= 2) {
 				scopes.add(excluded + "제외");
 			}
 		}
-		Set<String> relations = relations(source);
+		Set<String> relations = relations(propositionSource);
 		Set<String> numericAnchors = matches(source, NUMERIC, 0);
 
 		EvidenceAtom.Modality modality = modality(source);
@@ -192,6 +193,22 @@ public class KoreanEvidenceAtomParser {
 			}
 		}
 		return values;
+	}
+
+	private String explicitMembershipConclusion(String source) {
+		Matcher premise = MEMBERSHIP_CONDITION.matcher(source);
+		if (!premise.find() || premise.start() != 0) {
+			return source;
+		}
+		String conclusion = source.substring(premise.end()).replaceFirst("^[,，]?\\s*", "");
+		if (!conclusion.matches("[^.!?;]*[.!?]?")) {
+			return source;
+		}
+		if (!SUBJECT.matcher(conclusion).lookingAt() && !COMPOUND_ROLE_SUBJECT.matcher(conclusion).lookingAt()) {
+			return source;
+		}
+		// The full premise is retained in conditions; only explicit conclusion roles are projected.
+		return conclusion;
 	}
 
 	private boolean insideExplicitExceptionTrigger(String source, int position) {
