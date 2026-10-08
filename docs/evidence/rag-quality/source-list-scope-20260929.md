@@ -2,6 +2,14 @@
 
 ## 2026-10-01 조건 보존 평가 후속 진단
 
+- 2026-10-08 12:11 KST71750 전체backend exit0/잔여XML1534 실패0오류0제외19/관련171PASS·정적C/I0.95348 공식app-dev-staged-package 실행중/기존실행JAR보존. strict절차모드분리는최종verifier·oracle·dataset·권한활성화변경없음. 실제53184 SNS·penaltyFAIL0/2종료/새코드미배포/11331keepalive8764·Q89980유지/holdout·full미진입.
+
+- 2026-10-08 12:10 KST66231 관련171건(prompt11/repair69/judge91) 실패0오류0제외0 exit0/정적C/I0. strict절차판별패턴불변/publicpredicate재사용→완전명시절차만procedure instructions선택/범위전용출력템플릿배제/기존scope-only계약회귀PASS. 안정tree71750 전체backend실행중/중복없음/새코드미배포. 현재11331keepalive8764/Q89980유지/실제53184FAIL0/2 완료재생금지/holdout·full미진입.
+
+- 2026-10-08 12:08 KST 독립로컬실제ParentContextAssembler·snippet·다중후보에서scope+완전절차2atom보존 확인/1200자제한원인가설제외. 생성API계약의절차입력에도scope-only문장템플릿포함 74342/완전strictfixture79887 actualRED1 오류0. 기존strict절차predicate패턴불변/public노출만재사용하여절차있을때전용instructions분리/그외scope-only계약유지,66231 관련3클래스회귀실행중/좁은정적검토요청. 새코드미배포/현재11331 keepalive8764/Q89980보존/실제평가53184종료FAIL0/2 재생없음/holdout·full미진입.
+
+- 2026-10-08 12:02 KST9e4e4be1 push/ls-remote동일.43866 stagingexit0 SHA06e96863708c2b55c0c1f349f557f52e893b52bf4f19bbe6b20e057e3f36d82b 공식deploy11331 keepalive/PID8764/runtimea0529e57-0271-4d7e-93f8-64090fec9e0b/Q89980·18080보호불변/config·index·lexical·DB-Q·dataset실제동일. 이전5687/6920폐기. 고유recognition-boundary-20261008-1158 session53184 exit1 FAIL0/2 종료/재평가금지. 실제SNS rewrite boundary=conditional selectedAtom2 확인,nominal답변NO_ALIGNED unsafe1/oracle2미충족; penalty unsupported7/unsafe0/NO_ALIGNED_SUPPORTED_ATOM 최종안전거부. 일반온라인운영 readonly 여러원문8후보+87816 로컬선택에서도범위+완전절차·예외2atom확인/API없음. 다음실제선택입력과생성경계를비내용metadata로분리진단/추측prompt추가·verifier완화금지. holdout·full미진입/완료아님.
+
 - 2026-10-08 인정조건 안정tree:60625 repair·verifier·parser·semantic exit0,60326 전체backend exit0/잔여XML1533 실패0오류0제외19. bounded인정조건 미추출은 AMBIGUOUS로차단/조건삭제·변경·반대허용 회귀검증/정적잔여C/I0.43866 공식staging package 실행중/현재8080PID6920·Q89980 유지/18080불변. 실제SNS·penalty PASS없음/holdout·full미진입/완료아님.
 
 - 2026-10-08 인정조건 안전성:43610 RED2는 이전class잔존 확인(현재source경우에는/compiledsuffixfalse);source 안정재컴파일83038에서기본조건삭제·조건변경회귀PASS,길이초과1RED 실제확인. suffixmarker수와bounded완전조건수 비교해 미추출이면AMBIGUOUS로failclosed/49598 parser·semantic46건 실패0오류0 exit0/Important해결·정적잔여C/I0. 조건부·legacy 실제분기를비내용metadata로확인하는로그만추가(question/atom/API응답/자격증명출력없음),60625 repair·verifier·parser·semantic회귀실행중. 새코드미배포/외부평가재생없음/현재5687keepalive6920/Q89980유지. 실제SNS·penalty미완료/holdout·full미진입.

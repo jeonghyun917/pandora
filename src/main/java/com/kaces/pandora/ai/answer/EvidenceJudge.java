@@ -163,7 +163,7 @@ public class EvidenceJudge {
 		return result;
 	}
 
-	static boolean hasExplicitSoftwareConfirmationReviewDuty(String source) {
+	public static boolean hasExplicitSoftwareConfirmationReviewDuty(String source) {
 		return !softwareConfirmationReviewDutyText(source).isBlank();
 	}
 

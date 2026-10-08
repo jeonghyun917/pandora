@@ -10,6 +10,21 @@ import tools.jackson.databind.ObjectMapper;
 
 class OpenAiAnswerClientPromptTests {
 	@Test
+	void verifiedProcedureModeDoesNotSendTheScopeOnlySentenceTemplate() {
+		var captured = new java.util.concurrent.atomic.AtomicReference<String>();
+		var client = new OpenAiAnswerClient(new LawAiProperties(null, null, null, null), new ObjectMapper()) {
+			@Override protected String requestAnswer(String question, String input, int tokens, String instructions) {
+				captured.set(instructions); return "조건부 절차";
+			}
+		};
+		client.rewriteConditional("온라인 운영 사업도 심의 대상인가요?", List.of(
+			"국가기관 등이 발주하는 모든 SW사업",
+			"국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다."),
+			List.of("공공소프트웨어사업 과업심의 가이드"));
+		assertThat(captured.get()).doesNotContain("[원문 제도의] 대상입니다.");
+		assertThat(captured.get()).contains("과업내용 확정", "일정 예외", "조건부 절차");
+	}
+	@Test
 	void conditionalRewriteCanUseOnlyExplicitVerifiedProcedureWithoutDroppingItsConditions() {
 		var captured = new java.util.concurrent.atomic.AtomicReference<String>();
 		var client = new OpenAiAnswerClient(new LawAiProperties(null, null, null, null), new ObjectMapper()) {
