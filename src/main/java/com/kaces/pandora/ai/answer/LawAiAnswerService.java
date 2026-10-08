@@ -5368,6 +5368,12 @@ public class LawAiAnswerService {
 		if (judgedEvidence.directEvidenceRequired() && judgedEvidence.directEvidenceCount() == 0) {
 			return judgedEvidence;
 		}
+		List<LawSemanticChunkRow> recoveredCandidates = recoverScopeAnchoredProcedureCandidates(judgedEvidence, judgeContextChunks, query);
+		if (recoveredCandidates.size() > judgeContextChunks.size()) {
+			judgeContextChunks = recoveredCandidates;
+			judgedEvidence = evidenceJudge.judge(query, judgeContextChunks,
+				combinedScoreByChunkId == null ? Map.of() : combinedScoreByChunkId, DEFAULT_LIMIT);
+		}
 		List<LawSemanticChunkRow> configuredPolicyChunks = configuredPolicyDocumentDirectEvidenceChunks(
 			judgeContextChunks,
 			query,
@@ -5440,6 +5446,48 @@ public class LawAiAnswerService {
 			Math.max(judgedEvidence.directEvidenceCount(), directEvidenceChunks.size()),
 			judgedEvidence.selectionPolicy() + "+intent_direct_preserve"
 		);
+	}
+
+	private List<LawSemanticChunkRow> recoverScopeAnchoredProcedureCandidates(
+		EvidenceJudge.Result judged, List<LawSemanticChunkRow> candidates, String query
+	) {
+		if (ragDocumentMapper == null || judged.directEvidenceCount() == 0
+			|| !isProjectReviewScopeQuestion(normalizeForMatch(query), queryTerms(query))
+			|| judged.chunks().stream().noneMatch(EvidenceJudge::isNationalSoftwareReviewScope)
+			|| candidates.stream().anyMatch(row -> EvidenceJudge.hasExplicitSoftwareConfirmationReviewDuty(row.chunkText()))) {
+			return candidates;
+		}
+		LinkedHashMap<String, LawSemanticChunkRow> recovered = new LinkedHashMap<>();
+		for (LawSemanticChunkRow row : candidates) { recovered.put(scoreKey(row.target(), row.chunkId()), row); }
+		Set<Long> searchedDocuments = new LinkedHashSet<>();
+		for (LawSemanticChunkRow anchor : judged.chunks()) {
+			if (!isRagTarget(anchor.target()) || anchor.chunkVersion() == null || anchor.chunkVersion() <= 0
+				|| anchor.sortOrder() < 0 || !"PASS".equals(anchor.qualityStatus())
+				|| EvidenceJudge.committeeEstablishmentRuleText(anchor.chunkText()).isBlank()
+				|| searchedDocuments.size() >= 2 || !searchedDocuments.add(anchor.documentId())) { continue; }
+			try {
+				List<LawSemanticChunkRow> neighbors = ragDocumentMapper.findSemanticContextChunks(
+					anchor.documentId(), anchor.sortOrder(), PARENT_CONTEXT_WINDOW);
+				if (neighbors == null) { continue; }
+				for (LawSemanticChunkRow neighbor : neighbors) {
+					if (neighbor == null || neighbor.documentId() != anchor.documentId()
+						|| !anchor.target().equals(neighbor.target())
+						|| !anchor.chunkVersion().equals(neighbor.chunkVersion())
+						|| neighbor.sortOrder() < 0
+						|| Math.abs((long) neighbor.sortOrder() - anchor.sortOrder()) > PARENT_CONTEXT_WINDOW
+						|| !"PASS".equals(neighbor.qualityStatus())) { continue; }
+					String rule = EvidenceJudge.softwareConfirmationReviewDutyText(neighbor.chunkText());
+					if (!rule.isBlank()) {
+						recovered.putIfAbsent(scoreKey(neighbor.target(), neighbor.chunkId()), copyWithChunkText(neighbor, rule));
+						break;
+					}
+				}
+			} catch (RuntimeException exception) {
+				log.warn("Failed to recover adjacent review procedure. documentId={} exceptionType={}",
+					anchor.documentId(), exception.getClass().getSimpleName());
+			}
+		}
+		return List.copyOf(recovered.values());
 	}
 
 	private List<LawSemanticChunkRow> configuredPolicyDocumentDirectEvidenceChunks(

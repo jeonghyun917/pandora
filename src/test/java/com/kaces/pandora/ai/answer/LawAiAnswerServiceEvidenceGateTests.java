@@ -17,6 +17,61 @@ import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
 	@Test
+	void scopeAnchoredSelectionRecoversSameVersionAdjacentProcedure() throws Exception {
+		var scope = new LawSemanticChunkRow(13001L, 10L, "official_doc", "10", "공공소프트웨어사업 과업심의 가이드",
+			"", "", "20260101", "CURRENT", "5", "적용 대상 사업",
+			"적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)",
+			5, "", "", 5, "scope", "적용 대상 사업", "target_scope", "PASS", null, "scope", 4);
+		var anchor = enumerationRow(13002L, 20L, 6, 4,
+			"국가기관등의 장은 소프트웨어사업의 과업내용의 확정을 심의하기 위하여 과업심의위원회를 두어야 한다.");
+		var procedure = enumerationRow(13003L, 20L, 7, 4,
+			"제25조(과업내용의 확정 시기)\n① 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다. 다만, 사업수행일정 부족 등 불가피한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.\n② 다른 운영 사항");
+		var mapper = org.mockito.Mockito.mock(RagDocumentMapper.class);
+		org.mockito.Mockito.when(mapper.findSemanticContextChunks(20L, 6, 18)).thenReturn(List.of(anchor, procedure));
+		var service = service(null, mapper);
+		try {
+			String question = "온라인 운영 사업도 과업심의 받아야 하나요?";
+			var candidates = List.of(scope, anchor);
+			var judged = new EvidenceJudge().judge(question, candidates, Map.of(), 3);
+			var preserved = preserveIntentDirectEvidenceChunks(service, judged, candidates, question).chunks();
+			assertThat(preserved).extracting(LawSemanticChunkRow::chunkId).contains(13001L, 13003L);
+			assertThat(preserved.stream().filter(row -> row.chunkId() == 13003L).findFirst().orElseThrow().chunkText())
+				.contains("다만, 사업수행일정").doesNotContain("다른 운영 사항");
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
+	void adjacentProcedureRecoveryRejectsDifferentDocumentVersionTargetQualityOrDistance() throws Exception {
+		var scope = chunk(13101L, "official_doc", "공공소프트웨어사업 과업심의 가이드", "적용 대상 사업",
+			"적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)");
+		var anchor = enumerationRow(13102L, 20L, 6, 4,
+			"국가기관등의 장은 소프트웨어사업의 과업내용의 확정을 심의하기 위하여 과업심의위원회를 두어야 한다.");
+		String rule = "① 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		for (Object[] metadata : List.of(
+			new Object[]{21L, "official_doc", 7, 4, "PASS"},
+			new Object[]{20L, "official_doc", 7, 5, "PASS"},
+			new Object[]{20L, "official_doc", 7, null, "PASS"},
+			new Object[]{20L, "law", 7, 4, "PASS"},
+			new Object[]{20L, "official_doc", 7, 4, "REVIEW"},
+			new Object[]{20L, "official_doc", 25, 4, "PASS"}
+		)) {
+			var neighbor = new LawSemanticChunkRow(13103L, (Long) metadata[0], (String) metadata[1], "20", "계약 지침",
+				"", "", "20260101", "CURRENT", "7", "과업내용 확정", rule, 7, "", "",
+				(Integer) metadata[2], "neighbor", "과업내용 확정", "procedure", (String) metadata[4], null, "rule", (Integer) metadata[3]);
+			var mapper = org.mockito.Mockito.mock(RagDocumentMapper.class);
+			org.mockito.Mockito.when(mapper.findSemanticContextChunks(20L, 6, 18)).thenReturn(List.of(neighbor));
+			var service = service(null, mapper);
+			try {
+				String question = "온라인 운영 사업도 과업심의 받아야 하나요?";
+				var candidates = List.of(scope, anchor);
+				var judged = new EvidenceJudge().judge(question, candidates, Map.of(), 3);
+				assertThat(preserveIntentDirectEvidenceChunks(service, judged, candidates, question).chunks())
+					.extracting(LawSemanticChunkRow::chunkId).doesNotContain(13103L);
+			} finally { service.shutdownExecutors(); }
+		}
+	}
+
+	@Test
 	void expandedContextPreservesSourceVersionAndQualityMetadata() throws Exception {
 		var original = new LawSemanticChunkRow(12003L, 20L, "official_doc", "20", "계약 지침",
 			"", "", "20260101", "CURRENT", "25", "제76조", "원문",
