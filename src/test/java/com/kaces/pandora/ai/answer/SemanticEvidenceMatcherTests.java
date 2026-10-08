@@ -13,6 +13,34 @@ class SemanticEvidenceMatcherTests {
 	private final SemanticEvidenceMatcher matcher = new SemanticEvidenceMatcher();
 
 	@Test
+	void recommendationAuthorityCannotLoseItsRecognizedViolationTrigger() {
+		String rule = "장관은 국가기관등의 장이 관련 법령을 위반하였다고 인정하는 경우에는 개선을 권고할 수 있다.";
+		var index = matcher.index(List.of(ground(rule)));
+		assertThat(matcher.match(parser.parse(rule), index).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(parser.parse("장관은 개선을 권고할 수 있다."), index).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void recognizedViolationDoesNotAlignAChangedTriggerOrHideOppositePermission() {
+		String rule = "장관은 기관이 법령을 위반하였다고 인정하는 경우에는 개선을 권고할 수 있다.";
+		var index = matcher.index(List.of(ground(rule)));
+		assertThat(matcher.match(parser.parse(rule.replace("위반하였다고", "준수하였다고")), index).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		assertThat(matcher.match(parser.parse(rule), matcher.index(List.of(
+			ground(rule.replace("권고할 수 있다", "권고할 수 없다"))))).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.CONTRADICTED);
+	}
+
+	@Test
+	void oversizedRecognitionConditionCannotBeTreatedAsUnconditionalAuthority() {
+		String rule = "장관은 기관이 " + "관련 사업의 법령 준수 사실과 자료를 검토하여 ".repeat(20)
+			+ "법령을 위반하였다고 인정하는 경우에는 개선을 권고할 수 있다.";
+		assertThat(matcher.match(parser.parse("장관은 개선을 권고할 수 있다."),
+			matcher.index(List.of(ground(rule)))).status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
 	void closedLegalPrintedLinesSupportTheSameCompleteAuthorityClaim() {
 		String claim = "장관은 국가기관등의 장이 소프트웨어 사업을 추진하는 경우 법령 준수 여부를 확인할 수 있다.";
 		String source = "제7조(준수 여부 확인)\n① 장관은 국가기관등의 장이 소프트웨어\n"

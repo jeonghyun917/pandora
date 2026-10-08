@@ -53,6 +53,13 @@ public class KoreanEvidenceAtomParser {
 		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9]{2,})(?:을|를)\\s+"
 			+ "([\\p{IsHangul}A-Za-z0-9]{2,}?)하기\\s+위하여"
 	);
+	// Keep the quoted finding as an explicit condition, not unconditional authority.
+	private static final Pattern QUOTED_RECOGNITION_CONDITION = Pattern.compile(
+		"(?:^|[.!?;]\\s*)([^.!?;]{2,240}?다고\\s+인정)(?:하는\\s+경우(?:에는|에|만)?|하면)(?=\\s|[,.!?]|$)"
+	);
+	private static final Pattern RECOGNITION_CONDITION_MARKER = Pattern.compile(
+		"다고\\s+인정(?:하는\\s+경우(?:에는|에|만)?|하면)(?=\\s|[,.!?]|$)"
+	);
 	private static final Pattern EXCEPTION = Pattern.compile("(?:다만|예외적으로)\\s*([^.!?]{2,160})");
 	private static final Pattern EXCLUDED_SCOPE = Pattern.compile(
 		"([\\p{IsHangul}A-Za-z0-9()·ㆍ/-]{2,}?)(?:은|는|이|가)?\\s*(?:대상에서)?\\s*(?:제외|비대상|면제)"
@@ -92,6 +99,12 @@ public class KoreanEvidenceAtomParser {
 			conditions.add(canonical(intention.group(1) + intention.group(2)));
 		}
 		conditions.addAll(matches(source, MEMBERSHIP_CONDITION, 1));
+		Matcher recognition = QUOTED_RECOGNITION_CONDITION.matcher(source);
+		int parsedRecognitionConditions = 0;
+		while (recognition.find()) {
+			conditions.add(canonical(recognition.group(1)));
+			parsedRecognitionConditions++;
+		}
 		Matcher purpose = OBJECT_ACTION_PURPOSE_CONDITION.matcher(source);
 		while (purpose.find()) {
 			conditions.add(canonical(purpose.group(1) + purpose.group(2)));
@@ -113,6 +126,9 @@ public class KoreanEvidenceAtomParser {
 		EvidenceAtom.Polarity polarity = polarity(source, modality);
 		String normalized = canonical(source);
 		List<String> reasons = new ArrayList<>();
+		if (RECOGNITION_CONDITION_MARKER.matcher(source).results().count() > parsedRecognitionConditions) {
+			reasons.add("UNPARSED_RECOGNITION_CONDITION");
+		}
 		if (subjects.isEmpty() && !actions.isEmpty() && !matches(source, SUBJECT, 1).isEmpty()) {
 			reasons.add("AMBIGUOUS_SUBJECT_FORM");
 		}

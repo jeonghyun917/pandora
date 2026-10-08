@@ -94,6 +94,8 @@ public class GroundedAnswerRepairService {
 
 		String rewritten;
 		try {
+			log.info("Grounded answer rewrite boundary={} selectedAtomCount={}",
+				generalScopeBinding ? "conditional" : "legacy", selectedAtoms.size());
 			rewritten = generalScopeBinding
 				? rewriter.rewriteConditional(question, selectedAtoms, safeGrounds.stream()
 					.filter(ground -> ground != null && normalize(ground.title()).contains("과업심의"))

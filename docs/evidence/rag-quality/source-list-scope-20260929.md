@@ -2,6 +2,14 @@
 
 ## 2026-10-01 조건 보존 평가 후속 진단
 
+- 2026-10-08 인정조건 안정tree:60625 repair·verifier·parser·semantic exit0,60326 전체backend exit0/잔여XML1533 실패0오류0제외19. bounded인정조건 미추출은 AMBIGUOUS로차단/조건삭제·변경·반대허용 회귀검증/정적잔여C/I0.43866 공식staging package 실행중/현재8080PID6920·Q89980 유지/18080불변. 실제SNS·penalty PASS없음/holdout·full미진입/완료아님.
+
+- 2026-10-08 인정조건 안전성:43610 RED2는 이전class잔존 확인(현재source경우에는/compiledsuffixfalse);source 안정재컴파일83038에서기본조건삭제·조건변경회귀PASS,길이초과1RED 실제확인. suffixmarker수와bounded완전조건수 비교해 미추출이면AMBIGUOUS로failclosed/49598 parser·semantic46건 실패0오류0 exit0/Important해결·정적잔여C/I0. 조건부·legacy 실제분기를비내용metadata로확인하는로그만추가(question/atom/API응답/자격증명출력없음),60625 repair·verifier·parser·semantic회귀실행중. 새코드미배포/외부평가재생없음/현재5687keepalive6920/Q89980유지. 실제SNS·penalty미완료/holdout·full미진입.
+
+- 2026-10-08 안전성 후속:72975 일반 인정조건 삭제회귀 actualRED1(무조건 개선권고 SUPPORTED)/오류0. parser의 ‘…다고 인정하는 경우’ 조건누락이원인,명시prefix 보존 최소수정16524는 경우에는 접미수정전컴파일로RED유지/성공주장금지,안정43610 parser·semantic재검증중. 좁은정적 Important:240자초과prefix가불일치하면 무조건권고지원위험,oversized반례추가/해결전미배포. 실제25196 SNS실패재생없음,현재5687keepalive6920/Q89980유지/2a66cea3배포code와dirty파서분리/holdout·full금지.
+
+- 2026-10-08 11:40 KST2a66cea3 commit/원격ls-remote SHA일치(push의로컬tracking ref갱신오류는별도)/code clean.9897 전체 잔여XML1530 실패0오류0제외19/61159 staging exit0 SHAe9d6da55d46d70f58c97909c145d0fb3beb0129780950a4a9c23c3f23029e8e0. 공식deploy5687 keepalive/PID6920/runtimec6f1f1e1-599e-4091-bcc1-99ec04ff170d/Q89980·18080불변PASS/config·index·lexical·DB-Q parity·승인dataset실제동일. 이전4337/11076 identity폐기. 고유conditional-procedure-sns-20261008-1138 actual25196 exit1 FAIL0/1 종료/재평가금지: repair acceptedtrue selectedAtom2이나답변명목분류1문장/semanticNO_ALIGNED unsafe1/oracle누락2. 일반온라인운영 readonly 2canonical grounds 로컬선택은 scope+완전절차·예외 두atom/conditional분기 확인(외부API없음),실제실패의분기·생성전달추가진단필요. 실제84718 literal②·③·④ controlstrong1supported1 및직접semanticSUPPORTED 확인하지만paraphrase불충분/조건의미완전성보증아님. SNS+penalty PASS없음/holdout·full미진입/100%아님.
+
 - 2026-10-08 11:35 KST31436 관련4클래스165건 실패0오류0 exit0/조건부 생성계약 정적 C/I0.9897 전체backend exit0.61159 공식app-dev-staged-package 실행중/기존8080 JAR 보존. 명시 절차가 있을 때 별도 nominal분류를 강제하지 않고 주체·발주기관·SW조건·목적·시점·예외를 보존한 조건부 절차 결론으로 제한,범위만 있으면 기존분류전용/API경계 유지. 새실제gate 아직 실행하지 않음/penalty 의미정합성 잔여/holdout·full미진입/100%아님.
 
 - 2026-10-08 후속 연속검증: 95405 완결문/동일명시주체 RED→35789 관련 PASS. 닫힌 법령항② 이후 줄바꿈11120 RED1→61748 atomizer/semantic 관련 PASS 및 정적 C/I0. readonly 실제84718의②권고/③1개월통보/④자료요청 literal atom은 복구되지만 일반 paraphrase3건의 control 지원은 여전히 부족하여 penalty 해결로 해석하지 않는다. SNS 생성지침의 명시절차와 별도 nominal분류 강제 충돌40216 RED1 확인→명시절차가 있을 때 조건부 절차 결론으로 좁힘/scope-only 제한 유지,31436 관련4클래스 실행중. 최종verifier/oracle/dataset 완화없음/API 반복없음/실제 SNS·penalty 미완료. 공식status8080PID11076/Q89980 유지/18080없음, 현재dirty 미배포.
