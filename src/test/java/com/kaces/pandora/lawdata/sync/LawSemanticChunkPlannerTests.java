@@ -12,6 +12,26 @@ class LawSemanticChunkPlannerTests {
 	private final ChunkPlanningContext planningContext = new ChunkPlanningContext("law", 41L, "Personal Information Protection Act");
 
 	@Test
+	void reparsingShortAdministrativeScopePreservesItsLiteralArticleOwnership() {
+		var json = new tools.jackson.databind.ObjectMapper();
+		var parser = new LawOpenApiPayloadParser(json, new com.kaces.pandora.common.json.LawJsonWriter(json));
+		String scope = "제2조(적용범위) 이 지침은 국가기관등이 소프트웨어사업을 수행할 경우에 적용한다.";
+		String duty = "제25조(과업확정) 국가기관등의 장은 과업내용을 확정하기 위하여 과업심의위원회의 심의를 받아야 한다.";
+		var payload = json.createObjectNode();
+		payload.putObject("AdmRulService").putArray("조문내용").add(scope).add(duty);
+		var sections = parser.parseDetailDocument(json.writeValueAsString(payload), "행정규칙").sections();
+		var chunks = planner.plan(new ChunkPlanningContext("admrul", 101L, "행정규칙"), sections);
+		assertThat(chunks).hasSize(2);
+		assertThat(chunks.get(0).text()).isEqualTo(scope);
+		assertThat(chunks.get(0).no()).isEqualTo("제2조");
+		assertThat(sections.get(0).sourcePath()).isEqualTo("$.AdmRulService.조문내용[0]");
+		assertThat(chunks.get(0).parentTitle()).isEqualTo("제2조(적용범위)");
+		assertThat(chunks.get(1).text()).isEqualTo(duty);
+		assertThat(chunks.get(1).parentKey()).isNotEqualTo(chunks.get(0).parentKey());
+		assertThat(chunks).allSatisfy(chunk -> assertThat(chunk.qualityStatus()).isEqualTo("PASS"));
+	}
+
+	@Test
 	void planAssignsVersionedParentChildMetadataForSplitProvision() {
 		String article = "Article 9 (Exception) "
 			+ "A controller may retain information only when the statutory exception applies. ".repeat(110);
