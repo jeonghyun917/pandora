@@ -573,8 +573,24 @@ public class GroundedAnswerRepairService {
 					&& (normalize(candidate.text()).contains("모든sw사업")
 						|| normalize(candidate.text()).contains("모든소프트웨어사업"))))
 			.toList();
-		return selectVerifiedAtoms(question, rejectedDraft, candidates, grounds,
+		List<String> scopeAtoms = selectVerifiedAtoms(question, rejectedDraft, candidates, grounds,
 			false, MAX_SELECTED_ATOMS, false);
+		if (scopeAtoms.isEmpty()) { return scopeAtoms; }
+		List<CandidateAtom> procedureCandidates = new ArrayList<>();
+		for (int index = 0; index < grounds.size(); index++) {
+			String duty = EvidenceJudge.softwareConfirmationReviewDutyText(matchedChildText(grounds.get(index)));
+			if (!duty.isBlank()) { procedureCandidates.add(new CandidateAtom(index, 0, duty)); }
+		}
+		List<String> procedures = selectVerifiedAtoms(question, rejectedDraft, procedureCandidates, grounds,
+			false, MAX_SELECTED_ATOMS - scopeAtoms.size(), false);
+		List<String> selected = new ArrayList<>(scopeAtoms);
+		int totalCharacters = scopeAtoms.stream().mapToInt(String::length).sum();
+		for (String procedure : procedures) {
+			if (!selected.contains(procedure) && totalCharacters + procedure.length() <= MAX_TOTAL_ATOM_CHARACTERS) {
+				selected.add(procedure); totalCharacters += procedure.length();
+			}
+		}
+		return List.copyOf(selected);
 	}
 
 	private boolean reusesRejectedDraft(String normalizedAtom, String normalizedRejectedDraft) {

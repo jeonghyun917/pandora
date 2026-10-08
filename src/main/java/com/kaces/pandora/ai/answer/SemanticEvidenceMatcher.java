@@ -27,10 +27,11 @@ public class SemanticEvidenceMatcher {
 		List<IndexedAtom> atoms = new ArrayList<>();
 		ClaimEvidenceAtomizer atomizer = new ClaimEvidenceAtomizer();
 		for (LawAiAnswerGround ground : grounds == null ? List.<LawAiAnswerGround>of() : grounds) {
-			String evidence = String.join("\n",
-				value(ground.matchedChildText()), value(ground.snippet()), value(ground.parentContextText()));
-			for (String clause : atomizer.atomizeForAlignment(evidence)) {
-				atoms.add(new IndexedAtom(ground.number(), clause, parser.parse(clause)));
+			for (String evidence : List.of(value(ground.matchedChildText()), value(ground.snippet()),
+				value(ground.parentContextText()))) {
+				for (String clause : atomizer.atomizeSourceForAlignment(evidence)) {
+					atoms.add(new IndexedAtom(ground.number(), clause, parser.parse(clause)));
+				}
 			}
 		}
 		return new EvidenceIndex(atoms);

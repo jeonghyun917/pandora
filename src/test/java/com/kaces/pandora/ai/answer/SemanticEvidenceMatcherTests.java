@@ -13,6 +13,33 @@ class SemanticEvidenceMatcherTests {
 	private final SemanticEvidenceMatcher matcher = new SemanticEvidenceMatcher();
 
 	@Test
+	void closedLegalPrintedLinesSupportTheSameCompleteAuthorityClaim() {
+		String claim = "장관은 국가기관등의 장이 소프트웨어 사업을 추진하는 경우 법령 준수 여부를 확인할 수 있다.";
+		String source = "제7조(준수 여부 확인)\n① 장관은 국가기관등의 장이 소프트웨어\n"
+			+ "사업을 추진하는 경우 법령 준수 여부를\n확인할 수 있다.\n② 장관은 개선을 권고할 수 있다.";
+		assertThat(matcher.match(parser.parse(claim), matcher.index(List.of(ground(source)))).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void closedLegalWrapCannotBridgeDifferentGroundTextFields() {
+		var source = new LawAiAnswerGround(1, 10L, 20L, "law", "법령", "기관", "법률",
+			"2026-01-01", "CURRENT", "1", "제7조", null,
+			"공개할 수 있다.\n② 다른 기준", "source", "url", 1.0d,
+			"제7조(기준)\n① 장관은 사업자료를", null, List.of(10L), "matched_child_only");
+		assertThat(matcher.match(parser.parse("장관은 사업자료를 공개할 수 있다."),
+			matcher.index(List.of(source))).status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void wrappedConditionalAuthorityCannotLoseItsTriggerThroughCoordination() {
+		String source = "제7조(확인 및 공개) ① 장관은 기관이 사업을 추진하는 경우 준수 여부를\n"
+			+ "확인하고, 그 결과를 공개할 수 있다.\n② 다른 기준";
+		assertThat(matcher.match(parser.parse("장관은 그 결과를 공개할 수 있다."),
+			matcher.index(List.of(ground(source)))).status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
 	void displayedProcedureBeforeTimingCannotBeDroppedOrReversed() {
 		String rule = "국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서에 대하여 과업심의위원회의 심의를 받아야 한다.";
 		var ground = new LawAiAnswerGround(1, 1, 1, "official_doc", "심의 절차", "기관", "공식 문서",

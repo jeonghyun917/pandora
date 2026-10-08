@@ -14,6 +14,23 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class GroundedAnswerRepairServiceTests {
+	@Test
+	void conditionalScopeRepairReceivesVerifiedCompleteReviewDutyAndItsException() {
+		String scope = "적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)";
+		String duty = "① 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다. 다만, 사업수행일정 부족 등 불가피한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		var captured = new AtomicReference<List<String>>();
+		var service = new GroundedAnswerRepairService(realVerificationService(), new GroundedAnswerRewriter() {
+			@Override public String rewrite(String question, List<String> atoms) { throw new AssertionError("Legacy rewrite must not bind a project classification"); }
+			@Override public String rewriteConditional(String question, List<String> atoms, List<String> titles) {
+				captured.set(atoms); return "";
+			}
+		});
+		service.verifyAndRepair("온라인 운영 사업도 과업심의 받아야 하나요?", "모든 운영 사업은 무조건 심의를 받아야 합니다.",
+			List.of(ground(1, scope, "공공소프트웨어사업 과업심의 가이드", null),
+				ground(2, duty, "소프트웨어사업 계약 및 관리감독에 관한 지침", null)));
+		assertThat(captured.get()).isNotNull().anySatisfy(atom -> assertThat(atom)
+			.contains("과업내용을 확정하기 위하여", "발주 전에", "다만", "계약체결 전까지"));
+	}
 
 	private static final String QUESTION = "연차 유급휴가는 누구에게 어떤 조건으로 부여해야 하나?";
 	private static final String REJECTED_DRAFT = "근거에 없는 30일 휴가를 누구에게나 부여해야 합니다.";

@@ -8,6 +8,43 @@ import org.junit.jupiter.api.Test;
 class ClaimEvidenceAtomizerTests {
 
 	private final ClaimEvidenceAtomizer atomizer = new ClaimEvidenceAtomizer();
+	@Test
+	void closedLegalParagraphKeepsPrintedMultiLineAuthorityTogether() {
+		String source = "제7조(준수 여부의 확인)\n① 장관은 국가기관등의 장이 소프트웨어\n"
+			+ "사업을 추진하는 경우 법령 준수 여부를 확인하고 그 결과를\n공개할 수 있다.\n② 장관은 위반사항을 확인한 경우 개선을 권고할 수 있다.";
+		assertThat(atomizer.atomizeSource(source, "준수 여부의 확인"))
+			.anySatisfy(atom -> assertThat(atom).contains("장관은 국가기관등의 장이 소프트웨어", "사업을 추진하는 경우", "준수 여부를 확인하고"))
+			.contains("장관은 그 결과를 공개할 수 있다.")
+			.doesNotContain("장관은 국가기관등의 장이 소프트웨어");
+	}
+
+	@Test
+	void legalWrappingDoesNotCrossBlankHeadingOrUnnumberedIntroduction() {
+		for (String source : List.of(
+			"제7조(기준)\n① 기관은 기준을\n\n준수해야 한다.\n② 다른 기준",
+			"제7조(기준)\n① 기관은 기준을\n제8조(다른 기준)\n준수해야 한다.\n② 다른 기준",
+			"설명에서는 다음 문장을 인용하지 않는다.\n① 기관은 기준을\n준수해야 한다.\n② 다른 기준")) {
+			assertThat(atomizer.atomizeSource(source, "기준")).doesNotContain("기관은 기준을 준수해야 한다.");
+		}
+	}
+
+	@Test
+	void legalWrappingRejectsSpacedNewArticleHeadings() {
+		for (String heading : List.of("제 8조(다른 기준)", "제8 조(다른 기준)")) {
+			String source = "제7조(기준)\n① 기관은 기준을\n" + heading
+				+ "\n준수해야 한다.\n② 다른 기준";
+			assertThat(atomizer.atomizeSource(source, "기준"))
+				.noneSatisfy(atom -> assertThat(atom).contains("기관은 기준을", "준수해야 한다"));
+		}
+	}
+
+	@Test
+	void closedLegalFirstParagraphMayBeginOnItsHeadingLine() {
+		String source = "제7조(준수 확인) ① 장관은 국가기관등의 장이 소프트웨어\n"
+			+ "사업을 추진하는 경우 준수 여부를 확인할 수 있다.\n② 장관은 개선을 권고할 수 있다.";
+		assertThat(atomizer.atomizeSource(source, "준수 확인"))
+			.anySatisfy(atom -> assertThat(atom).contains("장관은 국가기관등의 장이 소프트웨어 사업을", "확인할 수 있다"));
+	}
 
 	@Test
 	void repeatedPageHeadingRetainsOneExplicitScopeHeading() {

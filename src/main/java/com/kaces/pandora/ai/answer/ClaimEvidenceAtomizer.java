@@ -137,6 +137,7 @@ final class ClaimEvidenceAtomizer {
 	/** Carry only an explicit source heading over its contiguous numbered list. */
 	List<String> atomizeSource(String text, String chunkTitle) {
 		if (text != null) {
+			text = joinClosedLegalFirstParagraph(text);
 			text = text.replaceAll("([,，])[ \\t]*\\R[ \\t]*(?![①-⑳•‣□○※*∙]|\\d{1,2}[.)])(?=\\S)", "$1 ");
 			text = joinWrappedSourceSentencePairs(text);
 		}
@@ -201,6 +202,37 @@ final class ClaimEvidenceAtomizer {
 
 	List<String> atomizeForAlignment(String text) {
 		return atomize(text, true);
+	}
+
+	List<String> atomizeSourceForAlignment(String text) {
+		return atomize(text == null ? null : joinClosedLegalFirstParagraph(text), true);
+	}
+
+	private String joinClosedLegalFirstParagraph(String text) {
+		Pattern paragraph = Pattern.compile(
+			"(?m)^(제\\d+조(?:의\\d+)?[ \\t]*\\([^\\r\\n()]{1,80}\\)(?:[ \\t]*\\R|[ \\t]+(?=①)))"
+				+ "([ \\t]*①[ \\t]+[^②]{1,1800}?)(?=^[ \\t]*②[ \\t]+)");
+		Matcher matcher = paragraph.matcher(text);
+		StringBuffer result = new StringBuffer();
+		while (matcher.find()) {
+			String body = matcher.group(2);
+			String[] lines = body.stripTrailing().split("\\R", -1);
+			boolean safe = true;
+			for (int i = 0; i < lines.length; i++) {
+				String line = lines[i].trim();
+				if (line.isBlank() || (i > 0 && line.matches(
+					"^(?:제\\s*\\d+\\s*조|[①-⑳•‣□○※*∙]|[-–—]\\s|[가-힣][.)]\\s|\\d{1,2}[.)]).*"))) {
+					safe = false;
+					break;
+				}
+			}
+			String replacement = safe
+				? matcher.group(1) + body.stripTrailing().replaceAll("[ \\t]*\\R[ \\t]*", " ") + "\n"
+				: matcher.group();
+			matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
+		}
+		matcher.appendTail(result);
+		return result.toString();
 	}
 
 	private String joinWrappedSourceSentencePairs(String text) {

@@ -2,6 +2,18 @@
 
 ## 2026-10-01 조건 보존 평가 후속 진단
 
+- 2026-10-08 11:18 KST68765 전체backend exit0/잔여XML1528 실패0오류0제외19. repair조건부API경계에 검증된완전심의절차·예외전달/legacyString.join API없음 유지. 닫힌첫법령항 physicalwrap정리 및 semantic각field독립소비/blank·새조문공백·fieldbridge반례검증/정적C/I0.58802 공식app-dev-staged-package실행중/배포전. fresh무조건공개semantic거부PASS이나 actualpenalty②이후원문fragment미해결. SNS·penalty actualPASS아직없음/holdout·full미진입/전체완료아님.
+
+- 2026-10-08 11:17 KST1037 관련두클래스 exit0/실제84718첫항 줄바꿈복구 확인. fresh공개무조건claim18730 semantic거부 반례는 기존규칙에서PASS(exit0)로안전가드유지 확인/추가verifier수정없음; control부분지원만releasePASS로해석금지. 실제②이후fragment와SNS nominal조건부결론 semantic문제미해결. 안정dirtytree68765 전체backend회귀실행중/중복없음. 전체PASS·package·배포·실제gatePASS아직아님/holdout·full미진입.
+
+- 2026-10-08 11:16 KST 승인경로22282 관련161건 실패0오류0 exit0. 실제84718 readonly layout은 제목+① 같은줄,36503 새일반fixture RED1→같은줄 lookahead① 추가/1037 관련 exit0/정적 C/I0. 실제재소비에서 첫항 확인본문·공개atom 복구됨,그러나 공개atom에 선행condition이 빠질 위험발견(전체source paraphrase진단 공개부분만지원)/배포보류. 조건없는공개 semantic거부18730 새안전성회귀실행중/②이후fragment미해결. 새코드미커밋·미배포/실제평가재생없음/69963keepalive77104·Q89980유지/actualSNS·penalty미완료/holdout·full미진입.
+
+- 2026-10-08 11:12 KST source소비64976 RED1→25396 두클래스 exit0, 공백새조문22197 RED1→25396 GREEN. 독립검토 새 Important fieldbridge76501 RED1(expected INSUFFICIENT actualSUPPORTED)→각child/snippet/parent 독립분해로 좁힘/정적재검토 C/I0.74712 제한실행은 atomizer54 실패0 이후 Mockito ByteBuddy attach child76848 대기(원문cmd 비출력 type확인)로 Ctrl-C 중단; testFAIL이 아닌 환경대기/성공주장금지. 진단22916도종료/22282 승인경로 동일4클래스실행중. 공식status 승인읽기에서8080PID77104/Q89980실행/AppStoppedDisabled/18080없음 재확인(일반sandbox 조회누락을실제중단으로해석금지). 현재코드미배포/외부API평가없음/실제SNS·penalty 미완료/holdout·full 미진입.
+
+- 2026-10-08 후속 연속작업: repair 명시절차 전달23376 RED→79198 GREEN, repair/prompt 관련78392 exit0/정적 C/I0. canonical 원문 소비의 인쇄줄바꿈 fragment를 새 일반조문 fixture55897 RED로 재현. 닫힌 첫 번호항의 줄바꿈만 정리한15591은 정상 coordinating 분리(확인/공개 두atom) 때문에 잘못된 단일atom 기대 실패, 기대를 독립 두주장으로 바로잡은39296 클래스 exit0. 조건 자동전파·주체추측 없음. source alignment 별도 소비 경계64976 회귀 실행중; 정적검토 Important 공백있는 새조문 경계 누락 확인/미해결, 배포·외부재평가 금지. 현재69963 keepalive/PID77104/Q89980 유지/실제SNS·penalty 미완료/holdout·full 미진입/100% 아님.
+
+- 2026-10-08 10:48 KST a0e9298f pushed/89863 staging exit0 SHA5f14e06960a876268db3a6ba5ec5443f9459914c91f5aa6f50a7f31a29f8fd00 공식deploy69963 keepalive/PID77104/runtime73d73275-1fb7-410f-ac7f-5d4e95fbd9bf/Q89980·18080 불변PASS/기존config·index·lexical 실제동일/qreadytrue/qfail0. 이전49387/79756 정상정보폐기. merged-procedure-sns-20261008-1045 새실제42579 exit1 FAIL0/1 종료/재평가금지. 완전한87816 절차·발주전·과업확정·일정예외가실제selected1위전달되는개선확인,하지만repair selectedAtom1 nominalscope만조건부rewrite/semantic INSUFFICIENT unsafeShadow1/oracle누락유지. 원인경계 selectGeneralSoftwareScopeAtoms는scope만전달하며명시절차를제외,일반온라인운영 회귀23376 실행중. 재승인·blind재평가없음/최종verifier·oracle·안전성완화없음/전체완료아님/holdout·full미진입. automation 최신runtime·실제실패·다음경계로갱신.
+
 - 2026-10-08 10:43 KST16847 관련회귀 exit0/좁은정적C/I0. 동일실제8후보 readonly 재소비: rawRecovery84735→intent병합[84735,84023,84721,84890,84722,84070,84717,84726]→final동일/절차보존확인. 50981 전체backend exit0/잔여XML1519 실패0오류0제외19. 89863 공식app-dev-staged-package 실행중/기존8080 JAR불변/actualSNS·penalty미완료/holdout·full미진입/안전성·verifier·oracle·authority변경없음.
 
 - 2026-10-08 10:40 KST readonly 실제8후보 새일반질문: rawRecovery=[84023,84070,84097,84717,84721,84722,84726,84890,84735], intent병합후84735탈락/final선택에도없음. 단순동일scope8 fixture34947·94358·57341·96339·22910 PASS로가설미재현을기록하고, 다른제도scope 후보의기관주체·metadata 우선순위를반영한 일반fixture30781 RED1/오류0([13308,13301..13307]에13309누락)로실제병합limit원인재현. 이미judge가선택한완전한심의duty에기존scope-anchor 조건하에서만우선보존표시 최소수정/16847 관련회귀실행중/좁은review요청. 실제평가재생없음/새배포없음/현재49387 keepalive79756·Q89980 유지/전체완료·SNSPASS주장없음.
