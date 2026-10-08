@@ -208,6 +208,55 @@ final class ClaimEvidenceAtomizer {
 		return atomize(text == null ? null : joinClosedLegalFirstParagraph(text), true);
 	}
 
+	List<EvidenceAtom> parseSourceAtomsForAlignment(String text, KoreanEvidenceAtomParser parser) {
+		List<EvidenceAtom> result = new ArrayList<>(atomizeSourceForAlignment(text).stream()
+			.map(parser::parse).toList());
+		String joined = text == null ? "" : joinClosedLegalFirstParagraph(text);
+		Matcher paragraph = Pattern.compile(
+			"(?m)^제\\d+조(?:의\\d+)?[ \\t]*\\([^\\r\\n()]{1,80}\\)(?:[ \\t]*\\R|[ \\t]+(?=①))"
+				+ "[ \\t]*①[ \\t]+([^\\r\\n]{1,1800})(?=\\R[ \\t]*②[ \\t]+)").matcher(joined);
+		while (paragraph.find()) {
+			List<String> clauses = atomizeForAlignment(paragraph.group(1));
+			if (clauses.size() != 2 || !EvidenceJudge.hasExplicitSoftwareConfirmationReviewDuty(clauses.get(0))
+				|| !clauses.get(1).startsWith("다만")) { continue; }
+			EvidenceAtom main = parser.parse(clauses.get(0));
+			EvidenceAtom exception = parser.parse(clauses.get(1));
+			if (main.parseStatus() != EvidenceAtom.ParseStatus.COMPLETE || main.subjects().size() != 1
+				|| !exception.subjects().isEmpty()
+				|| !exception.reasonCodes().equals(List.of("AMBIGUOUS_SUBJECT_FORM"))
+				|| !main.actions().equals(exception.actions()) || exception.actions().isEmpty()
+				|| exception.objects().isEmpty() || !main.objects().containsAll(exception.objects())
+				|| !main.recipients().equals(exception.recipients())
+				|| main.modality() != EvidenceAtom.Modality.REQUIRED || exception.modality() != main.modality()
+				|| main.polarity() != EvidenceAtom.Polarity.POSITIVE || exception.polarity() != main.polarity()
+				|| exception.exceptions().size() != 1 || !exception.relations().isEmpty()
+				|| !exception.targetScopes().isEmpty() || !main.conditions().contains("발주전")
+				|| !main.conditions().contains("과업내용확정")) { continue; }
+			Set<String> deadlines = exception.conditions().stream().filter(value -> value.matches(".+전까지"))
+				.collect(java.util.stream.Collectors.toSet());
+			int triggerEnd = exception.sourceText().indexOf("경우");
+			if (triggerEnd < 0) { continue; }
+			EvidenceAtom trigger = parser.parse(exception.sourceText().substring(0, triggerEnd + 2));
+			if (trigger.parseStatus() == EvidenceAtom.ParseStatus.AMBIGUOUS
+				|| !trigger.exceptions().equals(exception.exceptions())) { continue; }
+			Set<String> expectedConditions = new LinkedHashSet<>(trigger.conditions());
+			expectedConditions.addAll(deadlines);
+			if (deadlines.size() != 1 || !exception.conditions().equals(expectedConditions)) { continue; }
+			Set<String> conditions = new LinkedHashSet<>(main.conditions());
+			conditions.remove("발주전");
+			conditions.addAll(exception.conditions());
+			Set<String> objects = new LinkedHashSet<>(main.objects());
+			objects.addAll(exception.objects());
+			// Source-only interpretation: preserve the literal clause and its ground provenance.
+			// The same closed paragraph supplies actor/purpose; its explicit exception changes only timing.
+			result.add(new EvidenceAtom(exception.sourceText(), main.subjects(), objects, exception.recipients(),
+				exception.actions(), exception.relations(), exception.targetScopes(), conditions, exception.exceptions(),
+				exception.numericAnchors(), exception.modality(), exception.polarity(), EvidenceAtom.ParseStatus.COMPLETE,
+				List.of("SOURCE_LINKED_EXPLICIT_DUTY")));
+		}
+		return List.copyOf(result);
+	}
+
 	private String joinClosedLegalFirstParagraph(String text) {
 		Pattern paragraph = Pattern.compile(
 			"(?m)^(제\\d+조(?:의\\d+)?[ \\t]*\\([^\\r\\n()]{1,80}\\)(?:[ \\t]*\\R|[ \\t]+(?=①)))"

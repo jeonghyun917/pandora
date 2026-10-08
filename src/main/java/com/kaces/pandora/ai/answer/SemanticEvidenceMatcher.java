@@ -29,8 +29,8 @@ public class SemanticEvidenceMatcher {
 		for (LawAiAnswerGround ground : grounds == null ? List.<LawAiAnswerGround>of() : grounds) {
 			for (String evidence : List.of(value(ground.matchedChildText()), value(ground.snippet()),
 				value(ground.parentContextText()))) {
-				for (String clause : atomizer.atomizeSourceForAlignment(evidence)) {
-					atoms.add(new IndexedAtom(ground.number(), clause, parser.parse(clause)));
+				for (EvidenceAtom atom : atomizer.parseSourceAtomsForAlignment(evidence, parser)) {
+					atoms.add(new IndexedAtom(ground.number(), atom.sourceText(), atom));
 				}
 			}
 		}

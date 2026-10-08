@@ -13,6 +13,72 @@ class SemanticEvidenceMatcherTests {
 	private final SemanticEvidenceMatcher matcher = new SemanticEvidenceMatcher();
 
 	@Test
+	void linkedSourceCannotOverrideAnAmbiguousExceptionTrigger() {
+		var rejectingTriggerParser = new KoreanEvidenceAtomParser() {
+			@Override public EvidenceAtom parse(String source) {
+				EvidenceAtom atom = super.parse(source);
+				if (!source.endsWith("경우")) { return atom; }
+				return new EvidenceAtom(atom.sourceText(), atom.subjects(), atom.objects(), atom.recipients(),
+					atom.actions(), atom.relations(), atom.targetScopes(), atom.conditions(), atom.exceptions(),
+					atom.numericAnchors(), atom.modality(), atom.polarity(), EvidenceAtom.ParseStatus.AMBIGUOUS,
+					List.of("TEST_TRIGGER_REFUSAL"));
+			}
+		};
+		String main = "국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		String exception = "다만 일정이 부족한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		String source = "제7조(심의)\n① " + main + " " + exception + "\n② 다른 기준";
+		String claim = "다만 일정이 부족한 경우에는 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		var strictMatcher = new SemanticEvidenceMatcher(rejectingTriggerParser);
+		assertThat(strictMatcher.match(parser.parse(claim), strictMatcher.index(List.of(ground(source)))).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void sourceIndexUsesTheInjectedParserRefusal() {
+		var rejectingParser = new KoreanEvidenceAtomParser() {
+			@Override public EvidenceAtom parse(String source) {
+				EvidenceAtom atom = super.parse(source);
+				return new EvidenceAtom(atom.sourceText(), atom.subjects(), atom.objects(), atom.recipients(),
+					atom.actions(), atom.relations(), atom.targetScopes(), atom.conditions(), atom.exceptions(),
+					atom.numericAnchors(), atom.modality(), atom.polarity(), EvidenceAtom.ParseStatus.AMBIGUOUS,
+					List.of("TEST_SOURCE_REFUSAL"));
+			}
+		};
+		var strictMatcher = new SemanticEvidenceMatcher(rejectingParser);
+		String rule = "발주기관은 자료를 통지해야 한다.";
+		assertThat(strictMatcher.match(parser.parse(rule), strictMatcher.index(List.of(ground(rule)))).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void closedLegalExceptionRetainsItsExplicitActorAndPurpose() {
+		String main = "국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		String exception = "다만 일정이 부족한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		String source = "제7조(심의)\n① " + main + " " + exception + "\n② 다른 기준";
+		String claim = "다만 일정이 부족한 경우에는 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		var index = matcher.index(List.of(ground(source)));
+		assertThat(matcher.match(parser.parse(claim), index).status())
+			.as("claim=%s index=%s", parser.parse(claim), index)
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		for (String changed : List.of(
+			claim.replace("국가기관등의 장", "민간기관의 장"),
+			claim.replace("과업내용을 확정하기 위하여 ", ""),
+			claim.replace("일정이 부족한", "일정이 충분한"),
+			claim.replace("계약체결 전까지", "계약체결 후까지"))) {
+			assertThat(matcher.match(parser.parse(changed), index).status()).as(changed)
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+		for (String unsafeSource : List.of(
+			source.replace("\n② 다른 기준", ""),
+			source.replace(" " + exception, "\n\n" + exception),
+			source.replace(" " + exception, "\n제8조(다른 심의)\n" + exception),
+			source.replace(exception, exception.replace("심의를 받아야 한다", "자료를 공개해야 한다")))) {
+			assertThat(matcher.match(parser.parse(claim), matcher.index(List.of(ground(unsafeSource)))).status())
+				.as(unsafeSource).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
 	void explicitMembershipConclusionPreservesIssuerBusinessActorAndTiming() {
 		String rule = "만약 온라인 운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW 포함)에 해당하는 경우, 발주기관은 계약체결 전까지 자료를 통지해야 한다.";
 		var index = matcher.index(List.of(ground(rule)));

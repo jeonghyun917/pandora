@@ -2,6 +2,10 @@
 
 ## 2026-10-01 조건 보존 평가 후속 진단
 
+- 2026-10-08 12:56 KST source-only closed항 연결: 주입trigger parser거부30878 actualRED1→AMBIGUOUS거부보존/43729 관련exit0/69283 안정전체exit0(XML1544 실패0오류0제외19)/실파일독립C/I0/diffcheck통과. 실제DB readonly 목적보존예외 semanticSUPPORTED/목적누락예외INSUFFICIENT 확인; 목적보존예외도 기존control은INSUFFICIENT이므로 최종통과주장없음. 원문literal·provenance·claim파서·최종verifier·threshold·authority불변/새코드미배포/외부평가재생없음. 공식status8080PID73844·6333PID89980/18080없음 확인/37411keepalive보존. 다음control과source문맥해석 차이 및main조건부지원 진단 계속/실제SNS·penalty미완료/holdoutfull금지.
+
+- 2026-10-08 12:49 KSTff1d3bdb pushed/lsremote동일/전체1541PASS/배포는94b671bf그대로. source-only동일closed①항의명시actor·purpose·exception연결42194 actualRED1→최소근거해석구현24221RED1 유지. 독립Important 주입parser우회60753 actualRED1/같은조건의복수정규화 집합확인. 새parseSourceAtomsForAlignment는동일주입parser사용,예외도입부parser조건집합+명시deadline과정확일치할때만연결/37898 양성·음성회귀진행/추가문맥추측없음. 원문sourceText·groundprovenance불변/claim경로·threshold·authority변경없음/새코드미배포/실제SNS·penaltyPASS없음/37411KEEPALIVE73844/Q89980보존/holdoutfull금지.
+
 - 2026-10-08 12:41 KST28234 안정tree 전체backend exit0/단일membership전제·결론분리 관련83232·54500PASS/정적C/I0. 이는명시issuer·business·actor·timing조건보존 안전파서수정만이며 readonly 실제maincontrol/semanticINSUFFICIENT/예외sourceAMBIGUOUS 그대로/실제SNSPASS없음. 배포/API반복보류하고 source명시closed문맥의주체·조건연결을별도진단/최종threshold·oracle·dataset·authority변경없음/37411keepalive73844/Q89980 유지.
 
 - 2026-10-08 12:39 KST83232·54500 parser/semantic exit0: 명시membership결론 issuer·business·actor·timing변경/조건삭제거부PASS/독립C/I0. 새일반질문 readonly 실제원문 재소비exit0:mainparse subjects국가기관등의장/relations·scopes빈값/전체membership조건보존 확인. 그러나 control·semantic 모두INSUFFICIENT 그대로,예외source actor없음AMBIGUOUS로NO_ALIGNED/추측actor추가없음. 파서슬롯혼합해결은실제SNS PASS가아님/외부API재평가안함. 안정tree전체backend실행중/현재37411keepalive73844/Q89980유지/holdoutfull미진입/100%아님.
