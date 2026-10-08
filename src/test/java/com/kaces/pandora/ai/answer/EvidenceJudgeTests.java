@@ -13,6 +13,15 @@ class EvidenceJudgeTests {
 	// 메소드 설명: EvidenceJudge 처리 흐름을 수행합니다.
 	private final EvidenceJudge judge = new EvidenceJudge();
 	@Test
+	void recoversInlineNumberedDutyOnlyWithinItsClosedArticle() {
+		String duty = "① 국가기관등의 장은 영 제47조제1항제1호에 따른 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다. 다만, 일정이 부족한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		String source = "제25조(과업내용의 확정 시기) " + duty + "② 다른 운영 사항";
+		assertThat(EvidenceJudge.softwareConfirmationReviewDutyText(source)).isEqualTo(duty);
+		assertThat(EvidenceJudge.softwareConfirmationReviewDutyText(source.replace("② 다른 운영 사항", ""))).isEmpty();
+		assertThat(EvidenceJudge.softwareConfirmationReviewDutyText(source.replace("②", "③"))).isEmpty();
+		assertThat(EvidenceJudge.softwareConfirmationReviewDutyText(source.replace("① ", "① 인용예시: "))).isEmpty();
+	}
+	@Test
 	void recoversPhysicallyWrappedNumberedDutyOnlyWithClosedBoundary() {
 		String rule = "① 국가기관등의 장은 영 제47조제1항제1호에 따른 과업내용을 확정하기 위하\n여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다. 다만, 사업\n수행일정 부족 등 불가피한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
 		String source = "제25조(과업내용의 확정 시기) " + rule + "\n② 다른 운영 사항";

@@ -2,6 +2,10 @@
 
 ## 2026-10-01 조건 보존 평가 후속 진단
 
+- 2026-10-08 13:15 KST inline닫힌조문10302 안정전체exit0/XML1546 실패0오류0제외19/51219관련exit0/실파일독립C/I0/diffcheck. 형식회수만수정/기존strict조건·목적·actor·전체예외·주입parser거부·최종verifier불변. 전체적용범위proof는아직미확정/공식원문·타문서제목의무조건합성금지/새API평가없음/새코드미배포/실제SNSpenalty미완료/37411·73844/Q89980보존/holdoutfull미진입.
+
+- 2026-10-08 13:14 KST c85de270 pushed/전체16444exit0(XML1544 실패0오류0제외19). readonly 실제scope84023 doc1/v4와procedure87816 doc20/v4는서로다른문서/제목만proof금지. 공식admrul11171537 doc18109/v1에서제25조①본문·예외·② inline형식확인(무개행). source linkage54367 actualRED1→①body원문자배제/종결부호바로뒤②공백닫힘만추가64665exit0. selector81523 actualRED1→동일strictduty닫힘lookahead추가51219관련exit0/실파일독립C/I0/안정10302전체실행중. source동일문서만으로의미연결보장하지않음/공식앞부분별표혼재·제2조부재등도전체완전성단정금지. 새코드미배포/API평가없음/기존control·semantic차이미해결/holdoutfull금지/37411keepalive73844/Q89980보존.
+
 - 2026-10-08 13:04 KST 생성지침 원문구조보존:95380 sandbox loopback ERROR1(제품실패아님)→권한분리7289 actualRED1/원문조문참조·선택병렬구조·예외목적지침누락확인→일반procedure-only지침보완/53731 prompt전체exit0/16444 안정전체exit0/독립C/I0. 외부API평가없음/미배포. readonly 기존control슬롯은main조건부claim사업주체와실제행위주체혼합/원문또는구조non-exact일괄거부/예외명시목적원문생략 차이확인; verifier기준은그대로. 원문절차자체는controlstrong2supported2,이는질문별의미지원·SNSPASS가아님. 다음exact결론+명시membership전제를안전하게증명할수있는matcher경계만설계검토/임의전제삭제·서로다른ground메타근거결합금지/holdoutfull금지/37411·73844/Q89980보존.
 
 - 2026-10-08 12:56 KST source-only closed항 연결: 주입trigger parser거부30878 actualRED1→AMBIGUOUS거부보존/43729 관련exit0/69283 안정전체exit0(XML1544 실패0오류0제외19)/실파일독립C/I0/diffcheck통과. 실제DB readonly 목적보존예외 semanticSUPPORTED/목적누락예외INSUFFICIENT 확인; 목적보존예외도 기존control은INSUFFICIENT이므로 최종통과주장없음. 원문literal·provenance·claim파서·최종verifier·threshold·authority불변/새코드미배포/외부평가재생없음. 공식status8080PID73844·6333PID89980/18080없음 확인/37411keepalive보존. 다음control과source문맥해석 차이 및main조건부지원 진단 계속/실제SNS·penalty미완료/holdoutfull금지.

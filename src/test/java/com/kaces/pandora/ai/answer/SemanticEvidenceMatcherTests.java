@@ -79,6 +79,22 @@ class SemanticEvidenceMatcherTests {
 	}
 
 	@Test
+	void inlineClosedLegalParagraphRetainsOnlyItsOwnExplicitDutyContext() {
+		String main = "국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		String exception = "다만 일정이 부족한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		String source = "제25조(심의) ① " + main + " " + exception + "② 다른 기준";
+		String claim = "다만 일정이 부족한 경우에는 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		assertThat(matcher.match(parser.parse(claim), matcher.index(List.of(ground(source)))).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		for (String unsafe : List.of(source.replace("② 다른 기준", ""),
+			source.replace("② 다른 기준", "③ 다른 기준"),
+			source.replace(" " + exception, "\n제26조(다른 심의) " + exception))) {
+			assertThat(matcher.match(parser.parse(claim), matcher.index(List.of(ground(unsafe)))).status())
+				.as(unsafe).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
 	void explicitMembershipConclusionPreservesIssuerBusinessActorAndTiming() {
 		String rule = "만약 온라인 운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW 포함)에 해당하는 경우, 발주기관은 계약체결 전까지 자료를 통지해야 한다.";
 		var index = matcher.index(List.of(ground(rule)));

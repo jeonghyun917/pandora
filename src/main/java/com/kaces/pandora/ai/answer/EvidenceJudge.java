@@ -191,7 +191,7 @@ public class EvidenceJudge {
 		// Printed line wrapping is recoverable only inside a closed numbered first paragraph.
 		var numbered = java.util.regex.Pattern.compile(
 			"(?m)^[\\t ]*(?:제\\s*\\d+\\s*조(?:의\\s*\\d+)?\\s*\\([^\\r\\n)]{1,100}\\)[\\t ]*)?"
-				+ "(①[^①-⑳]{1,1200}?)(?=[\\r\\n]+\\s*②)")
+				+ "(①[^①-⑳]{1,1200}?)(?=(?:[\\r\\n]+\\s*②|(?<=[.!?])②[ \\t]+))")
 			.matcher(source == null ? "" : source);
 		while (numbered.find()) {
 			String inlineHeading = source.substring(numbered.start(), numbered.start(1)).strip();

@@ -214,7 +214,7 @@ final class ClaimEvidenceAtomizer {
 		String joined = text == null ? "" : joinClosedLegalFirstParagraph(text);
 		Matcher paragraph = Pattern.compile(
 			"(?m)^제\\d+조(?:의\\d+)?[ \\t]*\\([^\\r\\n()]{1,80}\\)(?:[ \\t]*\\R|[ \\t]+(?=①))"
-				+ "[ \\t]*①[ \\t]+([^\\r\\n]{1,1800})(?=\\R[ \\t]*②[ \\t]+)").matcher(joined);
+				+ "[ \\t]*①[ \\t]+([^\\r\\n①-⑳]{1,1800})(?=(?:\\R[ \\t]*|(?<=[.!?]))②[ \\t]+)").matcher(joined);
 		while (paragraph.find()) {
 			List<String> clauses = atomizeForAlignment(paragraph.group(1));
 			if (clauses.size() != 2 || !EvidenceJudge.hasExplicitSoftwareConfirmationReviewDuty(clauses.get(0))
