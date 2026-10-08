@@ -5389,6 +5389,9 @@ public class LawAiAnswerService {
 		}
 		LinkedHashMap<String, LawSemanticChunkRow> merged = new LinkedHashMap<>();
 		Set<String> anchoredRuleKeys = new LinkedHashSet<>();
+		boolean scopeAnchoredReview = judgedEvidence.directEvidenceCount() > 0
+			&& isProjectReviewScopeQuestion(normalizeForMatch(query), queryTerms(query))
+			&& judgedEvidence.chunks().stream().anyMatch(EvidenceJudge::isNationalSoftwareReviewScope);
 		for (LawSemanticChunkRow chunk : directEvidenceChunks) {
 			merged.put(scoreKey(chunk.target(), chunk.chunkId()), chunk);
 		}
@@ -5396,9 +5399,10 @@ public class LawAiAnswerService {
 			for (LawSemanticChunkRow chunk : judgedEvidence.chunks()) {
 				if (!isForcedExcludedAnswerContextChunk(chunk, query)) {
 					merged.putIfAbsent(scoreKey(chunk.target(), chunk.chunkId()), chunk);
-				} else if (judgedEvidence.directEvidenceCount() > 0
-					&& isProjectReviewScopeQuestion(normalizeForMatch(query), queryTerms(query))
-					&& judgedEvidence.chunks().stream().anyMatch(EvidenceJudge::isNationalSoftwareReviewScope)
+					if (scopeAnchoredReview && EvidenceJudge.hasExplicitSoftwareConfirmationReviewDuty(chunk.chunkText())) {
+						anchoredRuleKeys.add(scoreKey(chunk.target(), chunk.chunkId()));
+					}
+				} else if (scopeAnchoredReview
 					&& isProjectReviewCommitteeOperationNoise(answerContextText(chunk))) {
 					String rule = EvidenceJudge.softwareConfirmationReviewDutyText(chunk.chunkText());
 					if (rule.isBlank()) {

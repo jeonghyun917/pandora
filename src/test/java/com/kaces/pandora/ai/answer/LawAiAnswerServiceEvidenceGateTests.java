@@ -37,6 +37,35 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void recoveredProcedureSurvivesFullScopeCandidateLimit() throws Exception {
+		var candidates = new java.util.ArrayList<LawSemanticChunkRow>();
+		for (long id = 13301; id <= 13307; id++) {
+			candidates.add(new LawSemanticChunkRow(id, 10L, "official_doc", "10", "공공SW사업 법제도 관리감독 가이드",
+				"", "", "20260101", "CURRENT", "64", "적용 대상 사업",
+				"적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함). 범위 설명 " + id,
+				64, "", "", 5, "scope", "적용 대상 사업", "target_scope", "PASS", null, "scope", 4));
+		}
+		candidates.add(new LawSemanticChunkRow(13308L, 10L, "official_doc", "10", "공공소프트웨어사업 과업심의 가이드",
+			"", "", "20260101", "CURRENT", "5", "제안요청서 작성 예시",
+			"SW영향평가 적용 대상 사업 본 사업은 소프트웨어사업 영향평가를 미리 실시한 사업임. 국가기관등의 장은 영향평가 결과서를 제출해야 한다. 적용 제외 사업 민간투자형 소프트웨어사업은 영향평가 제외대상 사업임.",
+			5, "", "", 8, "scope", "적용 대상 사업", "target_scope", "PASS", null, "scope", 4));
+		var procedure = new LawSemanticChunkRow(13309L, 10L, "official_doc", "10", "공공SW사업 법제도 관리감독 및 지원 가이드",
+			"", "", "20260101", "CURRENT", "13", "p.13 개최를 예외할 수 있다.",
+			"① 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.",
+			13, "", "", 7, "exception", "개최를 예외할 수 있다.", "exception", "PASS", null, "exception", 4);
+		var mapper = org.mockito.Mockito.mock(RagDocumentMapper.class);
+		org.mockito.Mockito.when(mapper.findSemanticContextChunks(10L, 5, 18)).thenReturn(List.of(procedure));
+		var service = service(null, mapper);
+		try {
+			String question = "온라인 운영 사업도 과업심의 받아야 하나요?";
+			var judged = new EvidenceJudge().judge(question, candidates, Map.of(), 8);
+			assertThat(judged.chunks()).hasSizeGreaterThanOrEqualTo(7);
+			assertThat(preserveIntentDirectEvidenceChunks(service, judged, candidates, question).chunks())
+				.extracting(LawSemanticChunkRow::chunkId).contains(13309L);
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void scopeAnchoredSelectionRecoversSameVersionAdjacentProcedure() throws Exception {
 		var scope = new LawSemanticChunkRow(13001L, 10L, "official_doc", "10", "공공소프트웨어사업 과업심의 가이드",
 			"", "", "20260101", "CURRENT", "5", "적용 대상 사업",

@@ -2,6 +2,12 @@
 
 ## 2026-10-01 조건 보존 평가 후속 진단
 
+- 2026-10-08 10:43 KST16847 관련회귀 exit0/좁은정적C/I0. 동일실제8후보 readonly 재소비: rawRecovery84735→intent병합[84735,84023,84721,84890,84722,84070,84717,84726]→final동일/절차보존확인. 50981 전체backend exit0/잔여XML1519 실패0오류0제외19. 89863 공식app-dev-staged-package 실행중/기존8080 JAR불변/actualSNS·penalty미완료/holdout·full미진입/안전성·verifier·oracle·authority변경없음.
+
+- 2026-10-08 10:40 KST readonly 실제8후보 새일반질문: rawRecovery=[84023,84070,84097,84717,84721,84722,84726,84890,84735], intent병합후84735탈락/final선택에도없음. 단순동일scope8 fixture34947·94358·57341·96339·22910 PASS로가설미재현을기록하고, 다른제도scope 후보의기관주체·metadata 우선순위를반영한 일반fixture30781 RED1/오류0([13308,13301..13307]에13309누락)로실제병합limit원인재현. 이미judge가선택한완전한심의duty에기존scope-anchor 조건하에서만우선보존표시 최소수정/16847 관련회귀실행중/좁은review요청. 실제평가재생없음/새배포없음/현재49387 keepalive79756·Q89980 유지/전체완료·SNSPASS주장없음.
+
+- 2026-10-08 10:30 KST7a28bdd9 pushed/current JARde5de322/49387 keepalive79756/runtime75d49572/Q89980 유지/config·index·lexical·DB-Q parity재확인. 새closed-procedure-sns-20261008-1026 gate45037 exit1 FAIL0 of1 종료/재평가금지. 최종selected8개 명목범위뿐/84735없음/동일조건부rewrite semantic INSUFFICIENT unsafeShadow1 유지. 로컬2후보경로와다른8후보limit유실가설을34947 새일반질문회귀로검증중. penalty canonical atom 진단: 물리줄바꿈마다 ‘장관은…소프트웨어’ 등 미완성fragment 생성,원문atom의claim판정은weak로strong0일수있어지원완료로해석금지. 1200cap만확대해도세요약주장거부가유지되며최종verifier완화없음. 안전한source소비원인진단계속/실제SNS·penalty미완료/holdout·full미진입.
+
 - 2026-10-08 10:25 KST45901 전체test exit0/잔여XML1518 실패0오류0제외19.36210 staging package exit0/DE5DE3223F5F0BD4B3387CA3BAB2A9002B9C98F60BA89F2F1795592743014641/67545749bytes. 공식deploy49387 keepalive/PID79756/runtime75d49572-5b37-4658-b3d9-466d4ec35287/보호Q89980·18080불변검사PASS. 이전67649/56080정상정보폐기. 새코드 닫힌번호항 scope-only 회수·부정소개거부·재소비연결 검증완료,실제SNSPASS는아직아님. penalty readonly새일반claim3개는1200cap근거및전체canonical근거모두unsupported,단순cap확대가충분하다는가설기각/다중조문경계추가진단필요. oracle/dataset/verifier/안전성변경없음/holdout·full미진입/전체완료아님.
 
 - 2026-10-08 10:22 KST53049 関連193件 실패0오류0 exit0/닫힌항 재소비·열린항/인용/부정소개/무관후행/metadata회귀 유지. 줄바꿈정리 한줄 정적검토C/I0. 실제DB 새일반질문 readonly 선택84023+84721→회수재판정84023+84721+84735 확인,전체원문주장아님/API없음.45901 안정tree 전체backend회귀 실행중/중복없음. 현재배포JARb20d9aa6는3664e881 코드로추가dirty미반영/67649 keepalive56080/Q89980 유지. 추가fullPASS·새배포·실제SNSPASS 아직아님/holdout·full1003 미진입.
