@@ -17,6 +17,26 @@ import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
 	@Test
+	void scopeOnlySelectionRecoversSameDocumentProcedure() throws Exception {
+		var scope = new LawSemanticChunkRow(13201L, 10L, "official_doc", "10", "공공소프트웨어사업 과업심의 가이드",
+			"", "", "20260101", "CURRENT", "5", "적용 대상 사업",
+			"적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)",
+			5, "", "", 5, "scope", "적용 대상 사업", "target_scope", "PASS", null, "scope", 4);
+		var procedure = enumerationRow(13202L, 10L, 7, 4,
+			"① 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.");
+		var mapper = org.mockito.Mockito.mock(RagDocumentMapper.class);
+		org.mockito.Mockito.when(mapper.findSemanticContextChunks(10L, 5, 18)).thenReturn(List.of(procedure));
+		var service = service(null, mapper);
+		try {
+			String question = "온라인 운영 사업도 과업심의 받아야 하나요?";
+			var candidates = List.of(scope);
+			var judged = new EvidenceJudge().judge(question, candidates, Map.of(), 3);
+			assertThat(preserveIntentDirectEvidenceChunks(service, judged, candidates, question).chunks())
+				.extracting(LawSemanticChunkRow::chunkId).contains(13202L);
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void scopeAnchoredSelectionRecoversSameVersionAdjacentProcedure() throws Exception {
 		var scope = new LawSemanticChunkRow(13001L, 10L, "official_doc", "10", "공공소프트웨어사업 과업심의 가이드",
 			"", "", "20260101", "CURRENT", "5", "적용 대상 사업",

@@ -21,7 +21,7 @@ public class EvidenceJudge {
 	private static final int MIN_RELEVANT_RESULTS = 2;
 	private static final int UI_NAVIGATION_EXCLUSION_WINDOW = 16;
 	private static final java.util.regex.Pattern SOFTWARE_CONFIRMATION_REVIEW_DUTY = java.util.regex.Pattern.compile(
-		"^(?:[①-⑳])?국가기관등의장은(?:영제\\d+조(?:의\\d+)?(?:제\\d+항)?(?:제\\d+호)?에따라)?과업내용을확정하기위하여"
+		"^(?:[①-⑳])?국가기관등의장은(?:영제\\d+조(?:의\\d+)?(?:제\\d+항)?(?:제\\d+호)?에(?:따라|따른))?과업내용을확정하기위하여"
 			+ "소프트웨어사업발주전에사업계획서또는제안요청서에대하여"
 			+ "과업심의위원회의심의를받아야한다(?:[.!?]|$)"
 	);
@@ -186,6 +186,27 @@ public class EvidenceJudge {
 			String continuation = compact.substring(matcher.end());
 			if (continuation.isEmpty() || continuation.matches("다만[,，]?[^.!?]+[.!?]")) {
 				return paragraph.strip();
+			}
+		}
+		// Printed line wrapping is recoverable only inside a closed numbered first paragraph.
+		var numbered = java.util.regex.Pattern.compile(
+			"(?m)^[\\t ]*(?:제\\s*\\d+\\s*조(?:의\\s*\\d+)?\\s*\\([^\\r\\n)]{1,100}\\)[\\t ]*)?"
+				+ "(①[^①-⑳]{1,1200}?)(?=[\\r\\n]+\\s*②)")
+			.matcher(source == null ? "" : source);
+		while (numbered.find()) {
+			String inlineHeading = source.substring(numbered.start(), numbered.start(1)).strip();
+			if (inlineHeading.isEmpty() && numbered.start() > 0) {
+				String before = source.substring(0, numbered.start()).stripTrailing();
+				String previous = before.substring(Math.max(before.lastIndexOf('\n'), before.lastIndexOf('\r')) + 1).strip();
+				if (!previous.matches("제\\s*\\d+\\s*조(?:의\\s*\\d+)?\\s*\\([^\\r\\n)]{1,100}\\)")) { continue; }
+			}
+			String paragraph = numbered.group(1).strip();
+			String compact = paragraph.replaceAll("\\s+", "");
+			var duty = SOFTWARE_CONFIRMATION_REVIEW_DUTY.matcher(compact);
+			if (!duty.find()) { continue; }
+			String continuation = compact.substring(duty.end());
+			if (continuation.isEmpty() || continuation.matches("다만[,，]?[^.!?]+[.!?]")) {
+				return paragraph.replaceAll("[\\r\\n]+", " ");
 			}
 		}
 		return "";

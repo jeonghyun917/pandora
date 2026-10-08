@@ -5463,7 +5463,8 @@ public class LawAiAnswerService {
 		for (LawSemanticChunkRow anchor : judged.chunks()) {
 			if (!isRagTarget(anchor.target()) || anchor.chunkVersion() == null || anchor.chunkVersion() <= 0
 				|| anchor.sortOrder() < 0 || !"PASS".equals(anchor.qualityStatus())
-				|| EvidenceJudge.committeeEstablishmentRuleText(anchor.chunkText()).isBlank()
+				|| (!EvidenceJudge.isNationalSoftwareReviewScope(anchor)
+					&& EvidenceJudge.committeeEstablishmentRuleText(anchor.chunkText()).isBlank())
 				|| searchedDocuments.size() >= 2 || !searchedDocuments.add(anchor.documentId())) { continue; }
 			try {
 				List<LawSemanticChunkRow> neighbors = ragDocumentMapper.findSemanticContextChunks(
