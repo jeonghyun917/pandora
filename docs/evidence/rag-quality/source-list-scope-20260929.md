@@ -2,6 +2,8 @@
 
 ## 2026-10-01 조건 보존 평가 후속 진단
 
+- 2026-10-08 09:27 KST 승인된24개RAG검증파일 소유·범위 확인/통합연결 좁은검토C/I0/새범위확장없음. 검증code checkpoint9a9d70bda451cb044ca490532a7523cea8d2f6ba 커밋 및 origin codex/group-balanced-bm25 push성공(c90db190→9a9d70bd),직후worktree clean. 이전dirty를삭제·revert한것아니라승인task변경을보존한커밋이며공유main3792766b/18080불변.92526 전체1511 실패0오류0제외19/67796 package SHA64431d55c7b3f929e78e980d76cb67ea2f6c3a4f989f858bb195faa4e273c539 코드동일/테스트재반복없음. Q설정readOnly확인:storage_path C:\dev\qdrant-storage,host127.0.0.1/http6333/기존binary존재;현재collection상태·DB-Q parity인증아님. Qdrant재시작명시승인응답대기,API·실제SNS/penalty·holdout/full보류. 이최신증거기록만docs후속커밋으로저장예정/전체완료아님.
+
 - 2026-10-08 09:24 KST 명시목적15386 2RED→16229 38PASS; 명시전시점51955 2RED→70444 40PASS/좁은검토C/I0. 실제canonical원문 소비후 source.conditions=[발주전,과업내용확정], 동일문장SUPPORTED/목적삭제·시점삭제INSUFFICIENT/개별온라인운영분류INSUFFICIENT 유지.92526 전체1511/실패0/오류0/제외19 exit0(09:22:21),잔여XML포함1514/실패0/오류0/제외19.67796 package exit0(09:22:54) JAR SHA64431d55c7b3f929e78e980d76cb67ea2f6c3a4f989f858bb195faa4e273c539 미배포. 공식status listener없음/App및Batch미설치; Qdrant재시작 명시승인 질문제시/답변대기이며외부평가보류.24dirty모두승인된RAG검증파일범위 확인중/통합경계좁은검토대기. 실제SNS·penalty·Difficult12·holdout57·full1003 완료아님,oracle/dataset/verifier/authority불변.
 
 - 2026-10-08 09:16 KST99717/50934 각각189PASS,공백행예외54647RED1→nonblank lookahead후50934PASS/좁은C/I0. 실제canonical원문 readOnly/rollback 진단: 새일반질문선택84023+87816,consumer87816+84023;87816 version4/PASS/일정예외유지/다른금액조건제외.59081 전체1507/실패0/오류0/제외19 exit0(09:15:42). 그러나 추가semantic진단에서‘과업내용을확정하기위하여’삭제도SUPPORTED 확인,source.conditions=[]가원인. 개별온라인운영분류는INSUFFICIENT 유지. 다음15386 목적조건 parser/ground-index 반례2개실행중;새수정전이므로 전체통과를release완료로해석금지. API평가/실패artifact재생없음,실제SNS·penalty·runtime복원미해결/배포없음.
