@@ -10,6 +10,16 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class ParentContextAssembler {
+	public List<LawAiAnswerGround> toGrounds(
+		List<LawSemanticChunkRow> chunks,
+		Map<String, LawSemanticChunkRow> matchedChunkByKey,
+		Map<String, Double> scoreByChunkId,
+		Function<LawSemanticChunkRow, String> snippetFactory,
+		String evidenceRole,
+		Map<String, List<Long>> contextChunkIdsByKey
+	) {
+		return assemble(chunks, matchedChunkByKey, scoreByChunkId, snippetFactory, evidenceRole, contextChunkIdsByKey);
+	}
 
 	public List<LawAiAnswerGround> toGrounds(
 		List<LawSemanticChunkRow> chunks,
@@ -27,6 +37,17 @@ public class ParentContextAssembler {
 		Function<LawSemanticChunkRow, String> snippetFactory,
 		String evidenceRole
 	) {
+		return assemble(chunks, matchedChunkByKey, scoreByChunkId, snippetFactory, evidenceRole, Map.of());
+	}
+
+	private List<LawAiAnswerGround> assemble(
+		List<LawSemanticChunkRow> chunks,
+		Map<String, LawSemanticChunkRow> matchedChunkByKey,
+		Map<String, Double> scoreByChunkId,
+		Function<LawSemanticChunkRow, String> snippetFactory,
+		String evidenceRole,
+		Map<String, List<Long>> contextChunkIdsByKey
+	) {
 		if (chunks == null || chunks.isEmpty()) {
 			return List.of();
 		}
@@ -38,7 +59,9 @@ public class ParentContextAssembler {
 				matchedChunkByKey == null ? null : matchedChunkByKey.get(scoreKey(chunk.target(), chunk.chunkId())),
 				scoreByChunkId,
 				snippetFactory,
-				evidenceRole
+				evidenceRole,
+				contextChunkIdsByKey == null ? List.of()
+					: contextChunkIdsByKey.getOrDefault(scoreKey(chunk.target(), chunk.chunkId()), List.of())
 			))
 			.toList();
 	}
@@ -49,7 +72,8 @@ public class ParentContextAssembler {
 		LawSemanticChunkRow matchedChunk,
 		Map<String, Double> scoreByChunkId,
 		Function<LawSemanticChunkRow, String> snippetFactory,
-		String evidenceRole
+		String evidenceRole,
+		List<Long> explicitContextChunkIds
 	) {
 		String displayKey = scoreKey(chunk.target(), chunk.chunkId());
 		String matchedKey = matchedChunk == null ? displayKey : scoreKey(matchedChunk.target(), matchedChunk.chunkId());
@@ -75,7 +99,7 @@ public class ParentContextAssembler {
 			score(scoreByChunkId, matchedKey, displayKey),
 			limitText(cleanDisplayText(matchedChildText), 1_200),
 			parentContextText == null ? null : limitText(cleanDisplayText(parentContextText), 2_800),
-			contextChunkIds(chunk, matchedChunk),
+			contextChunkIds(chunk, matchedChunk, parentContextText == null ? List.of() : explicitContextChunkIds),
 			contextPolicy,
 			normalizeEvidenceRole(evidenceRole)
 		);
@@ -96,11 +120,11 @@ public class ParentContextAssembler {
 		return scoreByChunkId.getOrDefault(displayKey, 0.0);
 	}
 
-	private List<Long> contextChunkIds(LawSemanticChunkRow chunk, LawSemanticChunkRow matchedChunk) {
-		if (matchedChunk == null || matchedChunk.chunkId() == chunk.chunkId()) {
-			return List.of(chunk.chunkId());
-		}
-		return List.of(matchedChunk.chunkId(), chunk.chunkId());
+	private List<Long> contextChunkIds(LawSemanticChunkRow chunk, LawSemanticChunkRow matchedChunk, List<Long> explicitIds) {
+		List<Long> originalIds = matchedChunk == null || matchedChunk.chunkId() == chunk.chunkId()
+			? List.of(chunk.chunkId()) : List.of(matchedChunk.chunkId(), chunk.chunkId());
+		return java.util.stream.Stream.concat(originalIds.stream(), explicitIds == null ? java.util.stream.Stream.empty() : explicitIds.stream())
+			.filter(id -> id != null && id > 0).distinct().toList();
 	}
 
 	private boolean sameNormalizedText(String left, String right) {
@@ -112,7 +136,11 @@ public class ParentContextAssembler {
 	}
 
 	private String cleanDisplayText(String text) {
-		return cleanHwpxText(text)
+		return cleanDisplayTextForGround(text);
+	}
+
+	static String cleanDisplayTextForGround(String text) {
+		return HwpxTextCleaner.clean(text)
 			.replace('\u0007', ' ')
 			.replaceAll("[\\p{Cntrl}&&[^\r\n\t]]+", " ")
 			.replace("\r\n", "\n")

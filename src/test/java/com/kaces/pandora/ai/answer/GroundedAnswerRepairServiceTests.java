@@ -22,6 +22,23 @@ class GroundedAnswerRepairServiceTests {
 		"사용자는 법정 요건을 충족한 근로자에게 연차 유급휴가를 주어야 한다.";
 
 	@Test
+	void recommendationDispatchCannotRepairGeneralLegalNoncompliancePenalty() {
+		String question = "정보화시스템 법제도 준수안하면 어떤 불이익?";
+		String source = "향후 입찰공고(RFP)시 반영여부를 재확인하여 미준수 항목 권고(2차발송) 예정";
+		String candidate = source + "입니다.";
+		var verifier = new AnswerVerificationService(
+			new AnswerGuard(), new ClaimVerifier(), new AnswerQuestionAlignmentVerifier());
+		var rewriter = RecordingRewriter.returning(candidate);
+		var service = new GroundedAnswerRepairService(verifier, rewriter);
+		var result = service.verifyAndRepair(question,
+			"정보화시스템 법령을 준수하지 않으면 기관은 개선권고와 재통보를 받습니다.",
+			List.of(ground(1, source)));
+		assertThat(result.insufficientEvidence()).isTrue();
+		assertThat(result.diagnostics().selectedAtomCount()).isZero();
+		assertThat(rewriter.calls()).isZero();
+	}
+
+	@Test
 	void successfulRepairUsesSupportedAtomOnceAndReverifiesFromTheBeginning() {
 		LawAiAnswerGround ground = ground(1, EVIDENCE);
 		List<LawAiAnswerGround> grounds = List.of(ground);
@@ -268,6 +285,27 @@ class GroundedAnswerRepairServiceTests {
 			new GroundedAnswerRepairService.Diagnostics(true, false, "REWRITER_EXCEPTION", 1)
 		);
 		assertThat(result.diagnostics().toString()).doesNotContain("secret provider failure");
+	}
+
+	@Test
+	void rewriterFailureLogsOnlyExceptionTypesAndHttpStatus() {
+		var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(GroundedAnswerRepairService.class);
+		var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+		appender.start();
+		logger.addAppender(appender);
+		try {
+			var exception = new org.springframework.web.client.HttpClientErrorException(
+				org.springframework.http.HttpStatus.TOO_MANY_REQUESTS, "secret provider failure");
+			var result = runRepairWithRewrite(null, exception, supported(EVIDENCE));
+			assertThat(result.insufficientEvidence()).isTrue();
+			assertThat(appender.list).extracting(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage)
+				.anySatisfy(message -> assertThat(message).contains("HttpClientErrorException", "httpStatus=429"))
+				.allSatisfy(message -> assertThat(message).doesNotContain("secret provider failure"));
+			assertThat(appender.list).allSatisfy(event -> assertThat(event.getThrowableProxy()).isNull());
+		} finally {
+			logger.detachAppender(appender);
+			appender.stop();
+		}
 	}
 
 	@Test
@@ -751,6 +789,135 @@ class GroundedAnswerRepairServiceTests {
 
 		assertThat(result.insufficientEvidence()).as(result.toString()).isTrue();
 		assertThat(result.verifiedAnswer()).isEqualTo(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE);
+	}
+
+	@Test
+	void namedBusinessScopeCanBeRewrittenFromTheOfficialGeneralCriterion() {
+		String question = "SNS운영 사업도 과업심의 받아야해?";
+		String evidence = "적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함) - "
+			+ "소프트웨어의 개발, 제작, 생산, 유통, 운영 및 유지·관리 등과 그 밖에 "
+			+ "소프트웨어와 관련된 서비스를 제공하는 산업과 관련된 경제활동";
+		String repaired = "SNS 운영 사업도 국가기관 등이 발주하는 소프트웨어사업에 해당하면 과업심의 대상입니다.";
+		var grounds = List.of(ground(1, evidence, "공공소프트웨어사업 과업심의 가이드(2022. 12.)", null));
+		var verifier = realVerificationService();
+		var sourceVerification = verifier.verify(question, evidence, grounds);
+		assertThat(sourceVerification.claimResult().insufficientEvidence()).isFalse();
+		assertThat(sourceVerification.alignmentResult().missingGroups()).containsExactly("SUBJECT", "DIRECT_CONCLUSION");
+		var conditional = verifier.verify(question, repaired, grounds);
+		assertThat(conditional.insufficientEvidence()).as(conditional.toString()).isFalse();
+		var rewriter = RecordingRewriter.returning(repaired);
+		var service = new GroundedAnswerRepairService(verifier, rewriter);
+		var result = service.verifyAndRepair(question,
+			"과업심의 적용 여부는 소프트웨어사업의 대상사업 여부를 기준으로 판단합니다.", grounds);
+		assertThat(result.insufficientEvidence()).as(result.toString()).isFalse();
+		assertThat(result.verifiedAnswer()).isEqualTo(repaired);
+	}
+
+	@Test
+	void pageScopeCriterionWithRepeatedHeadingsStillSeedsAConditionalRepair() {
+		String evidence = "적용 대상 사업 p.5 적용 대상 사업 적용 대상 사업 p.5 적용 대상 사업 적용 대상 사업 "
+			+ "국가기관 등이 발주하는 모든 SW사업(상용SW포함) - 소프트웨어의 개발, 제작, 생산, 유통, 운영 및 유지·관리 등과 그 밖에 "
+			+ "소프트웨어와 관련된 서비스를 제공하는 산업과 관련된 경제활동(‘소프트웨어 진흥법’제2조) "
+			+ "※ 단순 H/W(Appliance 포함) 도입·설치, 단순 동영상 제작, 네트워크 등 인프라 수수료와 같이 소프트웨어사업으로 볼 수 없는 경우는 비대상";
+		String repaired = "SNS운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW포함)에 해당하면 공공소프트웨어사업 과업심의의 대상입니다.";
+		var grounds = List.of(ground(1, evidence, "공공소프트웨어사업 과업심의 가이드(2022. 12.)", null));
+		var service = new GroundedAnswerRepairService(realVerificationService(), RecordingRewriter.returning(repaired));
+		var result = service.verifyAndRepair("SNS운영 사업도 과업심의 받아야해?",
+			"결론: SNS 운영 사업은 소프트웨어사업 해당 여부에 따라 과업심의 대상인지 결정됩니다.", grounds);
+		assertThat(result.diagnostics().attempted()).as(result.toString()).isTrue();
+		assertThat(result.insufficientEvidence()).as(result.toString()).isFalse();
+	}
+
+	@Test
+	void generalCriterionUsesConditionalRepairWithoutReplacingVerbatimRepair() {
+		var client = new com.kaces.pandora.infra.openai.OpenAiAnswerClient(
+			new com.kaces.pandora.semantic.config.LawAiProperties(null, null, null, null),
+			new tools.jackson.databind.ObjectMapper()) {
+			@Override
+			protected String requestAnswer(String question, String input, int maxOutputTokens, String instructions) {
+				return "SNS 운영 사업도 국가기관 등이 발주하는 소프트웨어사업에 해당하면 과업심의 대상입니다.";
+			}
+		};
+		String criterion = "적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)";
+		var grounds = List.of(ground(1, criterion, "공공소프트웨어사업 과업심의 가이드", null));
+		var service = new GroundedAnswerRepairService(realVerificationService(), client);
+		var result = service.verifyAndRepair("SNS운영 사업도 과업심의 받아야해?",
+			"담당자가 임의로 결정합니다.", grounds);
+		assertThat(result.insufficientEvidence()).as(result.toString()).isFalse();
+		assertThat(result.verification().verifiedAnswer()).contains("SNS 운영 사업도", "해당하면");
+		assertThat(client.rewrite("기준은?", List.of(criterion))).isEqualTo(criterion);
+	}
+
+	@Test
+	void liveCompleteConditionalClassificationIsVerifiedAgainstOcrScopeDefinition() {
+		String evidence = "적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)";
+		String rewritten = "SNS운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW포함)에 해당하면 공공소프트웨어사업 과업심의의 대상입니다.";
+		var grounds = List.of(ground(1, evidence, "공공소프트웨어사업 과업심의 가이드(2022. 12.)", null));
+		var result = new GroundedAnswerRepairService(realVerificationService(), RecordingRewriter.returning(rewritten))
+			.verifyAndRepair("SNS운영 사업도 과업심의 받아야해?", "담당자가 임의로 결정합니다.", grounds);
+		assertThat(result.diagnostics().attempted()).as(result.toString()).isTrue();
+		assertThat(result.insufficientEvidence()).as(result.toString()).isFalse();
+		assertThat(result.verifiedAnswer()).isEqualTo(rewritten);
+	}
+
+	@Test
+	void generalBusinessCriterionDoesNotPermitAnUnconditionalNamedBusinessConclusion() {
+		String evidence = "적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)";
+		var grounds = List.of(ground(1, evidence, "공공소프트웨어사업 과업심의 가이드", null));
+		for (String rewritten : List.of("SNS 운영 사업은 무조건 과업심의 대상입니다.",
+			"SNS 운영 사업이 소프트웨어사업이면 과업심의 대상입니다.",
+			"국가기관 등의 기준에 따르면 SNS 운영 사업이 소프트웨어사업이면 과업심의 대상입니다.",
+			"SNS 운영 사업이 국가기관의 소프트웨어사업이면 과업심의 대상입니다.")) {
+			var service = new GroundedAnswerRepairService(realVerificationService(), RecordingRewriter.returning(rewritten));
+			var result = service.verifyAndRepair("SNS운영 사업도 과업심의 받아야해?",
+				"SNS 사업은 담당자가 임의로 심의 여부를 정합니다.", grounds);
+			assertThat(result.diagnostics().attempted()).as(rewritten).isTrue();
+			assertThat(result.insufficientEvidence()).as(rewritten).isTrue();
+		}
+	}
+
+	@Test
+	void conditionalClientCannotBypassSourceConditionsOrFinalVerification() {
+		String criterion = "적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)";
+		var grounds = List.of(ground(1, criterion, "공공소프트웨어사업 과업심의 가이드", null));
+		for (String rewritten : List.of(
+			"SNS 운영 사업은 무조건 과업심의 대상입니다.",
+			"SNS 운영 사업이 소프트웨어사업이면 과업심의 대상입니다.",
+			"SNS 운영 사업도 민간기업이 발주하는 소프트웨어사업이면 과업심의 대상입니다.",
+			"SNS 운영 사업도 국가기관 등이 발주하는 건설사업이면 과업심의 대상입니다.",
+			"SNS 운영 사업은 과업심의 없이 추진할 수 있습니다.")) {
+			var client = new com.kaces.pandora.infra.openai.OpenAiAnswerClient(
+				new com.kaces.pandora.semantic.config.LawAiProperties(null, null, null, null),
+				new tools.jackson.databind.ObjectMapper()) {
+				@Override
+				protected String requestAnswer(String question, String input, int maxOutputTokens, String instructions) {
+					return rewritten;
+				}
+			};
+			var result = new GroundedAnswerRepairService(realVerificationService(), client)
+				.verifyAndRepair("SNS운영 사업도 과업심의 받아야해?", "담당자가 임의로 결정합니다.", grounds);
+			assertThat(result.diagnostics().attempted()).as(rewritten).isTrue();
+			assertThat(result.insufficientEvidence()).as(rewritten).isTrue();
+		}
+	}
+
+	@Test
+	void liveConditionalRewriteWithoutNamedBusinessRemainsSafelyRejected() {
+		String criterion = "적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)";
+		var client = new com.kaces.pandora.infra.openai.OpenAiAnswerClient(
+			new com.kaces.pandora.semantic.config.LawAiProperties(null, null, null, null),
+			new tools.jackson.databind.ObjectMapper()) {
+			@Override
+			protected String requestAnswer(String question, String input, int maxOutputTokens, String instructions) {
+				return "발주기관이 국가기관 등이고 사업이 소프트웨어사업(상용SW 포함)에 해당하면 과업심의를 받아야 합니다."
+					+ " 발주기관의 종류와 사업이 소프트웨어사업(상용SW 포함)에 해당하는지 여부는 확인이 필요합니다.";
+			}
+		};
+		var result = new GroundedAnswerRepairService(realVerificationService(), client)
+			.verifyAndRepair("SNS운영 사업도 과업심의 받아야해?", "담당자가 임의로 결정합니다.",
+				List.of(ground(1, criterion, "공공소프트웨어사업 과업심의 가이드", null)));
+		assertThat(result.diagnostics().attempted()).isTrue();
+		assertThat(result.insufficientEvidence()).isTrue();
 	}
 
 	@Test
@@ -1696,6 +1863,17 @@ class GroundedAnswerRepairServiceTests {
 		);
 		assertThat(result.diagnostics().toString()).doesNotContain("reverify secret");
 		assertThat(rewriter.calls()).isEqualTo(1);
+	}
+
+	@Test
+	void sourceRecommendationAtomDoesNotAnswerABroaderSystemComplianceQuestion() {
+		String question = "정보화시스템 법제도 준수안하면 어떤 불이익?";
+		String evidence = "귀 기관의 SW사업 공고에 대하여 SW관련 법령의 준수를 권고 드립니다. 권고항목에 대한 수용 여부를 사전규격 게시판에 답변과 함께 첨부하여 주시기 바랍니다. 향후 입찰공고시 반영여부를 재확인하여 미준수 항목 권고(2차발송) 예정입니다.";
+		String atom = "향후 입찰공고시 반영여부를 재확인하여 미준수 항목 권고(2차발송) 예정입니다.";
+		var result = realVerificationService().verify(question, atom, List.of(ground(1, evidence)));
+		assertThat(result.claimResult().insufficientEvidence()).isFalse();
+		assertThat(result.alignmentResult().aligned()).isFalse();
+		assertThat(result.alignmentResult().missingGroups()).contains("SUBJECT", "CONDITION");
 	}
 
 	private AnswerVerificationService realVerificationService() {

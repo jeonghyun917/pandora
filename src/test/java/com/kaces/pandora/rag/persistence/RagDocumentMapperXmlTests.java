@@ -16,6 +16,22 @@ import org.apache.ibatis.session.Configuration;
 import org.junit.jupiter.api.Test;
 
 class RagDocumentMapperXmlTests {
+	@Test
+	void contextAndMatchedIdQueriesReturnTheirActiveSourceVersion() throws Exception {
+		Configuration configuration = parseMapper();
+		for (String method : List.of("findSemanticContextChunks", "findSemanticChunksByIds")) {
+			MappedStatement statement = configuration.getMappedStatement(
+				"com.kaces.pandora.rag.persistence.RagDocumentMapper." + method);
+			String sql = normalizedSql(statement, Map.of(
+				"documentId", 20L, "sortOrder", 25, "window", 18, "chunkIds", List.of(12001L)));
+			String projection = sql.substring(0, sql.indexOf("FROM rag_document_chunks"));
+			assertThat(projection).as(method + " exposes the source version used for context continuity")
+				.contains("c.chunk_version AS chunkVersion");
+			assertThat(sql).contains("c.chunk_version = ( SELECT MAX(c2.chunk_version)");
+			assertCanonicalProjection(sql);
+		}
+	}
+
 	private static final String MAPPER_RESOURCE = "mapper/law/RagDocumentMapper.xml";
 	private static final String HEADING_STATEMENT =
 		"com.kaces.pandora.rag.persistence.RagDocumentMapper.findSemanticChunksByHeadingText";

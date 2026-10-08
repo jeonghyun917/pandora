@@ -22,6 +22,12 @@ public class ClaimEvidenceMatcher {
 
 	private static final int MIN_OVERLAP = 2;
 	private static final double MIN_COVERAGE = 0.34d;
+	private static final Pattern COORDINATED_BUSINESS_ISSUER_CONDITION = Pattern.compile(
+		"^([\\p{IsHangul}a-z0-9\\s]{2,80}사업)(?:이|가)\\s+"
+			+ "([\\p{IsHangul}a-z0-9]{2,40}사업)에\\s+해당하고\\s+발주기관이\\s+"
+			+ "([\\p{IsHangul}a-z0-9]{2,40})이면\\s+(.+)$",
+		Pattern.CASE_INSENSITIVE
+	);
 	private static final Pattern LEADING_CONCESSIVE_FRAME = Pattern.compile(
 		"^\\s*.{1,120}?(?:이)?라도\\s+(.+)$",
 		Pattern.DOTALL
@@ -44,6 +50,10 @@ public class ClaimEvidenceMatcher {
 		"(?:^|[.!?;；\\n]\\s*)"
 			+ "([\\p{IsHangul}a-z0-9][\\p{IsHangul}a-z0-9()·ㆍ/\\-\\s]{1,80}?)"
 			+ "(?=\\s*[:：])",
+		Pattern.CASE_INSENSITIVE
+	);
+	private static final Pattern EXPLICIT_SCOPE_HEADING_SUBJECT_ROLE = Pattern.compile(
+		"^(적용\\s*대상\\s*사업|대상\\s*사업)\\s+(?=[^.!?\\r\\n]{0,100}발주하는\\s+모든\\s+)",
 		Pattern.CASE_INSENSITIVE
 	);
 	private static final Pattern COORDINATED_SUBJECT_ROLE = Pattern.compile(
@@ -207,8 +217,13 @@ public class ClaimEvidenceMatcher {
 	);
 	private static final Pattern PLANNED_PREDICATE_ACTION = Pattern.compile(
 		"(?:^|\\s)([\\p{IsHangul}a-z0-9]{1,}?)(?:을|를)?\\s*"
-			+ "(?:할\\s*)?(?:예정|계획)(?:입니다|이다|임)(?=[.!?\\s]|$)",
+			+ "(?:할\\s*)?(?:예정|계획)(?:입니다|이다|임|(?=[.!?]|$))(?=[.!?\\s]|$)",
 		Pattern.CASE_INSENSITIVE
+	);
+	private static final Pattern NOMINAL_PLANNED_OBJECT_ROLE = Pattern.compile(
+		"(?:^|\\s)[\\p{IsHangul}a-z0-9]{2,}(?:은|는|이|가)\\s+"
+			+ "([\\p{IsHangul}a-z0-9]{2,})\\s+[\\p{IsHangul}a-z0-9]{2,}\\s+"
+			+ "(?:예정|계획)(?:입니다|이다|임)?[.!?]*$"
 	);
 	private static final Pattern ONGOING_PREDICATE_ACTION = Pattern.compile(
 		"(?:^|\\s)([\\p{IsHangul}a-z0-9]{1,}?)(?:을|를)?\\s+"
@@ -1303,6 +1318,18 @@ public class ClaimEvidenceMatcher {
 		Set<String> conditionAnchors = claim.requiredConditionAnchors().stream()
 			.map(this::canonicalConditionAnchor)
 			.collect(java.util.stream.Collectors.toUnmodifiableSet());
+		boolean explicitScope = evidence.roles().subjects().stream().allMatch(role ->
+			role.canonical().equals("적용대상사업") || role.canonical().equals("대상사업"))
+			&& evidence.targetMode() == TargetMode.INCLUDED && !evidence.conditional();
+		boolean sameIssuerRelation = evidence.lexicalTerms().stream()
+			.filter(term -> term.matches(".*(?:기관|기업|공사|청|부)$"))
+			.anyMatch(term -> java.util.stream.Stream.of(term + "이발주하는", term + "등이발주하는")
+				.anyMatch(relation -> evidence.normalizedText().contains(relation)
+					&& claim.normalizedText().contains(relation)));
+		if (explicitScope && sameIssuerRelation && evidence.universalScopeAnchors().stream()
+			.map(this::canonicalConditionAnchor).anyMatch(conditionAnchors::contains)) {
+			return true;
+		}
 		return evidence.roles().subjects().stream().anyMatch(role ->
 			conditionAnchors.contains(canonicalSoftwareTerm(role.canonical()))
 				|| conditionAnchors.contains(canonicalSoftwareTerm(role.head()))
@@ -1731,6 +1758,15 @@ public class ClaimEvidenceMatcher {
 		String normalizedText
 	) {
 		static ClaimSemantics from(String text) {
+			Matcher issuerCondition = COORDINATED_BUSINESS_ISSUER_CONDITION.matcher(
+				String.valueOf(text == null ? "" : text)
+			);
+			if (issuerCondition.matches()) {
+				String issuer = issuerCondition.group(3).replaceFirst("등$", " 등");
+				text = issuerCondition.group(1) + "도 " + issuer
+					+ "이 발주하는 " + issuerCondition.group(2) + "에 해당하면 "
+					+ issuerCondition.group(4);
+			}
 			String sourceText = String.valueOf(text == null ? "" : text);
 			String normalized = KoreanQueryNormalizer.normalizeForMatch(sourceText);
 			String conditionText = LEADING_SUMMARY_DISCOURSE_FRAME.matcher(sourceText)
@@ -2025,8 +2061,16 @@ public class ClaimEvidenceMatcher {
 			return Set.copyOf(bearers);
 		}
 
+		private static String normalizeParentheticalWhitespace(String text) {
+			return Pattern.compile("\\(([^()]{1,80})\\)")
+				.matcher(String.valueOf(text == null ? "" : text))
+				.replaceAll(match -> Matcher.quoteReplacement(
+					"(" + match.group(1).replaceAll("\\s+", "") + ")"));
+		}
+
 		private static Set<String> universalScopeAnchors(String text) {
-			String searchable = String.valueOf(text == null ? "" : text)
+			String source = normalizeParentheticalWhitespace(text);
+			String searchable = source
 				.replaceAll("[^\\p{IsHangul}\\p{Alnum}]+", " ")
 				.toLowerCase()
 				.trim();
@@ -2057,6 +2101,9 @@ public class ClaimEvidenceMatcher {
 		}
 
 		private static void addUniversalScopeAnchor(Set<String> anchors, String candidate) {
+			if (candidate.matches("(?:은|는|이|가|을|를|의|에|로|도|만|와|과)")) {
+				return;
+			}
 			String anchor = canonicalScopeTerm(candidate);
 			if (!anchor.isBlank()
 				&& !anchor.endsWith("적으로")
@@ -2285,12 +2332,21 @@ public class ClaimEvidenceMatcher {
 		}
 
 		private static Set<String> requiredConditionAnchors(String text) {
-			String searchable = String.valueOf(text == null ? "" : text)
+			String searchable = normalizeParentheticalWhitespace(text)
+				.replaceAll("에\\s+해당하는\\s+경우", "에 해당하면")
 				.replaceAll("[^\\p{IsHangul}\\p{Alnum}%,.]+", " ")
 				.toLowerCase()
 				.trim();
 			Matcher matcher = NUMERIC_NARROWING_ANCHOR.matcher(searchable);
 			Set<String> anchors = new LinkedHashSet<>();
+			Matcher parentheticalClass = Pattern.compile(
+				"([\\p{IsHangul}a-zA-Z0-9]{2,})\\(([^()]{1,80})\\)에\\s*해당하면")
+				.matcher(String.valueOf(text == null ? "" : text)
+					.replaceAll("에\\s+해당하는\\s+경우", "에 해당하면"));
+			while (parentheticalClass.find()) {
+				anchors.add(KoreanQueryNormalizer.normalizeForMatch(parentheticalClass.group(1)));
+				anchors.add(KoreanQueryNormalizer.normalizeForMatch(parentheticalClass.group(2)));
+			}
 			while (matcher.find()) {
 				String anchor = KoreanQueryNormalizer.normalizeForMatch(matcher.group(1));
 				if (anchor.length() >= 2) {
@@ -2396,6 +2452,11 @@ public class ClaimEvidenceMatcher {
 					candidateIndex >= 0 && inspected < 3;
 					candidateIndex--) {
 					String candidate = targetScopeCandidate(tokens[candidateIndex]);
+					// A document noun owns "대상" here; do not skip it and
+					// reinterpret a procedure earlier in the document title as the target.
+					if (Set.of("가이드", "지침", "문서", "매뉴얼").contains(candidate)) {
+						break;
+					}
 					if (candidate.isBlank() || TARGET_SCOPE_CONNECTORS.contains(candidate)) {
 						continue;
 					}
@@ -2716,6 +2777,9 @@ public class ClaimEvidenceMatcher {
 			);
 			if (!hadExplicitSubject && tokens.isEmpty()) {
 				tokens.addAll(roleIdentities(text, LABELED_SUBJECT_ROLE));
+				if (tokens.isEmpty()) {
+					tokens.addAll(roleIdentities(text, EXPLICIT_SCOPE_HEADING_SUBJECT_ROLE));
+				}
 			}
 			tokens.removeIf(role ->
 				role.canonical().endsWith("하")
@@ -2737,6 +2801,10 @@ public class ClaimEvidenceMatcher {
 			Set<PermissionTargetAlternative> permissionTargets
 		) {
 			Set<RoleIdentity> tokens = new LinkedHashSet<>(roleIdentities(text, OBJECT_ROLE));
+			// Recover only an omitted object particle; explicit object roles remain authoritative.
+			if (tokens.isEmpty()) {
+				tokens.addAll(roleIdentities(text, NOMINAL_PLANNED_OBJECT_ROLE));
+			}
 			Matcher matcher = COORDINATED_OBJECT_ROLE.matcher(String.valueOf(text == null ? "" : text));
 			while (matcher.find()) {
 				addRoleIdentity(tokens, text, matcher.start(1), matcher.group(1));

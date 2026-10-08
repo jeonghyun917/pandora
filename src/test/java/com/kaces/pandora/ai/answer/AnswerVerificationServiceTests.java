@@ -13,6 +13,55 @@ import org.junit.jupiter.api.Test;
 class AnswerVerificationServiceTests {
 
 	@Test
+	void specificProcurementRecommendationKeepsItsQuestionScopeBoundary() {
+		var service = new AnswerVerificationService(
+			new AnswerGuard(), new ClaimVerifier(), new AnswerQuestionAlignmentVerifier());
+		String source = "상기 특별한 경우를 제외한 지명경쟁 또는 수의계약의 경우에는 특정규격 명시 금지 관련 법·제도 개선권고를 받을 수 있으므로, 지명경쟁 또는 수의계약에서 특정규격을 명시하는 사유를 입찰서류에 명시하거나 권고기관에 수의계약 적용 근거자료를 제시하여 불필요한 행정소요를 예방한다.";
+		var ground = new LawAiAnswerGround(1, 1, 1, "official_doc", "SW사업 법령준수 권고", "기관", "공식 문서",
+			null, null, "page 2", "특정규격 명시 금지", 2, source, null, null, 0.9);
+		var result = service.verify("정보화시스템 법제도 준수안하면 어떤 불이익?", source, List.of(ground));
+		assertThat(result.claimResult().insufficientEvidence()).as(result.toString()).isFalse();
+		assertThat(result.alignmentResult().aligned()).isFalse();
+		assertThat(result.alignmentResult().missingGroups()).contains("SUBJECT", "RELATION", "CONDITION");
+		assertThat(result.insufficientEvidence()).isTrue();
+	}
+
+	@Test
+	void recommendationRecheckDoesNotEstablishGeneralLegalNoncompliancePenalty() {
+		AnswerVerificationService service = new AnswerVerificationService(
+			new AnswerGuard(), new ClaimVerifier(), new AnswerQuestionAlignmentVerifier());
+		String source = "귀 기관의 SW사업 공고에 대하여, SW관련 법령의 준수를 권고 드립니다. "
+			+ "향후 입찰공고(RFP)시 반영여부를 재확인하여 미준수 항목 권고(2차발송) 예정";
+		LawAiAnswerGround ground = new LawAiAnswerGround(
+			1, 1, 1, "official_doc", "SW사업 법령준수 권고", "기관", "공식 문서",
+			null, null, "page 1", "협조요청", 1, source, null, null, 0.9);
+		var exact = service.verify(source, List.of(ground));
+		assertThat(exact.claimResult().insufficientEvidence()).as(exact.toString()).isFalse();
+		var generalized = service.verify(
+			"정보화시스템 법제도 준수안하면 어떤 불이익?",
+			"정보화시스템 관련 법령을 준수하지 않으면 기관은 개선권고를 받고 재통보받습니다.",
+			List.of(ground));
+		assertThat(generalized.insufficientEvidence()).as(generalized.toString()).isTrue();
+		var questionAware = service.verify(
+			"정보화시스템 법제도 준수안하면 어떤 불이익?", source, List.of(ground));
+		assertThat(questionAware.claimResult().insufficientEvidence()).as(questionAware.toString()).isFalse();
+		assertThat(questionAware.alignmentResult().aligned()).as(questionAware.toString()).isFalse();
+		assertThat(questionAware.alignmentResult().missingGroups()).contains("SUBJECT", "RELATION", "CONDITION");
+		String bounded = "향후 입찰공고(RFP)시 반영여부를 재확인하여 미준수 항목을 2차 권고할 예정입니다.";
+		var boundedResult = service.verify(
+			"정보화시스템 법제도 준수안하면 어떤 불이익?", bounded, List.of(ground));
+		assertThat(boundedResult.claimResult().insufficientEvidence()).isTrue();
+		assertThat(boundedResult.alignmentResult().evaluated()).isFalse();
+		String preserved = "향후 입찰공고(RFP)시 반영여부를 재확인하여 미준수 항목 권고(2차발송) 예정입니다.";
+		var preservedResult = service.verify(
+			"정보화시스템 법제도 준수안하면 어떤 불이익?", preserved, List.of(ground));
+		assertThat(preservedResult.claimResult().insufficientEvidence()).as(preservedResult.toString()).isFalse();
+		assertThat(preservedResult.alignmentResult().aligned()).as(preservedResult.toString()).isFalse();
+		assertThat(preservedResult.insufficientEvidence()).isTrue();
+		assertThat(preservedResult.alignmentResult().missingGroups()).contains("SUBJECT", "CONDITION");
+	}
+
+	@Test
 	void questionAwareVerificationFailsClosedButRetainsClaimAndAlignmentDiagnostics() {
 		AnswerGuard answerGuard = mock(AnswerGuard.class);
 		ClaimVerifier claimVerifier = mock(ClaimVerifier.class);

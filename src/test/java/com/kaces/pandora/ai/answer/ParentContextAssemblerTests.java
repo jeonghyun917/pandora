@@ -52,6 +52,46 @@ class ParentContextAssemblerTests {
 	}
 
 	@Test
+	void sameIdExpansionDoesNotReplaceMatchedChildEvidence() {
+		LawSemanticChunkRow child = chunk(13, "제재 조건", "다음 각 호에 해당하는 경우 참가자격을 제한한다.");
+		LawSemanticChunkRow expanded = chunk(13, "제재 조건",
+			child.chunkText() + "\n1. 계약 이행에 부정한 행위가 있는 경우\n작업장소는 협의하여 정한다.");
+		LawAiAnswerGround ground = assembler.toGrounds(
+			List.of(expanded), Map.of("official_doc:13", child), Map.of(), row -> "제재 조건"
+		).get(0);
+
+		assertThat(ground.matchedChildText()).isEqualTo("다음 각 호에 해당하는 경우 참가자격을 제한한다.");
+		assertThat(ground.matchedChildText()).doesNotContain("부정한 행위", "작업장소");
+		assertThat(ground.parentContextText()).contains("1. 계약 이행에 부정한 행위가 있는 경우");
+		assertThat(ground.contextPolicy()).isEqualTo("parent_context_expanded");
+		// Expansion text alone cannot establish which neighboring chunk supplied it.
+		assertThat(ground.contextChunkIds()).containsExactly(13L);
+	}
+
+	@Test
+	void preservesExplicitNeighborProvenanceWithoutReplacingMatchedText() {
+		var child = chunk(13, "제재 조건", "다음 각 호에 해당하는 경우 참가자격을 제한한다.");
+		var expanded = chunk(13, "제재 조건", child.chunkText() + "\n1. 계약 이행에 부정한 행위가 있는 경우");
+		var ground = assembler.toGrounds(List.of(expanded), Map.of("official_doc:13", child),
+			Map.of(), row -> "제재 조건", "direct", Map.of("official_doc:13", List.of(13L, 14L, 14L))).get(0);
+		assertThat(ground.matchedChildText()).isEqualTo(child.chunkText());
+		assertThat(ground.parentContextText()).contains("부정한 행위");
+		assertThat(ground.contextChunkIds()).containsExactly(13L, 14L);
+		assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> ground.contextChunkIds().add(15L)))
+			.isInstanceOf(UnsupportedOperationException.class);
+	}
+
+	@Test
+	void ignoresNeighborProvenanceWhenNoExpandedTextWasReturned() {
+		var child = chunk(13, "제재 조건", "다음 각 호에 해당하는 경우 참가자격을 제한한다.");
+		var ground = assembler.toGrounds(List.of(child), Map.of("official_doc:13", child),
+			Map.of(), row -> "제재 조건", "direct", Map.of("official_doc:13", List.of(14L))).get(0);
+		assertThat(ground.contextChunkIds()).containsExactly(13L);
+		assertThat(ground.parentContextText()).isNull();
+		assertThat(ground.contextPolicy()).isEqualTo("matched_child_only");
+	}
+
+	@Test
 	void preservesBodyHeadingAndNumberedListBoundariesForSourceScope() {
 		LawSemanticChunkRow child = chunk(12, "p.2 검토 대상",
 			"국가정보원 검토 대상에 관한 앞 문단입니다.\n문화체육관광부 검토 대상\n"

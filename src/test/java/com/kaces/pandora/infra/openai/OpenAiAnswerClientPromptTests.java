@@ -9,6 +9,72 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class OpenAiAnswerClientPromptTests {
+	@Test
+	void outputTokenExhaustionIsDiagnosedWithoutLoggingResponseData() throws Exception {
+		var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(OpenAiAnswerClient.class);
+		var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+		appender.start();
+		logger.addAppender(appender);
+		try {
+			var client = new OpenAiAnswerClient(new LawAiProperties(null, null, null, null), new ObjectMapper());
+			var method = OpenAiAnswerClient.class.getDeclaredMethod("extractOutputText", java.util.Map.class);
+			method.setAccessible(true);
+			assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> method.invoke(client, java.util.Map.of(
+				"status", "incomplete", "incomplete_details", java.util.Map.of("reason", "max_output_tokens"),
+				"output", List.of(), "private_data", "secret response content")))).isNotNull();
+			assertThat(appender.list).extracting(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage)
+				.anySatisfy(message -> assertThat(message).contains("failureType=OUTPUT_TOKEN_LIMIT"))
+				.allSatisfy(message -> assertThat(message).doesNotContain("secret response content"));
+		} finally {
+			logger.detachAppender(appender);
+			appender.stop();
+		}
+	}
+
+	@Test
+	void conditionalRewriteSendsClassificationContractAsApiInstructions() throws Exception {
+		var builder = org.springframework.web.client.RestClient.builder();
+		var server = org.springframework.test.web.client.MockRestServiceServer.bindTo(builder).build();
+		var client = new OpenAiAnswerClient(new LawAiProperties(
+			new LawAiProperties.OpenAi("test-key", null, null, null, null, 700), null, null, null),
+			new ObjectMapper());
+		org.springframework.test.util.ReflectionTestUtils.setField(client, "restClient", builder.build());
+		server.expect(org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo("/v1/responses"))
+			.andExpect(request -> {
+				String body = ((org.springframework.mock.http.client.MockClientHttpRequest) request).getBodyAsString();
+				var payload = new ObjectMapper().readTree(body);
+				assertThat(payload.path("max_output_tokens").asInt()).isEqualTo(700);
+				assertThat(payload.path("instructions").asText()).contains("대상 분류를 의무로 강화하지", "별도 확인필요 주장을 추가하지");
+				assertThat(payload.path("instructions").asText()).contains("제목과 메타 설명을 답변에 복사하지", "조건 충족 시의 대상 분류를 명확히");
+				assertThat(payload.path("instructions").asText()).contains("주어와 조건을 쉼표로 나열하지", "에 해당하면", "완전한 조건문");
+				assertThat(payload.path("input").asText()).contains("CRM 운영 사업", "국가기관 등이 발주하는 모든 SW사업");
+			})
+			.andRespond(org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess(
+				"{\"output\":[{\"content\":[{\"type\":\"output_text\",\"text\":\"조건부 대상입니다.\"}]}]}",
+				org.springframework.http.MediaType.APPLICATION_JSON));
+		assertThat(client.rewriteConditional("CRM 운영 사업도 대상인가요?",
+			List.of("적용 대상 사업은 국가기관 등이 발주하는 모든 SW사업입니다."),
+			List.of("공공소프트웨어사업 과업심의 가이드"))).isEqualTo("조건부 대상입니다.");
+		server.verify();
+	}
+
+	@Test
+	void conditionalRequestPreservesQuestionSubjectAndSourceClaimStrength() {
+		java.util.concurrent.atomic.AtomicReference<String> requestContext = new java.util.concurrent.atomic.AtomicReference<>();
+		OpenAiAnswerClient client = new OpenAiAnswerClient(
+			new LawAiProperties(null, null, null, null), new ObjectMapper()) {
+			@Override
+			protected String requestAnswer(String question, String input, int maxOutputTokens, String instructions) {
+				requestContext.set(input);
+				return "조건부 답변";
+			}
+		};
+		client.rewriteConditional("CRM 운영 사업도 대상인가요?",
+			List.of("적용 대상 사업은 국가기관 등이 발주하는 모든 SW사업입니다."),
+			List.of("공공소프트웨어사업 과업심의 가이드"));
+		assertThat(requestContext.get()).contains("질문의 사업 주체를 결론에 명시", "대상 분류를 의무로 강화하지 마세요",
+			"국가기관 등이 발주하는 모든 SW사업", "독립적인 사실 근거가 아님");
+	}
 
 	@Test
 	void groundedRewritePreservesEveryPreverifiedAtomVerbatim() {
@@ -63,6 +129,24 @@ class OpenAiAnswerClientPromptTests {
 			.contains("명시적으로 열거된 상위 항목을 빠뜨리지 말고")
 			.contains("첫 결론 문장 하나에")
 			.contains("항목명만 단독 불릿으로 나누지 마세요");
+	}
+
+	@Test
+	void preservesSanctionTriggersWithoutTurningSpecificBreachesIntoGeneralNoncompliance() throws Exception {
+		String[] captured = new String[1];
+		OpenAiAnswerClient client = new OpenAiAnswerClient(
+			new LawAiProperties(null, null, null, null), new ObjectMapper()) {
+			@Override
+			protected String requestAnswer(String question, String input, int tokens, String instructions) {
+				captured[0] = instructions;
+				return "근거에 명시된 조건만 적용합니다.";
+			}
+		};
+		client.answer("법령을 준수하지 않으면 어떤 불이익?", "다음 각 호의 어느 하나에 해당하면 입찰참가자격을 제한한다.");
+		assertThat(captured[0])
+			.contains("Preserve the exact trigger, affected party, scope, and exceptions of every sanction")
+			.contains("Do not replace missing enumerated triggers with generic noncompliance")
+			.contains("Do not generalize a consequence for a specific breach to all legal noncompliance");
 	}
 
 	@Test

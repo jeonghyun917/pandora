@@ -16,6 +16,9 @@ public class KoreanEvidenceAtomParser {
 	private static final Pattern SUBJECT = Pattern.compile(
 		"(?:^|[,.!?;；]\\s*|\\s)([\\p{IsHangul}A-Za-z0-9()·ㆍ/-]{2,}?)(?:은|는|이|가)(?=\\s)"
 	);
+	private static final Pattern COMPOUND_ROLE_SUBJECT = Pattern.compile(
+		"(?:^|[,.!?;；]\\s*|\\s)([\\p{IsHangul}A-Za-z0-9]{2,}(?:\\s+등)?의\\s*장)(?:은|는)(?=\\s)"
+	);
 	private static final Pattern OBJECT = Pattern.compile(
 		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9()·ㆍ/-]{2,}?)(?:을|를)(?=\\s|[,.!?]|$)"
 	);
@@ -36,6 +39,20 @@ public class KoreanEvidenceAtomParser {
 	private static final Pattern POST_CONDITION = Pattern.compile(
 		"([\\p{IsHangul}A-Za-z0-9]{2,}?)(?:을|를)?(?:한|한\\s*)?\\s*후"
 	);
+	private static final Pattern BEFORE_ACTION_CONDITION = Pattern.compile(
+		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9]{2,}?)\\s+전(까지)?(?:에는|에)?(?=\\s|[,.!?]|$)"
+	);
+	private static final Pattern INTENDED_OBJECT_ACTION_CONDITION = Pattern.compile(
+		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9]{2,})(?:을|를)\\s+"
+			+ "([\\p{IsHangul}A-Za-z0-9]{2,}?)하려는\\s+경우"
+	);
+	private static final Pattern MEMBERSHIP_CONDITION = Pattern.compile(
+		"(?:^|[.!?;]\\s*)([^.!?;]{2,240}?에\\s*해당)(?:하면|하는\\s*경우)(?![\\p{IsHangul}A-Za-z0-9])"
+	);
+	private static final Pattern OBJECT_ACTION_PURPOSE_CONDITION = Pattern.compile(
+		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9]{2,})(?:을|를)\\s+"
+			+ "([\\p{IsHangul}A-Za-z0-9]{2,}?)하기\\s+위하여"
+	);
 	private static final Pattern EXCEPTION = Pattern.compile("(?:다만|예외적으로)\\s*([^.!?]{2,160})");
 	private static final Pattern EXCLUDED_SCOPE = Pattern.compile(
 		"([\\p{IsHangul}A-Za-z0-9()·ㆍ/-]{2,}?)(?:은|는|이|가)?\\s*(?:대상에서)?\\s*(?:제외|비대상|면제)"
@@ -55,7 +72,7 @@ public class KoreanEvidenceAtomParser {
 		String source = Normalizer.normalize(String.valueOf(sourceText == null ? "" : sourceText), Normalizer.Form.NFKC)
 			.replaceAll("\\s+", " ")
 			.trim();
-		Set<String> subjects = matches(source, SUBJECT, 1);
+		Set<String> subjects = subjects(source);
 		Set<String> objects = matches(source, OBJECT, 1);
 		Set<String> recipients = matches(source, RECIPIENT, 1);
 		Set<String> actions = matches(source, ACTION, 1);
@@ -66,6 +83,19 @@ public class KoreanEvidenceAtomParser {
 			conditions.add(canonical(conditionMatcher.group(1) + conditionMatcher.group(2)));
 		}
 		conditions.addAll(matches(source, POST_CONDITION, 1));
+		Matcher before = BEFORE_ACTION_CONDITION.matcher(source);
+		while (before.find()) {
+			conditions.add(canonical(before.group(1) + "전" + (before.group(2) == null ? "" : before.group(2))));
+		}
+		Matcher intention = INTENDED_OBJECT_ACTION_CONDITION.matcher(source);
+		while (intention.find()) {
+			conditions.add(canonical(intention.group(1) + intention.group(2)));
+		}
+		conditions.addAll(matches(source, MEMBERSHIP_CONDITION, 1));
+		Matcher purpose = OBJECT_ACTION_PURPOSE_CONDITION.matcher(source);
+		while (purpose.find()) {
+			conditions.add(canonical(purpose.group(1) + purpose.group(2)));
+		}
 		Set<String> exceptions = matches(source, EXCEPTION, 1);
 		Set<String> scopes = new LinkedHashSet<>();
 		matches(source, EXCLUDED_SCOPE, 1).forEach(value -> scopes.add(value + "제외"));
@@ -83,6 +113,9 @@ public class KoreanEvidenceAtomParser {
 		EvidenceAtom.Polarity polarity = polarity(source, modality);
 		String normalized = canonical(source);
 		List<String> reasons = new ArrayList<>();
+		if (subjects.isEmpty() && !actions.isEmpty() && !matches(source, SUBJECT, 1).isEmpty()) {
+			reasons.add("AMBIGUOUS_SUBJECT_FORM");
+		}
 		if (DOUBLE_NEGATION.matcher(normalized).find()) {
 			reasons.add("AMBIGUOUS_DOUBLE_NEGATION");
 		}
@@ -90,7 +123,7 @@ public class KoreanEvidenceAtomParser {
 		boolean permitted = normalized.contains(canonical("할수있"))
 			|| (normalized.contains(canonical("가능")) && !normalized.contains(canonical("불가능")))
 			|| (normalized.contains(canonical("허용")) && !normalized.contains(canonical("허용되지않")));
-		if (permitted && prohibited) {
+		if (permitted && (prohibited || modality == EvidenceAtom.Modality.REQUIRED)) {
 			reasons.add("AMBIGUOUS_MIXED_MODALITY");
 		}
 		EvidenceAtom.ParseStatus status = !reasons.isEmpty()
@@ -102,6 +135,23 @@ public class KoreanEvidenceAtomParser {
 			source, subjects, objects, recipients, actions, relations, scopes, conditions,
 			exceptions, numericAnchors, modality, polarity, status, reasons
 		);
+	}
+
+	private Set<String> subjects(String source) {
+		Set<String> values = new LinkedHashSet<>(matches(source, COMPOUND_ROLE_SUBJECT, 1));
+		Matcher matcher = SUBJECT.matcher(source);
+		while (matcher.find()) {
+			String token = matcher.group().strip();
+			if (token.endsWith("하는") || token.endsWith("되는") || token.endsWith("려는")
+				|| token.endsWith("경우에는")) {
+				continue;
+			}
+			String value = canonical(matcher.group(1));
+			if (value.length() >= 2) {
+				values.add(value);
+			}
+		}
+		return values;
 	}
 
 	private Set<String> matches(String source, Pattern pattern, int group) {
@@ -135,7 +185,8 @@ public class KoreanEvidenceAtomParser {
 		if (containsAny(normalized, "할수없", "금지", "불가능", "허용되지않")) {
 			return EvidenceAtom.Modality.PROHIBITED;
 		}
-		if (containsAny(normalized, "해야", "하여야", "받아야", "의무", "필수")) {
+		if (containsAny(normalized, "해야", "하여야", "받아야", "의무", "필수")
+			|| Pattern.compile("(?:어야|아야|여야|쳐야)(?:한다|합니다)").matcher(normalized).find()) {
 			return EvidenceAtom.Modality.REQUIRED;
 		}
 		if (containsAny(normalized, "할수있", "가능", "허용")) {

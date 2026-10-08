@@ -3,11 +3,84 @@ package com.kaces.pandora.ai.answer;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.kaces.pandora.common.text.QuestionIntentProfile;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class KoreanEvidenceAtomParserTests {
 
+	@Test
+	void preservesIssuerAndBusinessClassInParenthesizedMembershipCondition() {
+		for (String ending : List.of("해당하면", "해당하는 경우")) {
+			var atom = parser.parse("온라인 운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW 포함)에 "
+				+ ending + " 과업심의 대상입니다.");
+			assertThat(atom.conditions()).as(ending).isNotEmpty();
+			assertThat(String.join("", atom.conditions())).as(ending)
+				.contains("국가기관", "발주", "sw사업", "상용sw");
+		}
+	}
+
+	@Test
+	void recognizesRequiredEoyaEndingWithoutConvertingPermissionToDuty() {
+		var parser = new KoreanEvidenceAtomParser();
+		for (String text : List.of(
+			"발주기관은 심의위원회를 두어야 한다.",
+			"발주기관은심의위원회를두어야한다.",
+			"신청인은 절차를 거쳐야 합니다."
+		)) {
+			assertThat(parser.parse(text).modality()).as(text).isEqualTo(EvidenceAtom.Modality.REQUIRED);
+		}
+		assertThat(parser.parse("발주기관은 심의위원회를 둘 수 있다.").modality())
+			.isNotEqualTo(EvidenceAtom.Modality.REQUIRED);
+		assertThat(parser.parse("발주기관은 심의를 할 수 있다.").modality())
+			.isEqualTo(EvidenceAtom.Modality.PERMITTED);
+	}
+
 	private final KoreanEvidenceAtomParser parser = new KoreanEvidenceAtomParser();
+
+	@Test
+	void explicitBeforeActionTimingRemainsACondition() {
+		assertThat(parser.parse("발주기관은 발주 전에 자료를 통지해야 한다.").conditions()).contains("발주전");
+		assertThat(parser.parse("신청인은 제출 전까지 자료를 확인해야 한다.").conditions()).contains("제출전까지");
+		assertThat(parser.parse("발주기관은 발주 후 자료를 통지해야 한다.").conditions()).doesNotContain("발주전");
+	}
+
+	@Test
+	void explicitObjectActionPurposeRemainsACondition() {
+		assertThat(parser.parse("국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 과업심의위원회의 심의를 받아야 한다.").conditions())
+			.contains("과업내용확정");
+		assertThat(parser.parse("발주기관은 사업계획을 변경하기 위하여 자료를 통지해야 한다.").conditions())
+			.contains("사업계획변경");
+	}
+
+	@Test
+	void institutionHeadIsAnActorAndIntentClauseIsNotAnActor() {
+		var atom = parser.parse("국가기관등의 장은 소프트웨어사업의 과업내용을 확정하려는 경우에는 과업심의위원회의 심의ㆍ의결을 거쳐야 한다.");
+		assertThat(atom.subjects()).containsExactly("국가기관등의장");
+		assertThat(parser.parse("지방자치단체의 장은 사업을 추진하려는 경우에는 신고해야 한다.").subjects())
+			.containsExactly("지방자치단체의장");
+	}
+
+	@Test
+	void intendedObjectActionRemainsAnExplicitCondition() {
+		var atom = parser.parse("국가기관등의 장은 소프트웨어사업의 과업내용을 확정하려는 경우에는 과업심의위원회의 심의ㆍ의결을 거쳐야 한다.");
+		assertThat(atom.conditions()).contains("과업내용확정");
+		assertThat(parser.parse("국가기관등의 장은 과업심의위원회의 심의ㆍ의결을 거쳐야 한다.").conditions())
+			.doesNotContain("과업내용확정");
+		assertThat(parser.parse("국가기관등의 장은 사업계획을 변경하려는 경우에는 신고해야 한다.").conditions())
+			.contains("사업계획변경").doesNotContain("과업내용확정");
+		assertThat(parser.parse("국가기관등의 장은 과업내용을 확정하지 않으려는 경우에는 신고해야 한다.").conditions())
+			.doesNotContain("과업내용확정");
+	}
+
+	@Test
+	void issuerRelativeVerbDoesNotCreateAnActor() {
+		EvidenceAtom atom = parser.parse("적용 대상 사업은 국가기관 등이 발주하는 모든 SW사업(상용SW포함)입니다.");
+		assertThat(atom.subjects()).contains("사업").doesNotContain("발주하");
+		assertThat(parser.parse("담당자는 수행하는 사업의 요건을 확인해야 한다.").subjects())
+			.containsExactly("담당자");
+		assertThat(parser.parse("민간인은 등록되는 사업을 확인해야 한다.").subjects())
+			.containsExactly("민간인");
+	}
 
 	@Test
 	void extractsActorActionConditionAndRequiredModality() {

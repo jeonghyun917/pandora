@@ -558,7 +558,7 @@
         ELSE doc.document_type
       END AS categoryName,
       doc.published_date AS sourceDate,
-      NULL AS effectiveStatus,
+      CAST(NULL AS CHAR) AS effectiveStatus,
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
       c.chunk_text AS chunkText,
@@ -569,7 +569,10 @@
       c.content_hash AS contentHash,
       c.parent_section_title AS parentSectionTitle,
       c.section_type AS sectionType,
-      c.quality_status AS qualityStatus
+      c.quality_status AS qualityStatus,
+      CAST(NULL AS CHAR) AS embeddingText,
+      CAST(NULL AS CHAR) AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM rag_document_chunks c
     JOIN rag_documents doc ON doc.document_id = c.document_id
     WHERE c.chunk_id IN
@@ -634,7 +637,7 @@
         ELSE doc.document_type
       END AS categoryName,
       doc.published_date AS sourceDate,
-      NULL AS effectiveStatus,
+      CAST(NULL AS CHAR) AS effectiveStatus,
       c.chunk_no AS chunkNo,
       c.chunk_title AS chunkTitle,
       c.chunk_text AS chunkText,
@@ -645,7 +648,10 @@
       c.content_hash AS contentHash,
       c.parent_section_title AS parentSectionTitle,
       c.section_type AS sectionType,
-      c.quality_status AS qualityStatus
+      c.quality_status AS qualityStatus,
+      CAST(NULL AS CHAR) AS embeddingText,
+      CAST(NULL AS CHAR) AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM rag_document_chunks c
     JOIN rag_documents doc ON doc.document_id = c.document_id
     WHERE c.document_id = #{documentId}

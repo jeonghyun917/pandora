@@ -16,6 +16,364 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
+	@Test
+	void expandedContextPreservesSourceVersionAndQualityMetadata() throws Exception {
+		var original = new LawSemanticChunkRow(12003L, 20L, "official_doc", "20", "계약 지침",
+			"", "", "20260101", "CURRENT", "25", "제76조", "원문",
+			25, "", "", 25, "source-hash", "제76조", "exception", "REVIEW",
+			"embedding input", "article-76", 4);
+		var service = service();
+		try {
+			Method copy = LawAiAnswerService.class.getDeclaredMethod("copyWithChunkText", LawSemanticChunkRow.class, String.class);
+			copy.setAccessible(true);
+			var expanded = (LawSemanticChunkRow) copy.invoke(service, original, "확장 원문");
+			assertThat(expanded.qualityStatus()).isEqualTo("REVIEW");
+			assertThat(expanded.chunkVersion()).isEqualTo(4);
+			assertThat(expanded.parentKey()).isEqualTo("article-76");
+			assertThat(expanded.embeddingText()).isEqualTo("embedding input");
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
+	void parentContextDoesNotMixKnownSourceVersions() throws Exception {
+		var original = new LawSemanticChunkRow(12101L, 20L, "official_doc", "20", "계약 지침",
+			"", "", "20260101", "CURRENT", "25", "제76조", "제76조(계약 조건) 원문 조건",
+			25, "", "", 25, "original", "제76조", "exception", "PASS", null, null, 4);
+		var otherVersion = new LawSemanticChunkRow(12102L, 20L, "official_doc", "20", "계약 지침",
+			"", "", "20260101", "CURRENT", "26", "제76조", "다른 버전의 계약 조건에 따라 계약상대자는 승인 없이 하도급하여서는 안 된다.",
+			26, "", "", 26, "other-version", "제76조", "exception", "PASS", null, null, 5);
+		var sameVersion = new LawSemanticChunkRow(12103L, 20L, "official_doc", "20", "계약 지침",
+			"", "", "20260101", "CURRENT", "26", "제76조", "동일 버전의 계약 조건에 따라 계약상대자는 승인 없이 하도급하여서는 안 된다.",
+			26, "", "", 26, "same-version", "제76조", "exception", "PASS", null, null, 4);
+		var service = service();
+		try {
+			Method enrich = LawAiAnswerService.class.getDeclaredMethod("enrichChunkWithParentContext",
+				LawSemanticChunkRow.class, List.class, String.class);
+			enrich.setAccessible(true);
+			var expanded = (LawSemanticChunkRow) enrich.invoke(service, original,
+				List.of(original, otherVersion), "계약 조건은?");
+			assertThat(expanded.chunkText()).contains("원문 조건").doesNotContain("다른 버전");
+			var validExpansion = (LawSemanticChunkRow) enrich.invoke(service, original,
+				List.of(original, sameVersion), "계약 조건은?");
+			assertThat(validExpansion.chunkText()).contains("원문 조건", "동일 버전");
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
+	void parentContextDoesNotMixDocumentsWithTheSameHeading() throws Exception {
+		var original = new LawSemanticChunkRow(12201L, 20L, "official_doc", "20", "계약 지침",
+			"", "", "20260101", "CURRENT", "25", "제76조", "제76조(계약 조건) 원문 조건",
+			25, "", "", 25, "original", "제76조", "exception", "PASS", null, null, 4);
+		var otherDocument = new LawSemanticChunkRow(12202L, 21L, "official_doc", "21", "다른 계약 지침",
+			"", "", "20260101", "CURRENT", "26", "제76조", "다른 문서의 계약 조건에 따라 계약상대자는 승인 없이 하도급하여서는 안 된다.",
+			26, "", "", 26, "other-document", "제76조", "exception", "PASS", null, null, 4);
+		var service = service();
+		try {
+			Method enrich = LawAiAnswerService.class.getDeclaredMethod("enrichChunkWithParentContext",
+				LawSemanticChunkRow.class, List.class, String.class);
+			enrich.setAccessible(true);
+			var expanded = (LawSemanticChunkRow) enrich.invoke(service, original,
+				List.of(original, otherDocument), "계약 조건은?");
+			assertThat(expanded.chunkText()).contains("원문 조건").doesNotContain("다른 문서");
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
+	void clippedParentContextReportsOnlySourcesWhoseBodyRemains() throws Exception {
+		var first = chunk(12301L, "official_doc", "계약 지침", "계약 조건", "계약 조건의 원문입니다. ".repeat(250));
+		var outside = chunk(12302L, "official_doc", "계약 지침", "후행 조건", "후행 조건은 별도 문서 절차를 따른다.");
+		var service = service();
+		try {
+			Method build = LawAiAnswerService.class.getDeclaredMethod("buildParentContextTextResult",
+				LawSemanticChunkRow.class, List.class, String.class);
+			build.setAccessible(true);
+			Object result = build.invoke(service, first, List.of(first, outside), "계약 조건");
+			Method ids = result.getClass().getDeclaredMethod("chunkIds");
+			ids.setAccessible(true);
+			assertThat((List<Long>) ids.invoke(result)).containsExactly(12301L);
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
+	void normalizedParentContextKeepsProvenanceForBodyVisibleAfterCleanup() throws Exception {
+		String seed = "자료\n를 제출한다.\n".repeat(20);
+		String firstText = seed + "가".repeat(2796 - seed.length());
+		var first = new LawSemanticChunkRow(12401L, 1L, "official_doc", "1", "계약 지침",
+			"", "", "20260101", "CURRENT", "1", "", firstText, 1, "", "", 1, "first", "", "requirement", "PASS", null, null, 4);
+		var second = new LawSemanticChunkRow(12402L, 1L, "official_doc", "1", "계약 지침",
+			"", "", "20260101", "CURRENT", "2", "", "후행 조건의 원문", 2, "", "", 2, "second", "", "requirement", "PASS", null, null, 4);
+		var service = service();
+		try {
+			Method build = LawAiAnswerService.class.getDeclaredMethod("buildParentContextTextResult", LawSemanticChunkRow.class, List.class, String.class);
+			build.setAccessible(true);
+			Object result = build.invoke(service, first, List.of(first, second), "자료");
+			Method ids = result.getClass().getDeclaredMethod("chunkIds");
+			ids.setAccessible(true);
+			assertThat(ids.invoke(result)).isEqualTo(List.of(12401L, 12402L));
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
+	void splitEnumeratedTriggerRecoversOnlyItsAdjacentConditions() throws Exception {
+		var introduction = new LawSemanticChunkRow(12001L, 20L, "official_doc", "20", "계약 지침",
+			"", "", "20260101", "CURRENT", "25", "제76조",
+			"제76조(참가자격 제한) 다음 각 호에 해당하는 자에게 참가자격을 제한한다.",
+			25, "", "", 25, "introduction", "제76조(참가자격 제한)", "exception", "PASS", null, null, 4);
+		var continuation = new LawSemanticChunkRow(12002L, 20L, "official_doc", "20", "계약 지침",
+			"", "", "20260101", "CURRENT", "26", "1. 계약 이행",
+			"1. 계약 이행에 부정한 행위가 있는 자\n2. 승인 없이 하도급한 자\n"
+				+ "③\n하도급대금 지급확인에 따라 대금 지급내역을 통보한다.\n"
+				+ "제77조(작업장소) 작업장소는 협의하여 정한다.",
+			26, "", "", 26, "continuation", "1. 계약 이행", "exception", "PASS", null, null, 4);
+		var service = service();
+		try {
+			Method enrich = LawAiAnswerService.class.getDeclaredMethod("enrichChunkWithParentContext",
+				LawSemanticChunkRow.class, List.class, String.class);
+			enrich.setAccessible(true);
+			var expanded = (LawSemanticChunkRow) enrich.invoke(service, introduction,
+				List.of(introduction, continuation), "승인 없이 하도급하면 참가자격 제한 대상인가?");
+			assertThat(expanded.chunkText()).contains("1. 계약 이행에 부정한 행위가 있는 자", "2. 승인 없이 하도급한 자");
+			assertThat(expanded.chunkText()).doesNotContain("대금 지급내역", "제77조", "작업장소는 협의");
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
+	void adjacentEnumerationFailsClosedWhenContinuityOrBoundaryIsUnproven() throws Exception {
+		var base = enumerationRow(12501L, 20L, 25, 4,
+			"제76조 다음 각 호에 해당하는 자에게 참가자격을 제한한다.");
+		var valid = enumerationRow(12502L, 20L, 26, 4,
+			"1. 계약 이행에 부정한 행위가 있는 자\n2. 승인 없이 하도급한 자\n③\n별개 의무");
+		var service = service();
+		try {
+			Method recover = LawAiAnswerService.class.getDeclaredMethod("adjacentEnumeratedContinuation",
+				LawSemanticChunkRow.class, List.class);
+			recover.setAccessible(true);
+			assertThat(recover.invoke(service, base, List.of(base, valid))).isNotNull();
+			for (var invalid : List.of(
+				enumerationRow(12502L, 21L, 26, 4, valid.chunkText()),
+				enumerationRow(12502L, 20L, 27, 4, valid.chunkText()),
+				enumerationRow(12502L, 20L, 26, 5, valid.chunkText()),
+				enumerationRow(12502L, 20L, 26, null, valid.chunkText()),
+				enumerationRow(12502L, 20L, 26, 4, "1. 계약 이행에 부정한 행위가 있는 자\n3. 승인 없이 하도급한 자\n③"),
+				enumerationRow(12502L, 20L, 26, 4, "1. 계약 이행에 부정한 행위가 있는 자\n2. 승인 없이 하도급한 자"))) {
+				assertThat(recover.invoke(service, base, List.of(base, invalid))).isNull();
+			}
+			assertThat(recover.invoke(service, enumerationRow(12501L, 20L, 25, null, base.chunkText()),
+				List.of(valid))).isNull();
+			assertThat(recover.invoke(service, base, List.of(valid,
+				enumerationRow(12503L, 20L, 26, 4, valid.chunkText())))).isNull();
+		} finally { service.shutdownExecutors(); }
+	}
+
+	private LawSemanticChunkRow enumerationRow(long id, long document, int sort, Integer version, String text) {
+		return new LawSemanticChunkRow(id, document, "official_doc", Long.toString(document), "계약 지침",
+			"", "", "20260101", "CURRENT", Integer.toString(sort), "", text,
+			sort, "", "", sort, "enumeration" + id, "", "exception", "PASS", null, null, version);
+	}
+
+	@Test
+	void adjacentEnumerationRejectsUnnumberedContentAndIntroductionBoundary() throws Exception {
+		var base = enumerationRow(12701L, 20L, 25, 4,
+			"제76조 다음 각 호에 해당하는 자에게 참가자격을 제한한다.");
+		var next = enumerationRow(12702L, 20L, 26, 4,
+			"1. 승인 없이 하도급한 자\n작업장소는 계약당사자가 협의하여 정한다.\n③ 대금 지급 확인");
+		var service = service();
+		try {
+			Method recover = LawAiAnswerService.class.getDeclaredMethod("adjacentEnumeratedContinuation", LawSemanticChunkRow.class, List.class);
+			recover.setAccessible(true);
+			assertThat(recover.invoke(service, base, List.of(next))).isNull();
+			var crossed = enumerationRow(12701L, 20L, 25, 4, base.chunkText() + "\n제77조 제출서류");
+			var documents = enumerationRow(12702L, 20L, 26, 4, "1. 신청서\n2. 증명서\n③ 처리 절차");
+			assertThat(recover.invoke(service, crossed, List.of(documents))).isNull();
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void recoveredEnumerationReachesGroundWithBothSourceIdsAndOriginalMatchedText() throws Exception {
+		var base = enumerationRow(12601L, 20L, 25, 4,
+			"제76조 다음 각 호에 해당하는 자에게 참가자격을 제한한다.");
+		var next = enumerationRow(12602L, 20L, 26, 4,
+			"1. 계약 이행에 부정한 행위가 있는 자\n2. 승인 없이 하도급한 자\n③\n대금 지급내역을 통보한다.");
+		var mapper = org.mockito.Mockito.mock(RagDocumentMapper.class);
+		org.mockito.Mockito.when(mapper.findSemanticContextChunks(org.mockito.ArgumentMatchers.eq(20L),
+			org.mockito.ArgumentMatchers.eq(25), org.mockito.ArgumentMatchers.anyInt())).thenReturn(List.of(base, next));
+		var service = service(null, mapper);
+		try {
+			Method enrich = LawAiAnswerService.class.getDeclaredMethod("enrichWithParentContextInternal", List.class, String.class);
+			enrich.setAccessible(true);
+			Object result = enrich.invoke(service, List.of(base), "승인 없이 하도급하면 참가자격 제한 대상인가?");
+			Method rows = result.getClass().getDeclaredMethod("chunks");
+			Method ids = result.getClass().getDeclaredMethod("contextChunkIdsByKey");
+			rows.setAccessible(true); ids.setAccessible(true);
+			var ground = new ParentContextAssembler().toGrounds(
+				(List<LawSemanticChunkRow>) rows.invoke(result), Map.of("official_doc:12601", base), Map.of(),
+				row -> row.chunkText(), "direct", (Map<String, List<Long>>) ids.invoke(result)).get(0);
+			assertThat(ground.matchedChildText()).isEqualTo(base.chunkText());
+			assertThat(ground.parentContextText()).contains("1. 계약 이행", "2. 승인 없이").doesNotContain("지급내역", "③");
+			assertThat(ground.contextChunkIds()).containsExactly(12601L, 12602L);
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
+	void judgePreservesAnchoredRuleWhenDirectScopesExceedServiceLimit() {
+		var scopes = java.util.stream.LongStream.range(9980L, 10000L).mapToObj(id ->
+			new LawSemanticChunkRow(id, 1L, "official_doc", "1", "공공소프트웨어사업 과업심의 가이드",
+				"", "", "20260101", "CURRENT", "page 5", "적용 대상 사업",
+				"적용 대상 사업\n국가기관 등이 발주하는 모든 SW사업(상용SW포함)\n소프트웨어의 개발, 제작, 생산, 유통, 운영 및 유지·관리 등과 그 밖에 소프트웨어와 관련된 서비스를 제공하는 산업과 관련된 경제활동\n단순 H/W 도입·설치와 같이 소프트웨어사업으로 볼 수 없는 경우는 비대상",
+				5, "", "", 4, "scope" + id, "적용 대상 사업", "target_scope")).toList();
+		var rule = chunk(10001L, "official_doc", "소프트웨어사업관련 법령준수", "법적 근거",
+			"국가기관등의 장은 소프트웨어사업의 과업내용의 확정을 심의하기 위하여 과업심의위원회를 두어야 한다.");
+		var candidates = new java.util.ArrayList<LawSemanticChunkRow>(scopes);
+		candidates.add(rule);
+		var result = new EvidenceJudge().judge("SNS운영 사업도 과업심의 받아야해?", candidates, Map.of(), 15);
+		assertThat(result.chunks()).contains(rule);
+	}
+
+	@Test
+	void intentPreservationKeepsAnchoredRuleWithinCrowdedScopeBudget() throws Exception {
+		var scopes = java.util.stream.LongStream.range(9960L, 9970L)
+			.mapToObj(id -> chunk(id, "official_doc", "공공소프트웨어사업 과업심의 가이드", "적용 대상 사업",
+				"적용 대상 사업\n국가기관 등이 발주하는 모든 SW사업(상용SW포함)\n- 소프트웨어의 개발, 제작, 생산, 유통, 운영 및 유지·관리 등과 그 밖에 소프트웨어와 관련된 서비스를 제공하는 산업과 관련된 경제활동\n※ 단순 H/W 도입·설치와 같이 소프트웨어사업으로 볼 수 없는 경우는 비대상"))
+			.toList();
+		var rule = chunk(9971L, "official_doc", "소프트웨어사업관련 법령준수", "법적 근거",
+			"국가기관등의 장은 소프트웨어사업의 과업내용의 확정을 심의하기 위하여 과업심의위원회를 두어야 한다. 위원 기피 여부를 의결한다.");
+		var candidates = new java.util.ArrayList<LawSemanticChunkRow>(scopes);
+		candidates.add(rule);
+		String question = "SNS운영 사업도 과업심의 받아야해?";
+		var judged = new EvidenceJudge.Result(candidates, Map.of(), true, true, true, true,
+			10, 10, 10, "direct");
+		var service = service();
+		try {
+			var preserved = preserveIntentDirectEvidenceChunks(service, judged, candidates, question).chunks();
+			assertThat(preserved).hasSizeLessThanOrEqualTo(8);
+			assertThat(preserved).anyMatch(item -> item.chunkId() == rule.chunkId());
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
+	void scopePreservationStillExcludesCommitteeOperationOnlyEvidence() throws Exception {
+		var scope = chunk(9951L, "official_doc", "공공소프트웨어사업 과업심의 가이드", "적용 대상 사업",
+			"적용 대상 사업은 국가기관 등이 발주하는 모든 SW사업이다.");
+		var service = service();
+		try {
+			for (String body : List.of("과업심의위원회는 위원 기피 여부를 의결한다.",
+				"민간기업의 장은 소프트웨어사업 과업심의위원회를 두어야 한다. 과업내용의 확정. 위원 기피 여부를 의결한다.",
+				"국가기관등의 장은 소프트웨어사업 과업심의위원회를 두어야 한다는 규정은 적용되지 않는다. 과업내용의 확정. 위원 기피 여부를 의결한다.")) {
+				var operation = chunk(9952L, "official_doc", "과업심의위원회 운영", "운영", body);
+				var judged = new EvidenceJudge.Result(List.of(scope, operation), Map.of(), true, true, true, true, 1, 1, 1, "direct");
+				assertThat(preserveIntentDirectEvidenceChunks(service, judged, List.of(scope, operation),
+					"SNS운영 사업도 과업심의 받아야해?").chunks()).contains(scope).doesNotContain(operation);
+			}
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
+	void intentPreservationDoesNotDiscardScopeAnchoredCommitteeRule() throws Exception {
+		var scope = new LawSemanticChunkRow(9901L, 9901L, "official_doc", "9901",
+			"공공소프트웨어사업 과업심의 가이드", "", "", "20260101", "CURRENT", "page 5", "p.5 적용 대상 사업",
+			"적용 대상 사업\n국가기관 등이 발주하는 모든 SW사업(상용SW포함)\n- \u0007소프트웨어의 개발, 제작, 생산, 유통, 운영 및 유지·관리 등과 그 밖에 소프트웨어와 관련된 서비스\n를 제공하는 산업과 관련된 경제활동(‘소프트웨어 진흥법’제2조)\n※ \u0007단순 H/W(Appliance 포함) 도입·설치, 단순 동영상 제작, 네트워크 등 인프라 수수료와 같이 소프트웨어사\n업으로 볼 수 없는 경우는 비대상",
+			5, "", "", 1, "hash9901", "적용 대상 사업", "target_scope");
+		var rule = chunk(9902L, "official_doc", "소프트웨어사업관련 법령준수", "요구사항 상세화",
+			"14. 요구사항 상세화\n15. SW사업 적정 사업기간 산정\n16. 투입인력 요구 및 관리 금지\n17. SW사업 영향평가\n18. SW사업정보 제출\n* 주1) 범례 : ○ (수용), X (수용불가), △ (일부 수용)\n* 주2) 각 개선권고 항목별 조치내용 또는 수용불가 사유를 명확하게 기재\n* 처리결과 통보는 개선권고 된 항목에 대해서만 기재하며, 미 개선권고항목은 제외 가능\n법령준수 개선권고 주요항목\n소프트웨어사업관련 법령준수 개선권고 세부사항 및 법적 근거\n법령준수 개선권고 주요항목\n[해당없음]\n1. 과업심의위원회\n권고\n내용\nㅇ\n(검토결과)\n귀 기관이 발주한 사업은\n과업 확정시 과\n업심의위원회 개최 여부\n및\n과업 내용 변경에 따른\n계약금액ㆍ계약기간 조정이 필요한 경우 소프트웨어사업 과업변경요청서를 작성하여 제출하여야 함을 명시하지 않았\n습니다.\nㅇ (개선권고)\n소프트웨어 진흥법 제50조에 따라\n과업내용 확정을 위한 과업심의원회 개최여부\n와\n과업내용 변경에 따른\n계약금액ㆍ계약기간 조정이 필요한 경우 소프트웨어사업 과업변경요청서를 작성하여 제출하여야 함\n을\n< 제안요청서 작성 예시 >\n를 참조하여\n명시\n하시기 바랍니다.\n<\n제안요청서 작성 예시\n>\n( 작성 예시 2개 모두 명시하여야 함 )\nㅇ\n(과업내용 확정 심의 여부)\n본 사업은 「소프트웨어 진흥법」 제50조에 따른 과업내용 확정을 위하여 과업\n심의위원회를\n( )개최 또는 ( )미개최\n한 사업임\n※ 위 괄호 내 해당사항에 체크(\n✔)\n표시\n( 계약체결 전까지 개최 예정시는 미개최에 ✔\n표시\n)\nㅇ\n(과업내용 변경)\n본 사업은 「소프트웨어 진흥법」 제50조, 같은 법 시행령 제47조 제1항 제2호, 제3호에 따른 과업내용 변경 및 그에 따른 계약금액·계약기간 조정이 필요한 경우, 계약상대자는 국가기관등의 장에게 소프트웨어사업 과업변경요청서*를 제출하여\n과업심의위원회 개최를 요청할 수 있으며\n, 국가기관등의 장은 과업심의위원회 개최요청에 대해서 특별한 사정이 없으면 수용해야 함 * 「소프트웨어사업 계약 및 관리감독에 관한 지침」 별지 13호서식 참조\n대상\n사업\nㅇ\nSW\n사업\n법적\n근거\n소프트웨어 진흥법\n제50조(소프트웨어사업 과업심의위원회)\n① 국가기관등의 장은 소프트웨어사업의 추진에 관한 다음 각 호의 사항을 심의하기 위하여 소프트웨어사업 과업심의위원회(이하 “과업심의위원회”라 한다)를 두어야 한다.\n1. 과업내용의 확정\n2. 과업내용 변경의 확정 및 이에 따른 계약금액·계약기간 조정\n② 국가기관등의 장은 특별한 사정이 없으면 제1항에 따른 심의결과를 계약 등에 반영하여야 한다.\n③ 국가기관등의 장과 소프트웨어사업의 계약을 체결한 사업자는 과업내용 변경으로 인한 계약내용 변경이 필요한 경우 국가기관등의 장에게 과업심의위원회의 개최를 요청할 수 있다. 이 경우 국가기관등의 장은 특별한 사정이 없으면 요청을 수용하여야 한다.\n④ 제1항 및 제3항에 따른 과업심의위원회의 구성ㆍ운영, 과업내용의 확정ㆍ변경 및 개최 요청 절차 등에 관하여 필요한 사항은 대통령령으로 정한다.\n소프트웨어 진흥법 시행령\n제46조(과업심의위원회의 운영 등)\n① ~ ③ (생략)\n④ 과업심의위원회가 심의ㆍ의결하는 안건의 당사자는 위원에게 공정한 심의ㆍ의결을 기대하기 어려운 사정이 있는 경우 과업심의위원회에 해당 위원에 대한 기피(忌避)를 신청할 수 있고, 과업심의위원회는 의결로 기피 여부를 결정한다. 이 경우 기피 신청의 대상인 위원은 그 의결에 참여할 수 없다.");
+		var neighbor = chunk(9903L, "official_doc", "소프트웨어사업관련 법령준수", "요구사항 상세화",
+			"14. 요구사항 상세화\n・SW 진흥법 제44조(SW사업의 과업범위) 등 관련법령\n15. SW사업 적정 사업기간 산정\n・\nSW 진흥법 제45조(적정 사업기간의 산정 등) 관련 법령\n16. 투입인력 요구 및 관리 금지\n・SW사업 계약 및 관리감독에 관한 지침 제11조(제안\n요청서 준비)제3항, 제18조(사업관리)제3항 등 관련법령\n17. SW사업 영향평가\n・SW 진흥법 제43조(SW사업 영향평가) 등 관련법령\n18. SW 사업정보 제출\n・SW 진흥법 제46조(적정 대가 지급 등) 등 관련법령\n* 주1) 범례 : √ (미준수 또는 미적용) /\n* 주2) 각 항목별 세부 권고사항 및 관련 법령은 별첨 참고\n*\n문의처 : 정보통신산업진흥원 SW수발주제도상담센터 02-2188-6938 이상욱 전문위원\nmonitor@nipa.kr\n*\n안내 : 주요항목을 Click하면 해당 Page로 이동되며, 각 Page에서 ‘항목’을 Click하면 복귀됩니다.\n<붙임2>\n소프트웨어사업관련 법령준수 개선권고 처리결과 통보양식\n기 관 명\n사 업 명\n사 업 금 액\n담당부서\n법령준수 개선권고 주요항목\n권고수용여부\n주1)\n개선권고 관련 수용조치 결과 또는 미수용 사유\n주2)\n1. 과업심의위원회\n2. 상용SW 직접구매 및\nSW품질성능 평가시험(BMT)\n3. 중소 SW사업자의 사업 참여 지원\n4. 하도급 제도\n5. SW사업 작업장소(원격개발)\n6. SW사업 산출물 활용 보장\n7. 개발SW의 공동활용 사전명시\n8. 하자담보 책임기간 및 범위\n9. 특정규격 명시 금지\n10. 협상에 의한 계약 방식 적용\n(또는 경쟁적 대화에 의한 계약방식)\n11. 기술능력 평가비중(90%) 도입\n12. SW기술성 평가기준 적용\n13. SW사업 제안서 보상");
+		var judged = new EvidenceJudge.Result(List.of(scope, rule), Map.of(), true, true, true, true, 1, 1, 1, "direct");
+		var service = service();
+		try {
+			Method enrich = LawAiAnswerService.class.getDeclaredMethod("enrichChunkWithParentContext",
+				LawSemanticChunkRow.class, List.class, String.class);
+			enrich.setAccessible(true);
+			String question = "SNS운영 사업도 과업심의 받아야해?";
+			scope = contextMetadata(scope, 1L, 4);
+			rule = contextMetadata(rule, 20L, 6);
+			neighbor = contextMetadata(neighbor, 20L, 5);
+			Method copy = LawAiAnswerService.class.getDeclaredMethod("copyWithChunkText", LawSemanticChunkRow.class, String.class);
+			copy.setAccessible(true);
+			rule = (LawSemanticChunkRow) copy.invoke(service, rule,
+				"RAG_SOURCE_TYPE: official_ministry_document\nDOCUMENT_TITLE: 소프트웨어사업관련+법령준수\nPARENT_SECTION: 요구사항 상세화\nCHUNK_SECTION: 요구사항 상세화\nSECTION_TYPE: requirement\nSOURCE_PAGE: 2\nANSWER_GUARDRAIL: Use this chunk only when the user question matches the document title, section, and body. Prefer explicit statements in BODY over inferred meaning.\nBODY:\n" + rule.chunkText());
+			var enrichedScope = (LawSemanticChunkRow) enrich.invoke(service, scope, List.of(scope), question);
+			var checklistNeighbor = chunk(9905L, "official_doc", "소프트웨어사업관련+법령준수", "요구사항 상세화",
+				"13. 요구사항 상세화\n법령준수여부\n주1)\n개선권고 관련 법적 근거\n주2)\n1. 과업심의위원회\n・\nSW 진흥법 제50조(SW사업 과업심의위원회) 등 관련 법령\n2. 상용SW 직접구매 및 SW품질성능 평가시험(BMT)\nSW품질성능 평가시험(BMT)\n・\nSW 진흥법 제54조(국가기관등의 상용SW 구매) 제2항,\n제55조(상용SW 품질성능 평가시험) 등 관련 법령\n3. 중소 SW사업자의 사업 참여 지원\n√\n・\nSW 진흥법 제48조(중소SW사업자의 사업참여 지원) 등 관련법령\n・중소 SW사업자의 사업 참여 지원에 관한 지침\n4. 하도급 제도\n・SW 진흥법 제51조(하도급 제한 등) 등 관련 법령\n5. SW사업 작업장소(원격개발)\n・\nSW 진흥법 제49조(국가기관등의 SW사업 계약 등) 제3항\n・\nSW사업 계약 및 관리감독에 관한 지침 제14조(작업장소 등)\n등 관련법령\n6. SW사업 산출물 활용 보장\n・국유재산법 제65조의12(저작권의 귀속 등)\n・\nSW진흥법 제59조(SW 산출물의 활용 보장) 등 관련법령\n7. 개발SW의 공동활용 사전명시\n・(계약예규) 용역계약일반조건 제56조\n(계약목적물의 지식재산권 귀속 등) 등 관련법령\n8. 하자담보 책임기간 및 범위\n・SW 진흥법 제60조(SW사업의 하자담보책임)\n・\n(계약예규) 용역계약일반조건 제58조(하자보수 등) 등 관련법령\n9. 특정규격 명시 금지\n・(계약예규)정부입찰・계약집행기준 제5조(제한기준) 제4항제5호 등 관련법령\n10. 협상에 의한 계약 방식 적용\n(또는 경쟁적 대화에 의한 계약방식)\n・\nSW 진흥법 제49조(국가기관등의 SW사업 계약) 제1항\n등 관련법령\n11. 기술능력 평가비중(90%) 도입\n・행정기관 및 공공기관 정보시스템 구축・운영지침 제18조(평가배점) 등 관련법령\n12. SW기술성 평가기준 적용\n・\nSW 진흥법 제49조(국가기관등의 SW사업 계약 등) 제2항\n・SW 기술성 평가기준 지침 등 관련법령\n13. SW사업 제안서 보상\n・\nSW 진흥법 제52조(SW사업 제안서 보상) 등 관련법령");
+			checklistNeighbor = contextMetadata(checklistNeighbor, 20L, 4);
+			var enrichedRule = (LawSemanticChunkRow) enrich.invoke(service, rule,
+				List.of(checklistNeighbor, neighbor, rule), question);
+			var operationCandidate = chunk(9904L, "official_doc", "공공소프트웨어사업 과업심의 가이드(2022. 12.)",
+				"SW사업 과업심의위원회의 운영 및 제척요건",
+				"위원은 제척 사유에 해당하는 경우 스스로 해당 안건의 심의·의결에서 회피해야 함. 발주기관에 소속되는 위원 중 해당 사업과 직접 이해관계에 해당하는 사업 부서에 소속된 위원은 회피해야 함.");
+			var enrichedJudged = new EvidenceJudge().judge(question,
+				List.of(operationCandidate, enrichedRule, enrichedScope),
+				Map.of("official_doc:9901", 32.857, "official_doc:9902", 13.0937641), 30);
+			assertThat(enrichedJudged.chunks()).contains(enrichedScope, enrichedRule);
+			var preserved = preserveIntentDirectEvidenceChunks(service, enrichedJudged,
+				List.of(operationCandidate, enrichedRule, enrichedScope), question).chunks();
+			assertThat(preserved).contains(enrichedScope);
+			assertThat(preserved).filteredOn(item -> item.chunkId() == enrichedRule.chunkId()).singleElement()
+				.satisfies(item -> assertThat(item.chunkText()).contains("국가기관등의장은", "1.과업내용의확정")
+					.doesNotContain("기피", "개선권고", "작성예시"));
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
+	void committeeGenitiveIsNotMeetingOperationNoise() throws Exception {
+		var service = service();
+		try {
+			Method method = LawAiAnswerService.class.getDeclaredMethod("isProjectReviewCommitteeOperationNoise", String.class);
+			method.setAccessible(true);
+			assertThat((boolean) method.invoke(service, "과업심의위원회의 심의를 받아야 한다.")).isFalse();
+			for (String text : List.of("과업심의위원회 회의 운영", "과업심의위원회의 회의 운영", "과업심의위원회는 위원 기피 여부를 의결한다.")) {
+				assertThat((boolean) method.invoke(service, text)).as(text).isTrue();
+			}
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
+	void intentPreservationKeepsExplicitConfirmationProcedureAndItsExceptionOnly() throws Exception {
+		var scope = chunk(9911L, "official_doc", "공공소프트웨어사업 과업심의 가이드", "적용 대상 사업",
+			"적용 대상 사업은 국가기관 등이 발주하는 모든 SW사업이다.");
+		String paragraph = "① 국가기관등의 장은 영 제47조제1항제1호에 따라 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다. 다만, 사업수행일정 부족 등 불가피한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		var mixed = contextMetadata(chunk(9912L, "official_doc", "소프트웨어사업 계약 및 관리감독에 관한 지침", "과업내용 확정",
+			"제25조(과업내용의 확정 시기 및 기준 등)\n" + paragraph + "\n④ 과업심의위원회는 위원 기피 여부를 의결한다."), 20L, 4);
+		var judged = new EvidenceJudge.Result(List.of(scope, mixed), Map.of(), true, true, true, true, 2, 2, 1, "direct");
+		var service = service();
+		try {
+			var result = preserveIntentDirectEvidenceChunks(service, judged, List.of(scope, mixed),
+				"온라인 운영 사업도 과업심의 받아야 하나요?");
+			assertThat(result.chunks()).contains(scope);
+			assertThat(result.chunks()).filteredOn(row -> row.chunkId() == mixed.chunkId()).singleElement()
+				.satisfies(row -> {
+					assertThat(row.chunkText()).isEqualTo(paragraph);
+					assertThat(row.chunkVersion()).isEqualTo(mixed.chunkVersion());
+					assertThat(row.qualityStatus()).isEqualTo("PASS");
+				});
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
+	void boundedJudgeCandidatesPreserveExplicitProcedureBesideScopeDefinition() throws Exception {
+		var scope = chunk(9901L, "official_doc", "사업 심의 안내", "적용 대상 사업",
+			"적용 대상 사업은 국가기관 등이 발주하는 소프트웨어사업이다.");
+		var noise = chunk(9902L, "official_doc", "사업 심의 안내", "표지",
+			"사업 심의 안내 문서입니다.");
+		var otherProcedure = chunk(9903L, "official_doc", "영향평가 안내", "절차",
+			"국가기관은 소프트웨어사업 영향평가를 실시해야 한다.");
+		var procedure = chunk(9904L, "official_doc", "사업 심의 안내", "과업내용 확정",
+			"국가기관등의 장은 소프트웨어사업의 과업내용을 확정하려는 경우 과업심의위원회의 심의를 거쳐야 한다.");
+		var service = service();
+		try {
+			Method method = LawAiAnswerService.class.getDeclaredMethod("balancedJudgeCandidates", List.class, int.class, String.class);
+			method.setAccessible(true);
+			for (int budget : List.of(2, 3)) {
+				for (String question : List.of("운영 사업도 과업심의 받아야 해?", "SNS운영 사업도 과업심의 받아야해?")) {
+				@SuppressWarnings("unchecked")
+				var selected = (List<LawSemanticChunkRow>) method.invoke(service,
+					List.of(scope, noise, otherProcedure, procedure), budget, question);
+				assertThat(selected).hasSizeLessThanOrEqualTo(budget).contains(scope, procedure)
+					.doesNotContain(otherProcedure);
+				}
+			}
+		} finally { service.shutdownExecutors(); }
+	}
 
 	@Test
 	void parentExpansionPreservesExplicitAgencyListHeading() throws Exception {
@@ -202,6 +560,59 @@ class LawAiAnswerServiceEvidenceGateTests {
 				.contains("② 보안성 검토요청")
 				.contains("③ 보안성 검토 수행")
 				.contains("④ 검토결과 통보");
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void sanctionAnswerContextDoesNotDetachItsEnumeratedTriggers() throws Exception {
+		String question = "정보화시스템 법제도 준수안하면 어떤 불이익?";
+		LawSemanticChunkRow sanction = chunk(991L, "official_doc", "법령준수 안내", "입찰 제한",
+			"정보화시스템 법제도 준수. 다음 각 호의 어느 하나에 해당하면 입찰참가자격을 제한한다. "
+				+ "계약 상대자의 주의와 감독에 관한 설명. ".repeat(80)
+				+ "\n1. 허위 서류를 제출한 경우\n2. 정당한 이유 없이 계약을 이행하지 않은 경우");
+		LawAiAnswerService service = service();
+		try {
+			String context = contextSnippet(service, sanction, question, 820);
+			assertThat(context).satisfiesAnyOf(
+				value -> assertThat(value).doesNotContain("입찰참가자격을 제한"),
+				value -> assertThat(value).contains("허위 서류를 제출한 경우", "정당한 이유 없이 계약을 이행하지 않은 경우"));
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void intentPreservationDoesNotReinsertNoncomplianceDetectionAsConsequence() throws Exception {
+		String question = "정보화시스템 법제도 준수안하면 어떤 불이익?";
+		LawSemanticChunkRow detection = chunk(993L, "official_doc", "정보화사업 법제도 준수 점검",
+			"법제도 미준수 항목 확인", "정보화시스템 법제도 준수 여부를 점검하고 미준수 항목을 확인한다.");
+		LawSemanticChunkRow consequence = chunk(994L, "official_doc", "정보화사업 법제도 준수 점검",
+			"미준수 보완 조치", "정보화시스템 법제도 미준수 사항이 있으면 개선권고를 하고 제안요청서를 보완한다.");
+		LawAiAnswerService service = service();
+		try {
+			var judged = new EvidenceJudge().judge(question, List.of(detection, consequence),
+				Map.of("official_doc:993", 0.9, "official_doc:994", 0.4), 8);
+			var preserved = preserveIntentDirectEvidenceChunks(service, judged, List.of(detection, consequence), question);
+			assertThat(selectAnswerContextChunks(service, preserved.chunks(), question)).containsExactly(consequence);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void procedureSnippetDoesNotBypassSanctionTriggerPreservation() throws Exception {
+		LawSemanticChunkRow mixed = chunk(992L, "official_doc", "정보화시스템 법제도 준수", "제재 절차",
+			"② 신청: 신청서를 제출한다. ③ 검토실시: 기관이 검토를 실시한다. "
+				+ "④ 결과통보: 결과를 통보한다. 다음 각 호에 해당하면 입찰참가자격을 제한한다. "
+				+ "⑤ 후속 안내: 다음 사항을 안내한다.\n1. 허위 서류를 제출한 경우");
+		LawAiAnswerService service = service();
+		try {
+			String context = contextSnippet(service, mixed, "정보화시스템 법제도 준수안하면 어떤 불이익? 신청 검토 절차는?", 820);
+			assertThat(context).satisfiesAnyOf(
+				value -> assertThat(value).doesNotContain("입찰참가자격을 제한"),
+				value -> assertThat(value).contains("허위 서류를 제출한 경우"));
 		} finally {
 			service.shutdownExecutors();
 		}
@@ -727,6 +1138,63 @@ class LawAiAnswerServiceEvidenceGateTests {
 			);
 
 			assertThat(filtered).containsExactly(securityPenalty, managementGuide);
+			var judged = new EvidenceJudge.Result(List.of(managementGuide), Map.of("official_doc:3", 1.0),
+				true, true, true, true, 1, 1, 1, "direct");
+			var preserved = preserveIntentDirectEvidenceChunks(service, judged,
+				List.of(securityPenalty, managementGuide), question);
+			assertThat(selectAnswerContextChunks(service, preserved.chunks(), question))
+				.containsExactly(managementGuide);
+			LawSemanticChunkRow securityReview = chunk(4L, "official_doc", "정보화사업 보안성 검토 가이드",
+				"추진절차", "보안성 검토 결과 반영 후 사업 추진. 보안성 검토 조치결과서 및 제안요청서 등 제출. 사업발주 대비 보안성 검토 건수를 기관 정보화 평가에 반영한다. 보안성 검토 요청 누락 및 결과 이행여부를 분기별로 파악한다.", 3);
+			var reviewPreserved = preserveIntentDirectEvidenceChunks(service, judged,
+				List.of(securityReview, managementGuide), question);
+			assertThat(selectAnswerContextChunks(service, reviewPreserved.chunks(), question))
+				.containsExactly(managementGuide);
+			LawSemanticChunkRow incompleteSanction = chunk(5L, "official_doc", "소프트웨어사업관련 법령준수",
+				"제51조(하도급 제한 등)", "계약상대자등 또는 대리인·사용인이 다음 각 호의 어느 하나에 해당하는 경우에는 법 제27조에 따라 1개월 이상 2년 이하의 범위에서 입찰참가자격을 제한하여야 한다.", 3);
+			var sanctionJudged = new EvidenceJudge.Result(List.of(incompleteSanction, managementGuide),
+				Map.of("official_doc:5", 1.0, "official_doc:3", 1.0), true, true, true, true, 2, 2, 2, "direct");
+			var sanctionPreserved = preserveIntentDirectEvidenceChunks(service, sanctionJudged,
+				List.of(incompleteSanction, managementGuide), question);
+			assertThat(selectAnswerContextChunks(service, sanctionPreserved.chunks(), question))
+				.containsExactly(managementGuide);
+			assertThat(selectAnswerContextChunks(service, List.of(incompleteSanction), question)).isEmpty();
+			LawSemanticChunkRow enumeratedSanction = chunk(6L, "official_doc", "소프트웨어사업관련 법령준수",
+				"입찰 제한", "다음 각 호의 어느 하나에 해당하는 경우에는 입찰참가자격을 제한한다.\n1. 허위 서류를 제출한 경우\n2. 계약을 정당한 이유 없이 이행하지 않은 경우", 3);
+			assertThat(selectAnswerContextChunks(service, List.of(enumeratedSanction), question))
+				.containsExactly(enumeratedSanction);
+			LawSemanticChunkRow precedingNumber = chunk(7L, "official_doc", "소프트웨어사업관련 법령준수",
+				"입찰 제한", "1. 목적 정보화시스템 법제도 준수\n" + incompleteSanction.chunkText(), 3);
+			assertThat(selectAnswerContextChunks(service, List.of(precedingNumber), question)).isEmpty();
+			LawSemanticChunkRow numericTrigger = chunk(8L, "official_doc", "소프트웨어사업관련 법령준수",
+				"입찰 제한", "다음 각 호의 어느 하나에 해당하면 입찰참가자격을 제한한다.\n1. 2회 이상 허위서류를 제출한 경우", 3);
+			assertThat(selectAnswerContextChunks(service, List.of(numericTrigger), question)).containsExactly(numericTrigger);
+			service.configureLexicalVariantProperties(new LawAiLexicalVariantProperties(true, true, 4, 60.0));
+			LawSemanticChunkRow excludedProcedure = chunk(9L, "official_doc", "정보화시스템 법제도 준수",
+				"제재 절차", incompleteSanction.chunkText() + " 신청 후 검토실시 및 결과통보 절차를 따른다.", 3);
+			assertThat(selectAnswerContextChunks(service, List.of(excludedProcedure, managementGuide),
+				question + " 신청 검토 절차는 어떻게 진행하나?" )).containsExactly(managementGuide);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void earlierArticleListDoesNotCompleteLaterSanctionTriggerList() throws Exception {
+		var service = service();
+		try {
+			var splitArticle = chunk(1L, "official_doc", "소프트웨어사업관련 법령준수",
+				"제51조(하도급 제한 등)",
+				"제51조 다음 각 호의 사업을 하도급할 수 있다.\n1. 물품의 설치 및 유지관리\n2. 전문기술이 필요한 사업\n"
+					+ "제76조 계약상대자등이 다음 각 호의 어느 하나에 해당하는 경우에는 1개월 이상 2년 이하의 범위에서 입찰참가자격을 제한하여야 한다.", 2);
+			assertThat(selectAnswerContextChunks(service, List.of(splitArticle),
+				"정보화시스템 법제도 준수안하면 어떤 불이익?")).isEmpty();
+			var laterUnrelatedList = chunk(2L, "official_doc", "소프트웨어사업관련 법령준수",
+				"입찰참가자격 제한",
+				"제76조 계약상대자등이 다음 각 호의 어느 하나에 해당하는 경우에는 입찰참가자격을 제한한다.\n"
+					+ "제77조 계약 절차\n1. 신청서를 제출한다.\n2. 처리결과를 통보한다.", 2);
+			assertThat(selectAnswerContextChunks(service, List.of(laterUnrelatedList),
+				"정보화시스템 법제도 준수안하면 어떤 불이익?")).isEmpty();
 		} finally {
 			service.shutdownExecutors();
 		}
@@ -2800,6 +3268,13 @@ class LawAiAnswerServiceEvidenceGateTests {
 		return value
 			.toLowerCase(java.util.Locale.ROOT)
 			.replaceAll("[^\\p{IsHangul}a-z0-9]", "");
+	}
+
+	private LawSemanticChunkRow contextMetadata(LawSemanticChunkRow row, long documentId, int sortOrder) {
+		return new LawSemanticChunkRow(row.chunkId(), documentId, row.target(), row.externalId(), row.title(),
+			row.agencyName(), row.categoryName(), row.sourceDate(), row.effectiveStatus(), row.chunkNo(),
+			row.chunkTitle(), row.chunkText(), row.pageNo(), row.sourcePath(), row.sourceUrl(), sortOrder,
+			row.contentHash(), row.parentSectionTitle(), row.sectionType(), row.qualityStatus());
 	}
 
 	private LawSemanticChunkRow chunk(long chunkId, String target, String title, String chunkNo, String text) {

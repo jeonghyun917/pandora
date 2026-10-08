@@ -40,6 +40,9 @@ final class ClaimEvidenceAtomizer {
 	private static final Pattern ATTACHED_EXCEPTION_CONDITION = Pattern.compile(
 		"(?:경우|때)(?:에는?|에만|만)?$|한하여$"
 	);
+	private static final Pattern CONDITIONAL_CONCLUSION = Pattern.compile(
+		"(?:[\\p{IsHangul}]+(?:이면|으면|라면|다면)|경우)(?:에는?|에만|만)?(?=\\s)"
+	);
 	private static final Pattern ASSERTION_COMMA = Pattern.compile("[,，]\\s+");
 	private static final Pattern EXPLICIT_SUBJECT = Pattern.compile(
 		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9()·ㆍ/-]{2,}?)(?:은|는|이|가)(?=\\s)"
@@ -280,7 +283,13 @@ final class ClaimEvidenceAtomizer {
 			remainder = remainder.substring(heading.length()).trim();
 			removed = true;
 		}
-		return removed && !remainder.isBlank() ? remainder : source;
+		if (!removed || remainder.isBlank()) {
+			return source;
+		}
+		// Preserve a heading only when its meaning is absent from the body.
+		// Repeating it before an explicit definition can corrupt subject parsing.
+		return remainder.replaceAll("\\s+", "").contains(heading.replaceAll("\\s+", ""))
+			? remainder : heading + " " + remainder;
 	}
 
 	List<String> splitCommaJoinedAssertions(String text) {
@@ -387,6 +396,10 @@ final class ClaimEvidenceAtomizer {
 		}
 		Set<String> leftSubjects = explicitSubjects(leftClause, false);
 		Set<String> rightSubjects = explicitSubjects(rightClause, !leftSubjects.isEmpty());
+		if (CONDITIONAL_CONCLUSION.matcher(rightClause).find()
+			&& !oppositePermissionPolarity(leftClause, rightClause)) {
+			return false;
+		}
 		if (strictCoordinatingBoundaries
 			&& !rightSubjects.isEmpty()
 			&& GENERAL_COORDINATED_PREDICATE.matcher(normalized).find()

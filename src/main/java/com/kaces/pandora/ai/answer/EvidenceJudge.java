@@ -20,6 +20,11 @@ public class EvidenceJudge {
 
 	private static final int MIN_RELEVANT_RESULTS = 2;
 	private static final int UI_NAVIGATION_EXCLUSION_WINDOW = 16;
+	private static final java.util.regex.Pattern SOFTWARE_CONFIRMATION_REVIEW_DUTY = java.util.regex.Pattern.compile(
+		"^(?:[①-⑳])?국가기관등의장은(?:영제\\d+조(?:의\\d+)?(?:제\\d+항)?(?:제\\d+호)?에따라)?과업내용을확정하기위하여"
+			+ "소프트웨어사업발주전에사업계획서또는제안요청서에대하여"
+			+ "과업심의위원회의심의를받아야한다(?:[.!?]|$)"
+	);
 	private static final List<String> UI_NAVIGATION_TERMS = List.of(
 		"메뉴", "화면", "클릭", "버튼", "경로", "navigation"
 	);
@@ -91,6 +96,7 @@ public class EvidenceJudge {
 			: !exploratoryLookupChunks.isEmpty() ? exploratoryLookupChunks
 			: conceptEvidenceRequired ? relevantChunks
 			: useRelevantOnly ? relevantChunks : topicAlignedChunks.isEmpty() ? judgedChunks : topicAlignedChunks;
+		selectedChunks = withScopeAnchoredReviewRule(profile, selectedChunks, judgedChunks, requestedLimit);
 		selectedChunks = preferSecurityReviewGuideEvidence(profile, selectedChunks);
 		selectedChunks = preferCommitteeExpansion(profile, selectedChunks);
 		String selectionPolicy = selectionPolicy(
@@ -120,6 +126,93 @@ public class EvidenceJudge {
 			directEvidenceChunks.size(),
 			selectionPolicy
 		);
+	}
+
+	private List<JudgedChunk> withScopeAnchoredReviewRule(
+		EvidenceQuestionProfile profile, List<JudgedChunk> selected, List<JudgedChunk> candidates, int requestedLimit
+	) {
+		JudgedChunk scope = selected.stream()
+			.filter(item -> item.directEvidence() && isNationalSoftwareReviewScope(item.chunk()))
+			.findFirst().orElse(null);
+		int limit = Math.max(1, requestedLimit);
+		if (!isProjectReviewScopeQuestion(profile.normalizedQuestion()) || scope == null || limit < 2) {
+			return selected;
+		}
+		if (selected.stream().anyMatch(item -> !isTableOfContentsLike(item.chunk())
+			&& hasExplicitSoftwareConfirmationReviewDuty(item.chunk().chunkText()))) {
+			return selected;
+		}
+		List<JudgedChunk> result = new ArrayList<>(selected);
+		List<JudgedChunk> preferred = candidates.stream().sorted(Comparator.comparing(
+			(JudgedChunk candidate) -> hasExplicitSoftwareConfirmationReviewDuty(candidate.chunk().chunkText())
+		).reversed()).toList();
+		for (JudgedChunk candidate : preferred) {
+			String body = normalize(candidate.chunk().chunkText());
+			if (!result.contains(candidate) && !isTableOfContentsLike(candidate.chunk())
+				&& (hasExplicitSoftwareConfirmationReviewDuty(candidate.chunk().chunkText())
+					|| (body.contains("과업내용의확정")
+						&& !committeeEstablishmentRuleText(candidate.chunk().chunkText()).isBlank()))) {
+				while (result.size() >= limit) {
+					int last = result.size() - 1;
+					result.remove(result.get(last) == scope ? last - 1 : last);
+				}
+				result.add(candidate);
+				break;
+			}
+		}
+		return result;
+	}
+
+	static boolean hasExplicitSoftwareConfirmationReviewDuty(String source) {
+		return !softwareConfirmationReviewDutyText(source).isBlank();
+	}
+
+	static String softwareConfirmationReviewDutyText(String source) {
+		String[] paragraphs = source == null ? new String[0] : source.split("[\\r\\n]+");
+		for (int i = 0; i < paragraphs.length; i++) {
+			String paragraph = paragraphs[i];
+			String compact = paragraph.replaceAll("\\s+", "");
+			var matcher = SOFTWARE_CONFIRMATION_REVIEW_DUTY.matcher(compact);
+			if (!matcher.find()) {
+				continue;
+			}
+			int next = i + 1;
+			while (next < paragraphs.length && paragraphs[next].isBlank()) {
+				next++;
+			}
+			if (next < paragraphs.length && paragraphs[next].stripLeading().startsWith("다만")) {
+				continue;
+			}
+			String continuation = compact.substring(matcher.end());
+			if (continuation.isEmpty() || continuation.matches("다만[,，]?[^.!?]+[.!?]")) {
+				return paragraph.strip();
+			}
+		}
+		return "";
+	}
+
+	static String committeeEstablishmentRuleText(String source) {
+		String compact = source == null ? "" : source.replaceAll("\\s+", "");
+		var matcher = java.util.regex.Pattern.compile(
+			"국가기관등의장은소프트웨어사업의(?:추진에관한다음각호의사항을심의하기위하여소프트웨어사업|과업내용의확정을심의하기위하여)과업심의위원회(?:\\([^)]*\\))?를두어야한다(?:[.!?]|$)"
+		).matcher(compact);
+		if (!matcher.find()) {
+			return "";
+		}
+		String sentence = matcher.group();
+		if (!sentence.contains("다음각호")) {
+			return sentence;
+		}
+		String firstItem = "1.과업내용의확정";
+		String tail = compact.substring(matcher.end());
+		return java.util.regex.Pattern.compile("1\\.과업내용의확정(?=2\\.|②|$)").matcher(tail).lookingAt()
+			? sentence + "\n" + tail.substring(0, firstItem.length()) : "";
+	}
+
+	static boolean isNationalSoftwareReviewScope(LawSemanticChunkRow chunk) {
+		String body = normalize(chunk.chunkText());
+		return isProjectReviewScopeChunk(body, normalize(chunk.title()), normalize(chunk.chunkTitle()))
+			&& body.contains("국가기관등") && (body.contains("sw사업") || body.contains("소프트웨어사업"));
 	}
 
 	private List<JudgedChunk> withSupportingExploratoryChunks(
@@ -267,6 +360,10 @@ public class EvidenceJudge {
 		String chunkHeading
 	) {
 		String normalizedQuestion = profile.normalizedQuestion();
+		if (isPenaltyConsequenceQuestion(profile)
+			&& isSecurityContractConsequenceOutsideQuestion(profile.normalizedQuestion(), body, documentTitle, chunkHeading)) {
+			return false;
+		}
 		boolean projectReviewRelationQuestion = isProjectReviewPreConsultationRelationQuestion(normalizedQuestion);
 		if (isProjectReviewScopeQuestion(normalizedQuestion) || projectReviewRelationQuestion) {
 			boolean allowed = isProjectReviewScopeChunk(body, documentTitle, chunkHeading)
@@ -728,6 +825,7 @@ public class EvidenceJudge {
 			(publicDataQualityDiagnosisOverviewQuestion && publicDataQualityDiagnosisOverviewEvidence)
 				|| (publicDataStandardTermQuestion && publicDataStandardTermEvidence && !publicDataStandardTermNoise);
 		boolean effectiveRequiredTermsMatched = requiredTermsMatched
+			|| (projectReviewScopeQuestion && projectReviewScopeChunk)
 			|| publicDataSpecialDirectEvidence
 			|| exactLawArticleReferenceEvidence
 			|| exactDocumentBodyAnchorEvidence;
@@ -855,7 +953,8 @@ public class EvidenceJudge {
 			relevant = false;
 			topicAligned = false;
 		}
-		if (penaltyConsequenceQuestion && !hasPenaltyConsequenceSignal(body, chunkHeading, parentSectionTitle)) {
+		if (penaltyConsequenceQuestion && (!hasPenaltyConsequenceSignal(body, chunkHeading, parentSectionTitle)
+			|| isSecurityContractConsequenceOutsideQuestion(profile.normalizedQuestion(), body, documentTitle, chunkHeading))) {
 			directEvidence = false;
 			relevant = false;
 			topicAligned = false;
@@ -2426,9 +2525,9 @@ public class EvidenceJudge {
 			|| containsPenaltyConsequenceCue(question);
 	}
 
-	private static boolean hasPenaltyConsequenceSignal(String body, String chunkHeading, String parentSectionTitle) {
+	static boolean hasPenaltyConsequenceSignal(String body, String chunkHeading, String parentSectionTitle) {
 		String text = normalize(String.join(" ", String.valueOf(body), String.valueOf(chunkHeading), String.valueOf(parentSectionTitle)));
-		return containsPenaltyConsequenceCue(text)
+		return List.of("불이익", "불리한조치", "제재", "처분", "처벌", "과태료", "벌칙", "감점", "책임", "위약", "보완", "조치", "권고").stream().anyMatch(text::contains)
 			|| text.contains("보완요구")
 			|| text.contains("예산조정")
 			|| text.contains("검토결과반영")
@@ -2436,6 +2535,21 @@ public class EvidenceJudge {
 			|| text.contains("반영하지않")
 			|| text.contains("시정명령")
 			|| text.contains("입찰참가자격제한");
+	}
+
+	static boolean isSecurityContractConsequenceOutsideQuestion(
+		String questionText, String body, String documentTitle, String chunkHeading
+	) {
+		String question = normalize(questionText);
+		if (!(question.contains("법제도") || question.contains("법령준수"))
+			|| List.of("보안", "기밀", "누출", "비밀", "정보보호").stream().anyMatch(question::contains)) {
+			return false;
+		}
+		String text = normalize(documentTitle + chunkHeading + body);
+		String sourceScope = normalize(documentTitle + chunkHeading);
+		return sourceScope.contains("보안성검토")
+			|| (text.contains("보안")
+				&& List.of("보안위약금", "보안위규", "누출금지", "기밀유지", "비밀유지계약").stream().anyMatch(text::contains));
 	}
 
 	private static boolean containsPenaltyConsequenceCue(String normalizedText) {

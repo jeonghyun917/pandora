@@ -10,6 +10,75 @@ class ClaimEvidenceMatcherRelationTests {
 	private final ClaimEvidenceMatcher matcher = new ClaimEvidenceMatcher();
 
 	@Test
+	void recommendationPlanPreservesParentheticalDispatchInsteadOfReinterpretingItsOrdinal() {
+		String source = "향후 입찰공고(RFP)시 반영여부를 재확인하여 미준수 항목 권고(2차발송) 예정";
+		assertThat(matcher.match(source, List.of(ground(source))).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(
+			"향후 입찰공고(RFP)시 반영여부를 재확인하여 미준수 항목 권고(2차발송) 예정입니다.",
+			List.of(ground(source))).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(
+			"향후 입찰공고(RFP)시 반영여부를 재확인하여 미준수 항목을 2차 권고할 예정입니다.",
+			List.of(ground(source))).status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void negatedOrUncertainPlanDoesNotSupportPositivePlan() {
+		for (String source : List.of("기관은 자료를 제출 예정이 없습니다.", "기관은 자료를 제출 계획이 없습니다.", "기관은 자료를 제출 예정인지 확인합니다.")) {
+			assertThat(matcher.match("기관은 자료를 제출할 예정입니다.", List.of(ground(source))).status())
+				.as(source).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
+	void plannedSubmissionDoesNotSupportPerformedSubmission() {
+		for (String source : List.of("기관은 자료 제출 예정", "기관은 자료를 제출 예정", "기관은 자료를 제출할 예정입니다.")) {
+			assertThat(matcher.match("기관은 자료를 제출합니다.", List.of(ground(source))).status())
+				.as(source).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
+	void explicitObjectPlannedSubmissionSupportsSameFinitePlan() {
+		assertThat(matcher.match("기관은 자료를 제출할 예정입니다.",
+			List.of(ground("기관은 자료를 제출 예정"))).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void nominalPlanSupportsSameActionWithoutAssertingCompletedAction() {
+		var evidence = ground("기관은 자료 제출 예정");
+		assertThat(matcher.match("기관은 자료를 제출할 예정입니다.", List.of(evidence)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match("기관은 자료를 제출합니다.", List.of(evidence)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		assertThat(matcher.match("기관은 자료를 제출할 예정입니다.",
+			List.of(ground("기관은 자료 제출 예정이 없습니다."))).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void nominalPlanDoesNotSubstituteSubjectObjectOrAction() {
+		var evidence = ground("기관은 자료 제출 예정");
+		for (String claim : List.of(
+			"업체는 자료를 제출할 예정입니다.",
+			"기관은 계약서를 제출할 예정입니다.",
+			"기관은 자료를 삭제할 예정입니다.")) {
+			assertThat(matcher.match(claim, List.of(evidence)).status()).as(claim)
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
+	void procurementRecommendationPreservesItsSpecificContractCondition() {
+		String source = "상기 특별한 경우를 제외한 지명경쟁 또는 수의계약의 경우에는 특정규격 명시 금지 관련 법·제도 개선권고를 받을 수 있으므로, 지명경쟁 또는 수의계약에서 특정규격을 명시하는 사유를 입찰서류에 명시하거나 권고기관에 수의계약 적용 근거자료를 제시하여 불필요한 행정소요를 예방한다.";
+		var evidence = groundWithChunkTitleAndContext("특정규격 명시 금지", source, "");
+		assertThat(matcher.match(source, List.of(evidence)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match("정보화시스템 관련 법령을 준수하지 않으면 기관은 개선권고를 받습니다.",
+			List.of(evidence)).status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
 	void retainsExplicitNumberedListScopeFromTheSourceHeading() {
 		var evidence = groundWithChunkTitleAndContext("p.2 국가정보원 검토 대상",
 			"국가정보원 검토 대상\n1. 비밀 정보를 관리하는 정보시스템 구축\n"
@@ -3309,7 +3378,192 @@ class ClaimEvidenceMatcherRelationTests {
 	}
 
 	@Test
+	void explicitSourceScopeHeadingPreservesItsNominalBusinessCriterion() {
+
+		var match = matcher.match(
+			"국가기관 등이 발주하는 소프트웨어사업이면 과업심의 대상입니다.",
+			List.of(ground(
+				"공공소프트웨어사업 과업심의 가이드(2022. 12.)",
+				"적용 대상 사업 p.5 적용 대상 사업 적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함) "
+					+ "- 소프트웨어의 개발, 제작, 생산, 유통, 운영 및 유지·관리 등과 그 밖에 소프트웨어와 관련된 서비스를 제공하는 산업과 관련된 경제활동 "
+					+ "※ 단순 H/W 도입·설치처럼 소프트웨어사업으로 볼 수 없는 경우는 비대상"
+			))
+		);
+		assertThat(match.status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void namedBusinessConditionalClassificationKeepsBothAgencyAndBusinessConditions() {
+		var evidence = ground("공공소프트웨어사업 과업심의 가이드",
+			"적용 대상 사업은 국가기관 등이 발주하는 모든 SW사업입니다.");
+		for (String claim : List.of(
+			"SNS 운영 사업도 국가기관 등이 발주하는 소프트웨어사업에 해당하면 과업심의 대상입니다.",
+			"SNS 운영 사업이 소프트웨어사업에 해당하고 발주기관이 국가기관등이면 과업심의 대상입니다.")) {
+			assertThat(matcher.match(claim, List.of(evidence)).status()).as(claim)
+				.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		}
+	}
+
+	@Test
+	void coordinatedBusinessConditionsDoNotPermitDifferentActorsOrDifferentBusinessClasses() {
+		var evidence = ground("공공소프트웨어사업 과업심의 가이드",
+			"적용 대상 사업은 국가기관 등이 발주하는 모든 SW사업입니다.");
+		for (String claim : List.of(
+			"SNS 운영 사업이 소프트웨어사업에 해당하고 발주기관이 민간기업이면 과업심의 대상입니다.",
+			"SNS 운영 사업이 건설사업에 해당하고 발주기관이 국가기관등이면 과업심의 대상입니다.",
+			"SNS 운영 사업이 소프트웨어사업에 해당하지 않고 발주기관이 국가기관등이면 과업심의 대상입니다.",
+			"SNS 운영 사업이 소프트웨어사업에 해당하고 감독기관이 국가기관등이면 과업심의 대상입니다.")) {
+			assertThat(matcher.match(claim, List.of(evidence)).status()).as(claim)
+				.isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		}
+	}
+
+	@Test
+	void scopeClassificationDoesNotEstablishAnUnstatedObligation() {
+		var evidence = ground("공공소프트웨어사업 과업심의 가이드",
+			"적용 대상 사업은 국가기관 등이 발주하는 모든 SW사업입니다.");
+		assertThat(matcher.match(
+			"SNS 운영 사업도 국가기관 등이 발주하는 소프트웨어사업에 해당하면 과업심의 대상입니다.",
+			List.of(evidence)).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(
+			"SNS 운영 사업도 국가기관 등이 발주하는 소프트웨어사업에 해당하면 과업심의를 받아야 합니다.",
+			List.of(evidence)).status()).isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void liveConditionalClassificationExpressionBoundary() {
+		var evidence = ground("공공소프트웨어사업 과업심의 가이드",
+			"적용 대상 사업은 국가기관 등이 발주하는 모든 SW사업(상용SW포함)입니다.");
+		for (String claim : List.of(
+			"SNS 운영 사업이 국가기관 등이 발주하는 소프트웨어사업에 해당하면 과업심의 대상입니다.",
+			"SNS 운영 사업도 국가기관 등이 발주하는 소프트웨어사업에 해당하면 과업심의 대상입니다.",
+			"SNS 운영 사업이 국가기관 등이 발주하는 소프트웨어사업에 해당하는 경우 과업심의 대상입니다.",
+			"SNS 운영 사업이 국가기관 등이 발주하는 모든 SW사업에 해당하면 과업심의 대상입니다.",
+			"SNS 운영 사업이 국가기관 등이 발주하는 소프트웨어사업(상용SW포함)에 해당하면 과업심의 대상입니다.",
+			"SNS 운영 사업이 국가기관 등이 발주하는 소프트웨어사업(상용SW포함)에 해당하는 경우 과업심의 대상입니다.",
+			"질문에 언급된 SNS 운영 사업도 국가기관 등이 발주하는 소프트웨어사업에 해당하면 과업심의 대상입니다.")) {
+			assertThat(matcher.match(claim, List.of(evidence)).status()).as(claim)
+				.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		}
+	}
+
+	@Test
+	void universalBusinessClassParenthesesDoNotCreateStandaloneParticleScope() {
+		var evidence = ground("공공소프트웨어사업 과업심의 가이드(2022. 12.)",
+			"적용 대상 사업은 국가기관 등이 발주하는 모든 SW사업(상용SW포함)입니다.");
+		for (String claim : List.of(
+			"SNS 운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW포함)에 해당하는 경우 과업심의 대상입니다.",
+			"SNS 운영 사업이 국가기관 등이 발주하는 소프트웨어사업(상용SW포함)에 해당하는 경우 과업심의 대상입니다.",
+			"SNS 운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW 포함)에 해당하는 경우 과업심의 대상입니다.")) {
+			assertThat(matcher.match(claim, List.of(evidence)).status()).as(claim)
+				.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		}
+		assertThat(matcher.match(
+			"SNS 운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW 제외)에 해당하는 경우 과업심의 대상입니다.",
+			List.of(evidence)).status()).isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void parentheticalCurrencyIsLiteralAndDoesNotThrowOrBecomeSupported() {
+		assertThat(matcher.match("모든 사업(예산 $500)에 해당하면 대상입니다.",
+			List.of(ground("모든 사업(예산 $100)에 해당하면 대상입니다."))).status())
+			.isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match("모든 사업(예산 \\$500)에 해당하면 대상입니다.",
+			List.of(ground("모든 사업(예산 \\$100)에 해당하면 대상입니다."))).status())
+			.isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void commaSeparatedBusinessFragmentDoesNotEstablishConditionalMembership() {
+		var evidence = ground("공공소프트웨어사업 과업심의 가이드",
+			"적용 대상 사업은 국가기관 등이 발주하는 모든 SW사업(상용SW포함)입니다.");
+		assertThat(matcher.match("SNS운영 사업, 국가기관 등이 발주하는 모든 SW사업(상용SW포함)일 경우 과업심의 대상.",
+			List.of(evidence)).status()).isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match("SNS운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW포함)에 해당하면 과업심의 대상입니다.",
+			List.of(evidence)).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void explicitOcrScopeHeadingSupportsOnlyConditionalBusinessClassification() {
+		var evidence = ground("공공소프트웨어사업 과업심의 가이드(2022. 12.)",
+			"적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)");
+		for (String predicate : List.of("과업심의 대상입니다.", "과업심의의 대상입니다.", "공공소프트웨어사업 과업심의의 대상입니다.")) {
+			assertThat(matcher.match(
+				"SNS운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW포함)에 해당하면 " + predicate,
+				List.of(evidence)).status()).as(predicate).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		}
+		for (String claim : List.of(
+			"SNS운영 사업은 과업심의 대상입니다.",
+			"SNS운영 사업이 민간기업이 발주하는 모든 SW사업(상용SW포함)에 해당하면 과업심의 대상입니다.",
+			"SNS운영 사업이 국가기관 등이 발주하는 모든 건설사업에 해당하면 과업심의 대상입니다.",
+			"SNS운영 사업이 국가기관 등이 발주하는 모든 SW사업에 해당하면 과업심의를 받아야 합니다.")) {
+			assertThat(matcher.match(claim, List.of(evidence)).status()).as(claim)
+				.isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		}
+	}
+
+	@Test
+	void documentGuideIdentityDoesNotEstablishTheProcedureTarget() {
+		var evidence = ground("공공소프트웨어사업 과업심의 가이드(2022. 12.)",
+			"적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)");
+		assertThat(matcher.match(
+			"SNS운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW포함)에 해당하면 공공소프트웨어사업 과업심의 가이드의 대상입니다.",
+			List.of(evidence)).status()).isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match("공공소프트웨어사업은 가이드의 대상입니다.",
+			List.of(ground("공공소프트웨어사업은 가이드의 대상입니다."))).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void enumeratedContractSanctionsDoNotEstablishGeneralComplianceConsequences() {
+		var evidence = ground("소프트웨어사업관련 법령준수",
+			"계약상대자등 또는 그 대리인·지배인, 그 밖의 사용인이 다음 각 호의 어느 하나에 해당하는 경우에는 법 제27조에 따라 해당 사실이 있은 후 지체 없이 1개월 이상 2년 이하의 범위에서 입찰참가자격을 제한하여야 한다.");
+		assertThat(matcher.match("정보화시스템 관련 법령을 준수하지 않으면 입찰참가자격 제한의 불이익을 받을 수 있습니다.",
+			List.of(evidence)).status()).isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match("국가계약법 시행령 제76조 등 규정에 따라 당사자·대리인·사용인 등의 위반행위가 있으면 입찰참가자격을 사건 발생 후 지체 없이 1개월 이상 2년 이하로 제한할 수 있습니다.",
+			List.of(evidence)).status()).isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void recommendationSourcesDoNotEstablishMixedOrGeneralizedConsequences() {
+		var evidence = List.of(
+			ground("소프트웨어사업관련 법령준수", "귀 기관의 SW사업 공고에 대하여 SW관련 법령의 준수를 권고 드립니다. 권고항목에 대한 수용 여부를 사전규격 게시판에 답변과 함께 첨부하여 주시기 바랍니다. 향후 입찰공고시 반영여부를 재확인하여 미준수 항목 권고(2차발송) 예정입니다."),
+			ground("소프트웨어사업관련 법령준수", "상기 특별한 경우를 제외한 지명경쟁 또는 수의계약의 경우에는 특정규격 명시 금지 관련 법·제도 개선권고를 받을 수 있으므로, 권고기관에 수의계약 적용 근거자료를 제시하여 불필요한 행정소요를 예방합니다."));
+		for (String claim : List.of(
+			"정보화시스템 관련 법령을 준수하지 않으면 기관은 개선권고를 받고 미준수 항목에 대해 재통보(2차 발송)받을 수 있습니다.",
+			"권고기관에 수의계약 적용 근거자료를 제시하도록 요구받을 수 있습니다.",
+			"특정 규격 명시 등 미준수 항목은 사전규격 게시판에 답변 첨부·보완 요청을 받을 수 있습니다.",
+			"벌금·계약해지 등 구체적 제재 내용이나 금액은 근거 문서에 명시되어 있지 않습니다.")) {
+			assertThat(matcher.match(claim, evidence).status()).as(claim)
+				.isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		}
+		assertThat(matcher.match("향후 입찰공고시 반영여부를 재확인하여 미준수 항목 권고(2차발송) 예정입니다.", evidence).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void generalScopeDefinitionDoesNotSupportDifferentIssuerClassOrPolarity() {
+		var evidence = ground("공공소프트웨어사업 과업심의 가이드",
+			"적용 대상 사업은 국가기관 등이 발주하는 모든 SW사업입니다.");
+		for (String claim : List.of(
+			"SNS 운영 사업이 민간기업이 발주하는 소프트웨어사업에 해당하면 과업심의 대상입니다.",
+			"SNS 운영 사업이 소프트웨어사업에 해당하면 과업심의 대상입니다.",
+			"SNS 운영 사업이 국가기관 등과 관련된 소프트웨어사업에 해당하면 과업심의 대상입니다.",
+			"SNS 운영 사업이 국가기관 등이 발주하는 건설사업에 해당하면 과업심의 대상입니다.",
+			"SNS 운영 사업이 국가기관 등이 발주하는 소프트웨어사업에 해당하지 않으면 과업심의 대상입니다.",
+			"SNS 운영 사업이 국가기관 등이 감독하는 소프트웨어사업에 해당하면 과업심의 대상입니다.")) {
+			assertThat(matcher.match(claim, List.of(evidence)).status()).as(claim)
+				.isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		}
+	}
+
+	@Test
 	void negativeClassificationBoundaryAloneDoesNotContradictThePositiveBusinessCondition() {
+		assertThat(matcher.match(
+			"SNS 운영 사업이 국가기관 등이 발주하는 소프트웨어사업(상용SW제외)에 해당하면 과업심의 대상입니다.",
+			List.of(ground("공공소프트웨어사업 과업심의 가이드",
+				"적용 대상 사업은 국가기관 등이 발주하는 모든 SW사업(상용SW포함)입니다.")))
+			.status()).isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
 		ClaimEvidenceMatcher.Match match = matcher.match(
 			"소프트웨어사업에 해당하면 과업심의 대상입니다.",
 			List.of(ground(

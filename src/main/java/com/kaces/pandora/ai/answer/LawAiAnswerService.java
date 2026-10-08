@@ -1658,9 +1658,10 @@ public class LawAiAnswerService {
 				normalized.display()
 			);
 		}
-		List<LawSemanticChunkRow> displayChunks = shouldJudgeExactCandidateText(normalized.query())
-			? orderedChunks
-			: enrichWithParentContext(orderedChunks, normalized.query(), timing);
+		ParentContextExpansionResult displayContext = shouldJudgeExactCandidateText(normalized.query())
+			? new ParentContextExpansionResult(orderedChunks, Map.of())
+			: enrichWithParentContextResult(orderedChunks, normalized.query(), timing);
+		List<LawSemanticChunkRow> displayChunks = displayContext.chunks();
 		Map<String, LawSemanticChunkRow> matchedChunkByKey = orderedChunks.stream()
 			.collect(java.util.stream.Collectors.toMap(
 				chunk -> scoreKey(chunk.target(), chunk.chunkId()),
@@ -1674,7 +1675,8 @@ public class LawAiAnswerService {
 			matchedChunkByKey,
 			finalScoreByChunkId,
 			chunk -> snippet(chunk, normalized.query()),
-			evidenceRoleForSelectionPolicy(judgedEvidence.selectionPolicy())
+			evidenceRoleForSelectionPolicy(judgedEvidence.selectionPolicy()),
+			displayContext.contextChunkIdsByKey()
 		);
 		grounds = DocumentDiscoveryPolicy.orderGrounds(normalized.query(), grounds);
 		timing.groundsMs.addAndGet(elapsedMillis(groundsStart));
@@ -3023,6 +3025,13 @@ public class LawAiAnswerService {
 		String query,
 		TimingProbe timing
 	) {
+		return enrichWithParentContextResult(chunks, query, timing).chunks();
+	}
+
+	private record ParentContextExpansionResult(List<LawSemanticChunkRow> chunks, Map<String, List<Long>> contextChunkIdsByKey) {}
+	private record ExpandedContextChunk(LawSemanticChunkRow chunk, List<Long> chunkIds) {}
+
+	private ParentContextExpansionResult enrichWithParentContextResult(List<LawSemanticChunkRow> chunks, String query, TimingProbe timing) {
 		long start = System.nanoTime();
 		try {
 			return enrichWithParentContextInternal(chunks, query);
@@ -3033,9 +3042,9 @@ public class LawAiAnswerService {
 		}
 	}
 
-	private List<LawSemanticChunkRow> enrichWithParentContextInternal(List<LawSemanticChunkRow> chunks, String query) {
+	private ParentContextExpansionResult enrichWithParentContextInternal(List<LawSemanticChunkRow> chunks, String query) {
 		if (chunks == null || chunks.isEmpty()) {
-			return List.of();
+			return new ParentContextExpansionResult(List.of(), Map.of());
 		}
 		Map<String, List<LawSemanticChunkRow>> ragContextByChunkKey = new HashMap<>();
 		Map<Long, List<LawSemanticChunkRow>> lawContextByChunkId = new HashMap<>();
@@ -3067,14 +3076,19 @@ public class LawAiAnswerService {
 				}
 			}
 		}
-		return chunks.stream()
+		List<ExpandedContextChunk> expanded = chunks.stream()
 			.map(chunk -> {
 				List<LawSemanticChunkRow> documentChunks = isRagTarget(chunk.target())
 					? ragContextByChunkKey.getOrDefault(scoreKey(chunk.target(), chunk.chunkId()), List.of())
 					: lawContextByChunkId.getOrDefault(chunk.chunkId(), List.of());
-				return enrichChunkWithParentContext(chunk, documentChunks, query);
+				return expandChunkWithParentContext(chunk, documentChunks, query);
 			})
 			.toList();
+		Map<String, List<Long>> provenance = new LinkedHashMap<>();
+		for (ExpandedContextChunk item : expanded) {
+			provenance.put(scoreKey(item.chunk().target(), item.chunk().chunkId()), item.chunkIds());
+		}
+		return new ParentContextExpansionResult(expanded.stream().map(ExpandedContextChunk::chunk).toList(), Map.copyOf(provenance));
 	}
 
 	private boolean shouldJudgeExactCandidateText(String query) {
@@ -3094,18 +3108,23 @@ public class LawAiAnswerService {
 		List<LawSemanticChunkRow> documentChunks,
 		String query
 	) {
+		return expandChunkWithParentContext(chunk, documentChunks, query).chunk();
+	}
+
+	private ExpandedContextChunk expandChunkWithParentContext(LawSemanticChunkRow chunk, List<LawSemanticChunkRow> documentChunks, String query) {
 		if ((!isRagTarget(chunk.target()) && !isLawTarget(chunk.target())) || documentChunks == null || documentChunks.isEmpty()) {
-			return chunk;
+			return new ExpandedContextChunk(chunk, List.of());
 		}
 		List<LawSemanticChunkRow> contextChunks = parentContextCandidates(chunk, documentChunks, query);
 		if (contextChunks.isEmpty()) {
-			return chunk;
+			return new ExpandedContextChunk(chunk, List.of());
 		}
-		String expandedText = buildParentContextText(chunk, contextChunks, query);
+		ParentContextTextResult context = buildParentContextTextResult(chunk, contextChunks, query);
+		String expandedText = context.text();
 		if (expandedText.isBlank()) {
-			return chunk;
+			return new ExpandedContextChunk(chunk, List.of());
 		}
-		return copyWithChunkText(chunk, expandedText);
+		return new ExpandedContextChunk(copyWithChunkText(chunk, expandedText), context.chunkIds());
 	}
 
 	private List<LawSemanticChunkRow> parentContextCandidates(
@@ -3113,7 +3132,14 @@ public class LawAiAnswerService {
 		List<LawSemanticChunkRow> documentChunks,
 		String query
 	) {
+		LawSemanticChunkRow enumeratedContinuation = adjacentEnumeratedContinuation(chunk, documentChunks);
+		if (enumeratedContinuation != null) {
+			return List.of(chunk, enumeratedContinuation);
+		}
 		List<LawSemanticChunkRow> sorted = documentChunks.stream()
+			.filter(candidate -> candidate.documentId() == chunk.documentId())
+			.filter(candidate -> chunk.chunkVersion() == null || candidate.chunkVersion() == null
+				|| chunk.chunkVersion().equals(candidate.chunkVersion()))
 			.filter(candidate -> candidate.chunkId() == chunk.chunkId() || !isLowValueAnswerContextChunk(candidate, query))
 			.sorted(Comparator.comparingInt(LawSemanticChunkRow::sortOrder))
 			.toList();
@@ -3153,6 +3179,54 @@ public class LawAiAnswerService {
 		return selected.values().stream()
 			.limit(7)
 			.toList();
+	}
+
+	private LawSemanticChunkRow adjacentEnumeratedContinuation(LawSemanticChunkRow chunk, List<LawSemanticChunkRow> candidates) {
+		if (chunk.chunkVersion() == null || chunk.chunkVersion() <= 0 || !"PASS".equals(chunk.qualityStatus())) {
+			return null;
+		}
+		String introduction = nullToEmpty(chunk.chunkText()).trim();
+		int trigger = introduction.lastIndexOf("다음 각 호");
+		if (trigger < 0 || java.util.regex.Pattern.compile("(?m)^\\s*\\d+[.)]\\s+")
+			.matcher(introduction.substring(trigger)).find()) {
+			return null;
+		}
+		if (java.util.regex.Pattern.compile("(?m)^\\s*(?:[①-⑳➀-➉◇◆○●]|제\\s*\\d+\\s*조)")
+			.matcher(introduction.substring(trigger)).find()) { return null; }
+		List<LawSemanticChunkRow> adjacent = candidates.stream()
+			.filter(candidate -> candidate.documentId() == chunk.documentId()
+				&& candidate.target().equals(chunk.target()) && candidate.sortOrder() == chunk.sortOrder() + 1)
+			.toList();
+		if (adjacent.size() != 1) { return null; }
+		LawSemanticChunkRow next = adjacent.get(0);
+		if (!chunk.chunkVersion().equals(next.chunkVersion()) || !"PASS".equals(next.qualityStatus())) { return null; }
+		StringBuilder body = new StringBuilder();
+		int expected = 1;
+		boolean boundary = false;
+		var numbered = java.util.regex.Pattern.compile("^(\\d+)[.)]\\s+(.+)$");
+		for (String line : nullToEmpty(next.chunkText()).strip().split("\\R")) {
+			String value = line.strip();
+			if (value.isEmpty()) { continue; }
+			if (value.matches("^[①-⑳➀-➉◇◆○●].*") || value.matches("^제\\s*\\d+\\s*조.*")) {
+				boundary = true;
+				break;
+			}
+			var item = numbered.matcher(value);
+			if (item.matches()) {
+				if (!Integer.toString(expected).equals(item.group(1))) { return null; }
+				expected++;
+			} else {
+				// Plain lines cannot be distinguished from a new, unrelated paragraph safely.
+				return null;
+			}
+			body.append(value).append('\n');
+		}
+		// A visible higher-level boundary is required; a truncated continuation is not a complete list.
+		if (!boundary || expected < 2 || introduction.length() + body.length()
+			+ nullToEmpty(chunk.parentSectionTitle()).length() + nullToEmpty(next.chunkTitle()).length() + 16 > 2797) {
+			return null;
+		}
+		return copyWithChunkText(next, body.toString().strip());
 	}
 
 	private void addContextCandidate(Map<Long, LawSemanticChunkRow> selected, LawSemanticChunkRow candidate) {
@@ -3260,8 +3334,16 @@ public class LawAiAnswerService {
 		return candidateParent.contains(baseParent) || baseParent.contains(candidateParent);
 	}
 
+	private record ParentContextTextResult(String text, List<Long> chunkIds) {}
+	private record ContextBodyRange(long chunkId, int start, int end) {}
+
 	private String buildParentContextText(LawSemanticChunkRow selectedChunk, List<LawSemanticChunkRow> contextChunks, String query) {
+		return buildParentContextTextResult(selectedChunk, contextChunks, query).text();
+	}
+
+	private ParentContextTextResult buildParentContextTextResult(LawSemanticChunkRow selectedChunk, List<LawSemanticChunkRow> contextChunks, String query) {
 		StringBuilder builder = new StringBuilder();
+		List<ContextBodyRange> ranges = new java.util.ArrayList<>();
 		String parentTitle = cleanDisplayText(selectedChunk.parentSectionTitle());
 		if (!parentTitle.isBlank()) {
 			builder.append(parentTitle).append('\n');
@@ -3277,21 +3359,49 @@ public class LawAiAnswerService {
 			if (!heading.isBlank() && !normalizeForMatch(text).startsWith(normalizeForMatch(heading))) {
 				builder.append(heading).append('\n');
 			}
-			builder.append(text).append("\n\n");
+			int bodyStart = builder.length();
+			builder.append(text);
+			ranges.add(new ContextBodyRange(contextChunk.chunkId(), bodyStart, builder.length()));
+			builder.append("\n\n");
 		}
-		String expanded = builder.toString().trim();
+		String raw = builder.toString();
+		String expanded = raw.trim();
 		if (expanded.isBlank()) {
-			return "";
+			return new ParentContextTextResult("", List.of());
 		}
+		int trimOffset = raw.indexOf(expanded);
 		int queryIndex = bestSnippetIndex(expanded, query);
-		if (queryIndex < 0 || queryIndex < 1_800) {
-			return expanded.length() <= 2_800 ? expanded : expanded.substring(0, 2_800) + "...";
+		int start = queryIndex < 1_800 ? 0 : moveToReadableBoundary(expanded, Math.max(0, queryIndex - 1_200), -1);
+		String suffix = expanded.substring(start);
+		String value = suffix.trim();
+		int contentStart = start + suffix.indexOf(value);
+		String prefix = start > 0 ? "..." : "";
+		String text = prefix + (value.length() <= 2_800 ? value : value.substring(0, 2_800) + "...");
+		String displayed = ParentContextAssembler.cleanDisplayTextForGround(text);
+		int visibleLength = displayed.length() > 2_800 ? 2_797 : displayed.length();
+		// After per-body HWPX cleanup, display cleanup must only remove characters or normalize whitespace.
+		// Do not guess provenance when a remaining artifact requires a non-local rewrite.
+		if (!HwpxTextCleaner.clean(text).equals(text.trim())) {
+			return new ParentContextTextResult(selectedChunk.chunkText(), List.of(selectedChunk.chunkId()));
 		}
-		int start = Math.max(0, queryIndex - 1_200);
-		start = moveToReadableBoundary(expanded, start, -1);
-		String value = expanded.substring(start).trim();
-		return (start > 0 ? "..." : "")
-			+ (value.length() <= 2_800 ? value : value.substring(0, 2_800) + "...");
+		java.util.Set<Long> visibleIds = new java.util.LinkedHashSet<>();
+		int rawCursor = 0;
+		for (int i = 0; i < visibleLength; i++) {
+			char character = displayed.charAt(i);
+			if (Character.isWhitespace(character)) continue;
+			int position = text.indexOf(character, rawCursor);
+			if (position < 0) {
+				return new ParentContextTextResult(selectedChunk.chunkText(), List.of(selectedChunk.chunkId()));
+			}
+			rawCursor = position + 1;
+			int bodyOffset = position - prefix.length();
+			if (bodyOffset < 0 || bodyOffset >= Math.min(value.length(), 2_800)) continue;
+			int sourceOffset = trimOffset + contentStart + bodyOffset;
+			for (ContextBodyRange range : ranges) {
+				if (sourceOffset >= range.start() && sourceOffset < range.end()) visibleIds.add(range.chunkId());
+			}
+		}
+		return new ParentContextTextResult(text, List.copyOf(visibleIds));
 	}
 
 	private LawSemanticChunkRow copyWithChunkText(LawSemanticChunkRow chunk, String chunkText) {
@@ -3314,7 +3424,11 @@ public class LawAiAnswerService {
 			chunk.sortOrder(),
 			chunk.contentHash(),
 			chunk.parentSectionTitle(),
-			chunk.sectionType()
+			chunk.sectionType(),
+			chunk.qualityStatus(),
+			chunk.embeddingText(),
+			chunk.parentKey(),
+			chunk.chunkVersion()
 		);
 	}
 
@@ -3344,6 +3458,10 @@ public class LawAiAnswerService {
 		StringBuilder builder = new StringBuilder();
 		for (int i = 0; i < chunks.size(); i++) {
 			LawSemanticChunkRow chunk = chunks.get(i);
+			String contextText = contextSnippet(chunk, query, contextCharsPerGround);
+			if (contextText.isBlank()) {
+				continue;
+			}
 			String key = scoreKey(chunk.target(), chunk.chunkId());
 			int groundNumber = groundNumberByChunkId.getOrDefault(key, i + 1);
 			builder.append('[').append(groundNumber).append("] ");
@@ -3358,7 +3476,7 @@ public class LawAiAnswerService {
 			}
 			double score = scoreByChunkId.getOrDefault(key, 0.0);
 			builder.append(" | score=").append(String.format(java.util.Locale.ROOT, "%.3f", score)).append('\n');
-			builder.append(contextSnippet(chunk, query, contextCharsPerGround)).append("\n\n");
+			builder.append(contextText).append("\n\n");
 		}
 		return builder.toString();
 	}
@@ -3392,16 +3510,21 @@ public class LawAiAnswerService {
 	}
 
 	private String contextSnippet(LawSemanticChunkRow chunk, String query, int limit) {
-		String securityReviewTargets = completeSecurityReviewTargetSnippet(chunk, query, limit);
-		if (!securityReviewTargets.isBlank()) {
-			return prependMeaningfulChunkHeading(chunk, securityReviewTargets);
+		String value = completeSecurityReviewTargetSnippet(chunk, query, limit);
+		if (value.isBlank()) {
+			value = completeNumberedProcedureSnippet(chunk, query);
 		}
-		String numberedProcedure = completeNumberedProcedureSnippet(chunk, query);
-		if (!numberedProcedure.isBlank()) {
-			return prependMeaningfulChunkHeading(chunk, numberedProcedure);
+		if (value.isBlank()) {
+			value = contextSnippet(chunk.chunkText(), query, limit);
 		}
-		String value = contextSnippet(chunk.chunkText(), query, limit);
-		return prependMeaningfulChunkHeading(chunk, value);
+		value = prependMeaningfulChunkHeading(chunk, value);
+		if (isInformationSystemCompliancePenaltyQuestion(normalizeForMatch(query))
+			&& normalizeForMatch(value).contains("다음각호")
+			&& containsAny(normalizeForMatch(value), "입찰참가자격", "제재", "위약금")
+			&& hasIncompleteEnumeratedTrigger(value)) {
+			return "";
+		}
+		return value;
 	}
 
 	// 메소드 설명: answerFocusInstruction 처리 흐름을 수행합니다.
@@ -3496,14 +3619,14 @@ public class LawAiAnswerService {
 		List<LawSemanticChunkRow> forcedFiltered = selected.stream()
 			.filter(chunk -> !isForcedExcludedAnswerContextChunk(chunk, query))
 			.toList();
-		List<LawSemanticChunkRow> finalSelected = forcedFiltered.isEmpty() ? List.copyOf(selected) : forcedFiltered;
+		List<LawSemanticChunkRow> finalSelected = forcedFiltered;
 		if (!lexicalVariantProperties.authoritative() || finalSelected.isEmpty()) {
 			return finalSelected;
 		}
 		return procedureEvidenceCompletenessPolicy.apply(
 			query,
 			finalSelected,
-			displayChunks,
+			displayChunks.stream().filter(chunk -> !isForcedExcludedAnswerContextChunk(chunk, query)).toList(),
 			Map.of(),
 			finalSelected.size()
 		).chunks();
@@ -3526,8 +3649,40 @@ public class LawAiAnswerService {
 		return displayChunks;
 	}
 
+	private boolean hasIncompleteEnumeratedTrigger(String text) {
+		var trigger = java.util.regex.Pattern.compile("다음\\s*각\\s*호").matcher(text);
+		List<Integer> starts = new java.util.ArrayList<>();
+		List<Integer> ends = new java.util.ArrayList<>();
+		while (trigger.find()) {
+			starts.add(trigger.start());
+			ends.add(trigger.end());
+		}
+		var item = java.util.regex.Pattern.compile("(?:^|\\s)(?:[1-9]\\d?[.)]|[①②③④⑤⑥⑦⑧⑨⑩])\\s*\\S");
+		for (int i = 0; i < starts.size(); i++) {
+			int boundary = i + 1 < starts.size() ? starts.get(i + 1) : text.length();
+			String following = text.substring(ends.get(i), boundary);
+			var article = java.util.regex.Pattern.compile("제\\s*\\d+\\s*조(?:의\\s*\\d+)?(?:\\s*[(（]|(?=\\s|$))").matcher(following);
+			if (article.find()) following = following.substring(0, article.start());
+			if (!item.matcher(following).find()) return true;
+		}
+		return false;
+	}
+
 	private boolean isForcedExcludedAnswerContextChunk(LawSemanticChunkRow chunk, String query) {
 		String normalizedQuery = normalizeForMatch(query);
+		String body = chunk.chunkText() == null ? "" : chunk.chunkText();
+		String normalizedBody = normalizeForMatch(body);
+		if (isInformationSystemCompliancePenaltyQuestion(normalizedQuery)
+			&& normalizedBody.contains("다음각호")
+			&& containsAny(normalizedBody, "입찰참가자격", "제재", "위약금")
+			&& hasIncompleteEnumeratedTrigger(body)) {
+			return true;
+		}
+		if (isInformationSystemCompliancePenaltyQuestion(normalizedQuery)
+			&& EvidenceJudge.isSecurityContractConsequenceOutsideQuestion(query,
+				chunk.chunkText(), chunk.title(), chunk.chunkTitle())) {
+			return true;
+		}
 		boolean projectReviewQuestion = containsAny(normalizedQuery, "과업심의", "소프트웨어사업", "sw사업", "공공소프트웨어");
 		String text = answerContextText(chunk) + " " + normalizeForMatch(chunk.agencyName());
 		if (projectReviewQuestion) {
@@ -5227,6 +5382,7 @@ public class LawAiAnswerService {
 			return judgedEvidence;
 		}
 		LinkedHashMap<String, LawSemanticChunkRow> merged = new LinkedHashMap<>();
+		Set<String> anchoredRuleKeys = new LinkedHashSet<>();
 		for (LawSemanticChunkRow chunk : directEvidenceChunks) {
 			merged.put(scoreKey(chunk.target(), chunk.chunkId()), chunk);
 		}
@@ -5234,12 +5390,28 @@ public class LawAiAnswerService {
 			for (LawSemanticChunkRow chunk : judgedEvidence.chunks()) {
 				if (!isForcedExcludedAnswerContextChunk(chunk, query)) {
 					merged.putIfAbsent(scoreKey(chunk.target(), chunk.chunkId()), chunk);
+				} else if (judgedEvidence.directEvidenceCount() > 0
+					&& isProjectReviewScopeQuestion(normalizeForMatch(query), queryTerms(query))
+					&& judgedEvidence.chunks().stream().anyMatch(EvidenceJudge::isNationalSoftwareReviewScope)
+					&& isProjectReviewCommitteeOperationNoise(answerContextText(chunk))) {
+					String rule = EvidenceJudge.softwareConfirmationReviewDutyText(chunk.chunkText());
+					if (rule.isBlank()) {
+						rule = EvidenceJudge.committeeEstablishmentRuleText(chunk.chunkText());
+					}
+					if (!rule.isBlank()) {
+						LawSemanticChunkRow narrowed = copyWithChunkText(chunk, rule);
+						if (!isForcedExcludedAnswerContextChunk(narrowed, query)) {
+							merged.putIfAbsent(scoreKey(chunk.target(), chunk.chunkId()), narrowed);
+							anchoredRuleKeys.add(scoreKey(chunk.target(), chunk.chunkId()));
+						}
+					}
 				}
 			}
 		}
 		List<LawSemanticChunkRow> preserved = merged.values()
 			.stream()
 			.filter(this::hasUsefulText)
+			.sorted(Comparator.comparingInt(chunk -> anchoredRuleKeys.contains(scoreKey(chunk.target(), chunk.chunkId())) ? 0 : 1))
 			.limit(DEFAULT_LIMIT)
 			.toList();
 		if (preserved.equals(judgedEvidence.chunks())) {
@@ -10029,7 +10201,8 @@ public class LawAiAnswerService {
 			|| text.contains("심의의결")
 			|| text.contains("제척요건")
 			|| (text.contains("위원장") && (text.contains("구성") || text.contains("운영")))
-			|| (text.contains("과업심의위원회") && containsAny(text, "회의", "제척", "의결", "운영방법"));
+			|| (text.contains("과업심의위원회") && (text.replace("위원회의", "위원회").contains("회의")
+				|| containsAny(text, "제척", "의결", "운영방법")));
 	}
 
 	private boolean hasProjectReviewTargetEvidence(String normalizedText) {
@@ -10595,7 +10768,8 @@ public class LawAiAnswerService {
 		);
 		boolean lowSignalPurpose = containsAny(text, "목적", "적용범위", "정의")
 			&& !containsAny(text, "미준수", "불이익", "제재", "위약금", "입찰참가자격", "개선권고", "보완");
-		return complianceContext && consequenceSignal && !lowSignalPurpose;
+		return complianceContext && consequenceSignal && !lowSignalPurpose
+			&& EvidenceJudge.hasPenaltyConsequenceSignal(chunk.chunkText(), chunk.chunkTitle(), chunk.parentSectionTitle());
 	}
 
 	private double informationSystemCompliancePenaltyEvidencePriority(LawSemanticChunkRow chunk) {
@@ -10805,7 +10979,18 @@ public class LawAiAnswerService {
 		}
 		List<LawSemanticChunkRow> selected = new java.util.ArrayList<>();
 		Set<String> selectedKeys = new HashSet<>();
-		for (LawSemanticChunkRow chunk : priorityJudgeCandidates(chunks, query)) {
+		List<LawSemanticChunkRow> priorities = new java.util.ArrayList<>(priorityJudgeCandidates(chunks, query));
+		if (isTargetOrScopeQuestion(List.of(nullToEmpty(query)))) {
+			List<String> procedures = queryTerms(query).stream()
+				.filter(term -> term.endsWith("심의") || term.endsWith("검토") || term.endsWith("평가"))
+				.toList();
+			chunks.stream().filter(chunk -> {
+				String body = normalizeForMatch(nullToEmpty(chunk.chunkText()));
+				return procedures.stream().anyMatch(body::contains)
+					&& containsAny(body, "하여야", "해야", "받아야", "거쳐야", "두어야");
+			}).limit(2).forEach(priorities::add);
+		}
+		for (LawSemanticChunkRow chunk : priorities) {
 			if (selected.size() >= limit) {
 				return selected;
 			}

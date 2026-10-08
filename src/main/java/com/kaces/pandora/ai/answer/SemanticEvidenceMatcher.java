@@ -166,6 +166,10 @@ public class SemanticEvidenceMatcher {
 		boolean oppositePolarity = claim.polarity() != EvidenceAtom.Polarity.UNSPECIFIED
 			&& evidence.polarity() != EvidenceAtom.Polarity.UNSPECIFIED
 			&& claim.polarity() != evidence.polarity();
+		if (!oppositePolarity && claim.modality() == EvidenceAtom.Modality.REQUIRED
+			&& evidence.modality() != EvidenceAtom.Modality.REQUIRED) {
+			return SemanticMatch.insufficient("OBLIGATION_NOT_ESTABLISHED");
+		}
 		boolean oppositeModality = (claim.modality() == EvidenceAtom.Modality.PERMITTED
 			&& evidence.modality() == EvidenceAtom.Modality.PROHIBITED)
 			|| (claim.modality() == EvidenceAtom.Modality.PROHIBITED
@@ -173,6 +177,10 @@ public class SemanticEvidenceMatcher {
 		ClaimEvidenceMatcher.Status status = oppositePolarity || oppositeModality
 			? ClaimEvidenceMatcher.Status.CONTRADICTED
 			: ClaimEvidenceMatcher.Status.SUPPORTED;
+		if (status == ClaimEvidenceMatcher.Status.SUPPORTED
+			&& !claim.conditions().containsAll(evidence.conditions())) {
+			return SemanticMatch.insufficient("SOURCE_CONDITION_NOT_PRESERVED");
+		}
 		return new SemanticMatch(
 			status, Set.copyOf(aligned), indexed.groundNumber(), indexed.sentence(), coverage,
 			status == ClaimEvidenceMatcher.Status.SUPPORTED ? "ALIGNED" : "ALIGNED_OPPOSITE_POLARITY"

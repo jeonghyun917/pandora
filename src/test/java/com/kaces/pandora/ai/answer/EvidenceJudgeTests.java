@@ -14,6 +14,94 @@ class EvidenceJudgeTests {
 	private final EvidenceJudge judge = new EvidenceJudge();
 
 	@Test
+	void preservesExplicitProcedureBeforeCommitteeInstallationBesideAnAnchoredScope() {
+		var scope = chunk(901, "official_doc", "공공소프트웨어사업 과업심의 가이드", "적용 대상 사업",
+			"국가기관 등이 발주하는 모든 SW사업(상용SW포함). 소프트웨어의 개발, 제작, 생산, 유통, 운영 및 유지 관리 등.",
+			"적용 대상 사업", "target_scope");
+		var committee = chunk(902, "법령", "국가기관등의 장은 소프트웨어사업의 과업내용의 확정을 심의하기 위하여 과업심의위원회를 두어야 한다.");
+		var procedure = chunk(903, "소프트웨어사업 계약 및 관리감독에 관한 지침",
+			"제25조(과업내용의 확정 시기 및 기준 등)\n① 국가기관등의 장은 영 제47조제1항제1호에 따라 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다. 다만, 사업수행일정 부족 등 불가피한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.");
+		var result = judge.judge("온라인 운영 사업도 과업심의 받아야 하나요?", List.of(scope, committee, procedure),
+			Map.of("official_doc:901", 1.0, "official_doc:902", 2.0), 2);
+		assertThat(result.chunks()).containsExactly(scope, procedure);
+		assertThat(result.chunks().get(1).chunkText()).contains("과업내용을 확정하기 위하여", "다만, 사업수행일정 부족");
+	}
+
+	@Test
+	void explicitProcedurePreservationRequiresTheSameActorBusinessPurposeAndDuty() {
+		String rule = "국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		assertThat(EvidenceJudge.hasExplicitSoftwareConfirmationReviewDuty(rule)).isTrue();
+		assertThat(EvidenceJudge.hasExplicitSoftwareConfirmationReviewDuty(rule.replace("장은 과업내용", "장은 영 제47조제1항제1호에 따라 과업내용"))).isTrue();
+		for (String invalid : List.of(rule.replace("국가기관등의 장", "민간기관의 장"),
+			rule.replace("소프트웨어사업", "건설사업"), rule.replace("과업내용을 확정하기 위하여", "기록을 보존하기 위하여"),
+			rule.replace("받아야 한다", "받을 수 있다"), rule.replace("받아야 한다", "받지 않아도 된다"),
+			rule.replace("받아야 한다.", "받아야 한다는 규정은 적용되지 않는다."),
+			"국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업을 추진한다. 민간기관의 장은 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.")) {
+			assertThat(EvidenceJudge.hasExplicitSoftwareConfirmationReviewDuty(invalid)).as(invalid).isFalse();
+		}
+		assertThat(judge.judge("온라인 운영 사업도 과업심의 받아야 하나요?", List.of(chunk(904, "법령", rule)), Map.of(), 2).chunks())
+			.isEmpty();
+	}
+
+	@Test
+	void procedureParagraphExtractionPreservesOnlyACompleteAttachedException() {
+		String rule = "① 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		String exception = " 다만, 사업수행일정 부족 등 불가피한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		assertThat(EvidenceJudge.softwareConfirmationReviewDutyText("제25조(과업내용의 확정)\n" + rule + exception + "\n④ 위원 기피 여부를 의결한다."))
+			.isEqualTo(rule + exception);
+		for (String invalid : List.of("“" + rule + "”는 적용되지 않는다.",
+			rule + "\n" + exception.strip(),
+			rule + "\n \t\n" + exception.strip(),
+			rule + "\n다만, 사업수행일정 부족 등 불가피한 경우에는",
+			rule + " 다만, 사업수행일정 부족 등 불가피한 경우에는",
+			rule + " 다른 기관은 별도 자료를 보존해야 한다.",
+			rule + exception + " 다른 기관은 별도 자료를 보존해야 한다.")) {
+			assertThat(EvidenceJudge.softwareConfirmationReviewDutyText(invalid)).as(invalid).isEmpty();
+		}
+	}
+
+	@Test
+	void committeeRuleExtractionDoesNotDropFirstItemQualifications() {
+		String sentence = "국가기관등의 장은 소프트웨어사업의 추진에 관한 다음 각 호의 사항을 심의하기 위하여 소프트웨어사업 과업심의위원회를 두어야 한다.\n";
+		for (String item : List.of("1. 과업내용의 확정은 제외한다", "1. 과업내용의 확정 중 변경사항만")) {
+			assertThat(EvidenceJudge.committeeEstablishmentRuleText(sentence + item)).isEmpty();
+		}
+	}
+
+	@Test
+	void preservesExplicitCommitteeRuleBesideSoftwareOperationScope() {
+		LawSemanticChunkRow scope = chunk(991, "official_doc", "공공소프트웨어사업 과업심의 가이드",
+			"p.5 적용 대상 사업", "적용 대상 사업\n국가기관 등이 발주하는 모든 SW사업(상용SW포함)\n- \u0007소프트웨어의 개발, 제작, 생산, 유통, 운영 및 유지·관리 등과 그 밖에 소프트웨어와 관련된 서비스\n를 제공하는 산업과 관련된 경제활동(‘소프트웨어 진흥법’제2조)\n※ \u0007단순 H/W(Appliance 포함) 도입·설치, 단순 동영상 제작, 네트워크 등 인프라 수수료와 같이 소프트웨어사\n업으로 볼 수 없는 경우는 비대상",
+			"적용 대상 사업", "target_scope");
+		LawSemanticChunkRow rule = chunk(992, "official_doc", "소프트웨어사업관련 법령준수",
+			"요구사항 상세화", "14. 요구사항 상세화\n15. SW사업 적정 사업기간 산정\n16. 투입인력 요구 및 관리 금지\n17. SW사업 영향평가\n18. SW사업정보 제출\n* 주1) 범례 : ○ (수용), X (수용불가), △ (일부 수용)\n* 주2) 각 개선권고 항목별 조치내용 또는 수용불가 사유를 명확하게 기재\n* 처리결과 통보는 개선권고 된 항목에 대해서만 기재하며, 미 개선권고항목은 제외 가능\n법령준수 개선권고 주요항목\n소프트웨어사업관련 법령준수 개선권고 세부사항 및 법적 근거\n법령준수 개선권고 주요항목\n[해당없음]\n1. 과업심의위원회\n권고\n내용\nㅇ\n(검토결과)\n귀 기관이 발주한 사업은\n과업 확정시 과\n업심의위원회 개최 여부\n및\n과업 내용 변경에 따른\n계약금액ㆍ계약기간 조정이 필요한 경우 소프트웨어사업 과업변경요청서를 작성하여 제출하여야 함을 명시하지 않았\n습니다.\nㅇ (개선권고)\n소프트웨어 진흥법 제50조에 따라\n과업내용 확정을 위한 과업심의원회 개최여부\n와\n과업내용 변경에 따른\n계약금액ㆍ계약기간 조정이 필요한 경우 소프트웨어사업 과업변경요청서를 작성하여 제출하여야 함\n을\n< 제안요청서 작성 예시 >\n를 참조하여\n명시\n하시기 바랍니다.\n<\n제안요청서 작성 예시\n>\n( 작성 예시 2개 모두 명시하여야 함 )\nㅇ\n(과업내용 확정 심의 여부)\n본 사업은 「소프트웨어 진흥법」 제50조에 따른 과업내용 확정을 위하여 과업\n심의위원회를\n( )개최 또는 ( )미개최\n한 사업임\n※ 위 괄호 내 해당사항에 체크(\n✔)\n표시\n( 계약체결 전까지 개최 예정시는 미개최에 ✔\n표시\n)\nㅇ\n(과업내용 변경)\n본 사업은 「소프트웨어 진흥법」 제50조, 같은 법 시행령 제47조 제1항 제2호, 제3호에 따른 과업내용 변경 및 그에 따른 계약금액·계약기간 조정이 필요한 경우, 계약상대자는 국가기관등의 장에게 소프트웨어사업 과업변경요청서*를 제출하여\n과업심의위원회 개최를 요청할 수 있으며\n, 국가기관등의 장은 과업심의위원회 개최요청에 대해서 특별한 사정이 없으면 수용해야 함 * 「소프트웨어사업 계약 및 관리감독에 관한 지침」 별지 13호서식 참조\n대상\n사업\nㅇ\nSW\n사업\n법적\n근거\n소프트웨어 진흥법\n제50조(소프트웨어사업 과업심의위원회)\n① 국가기관등의 장은 소프트웨어사업의 추진에 관한 다음 각 호의 사항을 심의하기 위하여 소프트웨어사업 과업심의위원회(이하 “과업심의위원회”라 한다)를 두어야 한다.\n1. 과업내용의 확정\n2. 과업내용 변경의 확정 및 이에 따른 계약금액·계약기간 조정\n② 국가기관등의 장은 특별한 사정이 없으면 제1항에 따른 심의결과를 계약 등에 반영하여야 한다.\n③ 국가기관등의 장과 소프트웨어사업의 계약을 체결한 사업자는 과업내용 변경으로 인한 계약내용 변경이 필요한 경우 국가기관등의 장에게 과업심의위원회의 개최를 요청할 수 있다. 이 경우 국가기관등의 장은 특별한 사정이 없으면 요청을 수용하여야 한다.\n④ 제1항 및 제3항에 따른 과업심의위원회의 구성ㆍ운영, 과업내용의 확정ㆍ변경 및 개최 요청 절차 등에 관하여 필요한 사항은 대통령령으로 정한다.\n소프트웨어 진흥법 시행령\n제46조(과업심의위원회의 운영 등)\n① ~ ③ (생략)\n④ 과업심의위원회가 심의ㆍ의결하는 안건의 당사자는 위원에게 공정한 심의ㆍ의결을 기대하기 어려운 사정이 있는 경우 과업심의위원회에 해당 위원에 대한 기피(忌避)를 신청할 수 있고, 과업심의위원회는 의결로 기피 여부를 결정한다. 이 경우 기피 신청의 대상인 위원은 그 의결에 참여할 수 없다.",
+			"요구사항 상세화", "requirement");
+		EvidenceJudge.Result result = judge.judge("SNS운영 사업도 과업심의 받아야해?",
+			List.of(scope, rule), Map.of("official_doc:991", 45.0, "official_doc:992", 15.0), 8);
+		assertThat(result.chunks()).as("explicit rule is candidate evidence, not an unconditional individual obligation; result=%s", result)
+			.contains(scope, rule);
+	}
+
+	@Test
+	void committeeSupportingRuleRequiresScopeAndMatchingActorAndProcedure() {
+		LawSemanticChunkRow scope = chunk(991, "official_doc", "공공소프트웨어사업 과업심의 가이드",
+			"적용 대상 사업", "국가기관 등이 발주하는 모든 SW사업(상용SW포함). 소프트웨어의 개발, 제작, 생산, 유통, 운영 및 유지 관리 등.",
+			"적용 대상 사업", "target_scope");
+		String valid = "국가기관등의 장은 소프트웨어사업의 과업내용의 확정을 심의하기 위하여 과업심의위원회를 두어야 한다.";
+		LawSemanticChunkRow rule = chunk(992, "법령", valid);
+		assertThat(judge.judge("SNS운영 사업도 과업심의 받아야해?", List.of(rule), Map.of(), 8).chunks()).isEmpty();
+		for (String text : List.of(valid.replace("국가기관등의 장", "민간기업의 장"),
+			valid.replace("과업심의위원회", "영향평가위원회"), valid.replace("두어야 한다", "두지 않아도 된다"),
+			"국가기관등의 장은 소프트웨어사업 지침을 배포한다. 민간기업은 과업내용의 확정을 위해 과업심의위원회를 두어야 한다.",
+			"국가기관등의 장은 소프트웨어사업 지침을 배포하고 민간기업은 과업내용의 확정을 위해 과업심의위원회를 두어야 한다.",
+			"국가기관등의 장은 소프트웨어사업의 과업내용의 확정을 위해 과업심의위원회를 두어야 한다는 규정은 적용되지 않는다.")) {
+			LawSemanticChunkRow unrelated = chunk(993, "법령", text);
+			assertThat(judge.judge("SNS운영 사업도 과업심의 받아야해?", List.of(scope, unrelated), Map.of(), 8).chunks())
+				.contains(scope).doesNotContain(unrelated);
+		}
+	}
+
+	@Test
 	// 메소드 설명: promotesDirectHardwareExclusionEvidenceOverLooseSoftwareMatches 처리 흐름을 수행합니다.
 	void promotesDirectHardwareExclusionEvidenceOverLooseSoftwareMatches() {
 		LawSemanticChunkRow looseMatch = chunk(
@@ -152,6 +240,24 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void generalLegalComplianceConsequencesDoNotUseSecurityContractSanctions() {
+		LawSemanticChunkRow security = chunk(93, "정보화사업 보안성 검토 가이드", "보안 요구사항 구체화",
+			"입찰공고에는 누출금지 대상정보, 부정당업자 제재조치, 기밀유지 의무 및 위반시 불이익을 명시한다. 사업자 보안위규 처리기준과 보안 위약금 부과 기준을 적용한다.");
+		LawSemanticChunkRow compliance = chunk(94, "소프트웨어사업관련 법령준수", "법령준수 권고",
+			"대상사업: SW개발, 제작, 생산, 유통, 운영 및 유지관리 등과 이에 관련된 서비스. 사례: 정보화전략계획 수립, SW개발, 시스템 운영 및 유지보수. SW사업 공고에 대하여 SW관련 법령의 준수를 권고한다. 법령준수여부에 체크된 권고항목의 수용 여부를 작성한다. 향후 입찰공고시 반영여부를 재확인하여 미준수 항목을 다시 권고한다.");
+		LawSemanticChunkRow securityReview = chunk(95, "정보화사업 보안성 검토 가이드", "보안성 검토 추진절차",
+			"보안성 검토 사업발주 대비 검토 건수를 기관 정보화 평가에 반영한다. 보안성 검토 요청 누락 및 결과 이행 여부를 분기별로 파악하여 조치한다.");
+		var result = judge.judge("정보화시스템 법제도 준수안하면 어떤 불이익?",
+			List.of(security, compliance, securityReview), Map.of("official_doc:93", 0.9, "official_doc:94", 0.4, "official_doc:95", 0.8), 8);
+		assertThat(result.chunks()).doesNotContain(security);
+		assertThat(result.chunks()).doesNotContain(securityReview);
+		assertThat(result.chunks()).contains(compliance);
+		var securityResult = judge.judge("정보화사업 보안위규 위반하면 어떤 불이익?",
+			List.of(security), Map.of("official_doc:93", 0.9), 8);
+		assertThat(securityResult.chunks()).contains(security);
+	}
+
+	@Test
 	void acceptsInformationSystemComplianceConsequenceEvidence() {
 		LawSemanticChunkRow ruleOnly = chunk(
 			91,
@@ -175,6 +281,22 @@ class EvidenceJudgeTests {
 		assertThat(result.directEvidenceFound()).isTrue();
 		assertThat(result.chunks()).contains(consequence);
 		assertThat(result.chunks()).doesNotContain(ruleOnly);
+	}
+
+	@Test
+	void noncomplianceDetectionAloneDoesNotEstablishAConsequence() {
+		LawSemanticChunkRow detectionOnly = chunk(
+			96,
+			"정보화사업 법제도 준수 점검",
+			"법제도 미준수 항목 확인",
+			"정보화시스템 법제도 준수 여부를 점검하고 미준수 항목을 확인한다."
+		);
+		var result = judge.judge(
+			"정보화시스템 법제도 준수안하면 어떤 불이익?",
+			List.of(detectionOnly), Map.of("official_doc:96", 0.9), 8
+		);
+		assertThat(result.directEvidenceFound()).isFalse();
+		assertThat(result.chunks()).isEmpty();
 	}
 
 	@Test
@@ -1223,6 +1345,25 @@ class EvidenceJudgeTests {
 		assertThat(result.chunks()).doesNotContain(unrelatedPermissionGuide);
 		assertThat(result.conceptEvidenceRequired()).isTrue();
 		assertThat(result.conceptEvidenceFound()).isTrue();
+	}
+
+	@Test
+	void projectReviewScopeUsesGeneralSoftwareCriteriaForNamedBusiness() {
+		LawSemanticChunkRow scope = chunk(
+			1, "official_doc", "공공소프트웨어사업 과업심의 가이드(2022. 12.)",
+			"p.5 적용 대상 사업",
+			"적용 대상 사업. 국가기관 등이 발주하는 모든 SW사업(상용SW포함). 소프트웨어의 개발, 제작, 생산, 유통, 운영 및 유지·관리 등과 관련된 서비스 사업이 포함된다.",
+			"적용 대상 사업", "target_scope"
+		);
+		LawSemanticChunkRow acronymNoise = chunk(
+			2, "SNS 소통민원창구 운영 안내", "SNS 소통민원창구에서 민원 내용을 접수하고 답변한다."
+		);
+		for (String question : List.of("SNS운영 사업도 과업심의 받아야해?", "CRM 운영 사업도 과업심의 대상인가?")) {
+			EvidenceJudge.Result result = judge.judge(question, List.of(scope, acronymNoise),
+				Map.of("official_doc:1", 0.4, "official_doc:2", 0.95), 8);
+			assertThat(result.directEvidenceFound()).as(question).isTrue();
+			assertThat(result.chunks()).as(question).contains(scope).doesNotContain(acronymNoise);
+		}
 	}
 
 	@Test

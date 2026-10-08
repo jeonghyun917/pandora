@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class GroundedAnswerRepairService {
+	private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(GroundedAnswerRepairService.class);
 
 	static final int MAX_SELECTED_ATOMS = 6;
 	static final int MAX_ATOM_CHARACTERS = 360;
@@ -79,6 +80,11 @@ public class GroundedAnswerRepairService {
 			initial,
 			safeGrounds
 		);
+		boolean generalScopeBinding = false;
+		if (selectedAtoms.isEmpty()) {
+			selectedAtoms = selectGeneralSoftwareScopeAtoms(question, normalize(draft), safeGrounds);
+			generalScopeBinding = !selectedAtoms.isEmpty();
+		}
 		if (selectedAtoms.isEmpty()) {
 			return result(initial, false, false, "NO_ALIGNED_SUPPORTED_ATOM", 0);
 		}
@@ -88,8 +94,17 @@ public class GroundedAnswerRepairService {
 
 		String rewritten;
 		try {
-			rewritten = rewriter.rewrite(question, selectedAtoms);
+			rewritten = generalScopeBinding
+				? rewriter.rewriteConditional(question, selectedAtoms, safeGrounds.stream()
+					.filter(ground -> ground != null && normalize(ground.title()).contains("과업심의"))
+					.map(LawAiAnswerGround::title).distinct().toList())
+				: rewriter.rewrite(question, selectedAtoms);
 		} catch (RuntimeException exception) {
+			log.warn("Grounded answer rewrite failed exceptionType={} causeType={} httpStatus={}",
+				exception.getClass().getSimpleName(),
+				exception.getCause() == null ? "none" : exception.getCause().getClass().getSimpleName(),
+				exception instanceof org.springframework.web.client.RestClientResponseException responseException
+					? responseException.getStatusCode().value() : 0);
 			return result(initial, true, false, "REWRITER_EXCEPTION", selectedAtoms.size());
 		}
 		if (rewritten == null || rewritten.isBlank()) {
@@ -103,6 +118,12 @@ public class GroundedAnswerRepairService {
 			return result(initial, true, false, "REVERIFY_EXCEPTION", selectedAtoms.size());
 		}
 		String normalizedRewrite = normalize(rewritten);
+		boolean generalScopeConditionDropped = generalScopeBinding
+			&& (!normalizedRewrite.contains("국가기관")
+				|| !(normalizedRewrite.contains("소프트웨어사업") || normalizedRewrite.contains("sw사업")));
+		if (generalScopeConditionDropped) {
+			return result(initial, true, false, "SOURCE_CONDITION_NOT_PRESERVED", selectedAtoms.size());
+		}
 		boolean droppedTargetScope = selectedAtoms.stream()
 			.filter(atom -> !explicitTargetScope(atom).isBlank())
 			.anyMatch(atom -> !normalizedRewrite.contains(normalize(atom)));
@@ -529,6 +550,31 @@ public class GroundedAnswerRepairService {
 
 	private boolean isLawTarget(String target) {
 		return "law".equals(target) || "admrul".equals(target);
+	}
+
+	private boolean isGeneralSoftwareScope(String text) {
+		String normalized = normalize(text);
+		return normalized.startsWith("적용대상사업")
+			&& normalized.contains("국가기관") && normalized.contains("발주")
+			&& (normalized.contains("모든sw사업") || normalized.contains("모든소프트웨어사업"));
+	}
+
+	private List<String> selectGeneralSoftwareScopeAtoms(String question, String rejectedDraft,
+		List<LawAiAnswerGround> grounds) {
+		if (!normalize(question).contains("과업심의")) { return List.of(); }
+		// Source criteria may seed a conditional rewrite, but are never returned
+		// as an answer without the original question's full verification.
+		List<CandidateAtom> candidates = fallbackCandidateAtoms(grounds).stream()
+			.filter(candidate -> normalize(grounds.get(candidate.groundIndex()).title()).contains("과업심의"))
+			.filter(candidate -> isGeneralSoftwareScope(candidate.text())
+				|| (isGeneralSoftwareScope(matchedChildText(grounds.get(candidate.groundIndex())))
+					&& normalize(candidate.text()).startsWith("국가기관")
+					&& normalize(candidate.text()).contains("발주")
+					&& (normalize(candidate.text()).contains("모든sw사업")
+						|| normalize(candidate.text()).contains("모든소프트웨어사업"))))
+			.toList();
+		return selectVerifiedAtoms(question, rejectedDraft, candidates, grounds,
+			false, MAX_SELECTED_ATOMS, false);
 	}
 
 	private boolean reusesRejectedDraft(String normalizedAtom, String normalizedRejectedDraft) {

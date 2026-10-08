@@ -10,6 +10,12 @@ class ClaimEvidenceAtomizerTests {
 	private final ClaimEvidenceAtomizer atomizer = new ClaimEvidenceAtomizer();
 
 	@Test
+	void repeatedPageHeadingRetainsOneExplicitScopeHeading() {
+		assertThat(atomizer.atomize("적용 대상 사업 p.5 적용 대상 사업 p.5 적용 대상 사업 국가기관 등이 발주하는 모든 SW사업"))
+			.containsExactly("적용 대상 사업 국가기관 등이 발주하는 모든 SW사업");
+	}
+
+	@Test
 	void sourceWrappedSubjectAndPredicateRemainOneCompleteClaim() {
 		assertThat(atomizer.atomizeSource("발간 목적\n이 안내서는 현장에서 이해하기 쉽도록 개인정보\n"
 			+ "처리 시 준수해야 하는 사항을 안내할 목적으로 마련되었습니다.\n제개정 이력", "처리"))
@@ -524,6 +530,16 @@ class ClaimEvidenceAtomizerTests {
 		assertThat(atomizer.atomize(
 			"기관은 담당자이며 책임자입니다."
 		)).containsExactly("기관은 담당자이며 책임자입니다.");
+	}
+
+	@Test
+	void preservesCoordinatedPremisesBeforeConditionalConclusion() {
+		for (String sentence : List.of(
+			"SNS 운영 사업이 소프트웨어사업에 해당하고 발주기관이 국가기관등이면 과업심의 대상입니다.",
+			"신청자가 성인이며 보호자가 동의한 경우 신청할 수 있습니다."
+		)) {
+			assertThat(atomizer.atomize(sentence)).containsExactly(sentence);
+		}
 	}
 
 	@Test
