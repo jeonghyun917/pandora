@@ -2,6 +2,8 @@
 
 ## 2026-10-01 조건 보존 평가 후속 진단
 
+- 2026-10-08 14:10 KST 최종질문정합성 ‘않으면’ 조건누락31700 actualRED1→기존 literal conditionGroups 경로에 부정조건 suffix만 추가/조건삭제 거부 유지,43214 관련3클래스exit0/51258 안정전체backendexit0/XML1555 실패0오류0제외19(잔여XML포함)/독립C/I0/diffcheck. 실제 penalty ‘준수안하면’은 이미 조건인식되므로 이번 변경을 penalty 해결로 오인하지 않는다. DB readonly 원문11115807(doc2808/v1/CURRENT)에서 명시 국가기관등의장·SW사업추진·과업확정/변경·위원회 설치 의무 확인; body는 조문제목이 누락되고 부칙11115787/벌칙11115816 및 시행령이 검색에 섞임. 문서제목·인접만으로 적용범위와 duty proof 합성 금지. 새 API평가/배포 없음, SNS·penalty 실제미완료/holdoutfull미진입/37411 keepalive73844·Q89980 보존.
+
 - 2026-10-08 14:00 KST 부정 antecedent 19240 actualRED2(조건누락/행위·object누출/긍정의무를부정으로오인), 독립복수명제23241 actualRED1→시작anchored·240이내 literal전체조건 유지/즉시명시 단일actor·action·단일결론만predicate분리/초과·미추출·중첩·병렬 AMBIGUOUS failclosed. 94773 parser+semantic exit0/46010 관련5클래스exit0/17969 안정전체backendexit0/XML1554 실패0오류0제외19(잔여XML포함)/독립실파일C/I0/diffcheck. 조건삭제·긍정조건·actor/action변경 semantic거부PASS. 외부API평가없음/미배포/37411 KEEPALIVE73844·Q89980 보존. 후속읽기전용진단: 최종질문정합성은 별도 AlignmentProfile 사용, negative질문 conditionGroups 누락 또는 ‘준수안하면’ literal강제/주제anchor 차이도존재; 이번파서안전성수정이 실제penalty repair해결은아님. 최종verifier·oracle·dataset·authority불변/SNSpenalty 실제미완료/holdoutfull 미진입.
 
 - 2026-10-08 13:46 KST 146db62f509b5df569854036765f2fd645dfd3d2 commit/push/ls-remote 동일, 안정전체70230 exit0/XML1549 실패0오류0제외19. 새 일반 온라인운영 readonly 진단: 원문 exact의무 control/semantic SUPPORTED, 동일결론+명시membership전제 control INSUFFICIENT/semantic SUPPORTED. nominal분류 한 형식은 control SUPPORTED/semantic CLAIM_PARSE_INCOMPLETE; 이것은 실제SNS PASS가 아님. doc1/v4 84021/22/23의 실제 chapter·목적·과업변경·적용대상본문 회수 확인하나 제목/동일doc·인접만으로 의미proof 단정금지. 새코드미배포/새API평가없음/37411 KEEPALIVE73844·Q89980 보존/실제SNS·penalty 미완료/holdoutfull 미진입.

@@ -795,7 +795,8 @@ public class AnswerQuestionAlignmentVerifier {
 
 		private static boolean isConditionTerm(String normalized) {
 			return CONDITION_SUFFIXES.stream().anyMatch(normalized::endsWith)
-				|| (normalized.length() >= 3 && (normalized.endsWith("하면") || normalized.endsWith("되면")));
+				|| (normalized.length() >= 3 && (normalized.endsWith("하면") || normalized.endsWith("되면")
+					|| normalized.endsWith("않으면")));
 		}
 
 		private static boolean containsAny(String text, String... values) {

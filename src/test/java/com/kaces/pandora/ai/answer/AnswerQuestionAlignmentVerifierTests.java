@@ -10,6 +10,17 @@ class AnswerQuestionAlignmentVerifierTests {
 	private final AnswerQuestionAlignmentVerifier verifier = new AnswerQuestionAlignmentVerifier();
 
 	@Test
+	void negativeQuestionAntecedentRemainsARequiredConditionNotAnAnswerSubject() {
+		String question = "행정시스템 법제도를 준수하지 않으면 어떤 불이익이 있나요?";
+		String conditional = "행정시스템 법제도를 준수하지 않으면 행정시스템 법제도 보완 조치를 통보합니다.";
+		assertThat(verifier.verify(question, claimResult(supported(conditional, conditional))).aligned()).isTrue();
+		String unconditional = "행정시스템 법제도 미준수 보완 조치를 통보합니다.";
+		var result = verifier.verify(question, claimResult(supported(unconditional, unconditional)));
+		assertThat(result.aligned()).isFalse();
+		assertThat(result.missingGroups()).contains("CONDITION");
+	}
+
+	@Test
 	void rejectsSupportedSideExceptionThatDoesNotAddressTheQuestionSubject() {
 		ClaimVerifier.VerificationResult claimResult = claimResult(
 			supported(
