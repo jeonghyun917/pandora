@@ -22,6 +22,8 @@ class OpenAiAnswerClientPromptTests {
 			"국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 과업심의위원회의 심의를 받아야 한다."),
 			List.of("공공소프트웨어사업 과업심의 가이드"));
 		assertThat(captured.get()).contains("검증된 명시 절차가 있는 경우에만", "과업내용 확정", "일정 예외", "대상 분류를 의무로 강화하지");
+		assertThat(captured.get()).contains("각 절차와 예외는 독립된 완결 문장", "하며", "명시된 동일 주체");
+		assertThat(captured.get()).contains("명시 절차가 있으면 별도의 대상 분류 결론을 만들지", "조건부 절차 문장");
 	}
 	@Test
 	void outputTokenExhaustionIsDiagnosedWithoutLoggingResponseData() throws Exception {

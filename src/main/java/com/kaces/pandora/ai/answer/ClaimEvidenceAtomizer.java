@@ -213,26 +213,40 @@ final class ClaimEvidenceAtomizer {
 			"(?m)^(제\\d+조(?:의\\d+)?[ \\t]*\\([^\\r\\n()]{1,80}\\)(?:[ \\t]*\\R|[ \\t]+(?=①)))"
 				+ "([ \\t]*①[ \\t]+[^②]{1,1800}?)(?=^[ \\t]*②[ \\t]+)");
 		Matcher matcher = paragraph.matcher(text);
-		StringBuffer result = new StringBuffer();
+		StringBuilder result = new StringBuilder();
+		int consumed = 0;
 		while (matcher.find()) {
 			String body = matcher.group(2);
-			String[] lines = body.stripTrailing().split("\\R", -1);
-			boolean safe = true;
-			for (int i = 0; i < lines.length; i++) {
-				String line = lines[i].trim();
-				if (line.isBlank() || (i > 0 && line.matches(
-					"^(?:제\\s*\\d+\\s*조|[①-⑳•‣□○※*∙]|[-–—]\\s|[가-힣][.)]\\s|\\d{1,2}[.)]).*"))) {
-					safe = false;
-					break;
-				}
-			}
+			boolean safe = safeLegalWrap(body);
 			String replacement = safe
 				? matcher.group(1) + body.stripTrailing().replaceAll("[ \\t]*\\R[ \\t]*", " ") + "\n"
 				: matcher.group();
-			matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
+			result.append(text, consumed, matcher.start()).append(replacement);
+			consumed = matcher.end();
+			// Follow only a contiguous, correctly numbered chain owned by this heading.
+			for (int number = 2; safe && number < 20; number++) {
+				char marker = (char) ('①' + number - 1);
+				char next = (char) (marker + 1);
+				Matcher following = Pattern.compile("(?m)([ \\t]*" + marker
+					+ "[ \\t]+[^" + next + "]{1,1800}?)(?=^[ \\t]*" + next + "[ \\t]+)")
+					.matcher(text).region(consumed, text.length());
+				if (!following.lookingAt() || !safeLegalWrap(following.group(1))) { break; }
+				result.append(following.group(1).stripTrailing().replaceAll("[ \\t]*\\R[ \\t]*", " ")).append('\n');
+				consumed = following.end();
+			}
 		}
-		matcher.appendTail(result);
+		result.append(text, consumed, text.length());
 		return result.toString();
+	}
+
+	private boolean safeLegalWrap(String body) {
+		String[] lines = body.stripTrailing().split("\\R", -1);
+		for (int i = 0; i < lines.length; i++) {
+			String line = lines[i].trim();
+			if (line.isBlank() || (i > 0 && line.matches(
+				"^(?:제\\s*\\d+\\s*조|[①-⑳•‣□○※*∙]|[-–—]\\s|[가-힣][.)]\\s|\\d{1,2}[.)]).*"))) { return false; }
+		}
+		return true;
 	}
 
 	private String joinWrappedSourceSentencePairs(String text) {

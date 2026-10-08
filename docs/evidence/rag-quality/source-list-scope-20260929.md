@@ -2,6 +2,14 @@
 
 ## 2026-10-01 조건 보존 평가 후속 진단
 
+- 2026-10-08 11:35 KST31436 관련4클래스165건 실패0오류0 exit0/조건부 생성계약 정적 C/I0.9897 전체backend exit0.61159 공식app-dev-staged-package 실행중/기존8080 JAR 보존. 명시 절차가 있을 때 별도 nominal분류를 강제하지 않고 주체·발주기관·SW조건·목적·시점·예외를 보존한 조건부 절차 결론으로 제한,범위만 있으면 기존분류전용/API경계 유지. 새실제gate 아직 실행하지 않음/penalty 의미정합성 잔여/holdout·full미진입/100%아님.
+
+- 2026-10-08 후속 연속검증: 95405 완결문/동일명시주체 RED→35789 관련 PASS. 닫힌 법령항② 이후 줄바꿈11120 RED1→61748 atomizer/semantic 관련 PASS 및 정적 C/I0. readonly 실제84718의②권고/③1개월통보/④자료요청 literal atom은 복구되지만 일반 paraphrase3건의 control 지원은 여전히 부족하여 penalty 해결로 해석하지 않는다. SNS 생성지침의 명시절차와 별도 nominal분류 강제 충돌40216 RED1 확인→명시절차가 있을 때 조건부 절차 결론으로 좁힘/scope-only 제한 유지,31436 관련4클래스 실행중. 최종verifier/oracle/dataset 완화없음/API 반복없음/실제 SNS·penalty 미완료. 공식status8080PID11076/Q89980 유지/18080없음, 현재dirty 미배포.
+
+- 2026-10-08 11:22 KST verified-procedure-sns-20261008-1120 actual35082 exit1 FAIL0/1 종료/재평가금지. repair attemptedtrue acceptedtrue selectedAtom2로완전절차추가전달개선 확인. 생성 의무문 ‘받아야 하며’는controlINSUFFICIENT/semanticSUPPORTED,예외문 주체생략CLAIM_PARSE_INCOMPLETE/nominalscopeNO_ALIGNED 유지,unsafe2/oracle누락2/최종답변미완료. 다음 완결문·동일명시주체 보존 생성경계95405 로컬계약회귀실행중/API반복없음/최종verifier완화없음. 현재4337keepalive11076/Q89980/HEAD2064233e pushed 유지/holdout·full미진입.
+
+- 2026-10-08 11:20 KST2064233e 검증9파일commit/push 성공/worktree code clean.58802 staging exit0 SHAf381812d4dc5f9f0ae02b928ffa616cdfd45545963ad10d555895d020477aeed. 공식status후deploy4337 keepalive/PID11076/runtimea1ef4609-500b-4bf8-94c3-f3852dc5a4e8/보호Q89980·18080불변PASS. 이전69963/77104정상identity폐기. 실제runtimeConfig e7b08ced/index726f3c4d/lexicalda8d51ce 동일/DB-Q211548·84248 parity/qreadytrue/qfail0/dataset승인해시동일. 새고유verified-procedure-sns-20261008-1120 SNS1문항35082 실행중/resumefalse/오류만최대3회/이전artifact재생아님. penalty②이후원문fragment미완료/holdout·full미진입/전체완료아님.
+
 - 2026-10-08 11:18 KST68765 전체backend exit0/잔여XML1528 실패0오류0제외19. repair조건부API경계에 검증된완전심의절차·예외전달/legacyString.join API없음 유지. 닫힌첫법령항 physicalwrap정리 및 semantic각field독립소비/blank·새조문공백·fieldbridge반례검증/정적C/I0.58802 공식app-dev-staged-package실행중/배포전. fresh무조건공개semantic거부PASS이나 actualpenalty②이후원문fragment미해결. SNS·penalty actualPASS아직없음/holdout·full미진입/전체완료아님.
 
 - 2026-10-08 11:17 KST1037 관련두클래스 exit0/실제84718첫항 줄바꿈복구 확인. fresh공개무조건claim18730 semantic거부 반례는 기존규칙에서PASS(exit0)로안전가드유지 확인/추가verifier수정없음; control부분지원만releasePASS로해석금지. 실제②이후fragment와SNS nominal조건부결론 semantic문제미해결. 안정dirtytree68765 전체backend회귀실행중/중복없음. 전체PASS·package·배포·실제gatePASS아직아님/holdout·full미진입.

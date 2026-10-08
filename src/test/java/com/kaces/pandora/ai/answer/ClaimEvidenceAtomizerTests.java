@@ -47,6 +47,27 @@ class ClaimEvidenceAtomizerTests {
 	}
 
 	@Test
+	void subsequentClosedLegalParagraphKeepsItsOwnActorAndTrigger() {
+		String source = "제7조(확인) ① 기관은 준수 여부를 확인할 수 있다.\n"
+			+ "② 장관은 제1항에 따른 확인결과 기관이 법령을\n위반하였다고 인정하는 경우 개선을 권고할 수 있다.\n"
+			+ "③ 기관은 결과를 통보해야 한다.";
+		assertThat(atomizer.atomizeSource(source, "확인"))
+			.contains("장관은 제1항에 따른 확인결과 기관이 법령을 위반하였다고 인정하는 경우 개선을 권고할 수 있다.");
+	}
+
+	@Test
+	void subsequentLegalWrapStopsAtMissingNumberOrNewArticle() {
+		for (String boundary : List.of("제 8조(별도 기준)\n", "\n", "- 별도 설명\n")) {
+			String source = "제7조(확인) ① 기관은 준수 여부를 확인할 수 있다.\n"
+				+ "② 장관은 법령을\n" + boundary + "위반한 경우 권고할 수 있다.\n③ 다른 기준";
+			assertThat(atomizer.atomizeSource(source, "확인"))
+				.noneSatisfy(atom -> assertThat(atom).contains("장관은 법령을", "권고할 수 있다"));
+		}
+		assertThat(atomizer.atomizeSource("제7조(확인) ① 기관은 확인한다.\n③ 장관은 법령을\n위반한 경우 권고할 수 있다.\n④ 다른 기준", "확인"))
+			.noneSatisfy(atom -> assertThat(atom).contains("장관은 법령을", "권고할 수 있다"));
+	}
+
+	@Test
 	void repeatedPageHeadingRetainsOneExplicitScopeHeading() {
 		assertThat(atomizer.atomize("적용 대상 사업 p.5 적용 대상 사업 p.5 적용 대상 사업 국가기관 등이 발주하는 모든 SW사업"))
 			.containsExactly("적용 대상 사업 국가기관 등이 발주하는 모든 SW사업");
