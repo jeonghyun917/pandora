@@ -13,6 +13,23 @@ class SemanticEvidenceMatcherTests {
 	private final SemanticEvidenceMatcher matcher = new SemanticEvidenceMatcher();
 
 	@Test
+	void explicitExceptionCannotLoseItsTriggerActorOrDeadline() {
+		String rule = "다만 일정이 부족한 경우에는 발주기관은 계약체결 전까지 심의를 받아야 한다.";
+		assertThat(parser.parse(rule).subjects()).containsExactly("발주기관");
+		var index = matcher.index(List.of(ground(rule)));
+		assertThat(matcher.match(parser.parse(rule), index).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		for (String claim : List.of(
+			"발주기관은 계약체결 전까지 심의를 받아야 한다.",
+			rule.replace("일정이 부족한", "일정이 충분한"),
+			rule.replace("발주기관은", "수급기관은"),
+			rule.replace("계약체결 전까지", "계약체결 후까지"))) {
+			assertThat(matcher.match(parser.parse(claim), index).status()).as(claim)
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
 	void recommendationAuthorityCannotLoseItsRecognizedViolationTrigger() {
 		String rule = "장관은 국가기관등의 장이 관련 법령을 위반하였다고 인정하는 경우에는 개선을 권고할 수 있다.";
 		var index = matcher.index(List.of(ground(rule)));

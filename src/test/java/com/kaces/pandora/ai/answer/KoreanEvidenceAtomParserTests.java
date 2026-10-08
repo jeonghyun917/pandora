@@ -9,6 +9,31 @@ import org.junit.jupiter.api.Test;
 class KoreanEvidenceAtomParserTests {
 
 	@Test
+	void exceptionConditionInstitutionHeadIsNotTheConclusionActor() {
+		var atom = new KoreanEvidenceAtomParser().parse(
+			"다만 국가기관등의 장은 참석할 수 없는 경우에는 발주기관은 자료를 통지해야 한다.");
+		assertThat(atom.subjects()).containsExactly("발주기관");
+	}
+	@Test
+	void exceptionTriggerDoesNotAbsorbItsExplicitActorAndConclusion() {
+		var atom = parser.parse("다만, 일정이 부족한 경우에는 발주기관은 계약체결 전까지 심의를 받아야 한다.");
+		assertThat(atom.exceptions()).containsExactly("일정이부족");
+		assertThat(atom.subjects()).contains("발주기관");
+		assertThat(atom.conditions()).contains("계약체결전까지", "일정이부족");
+		assertThat(atom.actions()).contains("심의");
+		assertThat(atom.modality()).isEqualTo(EvidenceAtom.Modality.REQUIRED);
+		assertThat(parser.parse("다만, 일정이 충분한 경우에는 발주기관은 계약체결 전까지 심의를 받아야 한다.").exceptions())
+			.doesNotContain("일정이부족");
+	}
+
+	@Test
+	void triggerOnlyExceptionRemainsARequiredCondition() {
+		var atom=parser.parse("발주기관은 심의를 받아야 한다. 다만 긴급사업의 경우.");
+		assertThat(atom.conditions()).contains("긴급사업의경우");
+		assertThat(atom.exceptions()).containsExactly("긴급사업의경우");
+	}
+
+	@Test
 	void preservesIssuerAndBusinessClassInParenthesizedMembershipCondition() {
 		for (String ending : List.of("해당하면", "해당하는 경우")) {
 			var atom = parser.parse("온라인 운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW 포함)에 "

@@ -61,6 +61,9 @@ public class KoreanEvidenceAtomParser {
 		"다고\\s+인정(?:하는\\s+경우(?:에는|에|만)?|하면)(?=\\s|[,.!?]|$)"
 	);
 	private static final Pattern EXCEPTION = Pattern.compile("(?:다만|예외적으로)\\s*([^.!?]{2,160})");
+	private static final Pattern EXCEPTION_TRIGGER = Pattern.compile(
+		"^[,，]?\\s*([^.!?]{2,160}?경우)(?:에는|에|만)?(?=\\s|[,，]|$)"
+	);
 	private static final Pattern EXCLUDED_SCOPE = Pattern.compile(
 		"([\\p{IsHangul}A-Za-z0-9()·ㆍ/-]{2,}?)(?:은|는|이|가)?\\s*(?:대상에서)?\\s*(?:제외|비대상|면제)"
 	);
@@ -109,7 +112,19 @@ public class KoreanEvidenceAtomParser {
 		while (purpose.find()) {
 			conditions.add(canonical(purpose.group(1) + purpose.group(2)));
 		}
-		Set<String> exceptions = matches(source, EXCEPTION, 1);
+		Set<String> exceptions = new LinkedHashSet<>();
+		Matcher exceptionMatcher = EXCEPTION.matcher(source);
+		while (exceptionMatcher.find()) {
+			String body = exceptionMatcher.group(1);
+			Matcher trigger = EXCEPTION_TRIGGER.matcher(body);
+			boolean hasExplicitTrigger = trigger.find();
+			String exception = canonical(hasExplicitTrigger ? trigger.group(1) : body);
+			exceptions.add(exception);
+			if (hasExplicitTrigger) {
+				// The explicit trigger remains required independently of actor/action slots.
+				conditions.add(exception);
+			}
+		}
 		Set<String> scopes = new LinkedHashSet<>();
 		matches(source, EXCLUDED_SCOPE, 1).forEach(value -> scopes.add(value + "제외"));
 		matches(source, INCLUDED_SCOPE, 1).forEach(value -> scopes.add(value + "포함"));
@@ -154,9 +169,18 @@ public class KoreanEvidenceAtomParser {
 	}
 
 	private Set<String> subjects(String source) {
-		Set<String> values = new LinkedHashSet<>(matches(source, COMPOUND_ROLE_SUBJECT, 1));
+		Set<String> values = new LinkedHashSet<>();
+		Matcher compound = COMPOUND_ROLE_SUBJECT.matcher(source);
+		while (compound.find()) {
+			if (!insideExplicitExceptionTrigger(source, compound.start(1))) {
+				values.add(canonical(compound.group(1)));
+			}
+		}
 		Matcher matcher = SUBJECT.matcher(source);
 		while (matcher.find()) {
+			if (insideExplicitExceptionTrigger(source, matcher.start(1))) {
+				continue;
+			}
 			String token = matcher.group().strip();
 			if (token.endsWith("하는") || token.endsWith("되는") || token.endsWith("려는")
 				|| token.endsWith("경우에는")) {
@@ -168,6 +192,18 @@ public class KoreanEvidenceAtomParser {
 			}
 		}
 		return values;
+	}
+
+	private boolean insideExplicitExceptionTrigger(String source, int position) {
+		Matcher exception = EXCEPTION.matcher(source);
+		while (exception.find()) {
+			Matcher trigger = EXCEPTION_TRIGGER.matcher(exception.group(1));
+			if (trigger.find() && position >= exception.start(1) + trigger.start(1)
+				&& position < exception.start(1) + trigger.end(1)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private Set<String> matches(String source, Pattern pattern, int group) {

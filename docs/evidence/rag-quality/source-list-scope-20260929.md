@@ -2,6 +2,16 @@
 
 ## 2026-10-01 조건 보존 평가 후속 진단
 
+- 2026-10-08 12:33 KST79844 전체backend exit0/잔여XML1538 실패0오류0제외19/96142 관련exit0/정적C/I0/diffcheck통과. 예외trigger·actor·conclusion 분리 및조건내일반·복합명사 주체누출차단 검증; 실제SNS main membership조건의relation/scope혼합과source생략주체는미해결/해결주장없음. 새코드미배포/현재94b671bf·37411KEEPALIVE73844/Q89980보존/실제68301·53184FAIL재생금지/holdoutfull금지/100%아님.
+
+- 2026-10-08 12:32 KST4346 compound조건주체 actualRED1 확인→일반·복합SUBJECT 모두 동일trigger위치필터 적용/독립잔여C/I0. 안정96142 parser·semantic exit0/외부평가없음. 전체backend 회귀진행/생산소스추가편집보류. 생략주체추론·semantic matcher·최종verifier 완화없음/현재배포94b671bf·37411keepalive73844/Q89980유지/실제SNS·penalty미완료/holdoutfull미진입.
+
+- 2026-10-08 12:29 KST29900 parser·semantic exit0. 새 일반 예외 의미가드57508 actualRED1: 발주기관→수급기관 변경도SUPPORTED.21825 진단RED1 subjects=[일정,발주기관]으로 조건명사 공통주체가 원인확인. 명시예외 trigger span의 SUBJECT만제외한3070 exit0이나 독립Important 복합기관장 초기추출동일누출 남음;4346 새compound반례 실행중/해결전배포금지.3070 종료직전4346 중복시작하여 이후안정tree 재검증필수/외부평가중복없음. 현재37411KEEPALIVE73844/Q89980 보존/실제68301SNS·53184penaltyFAIL종료/holdout·full미진입/100%아님.
+
+- 2026-10-08 12:22 KST81074 예외trigger가actor·conclusion흡수 actualRED1/7576 canonical기대수정필요1RED(나머지semantic32PASS)/성공주장없음. 정적Important trigger-only조건누락55716 actualRED1→명시trigger.find성공 bool이면조건항상추가로최소수정/정적잔여C/I0.29900 parser·semantic회귀실행중/새코드미배포/현재37411KEEPALIVE73844·Q89980보존. 실제68301SNSFAIL 종료 재생없음/penalty53184FAIL 종료/holdout·full미진입/100%아님.
+
+- 2026-10-08 12:17 KST94b671bf pushed/remote동일/95348stagingexit0 SHA73d46220daf938a76df3f68ba5487475215fdee0300c104a5cd36b35a3bedae3. 공식deploy37411keepalive/PID73844/runtimecf15854c-0062-4884-8368-5b29654da139/Q89980·18080보호/config·index·lexical·DB-Q 실제동일/이전11331·8764폐기. 고유strict-procedure-mode-sns-20261008-1213 actual68301 exit1FAIL0/1종료/재생금지: conditional atom2→명시절차·일정예외 생성진전,main조건부claim controlunsupported/예외controlSUPPORTED semanticNO_ALIGNED unsafe1/repairREWRITE_VERIFICATION_FAILED최종거부. 새일반질문로컬:membership조건의해당·포함relations 및예외source 주체없음AMBIGUOUS/예외슬롯전체결론흡수 확인.81074 일반예외trigger·주체·결론 분리parser회귀실행중/새코드미수정/guard완화없음. penalty actual53184FAIL/명시권고·통보·자료요청bounded atom지원이나문장일반화부족/holdout·full미진입/완료아님.
+
 - 2026-10-08 12:11 KST71750 전체backend exit0/잔여XML1534 실패0오류0제외19/관련171PASS·정적C/I0.95348 공식app-dev-staged-package 실행중/기존실행JAR보존. strict절차모드분리는최종verifier·oracle·dataset·권한활성화변경없음. 실제53184 SNS·penaltyFAIL0/2종료/새코드미배포/11331keepalive8764·Q89980유지/holdout·full미진입.
 
 - 2026-10-08 12:10 KST66231 관련171건(prompt11/repair69/judge91) 실패0오류0제외0 exit0/정적C/I0. strict절차판별패턴불변/publicpredicate재사용→완전명시절차만procedure instructions선택/범위전용출력템플릿배제/기존scope-only계약회귀PASS. 안정tree71750 전체backend실행중/중복없음/새코드미배포. 현재11331keepalive8764/Q89980유지/실제53184FAIL0/2 완료재생금지/holdout·full미진입.
