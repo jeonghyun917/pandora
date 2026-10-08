@@ -9,6 +9,44 @@ import org.junit.jupiter.api.Test;
 class KoreanEvidenceAtomParserTests {
 
 	@Test
+	void negativeAntecedentIsPreservedWithoutNegatingItsExplicitDutyConclusion() {
+		var atom = new KoreanEvidenceAtomParser().parse(
+			"발주기관이 법령을 준수하지 않으면, 발주기관은 자료를 보완해야 한다.");
+		org.junit.jupiter.api.Assertions.assertAll(
+			() -> assertThat(atom.conditions()).contains("발주기관이법령을준수하지않"),
+			() -> assertThat(atom.actions()).containsExactly("보완"),
+			() -> assertThat(atom.objects()).containsExactly("자료"),
+			() -> assertThat(atom.subjects()).containsExactly("발주기관"),
+			() -> assertThat(atom.modality()).isEqualTo(EvidenceAtom.Modality.REQUIRED),
+			() -> assertThat(atom.polarity()).isEqualTo(EvidenceAtom.Polarity.POSITIVE));
+	}
+
+	@Test
+	void negativeAntecedentCannotHideAnUnparsedOversizedCondition() {
+		var atom = new KoreanEvidenceAtomParser().parse(
+			"매우 긴 조건 ".repeat(50) + "법령을 준수하지 않으면, 발주기관은 자료를 보완해야 한다.");
+		assertThat(atom.parseStatus()).isEqualTo(EvidenceAtom.ParseStatus.AMBIGUOUS);
+	}
+
+	@Test
+	void negativeAntecedentCannotBorrowTheActorOfALaterSentence() {
+		var atom = new KoreanEvidenceAtomParser().parse(
+			"기관이 법령을 준수하지 않으면, 자료를 보완해야 한다. 업체는 비용을 지급해야 한다.");
+		assertThat(atom.subjects()).contains("기관", "업체");
+		assertThat(atom.polarity()).isEqualTo(EvidenceAtom.Polarity.NEGATIVE);
+	}
+
+	@Test
+	void negativeAntecedentRejectsMixedConclusionsAndNestedConditions() {
+		for (String text : List.of(
+			"법제도를 준수하지 않으면 신청인은 자료를 제출해야 하고 발주기관은 과태료를 납부해야 한다.",
+			"법제도를 준수하지 않으면 신청인은 자료를 제출하지 않은 경우에만 과태료를 납부해야 한다.")) {
+			assertThat(new KoreanEvidenceAtomParser().parse(text).parseStatus()).as(text)
+				.isEqualTo(EvidenceAtom.ParseStatus.AMBIGUOUS);
+		}
+	}
+
+	@Test
 	void membershipProjectionCannotBorrowAnActionFromAnEarlierSentence() {
 		var atom = new KoreanEvidenceAtomParser().parse(
 			"민간기관은 자료를 공개해야 한다. 사업이 SW사업에 해당하면 발주기관은 심의를 해야 한다.");

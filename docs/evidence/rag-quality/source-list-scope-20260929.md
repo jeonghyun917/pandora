@@ -2,6 +2,10 @@
 
 ## 2026-10-01 조건 보존 평가 후속 진단
 
+- 2026-10-08 14:00 KST 부정 antecedent 19240 actualRED2(조건누락/행위·object누출/긍정의무를부정으로오인), 독립복수명제23241 actualRED1→시작anchored·240이내 literal전체조건 유지/즉시명시 단일actor·action·단일결론만predicate분리/초과·미추출·중첩·병렬 AMBIGUOUS failclosed. 94773 parser+semantic exit0/46010 관련5클래스exit0/17969 안정전체backendexit0/XML1554 실패0오류0제외19(잔여XML포함)/독립실파일C/I0/diffcheck. 조건삭제·긍정조건·actor/action변경 semantic거부PASS. 외부API평가없음/미배포/37411 KEEPALIVE73844·Q89980 보존. 후속읽기전용진단: 최종질문정합성은 별도 AlignmentProfile 사용, negative질문 conditionGroups 누락 또는 ‘준수안하면’ literal강제/주제anchor 차이도존재; 이번파서안전성수정이 실제penalty repair해결은아님. 최종verifier·oracle·dataset·authority불변/SNSpenalty 실제미완료/holdoutfull 미진입.
+
+- 2026-10-08 13:46 KST 146db62f509b5df569854036765f2fd645dfd3d2 commit/push/ls-remote 동일, 안정전체70230 exit0/XML1549 실패0오류0제외19. 새 일반 온라인운영 readonly 진단: 원문 exact의무 control/semantic SUPPORTED, 동일결론+명시membership전제 control INSUFFICIENT/semantic SUPPORTED. nominal분류 한 형식은 control SUPPORTED/semantic CLAIM_PARSE_INCOMPLETE; 이것은 실제SNS PASS가 아님. doc1/v4 84021/22/23의 실제 chapter·목적·과업변경·적용대상본문 회수 확인하나 제목/동일doc·인접만으로 의미proof 단정금지. 새코드미배포/새API평가없음/37411 KEEPALIVE73844·Q89980 보존/실제SNS·penalty 미완료/holdoutfull 미진입.
+
 - 2026-10-08 13:39 KST scoped닫힌sourcewindow:39505 actualRED2(inline新조문/미완②)→85716 관련5클래스exit0/실파일재검토잔여C/I0. 길이fixture94983은1174자였던테스트기대오류1→실제超1200 fixture정정16589 집중3PASS.70230 안정전체backendexit0. 同공식지침 적용범위 readonly검색4chunk(11171533/34/36/40)에서는제2조경과조치만회수/적용범위본문미확정,출처제목/번호만proof금지. probe첫실행은Maven testclasses재컴파일과겹쳐ClassNotFound exit1(제품/DB실패아님)→scope-only분리재확인exit0. 실제SNS·penalty미완료/API평가없음/새코드미배포/37411keepalive73844/Q89980 보존/holdoutfull미진입.
 
 - 2026-10-08 13:36 KST②예외절단33472 actualRED1→同조문①②전체+실제③marker sourcewindow/98932 관련5클래스exit0. readonly실제공식11171537 window417/literaltrue/closedtrue, 실제목적보존예외 semanticSUPPORTED/coverage1(20486exit0). 새Important inline새조문·미완②91321 RED1→39505 assertAll RED2→body내조문제목거부/②끝종결부호필수85716 관련exit0. 이는전달경계수정이며최종control·mainmembership proof 미해결/SNSPASS주장없음/새API평가없음/미배포. overcap추가94983 집중진행중/동일코드전체아직안함. legacy①atom/전역assembler/최종verifier/dataset/oracle불변/37411keepalive73844/Q89980 보존/holdoutfull금지.

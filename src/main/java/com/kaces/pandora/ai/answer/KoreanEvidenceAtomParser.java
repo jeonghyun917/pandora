@@ -49,6 +49,15 @@ public class KoreanEvidenceAtomParser {
 	private static final Pattern MEMBERSHIP_CONDITION = Pattern.compile(
 		"(?:^|[.!?;]\\s*)([^.!?;]{2,240}?에\\s*해당)(?:하면|하는\\s*경우)(?![\\p{IsHangul}A-Za-z0-9])"
 	);
+	private static final Pattern NEGATIVE_ANTECEDENT = Pattern.compile(
+		"(?:^|[.!?;]\\s*)([^.!?;]{2,240}?(?:하지\\s*않|안\\s*하))(?:으면|면)(?=\\s|[,，]|$)"
+	);
+	private static final Pattern NEGATIVE_ANTECEDENT_MARKER = Pattern.compile(
+		"(?:하지\\s*않으면|안\\s*하면)(?=\\s|[,，]|$)"
+	);
+	private static final Pattern COMPOUND_OR_CONDITIONAL_CONCLUSION = Pattern.compile(
+		"(?:하고|하며|하되|하지만|이고|이며|거나|또는|혹은|그리고|또한|경우|하면|되면|이면|라면|않으면)"
+	);
 	private static final Pattern OBJECT_ACTION_PURPOSE_CONDITION = Pattern.compile(
 		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9]{2,})(?:을|를)\\s+"
 			+ "([\\p{IsHangul}A-Za-z0-9]{2,}?)하기\\s+위하여"
@@ -82,12 +91,15 @@ public class KoreanEvidenceAtomParser {
 		String source = Normalizer.normalize(String.valueOf(sourceText == null ? "" : sourceText), Normalizer.Form.NFKC)
 			.replaceAll("\\s+", " ")
 			.trim();
-		String propositionSource = explicitMembershipConclusion(source);
+		String negativeConclusion = explicitNegativeAntecedentConclusion(source);
+		boolean negativeProjected = !negativeConclusion.equals(source);
+		String propositionSource = negativeProjected ? negativeConclusion : explicitMembershipConclusion(source);
+		String predicateSource = negativeProjected ? negativeConclusion : source;
 		Set<String> subjects = subjects(propositionSource);
-		Set<String> objects = matches(source, OBJECT, 1);
-		Set<String> recipients = matches(source, RECIPIENT, 1);
-		Set<String> actions = matches(source, ACTION, 1);
-		actions.addAll(matches(source, DUTY_ACTION, 1));
+		Set<String> objects = matches(predicateSource, OBJECT, 1);
+		Set<String> recipients = matches(predicateSource, RECIPIENT, 1);
+		Set<String> actions = matches(predicateSource, ACTION, 1);
+		actions.addAll(matches(predicateSource, DUTY_ACTION, 1));
 		Set<String> conditions = new LinkedHashSet<>();
 		Matcher conditionMatcher = TWO_TERM_CONDITION.matcher(source);
 		while (conditionMatcher.find()) {
@@ -103,6 +115,8 @@ public class KoreanEvidenceAtomParser {
 			conditions.add(canonical(intention.group(1) + intention.group(2)));
 		}
 		conditions.addAll(matches(source, MEMBERSHIP_CONDITION, 1));
+		Set<String> negativeConditions = matches(source, NEGATIVE_ANTECEDENT, 1);
+		conditions.addAll(negativeConditions);
 		Matcher recognition = QUOTED_RECOGNITION_CONDITION.matcher(source);
 		int parsedRecognitionConditions = 0;
 		while (recognition.find()) {
@@ -138,17 +152,25 @@ public class KoreanEvidenceAtomParser {
 		Set<String> relations = relations(propositionSource);
 		Set<String> numericAnchors = matches(source, NUMERIC, 0);
 
-		EvidenceAtom.Modality modality = modality(source);
-		EvidenceAtom.Polarity polarity = polarity(source, modality);
-		String normalized = canonical(source);
+		EvidenceAtom.Modality modality = modality(predicateSource);
+		EvidenceAtom.Polarity polarity = polarity(predicateSource, modality);
+		String normalized = canonical(predicateSource);
 		List<String> reasons = new ArrayList<>();
+		if (NEGATIVE_ANTECEDENT_MARKER.matcher(source).results().count()
+			> NEGATIVE_ANTECEDENT.matcher(source).results().count()) {
+			reasons.add("UNPARSED_NEGATIVE_ANTECEDENT");
+		}
+		if (!negativeConditions.isEmpty() && !negativeProjected) {
+			reasons.add("AMBIGUOUS_NEGATIVE_CONCLUSION");
+		}
 		if (RECOGNITION_CONDITION_MARKER.matcher(source).results().count() > parsedRecognitionConditions) {
 			reasons.add("UNPARSED_RECOGNITION_CONDITION");
 		}
 		if (subjects.isEmpty() && !actions.isEmpty() && !matches(source, SUBJECT, 1).isEmpty()) {
 			reasons.add("AMBIGUOUS_SUBJECT_FORM");
 		}
-		if (DOUBLE_NEGATION.matcher(normalized).find()) {
+		if (DOUBLE_NEGATION.matcher(normalized).find()
+			|| negativeConditions.stream().anyMatch(condition -> DOUBLE_NEGATION.matcher(condition).find())) {
 			reasons.add("AMBIGUOUS_DOUBLE_NEGATION");
 		}
 		boolean prohibited = containsAny(normalized, "할수없", "금지", "불가능", "허용되지않");
@@ -208,6 +230,21 @@ public class KoreanEvidenceAtomParser {
 			return source;
 		}
 		// The full premise is retained in conditions; only explicit conclusion roles are projected.
+		return conclusion;
+	}
+
+	private String explicitNegativeAntecedentConclusion(String source) {
+		Matcher premise = NEGATIVE_ANTECEDENT.matcher(source);
+		if (!premise.find() || premise.start() != 0) { return source; }
+		String conclusion = source.substring(premise.end()).replaceFirst("^[,，]?\\s*", "");
+		if (!conclusion.matches("[^.!?;]*[.!?]?")
+			|| (!SUBJECT.matcher(conclusion).lookingAt() && !COMPOUND_ROLE_SUBJECT.matcher(conclusion).lookingAt())
+			|| subjects(conclusion).size() != 1
+			|| COMPOUND_OR_CONDITIONAL_CONCLUSION.matcher(canonical(conclusion)).find()
+			|| matches(conclusion, ACTION, 1).size() != 1) {
+			return source;
+		}
+		// Do not infer an actor or drop the antecedent: it remains a literal required condition.
 		return conclusion;
 	}
 

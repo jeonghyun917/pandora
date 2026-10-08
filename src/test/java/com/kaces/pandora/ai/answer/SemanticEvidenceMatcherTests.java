@@ -13,6 +13,22 @@ class SemanticEvidenceMatcherTests {
 	private final SemanticEvidenceMatcher matcher = new SemanticEvidenceMatcher();
 
 	@Test
+	void negativeAntecedentDutyCannotBecomeUnconditionalOrChangeItsActor() {
+		String source = "발주기관이 법령을 준수하지 않으면, 발주기관은 자료를 보완해야 한다.";
+		var index = matcher.index(List.of(ground(source)));
+		assertThat(matcher.match(parser.parse(source), index).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		for (String changed : List.of(
+			"발주기관은 자료를 보완해야 한다.",
+			"발주기관이 법령을 준수하면, 발주기관은 자료를 보완해야 한다.",
+			"발주기관이 법령을 준수하지 않으면, 수급기관은 자료를 보완해야 한다.",
+			"발주기관이 법령을 준수하지 않으면, 발주기관은 자료를 폐기해야 한다.")) {
+			assertThat(matcher.match(parser.parse(changed), index).status()).as(changed)
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
 	void linkedSourceCannotOverrideAnAmbiguousExceptionTrigger() {
 		var rejectingTriggerParser = new KoreanEvidenceAtomParser() {
 			@Override public EvidenceAtom parse(String source) {
