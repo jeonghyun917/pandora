@@ -2,6 +2,8 @@
 
 ## 2026-10-01 조건 보존 평가 후속 진단
 
+- 2026-10-08 13:04 KST 생성지침 원문구조보존:95380 sandbox loopback ERROR1(제품실패아님)→권한분리7289 actualRED1/원문조문참조·선택병렬구조·예외목적지침누락확인→일반procedure-only지침보완/53731 prompt전체exit0/16444 안정전체exit0/독립C/I0. 외부API평가없음/미배포. readonly 기존control슬롯은main조건부claim사업주체와실제행위주체혼합/원문또는구조non-exact일괄거부/예외명시목적원문생략 차이확인; verifier기준은그대로. 원문절차자체는controlstrong2supported2,이는질문별의미지원·SNSPASS가아님. 다음exact결론+명시membership전제를안전하게증명할수있는matcher경계만설계검토/임의전제삭제·서로다른ground메타근거결합금지/holdoutfull금지/37411·73844/Q89980보존.
+
 - 2026-10-08 12:56 KST source-only closed항 연결: 주입trigger parser거부30878 actualRED1→AMBIGUOUS거부보존/43729 관련exit0/69283 안정전체exit0(XML1544 실패0오류0제외19)/실파일독립C/I0/diffcheck통과. 실제DB readonly 목적보존예외 semanticSUPPORTED/목적누락예외INSUFFICIENT 확인; 목적보존예외도 기존control은INSUFFICIENT이므로 최종통과주장없음. 원문literal·provenance·claim파서·최종verifier·threshold·authority불변/새코드미배포/외부평가재생없음. 공식status8080PID73844·6333PID89980/18080없음 확인/37411keepalive보존. 다음control과source문맥해석 차이 및main조건부지원 진단 계속/실제SNS·penalty미완료/holdoutfull금지.
 
 - 2026-10-08 12:49 KSTff1d3bdb pushed/lsremote동일/전체1541PASS/배포는94b671bf그대로. source-only동일closed①항의명시actor·purpose·exception연결42194 actualRED1→최소근거해석구현24221RED1 유지. 독립Important 주입parser우회60753 actualRED1/같은조건의복수정규화 집합확인. 새parseSourceAtomsForAlignment는동일주입parser사용,예외도입부parser조건집합+명시deadline과정확일치할때만연결/37898 양성·음성회귀진행/추가문맥추측없음. 원문sourceText·groundprovenance불변/claim경로·threshold·authority변경없음/새코드미배포/실제SNS·penaltyPASS없음/37411KEEPALIVE73844/Q89980보존/holdoutfull금지.

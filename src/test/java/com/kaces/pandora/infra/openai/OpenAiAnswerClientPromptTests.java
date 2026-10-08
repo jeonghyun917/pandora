@@ -23,6 +23,7 @@ class OpenAiAnswerClientPromptTests {
 			List.of("공공소프트웨어사업 과업심의 가이드"));
 		assertThat(captured.get()).doesNotContain("[원문 제도의] 대상입니다.");
 		assertThat(captured.get()).contains("과업내용 확정", "일정 예외", "조건부 절차");
+		assertThat(captured.get()).contains("입력 원문에 이미 있는 조문 참조", "선택·병렬 구조", "예외에도 계속 적용되는 목적");
 	}
 	@Test
 	void conditionalRewriteCanUseOnlyExplicitVerifiedProcedureWithoutDroppingItsConditions() {
