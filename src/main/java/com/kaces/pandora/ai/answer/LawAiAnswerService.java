@@ -5393,18 +5393,22 @@ public class LawAiAnswerService {
 			&& isProjectReviewScopeQuestion(normalizeForMatch(query), queryTerms(query))
 			&& judgedEvidence.chunks().stream().anyMatch(EvidenceJudge::isNationalSoftwareReviewScope);
 		for (LawSemanticChunkRow chunk : directEvidenceChunks) {
-			merged.put(scoreKey(chunk.target(), chunk.chunkId()), chunk);
+			String window = scopeAnchoredReview ? EvidenceJudge.softwareConfirmationReviewSourceWindow(chunk.chunkText()) : "";
+			merged.put(scoreKey(chunk.target(), chunk.chunkId()), window.isBlank() ? chunk : copyWithChunkText(chunk, window));
 		}
 		if (!restrictToConfiguredPolicyChunks) {
 			for (LawSemanticChunkRow chunk : judgedEvidence.chunks()) {
 				if (!isForcedExcludedAnswerContextChunk(chunk, query)) {
-					merged.putIfAbsent(scoreKey(chunk.target(), chunk.chunkId()), chunk);
+					String window = scopeAnchoredReview ? EvidenceJudge.softwareConfirmationReviewSourceWindow(chunk.chunkText()) : "";
+					merged.putIfAbsent(scoreKey(chunk.target(), chunk.chunkId()), window.isBlank() ? chunk : copyWithChunkText(chunk, window));
 					if (scopeAnchoredReview && EvidenceJudge.hasExplicitSoftwareConfirmationReviewDuty(chunk.chunkText())) {
 						anchoredRuleKeys.add(scoreKey(chunk.target(), chunk.chunkId()));
 					}
 				} else if (scopeAnchoredReview
 					&& isProjectReviewCommitteeOperationNoise(answerContextText(chunk))) {
 					String rule = EvidenceJudge.softwareConfirmationReviewDutyText(chunk.chunkText());
+					String window = EvidenceJudge.softwareConfirmationReviewSourceWindow(chunk.chunkText());
+					if (!window.isBlank()) { rule = window; }
 					if (rule.isBlank()) {
 						rule = EvidenceJudge.committeeEstablishmentRuleText(chunk.chunkText());
 					}
@@ -5483,6 +5487,8 @@ public class LawAiAnswerService {
 						|| !"PASS".equals(neighbor.qualityStatus())) { continue; }
 					String rule = EvidenceJudge.softwareConfirmationReviewDutyText(neighbor.chunkText());
 					if (!rule.isBlank()) {
+						String window = EvidenceJudge.softwareConfirmationReviewSourceWindow(neighbor.chunkText());
+						if (!window.isBlank()) { rule = window; }
 						recovered.putIfAbsent(scoreKey(neighbor.target(), neighbor.chunkId()), copyWithChunkText(neighbor, rule));
 						break;
 					}

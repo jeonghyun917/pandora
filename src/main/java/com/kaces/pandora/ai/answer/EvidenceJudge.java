@@ -212,6 +212,28 @@ public class EvidenceJudge {
 		return "";
 	}
 
+	static String softwareConfirmationReviewSourceWindow(String source) {
+		if (source == null) { return ""; }
+		var window = java.util.regex.Pattern.compile(
+			"(?m)^[ \\t]*제\\s*\\d+\\s*조(?:의\\s*\\d+)?\\s*\\([^\\r\\n)]{1,100}\\)"
+				+ "[ \\t]*(?:\\R[ \\t]*)?①[ \\t]+[^①-⑳]{1,1000}?"
+				+ "(?:\\R[ \\t]*|(?<=[.!?]))②[ \\t]+[^①-⑳]{1,1000}?"
+				+ "(?:\\R[ \\t]*|(?<=[.!?]))③(?=[ \\t]+)")
+			.matcher(source);
+		while (window.find()) {
+			String literal = window.group().strip();
+			String body = literal.substring(literal.indexOf('①'));
+			String secondBody = body.substring(body.indexOf('②') + 1, body.lastIndexOf('③')).strip();
+			if (literal.length() <= 1_200
+				&& secondBody.matches("(?s).*[.!?]$")
+				&& !java.util.regex.Pattern.compile("\\R[ \\t]*\\R|제\\s*\\d+\\s*조(?:의\\s*\\d+)?\\s*\\(").matcher(body).find()
+				&& !softwareConfirmationReviewDutyText(literal).isBlank()) {
+				return literal;
+			}
+		}
+		return "";
+	}
+
 	static String committeeEstablishmentRuleText(String source) {
 		String compact = source == null ? "" : source.replaceAll("\\s+", "");
 		var matcher = java.util.regex.Pattern.compile(

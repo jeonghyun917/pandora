@@ -2,6 +2,12 @@
 
 ## 2026-10-01 조건 보존 평가 후속 진단
 
+- 2026-10-08 13:39 KST scoped닫힌sourcewindow:39505 actualRED2(inline新조문/미완②)→85716 관련5클래스exit0/실파일재검토잔여C/I0. 길이fixture94983은1174자였던테스트기대오류1→실제超1200 fixture정정16589 집중3PASS.70230 안정전체backendexit0. 同공식지침 적용범위 readonly검색4chunk(11171533/34/36/40)에서는제2조경과조치만회수/적용범위본문미확정,출처제목/번호만proof금지. probe첫실행은Maven testclasses재컴파일과겹쳐ClassNotFound exit1(제품/DB실패아님)→scope-only분리재확인exit0. 실제SNS·penalty미완료/API평가없음/새코드미배포/37411keepalive73844/Q89980 보존/holdoutfull미진입.
+
+- 2026-10-08 13:36 KST②예외절단33472 actualRED1→同조문①②전체+실제③marker sourcewindow/98932 관련5클래스exit0. readonly실제공식11171537 window417/literaltrue/closedtrue, 실제목적보존예외 semanticSUPPORTED/coverage1(20486exit0). 새Important inline새조문·미완②91321 RED1→39505 assertAll RED2→body내조문제목거부/②끝종결부호필수85716 관련exit0. 이는전달경계수정이며최종control·mainmembership proof 미해결/SNSPASS주장없음/새API평가없음/미배포. overcap추가94983 집중진행중/동일코드전체아직안함. legacy①atom/전역assembler/최종verifier/dataset/oracle불변/37411keepalive73844/Q89980 보존/holdoutfull금지.
+
+- 2026-10-08 13:26 KST 실제 공식11171537의 strict①본문162자는 회수되지만 원문 prefix1200 전달에서 제25조 제목/실제②닫힘이 사라져 source 연결 불가 확인. 긴 prefix 전달 회귀14838은 fixture 범위분류 오류1→실제 범위 fixture 정정13376 actualRED1/오류0(ground matchedChild는 앞부분1200만). scoped literal window 최소수정 후88135 관련5클래스 실행중. 독립 Important:②첫문장만 보존하면 후행예외 절단으로 독립 의무 근거 오인 가능; 해결전 미배포. 보정설계는 동일조문 연속①②③ 전체②본문·예외와 실제③경계marker까지1200이내만 보존/blank·새조문·gap 거부/불충족 기존strict①fallback. 최종verifier·dataset·oracle 불변/외부API재생없음/holdoutfull미진입. 공식status8080PID73844/Q89980/18080없음/37411keepalive 보존.
+
 - 2026-10-08 13:15 KST inline닫힌조문10302 안정전체exit0/XML1546 실패0오류0제외19/51219관련exit0/실파일독립C/I0/diffcheck. 형식회수만수정/기존strict조건·목적·actor·전체예외·주입parser거부·최종verifier불변. 전체적용범위proof는아직미확정/공식원문·타문서제목의무조건합성금지/새API평가없음/새코드미배포/실제SNSpenalty미완료/37411·73844/Q89980보존/holdoutfull미진입.
 
 - 2026-10-08 13:14 KST c85de270 pushed/전체16444exit0(XML1544 실패0오류0제외19). readonly 실제scope84023 doc1/v4와procedure87816 doc20/v4는서로다른문서/제목만proof금지. 공식admrul11171537 doc18109/v1에서제25조①본문·예외·② inline형식확인(무개행). source linkage54367 actualRED1→①body원문자배제/종결부호바로뒤②공백닫힘만추가64665exit0. selector81523 actualRED1→동일strictduty닫힘lookahead추가51219관련exit0/실파일독립C/I0/안정10302전체실행중. source동일문서만으로의미연결보장하지않음/공식앞부분별표혼재·제2조부재등도전체완전성단정금지. 새코드미배포/API평가없음/기존control·semantic차이미해결/holdoutfull금지/37411keepalive73844/Q89980보존.

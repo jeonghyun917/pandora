@@ -17,6 +17,54 @@ import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
 	@Test
+	void procedureSourceWindowRejectsInlineArticleAndUnfinishedSecondParagraph() {
+		String duty = "제25조(과업내용의 확정 시기) ① 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다. 다만, 사업수행일정 부족 등 불가피한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		org.junit.jupiter.api.Assertions.assertAll(
+			() -> assertThat(EvidenceJudge.softwareConfirmationReviewSourceWindow(duty + "② 국가기관등의 장은 자료를 공개해야 한다. 제26조(다른 기준) 비밀자료는 제외한다.③ 이후 절차를 정한다.")).isEmpty(),
+			() -> assertThat(EvidenceJudge.softwareConfirmationReviewSourceWindow(duty + "② 국가기관등의 장은 자료를 공개해야 한다. 다만 비밀자료인 경우에는\n③ 이후 절차를 정한다.")).isEmpty());
+	}
+
+	@Test
+	void procedureSourceWindowDoesNotTruncateFollowingParagraphException() {
+		String duty = "제25조(과업내용의 확정 시기) ① 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다. 다만, 사업수행일정 부족 등 불가피한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		String closed = duty + "② 국가기관등의 장은 자료를 공개해야 한다. 다만 비밀자료는 제외한다.③ 이후 절차를 정한다.";
+		assertThat(EvidenceJudge.softwareConfirmationReviewSourceWindow(closed))
+			.isEqualTo(duty + "② 국가기관등의 장은 자료를 공개해야 한다. 다만 비밀자료는 제외한다.③");
+		String oversized = duty.replace("발주 전에", "발주 " + " ".repeat(60) + "전에")
+			+ "② " + "가".repeat(995) + ".③ 이후 절차를 정한다.";
+		assertThat(oversized.length()).isGreaterThan(1_200);
+		assertThat(EvidenceJudge.softwareConfirmationReviewSourceWindow(oversized)).isEmpty();
+		for (String invalid : List.of(closed.replace("③", "④"), closed.replace("③ 이후 절차를 정한다.", ""),
+			closed.replace("다만 비밀", "\n\n다만 비밀"), closed.replace("다만 비밀", "\n제26조(자료) 다만 비밀"))) {
+			assertThat(EvidenceJudge.softwareConfirmationReviewSourceWindow(invalid)).isEmpty();
+		}
+	}
+
+	@Test
+	void scopedProcedureSelectionPreservesLiteralClosedArticleAfterLongPrefix() throws Exception {
+		var scope = new LawSemanticChunkRow(13401L, 10L, "official_doc", "10", "공공소프트웨어사업 과업심의 가이드",
+			"", "", "20260101", "CURRENT", "5", "적용 대상 사업",
+			"적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)",
+			5, "", "", 5, "scope", "적용 대상 사업", "target_scope", "PASS", null, "scope", 4);
+		String article = "제25조(과업내용의 확정 시기) ① 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다. 다만, 사업수행일정 부족 등 불가피한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.② 국가기관등의 장은 결과를 기록해야 한다.";
+		var procedure = enumerationRow(13402L, 10L, 7, 4,
+			"제24조(다른 절차)\n" + "앞선 절차 설명. ".repeat(150) + "\n" + article + "③ 이후 절차를 정한다.");
+		var service = service();
+		try {
+			String question = "온라인 운영 사업도 과업심의 받아야 하나요?";
+			var candidates = List.of(scope, procedure);
+			var judged = new EvidenceJudge().judge(question, candidates, Map.of(), 3);
+			var selected = preserveIntentDirectEvidenceChunks(service, judged, candidates, question).chunks();
+			var selectedProcedure = selected.stream().filter(row -> row.chunkId() == 13402L).findFirst().orElseThrow();
+			var ground = new ParentContextAssembler().toGrounds(List.of(selectedProcedure), Map.of(), Map.of(),
+				row -> EvidenceJudge.softwareConfirmationReviewDutyText(row.chunkText())).get(0);
+			assertThat(ground.matchedChildText()).isEqualTo(article + "③");
+			assertThat(ground.snippet()).contains("다만, 사업수행일정").doesNotContain("결과를 기록");
+			assertThat(selectedProcedure.documentId()).isEqualTo(10L);
+			assertThat(selectedProcedure.chunkVersion()).isEqualTo(4);
+		} finally { service.shutdownExecutors(); }
+	}
+	@Test
 	void scopeOnlySelectionRecoversSameDocumentProcedure() throws Exception {
 		var scope = new LawSemanticChunkRow(13201L, 10L, "official_doc", "10", "공공소프트웨어사업 과업심의 가이드",
 			"", "", "20260101", "CURRENT", "5", "적용 대상 사업",
