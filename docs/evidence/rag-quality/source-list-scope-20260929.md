@@ -2,6 +2,8 @@
 
 ## 2026-10-01 조건 보존 평가 후속 진단
 
+- 2026-10-12 재로그인 후 배포된8080 공식 관리자UI 단일doc18109/admrul preview 성공: current11/projected52/max2496/tiny2/short37/unexplainedLossSpanCount0 실제응답 확인. 이전1209와 구별된 신규미리보기이며 승인토큰 추출·로컬생성·표시없음. 제2조 적용범위55/제31조 성과관리79 literal samples 보존. 후보 생성·임베딩·활성화·API평가 아직없음/원문손실0을 SNS·penalty PASS로 오인하지 않음. 다음 공식 후보 lifecycle 검증 조건 확인/holdoutfull 미진입.
+
 - 2026-10-12 배포완료: 999b25f1eb36f9cd6a6605668662a9bf9998f9ab commit/push, 전체86885 exit0/1559 f0e0 제외19, Node3/frontend build 및 독립C/I0. 공식deploy12429 KEEPALIVE 새PID80516/runtimef29cd77b-8015-46d0-ba19-26054e1ea7af/JAR82bd22cd564a10562f050a3034ebaa3d6b3333587231e3beb159c34dda985181. 이전25805/44656identity 폐기. Q91783/PID58400·6333 유지/18080없음/공유main 불변. 배포 후 사용자탭 reload 실제 로그인화면 확인: 메모리세션 소멸, 정상 재로그인 필수/비밀번호·쿠키 추출·인증우회없음. 신규 공식 preview는 아직 미실행/후보 생성·활성화·API평가 없음. 로컬 원문손실0은 실제 SNS·penalty PASS 아님. 다음 정상로그인 후 doc18109 공식 preview 손실0 재확인부터; holdout/full 금지.
 
 - 2026-10-12 정상 관리자 로그인 후 공식 protected preview를 UI에서 실행: doc18109 현재11/계획49, unexplainedLossSpanCount1209 확인. 후보 생성·활성화·새 API평가 없이 failclosed. 단일 문서/target만 전송하는 read-only 관리자 preview UI 추가, 인증401 재시도·우회없음/approvalToken·sourceUrl 표시 제외. Node3 PASS/frontend build PASS. versioned appendix의 literal 표문자·짧은 항목 및 부모별 동일문구 보존 RED3 재현 후 수정(legacy cleanup 불변); 접근자 오타55826 compileFAIL은 type() 정정. 집중39333 exit0/전체86885 exit0/XML1559 실패0오류0제외19(잔여XML포함)/독립 재검토 추가C/I0/diffcheck PASS. 실제 동일 raw 로컬52planned/262sections 모두 단일 planned chunk 포함/순수 손실진단0(승인토큰 생성·사용 없음). 의미완전성 또는 SNS·penalty PASS 아님. 신규 코드 미배포 상태에서 staging 진행; 25805 app44656/Q91783 PID58400 유지/18080·공유main 불변. 배포 후 공식 preview 재확인 및 정상 로그인 세션 필요 여부 확인 예정; holdout/full 미진입/100%아님.
