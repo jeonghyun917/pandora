@@ -1,4 +1,18 @@
 // 메소드 설명: searchLawData 처리 흐름을 수행합니다.
+export async function previewDocumentRebuild(target, documentId) {
+  const id = String(documentId ?? '').trim();
+  if (!['law', 'admrul'].includes(target) || !/^[1-9]\d*$/.test(id)) {
+    throw new Error('법령 또는 행정규칙과 단일 문서 ID를 지정하세요.');
+  }
+  const params = new URLSearchParams({ target, documentIds: id });
+  const response = await fetch(`/api/law-data/chunks/rebuild-preview-by-document-ids?${params}`, {
+    method: 'POST', credentials: 'same-origin',
+  });
+  if (response.status === 401) throw new Error('관리자 로그인이 필요합니다.');
+  if (!response.ok) throw new Error('문서 재구축 미리보기에 실패했습니다.');
+  return readJsonResponse(response);
+}
+
 export async function fetchAuthStatus() {
   const response = await fetch('/api/auth/me', {
     credentials: 'same-origin',

@@ -12,6 +12,39 @@ class LawSemanticChunkPlannerTests {
 	private final ChunkPlanningContext planningContext = new ChunkPlanningContext("law", 41L, "Personal Information Protection Act");
 
 	@Test
+	void versionedAppendixRetainsDuplicateCellsOwnedByDifferentParents() {
+		String cell = "별표1 확인 서명 제출 구분 ".repeat(8);
+		var sections = List.of(
+			new SyncDetailSection("appendix", "별표1", "서식1", cell, "$.별표단위[0]", 1, 1),
+			new SyncDetailSection("appendix", "별표2", "서식2", "두 번째 서식\n" + cell + "\n추가 확인", "$.별표단위[1]", 2, 1));
+		var chunks = planner.plan(planningContext, sections);
+		assertThat(chunks).hasSize(2);
+		assertThat(chunks.get(0).text()).isEqualTo(cell.trim());
+		assertThat(chunks.get(0).parentKey()).isNotEqualTo(chunks.get(1).parentKey());
+	}
+
+	@Test
+	void versionedAppendixTypeRetainsTinyTailEvenWithoutAnAppendixPath() {
+		var sections = List.of(
+			new SyncDetailSection("article", "제1조", "목적", "제1조(목적) 이 규정은 절차를 정한다.", "$.조문단위[0]", 1, 1),
+			new SyncDetailSection("appendix", "별표1", "서식", "합계 | □ |", "$.custom[0]", 2, 1));
+		assertThat(planner.plan(planningContext, sections)).extracting(PlannedLawChunk::text)
+			.contains("합계 | □ |");
+	}
+
+	@Test
+	void versionedAppendixPlanPreservesLiteralTableCellsWithoutRelaxingLossApproval() {
+		String literal = "│                                                                          │확인 서명";
+		var sections = List.of(new SyncDetailSection("text", "", "", literal,
+			"$.AdmRulService.별표.별표단위[0].별표내용[0]", 1, 1));
+		var chunks = planner.plan(planningContext, sections);
+		assertThat(chunks).hasSize(1);
+		assertThat(chunks.get(0).text()).isEqualTo(literal);
+		assertThat(ChunkPreviewApproval.assess("law", 41L, 1L, "raw", sections, chunks).unexplainedLossSpanCount()).isZero();
+		assertThat(planner.plan(sections)).isEmpty();
+	}
+
+	@Test
 	void reparsingShortAdministrativeScopePreservesItsLiteralArticleOwnership() {
 		var json = new tools.jackson.databind.ObjectMapper();
 		var parser = new LawOpenApiPayloadParser(json, new com.kaces.pandora.common.json.LawJsonWriter(json));

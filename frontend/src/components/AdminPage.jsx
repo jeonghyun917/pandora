@@ -9,7 +9,7 @@ import {
   RefreshCw,
   Send,
 } from 'lucide-react';
-import { fetchAdminOperations, fetchAdminPipelines, runMinistryCollection } from '../api/lawApi';
+import { fetchAdminOperations, fetchAdminPipelines, runMinistryCollection, previewDocumentRebuild } from '../api/lawApi';
 import { LandingConstellation } from './LandingPage';
 
 const agencyOptions = [
@@ -114,6 +114,26 @@ export function AdminPage({ onBack }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [adminSection, setAdminSection] = useState('pipelines');
+  const [previewTarget, setPreviewTarget] = useState('admrul');
+  const [previewDocumentId, setPreviewDocumentId] = useState('');
+  const [previewResult, setPreviewResult] = useState(null);
+  const [previewError, setPreviewError] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  async function previewRebuild(event) {
+    event.preventDefault();
+    if (previewLoading) return;
+    setPreviewLoading(true);
+    setPreviewResult(null);
+    setPreviewError('');
+    try {
+      setPreviewResult(await previewDocumentRebuild(previewTarget, previewDocumentId));
+    } catch (error) {
+      setPreviewError(error.message);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
 
   const generatedAt = adminSection === 'operations'
     ? operationsOverview?.generatedAt ?? pipelineOverview?.generatedAt
@@ -257,6 +277,23 @@ export function AdminPage({ onBack }) {
       </nav>
 
       <section className="admin-dashboard">
+        <section className="admin-panel admin-panel-wide" aria-label="문서 재구축 미리보기">
+          <h2>문서 재구축 미리보기</h2>
+          <p>저장된 원문의 재청킹 계획만 조회합니다. 후보 생성·임베딩·활성화는 실행하지 않습니다.</p>
+          <form onSubmit={previewRebuild} className="rebuild-preview-form">
+            <label>문서 종류
+              <select value={previewTarget} onChange={(event) => { setPreviewTarget(event.target.value); setPreviewResult(null); }} disabled={previewLoading}>
+                <option value="admrul">행정규칙</option><option value="law">법령</option>
+              </select>
+            </label>
+            <label>문서 ID
+              <input value={previewDocumentId} onChange={(event) => { setPreviewDocumentId(event.target.value); setPreviewResult(null); }} inputMode="numeric" pattern="[1-9][0-9]*" required disabled={previewLoading} />
+            </label>
+            <button type="submit" disabled={previewLoading}>{previewLoading ? '조회 중…' : '미리보기 조회'}</button>
+          </form>
+          {previewError && <p role="alert">{previewError}</p>}
+          {previewResult && <pre className="rebuild-preview-result" aria-label="재구축 미리보기 결과">{JSON.stringify(previewResult, (key, value) => ['approvalToken', 'sourceUrl'].includes(key) ? undefined : value, 2)}</pre>}
+        </section>
         {adminSection === 'operations' && metrics.length > 0 && (
           <section className="admin-metric-grid" aria-label="quality metrics">
             {metrics.map((metric) => (

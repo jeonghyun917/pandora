@@ -55,7 +55,7 @@ final class LawSemanticChunkPlanner {
 			}
 			String key = parentKey(section);
 			if (current == null || !current.key.equals(key)) {
-				flush(planned, current);
+				flush(planned, current, preserveParentBoundaries);
 				current = new SectionGroup(key, sectionType(section), baseNo(section.no()), parentTitle(section), parentSourcePath(section));
 			}
 			current.add(text);
@@ -63,7 +63,7 @@ final class LawSemanticChunkPlanner {
 				current.applyHeadingIfMissing(inferHeading(text));
 			}
 		}
-		flush(planned, current);
+		flush(planned, current, preserveParentBoundaries);
 		return mergeShortAdjacentChunks(planned, preserveParentBoundaries).stream()
 			.map(this::withInferredMetadata)
 			.map(this::normalizeForStorage)
@@ -91,16 +91,17 @@ final class LawSemanticChunkPlanner {
 		if (current != null) {
 			merged.add(current);
 		}
-		return removeContainedShortDuplicates(mergeTinyOrphans(mergeShortWithPrevious(merged, preserveParentBoundaries), preserveParentBoundaries));
+		return removeContainedShortDuplicates(mergeTinyOrphans(mergeShortWithPrevious(merged, preserveParentBoundaries), preserveParentBoundaries), preserveParentBoundaries);
 	}
 
-	private List<PlannedLawChunk> removeContainedShortDuplicates(List<PlannedLawChunk> planned) {
+	private List<PlannedLawChunk> removeContainedShortDuplicates(List<PlannedLawChunk> planned, boolean preserveParentBoundaries) {
 		if (planned.size() <= 1) {
 			return planned;
 		}
 		List<PlannedLawChunk> compacted = new ArrayList<>();
 		for (int index = 0; index < planned.size(); index++) {
-			if (isContainedShortDuplicate(planned, index)) {
+			if (!(preserveParentBoundaries && isAppendixChunk(planned.get(index)))
+				&& isContainedShortDuplicate(planned, index)) {
 				continue;
 			}
 			compacted.add(planned.get(index));
@@ -217,7 +218,8 @@ final class LawSemanticChunkPlanner {
 					continue;
 				}
 			}
-			if (isLowSignalTinyFormTail(chunk.text())) {
+			if (isLowSignalTinyFormTail(chunk.text())
+				&& !(preserveParentBoundaries && isAppendixChunk(chunk))) {
 				continue;
 			}
 			merged.add(chunk);
@@ -490,11 +492,15 @@ final class LawSemanticChunkPlanner {
 		return value == null ? 0 : value.length();
 	}
 
-	private void flush(List<PlannedLawChunk> planned, SectionGroup group) {
+	private void flush(List<PlannedLawChunk> planned, SectionGroup group, boolean preserveParentBoundaries) {
 		if (group == null || group.texts.isEmpty()) {
 			return;
 		}
-		List<String> children = finalChildren(group, splitGroup(group.texts));
+		// Versioned rebuilds must retain literal appendix cells: even short form
+		// labels contribute to the source-coverage approval, unlike legacy cleanup.
+		List<String> rawChildren = splitGroup(group.texts);
+		List<String> children = preserveParentBoundaries && isAppendixGroup(group)
+			? rawChildren : finalChildren(group, rawChildren);
 		for (int index = 0; index < children.size(); index++) {
 			String child = children.get(index);
 			String suffix = children.size() > 1 ? " (" + (index + 1) + "/" + children.size() + ")" : "";
@@ -874,6 +880,10 @@ final class LawSemanticChunkPlanner {
 
 	private boolean isAppendixGroup(SectionGroup group) {
 		return group != null && ("appendix".equals(group.type) || isAppendixSource(group.sourcePath));
+	}
+
+	private boolean isAppendixChunk(PlannedLawChunk chunk) {
+		return "appendix".equals(chunk.type()) || isAppendixSource(chunk.sourcePath());
 	}
 
 	private boolean isSupplementarySource(String sourcePath) {

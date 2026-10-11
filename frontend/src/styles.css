@@ -3491,3 +3491,7 @@ button {
     width: 100%;
   }
 }
+.rebuild-preview-form { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; }
+.rebuild-preview-form label { display: grid; gap: 8px; }
+.rebuild-preview-form input, .rebuild-preview-form select, .rebuild-preview-form button { min-height: 44px; }
+.rebuild-preview-result { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 560px; overflow: auto; }
