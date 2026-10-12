@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-12 typed nominal 분류 readonly exit0: 개행결합 뒤 실제 source criterion은 parser subjects/actions/targetScopes/conditions 모두empty·relations=[포함]·PARTIAL. 같은 조건부 claim은 subject=[사업]/actions=[해당]/relations=[해당]/targetScopes=[소프트웨어사업에포함]/conditions 두개·COMPLETE. 따라서 단순 source결합만으로 semantic이 정렬될 수 없으며, source-only 명시적 heading/nominal 기준 typed해석과 conditional membership 결론의 소유조건 보존을 별도검증해야 함. 비대상OCR 조각을 긍정근거로 합성하지 않음. 제품verifier·authority·DB·runtime 불변/새API평가없음.
+
 - 2026-10-12 heading개행 causal 대조 localreadonly exit0: 동일84023 정제본문의 첫 heading↔바로다음 발주기준 개행 하나만 공백으로 바꾼 throwaway grounds에서 단일주체 '온라인운영사업이 ... 해당하면 과업심의대상사업입니다' controlINSUFFICIENT→SUPPORTED 확인. semantic은 양쪽 NO_ALIGNED_EVIDENCE_ATOM 유지, '사업도'는 원래controlSUPPORTED이므로 이를 개선으로 오인하지 않음. 원문fragment 소유보존은 control 입력경계 하나를 해결할 후보이나 semantic/전체답변/SNSgate 해결이 아님. 제품변경·배포·새평가없음, 조건·기관·SW가드 보존한 회귀와 별도semantic typed분류 진단 필요.
 
 - 2026-10-12 실제 source fragment 경계 readonly exit0: 84023 clean matchedChildText→atomizeSource 결과에서 '적용 대상 사업'과 '국가기관 등이 발주하는 모든 SW사업(상용SW포함)'이 서로 별도atom으로 분리됨. synthetic 단일문장 fixture의 heading+발주관계와 현 입력의 분리fragment를 구별. 뒤 비대상 주의문구도 OCR '소프트웨어사/업' 분리 상태. 이것은 현재 조건부 분류 불일치의 구체적 입력경계이며 의미자동증명·verifier완화로 해결하지 않음. 다음 동일본문 내 연속 heading+명시적 nominal 기준 소유보존을 positive/기관·SW·부정·다른heading경계 negative 회귀로 진단하는 최소범위 필요. 제품코드·DB·runtime·API평가 변경없음/실제SNSpenalty未PASS.
