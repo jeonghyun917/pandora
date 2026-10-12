@@ -3405,6 +3405,21 @@ class ClaimEvidenceMatcherRelationTests {
 	}
 
 	@Test
+	void contiguousLiteralNominalHeadingIsNotAReconstructedNumberedListScope() {
+		var evidence = ground("공공소프트웨어사업 과업심의 가이드",
+			"적용 대상 사업\n국가기관 등이 발주하는 모든 SW사업(상용SW포함)\n※ 건설사업은 비대상");
+		assertThat(matcher.match(
+			"온라인 운영 사업이 국가기관 등이 발주하는 소프트웨어사업에 해당하면 과업심의 대상사업입니다.",
+			List.of(evidence)).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		for (String claim : List.of(
+			"온라인 운영 사업은 과업심의 대상사업입니다.",
+			"온라인 운영 사업이 민간기업이 발주하는 소프트웨어사업에 해당하면 과업심의 대상사업입니다.",
+			"온라인 운영 사업이 국가기관 등이 발주하는 건설사업에 해당하면 과업심의 대상사업입니다.")) {
+			assertThat(matcher.match(claim, List.of(evidence)).status()).isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		}
+	}
+
+	@Test
 	void coordinatedBusinessConditionsDoNotPermitDifferentActorsOrDifferentBusinessClasses() {
 		var evidence = ground("공공소프트웨어사업 과업심의 가이드",
 			"적용 대상 사업은 국가기관 등이 발주하는 모든 SW사업입니다.");

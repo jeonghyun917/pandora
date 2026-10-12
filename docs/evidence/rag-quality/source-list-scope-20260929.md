@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-12 literal-source fragment 분류 TDD: RED98541 exit1/1실패0오류에서 원문 heading+기준이 재구성 scopedListItem으로 오분류됨을 재현. whitespace만 정규화한 동일본문의 실제 연속문구는 재구성으로 표시하지 않도록 최소수정; 기존 numbered-list verbatim-only 가드 불변/숫자·문장부호 보존/metadata·타근거 차용 없음. 집중84244 exit0/419PASS, 전체28032 exit0/1567 실패0오류0제외19, diffcheck exit0, 독립 좁은리뷰 Critical/Important0. readonly 실제84023 원문 조건부 control SUPPORTED 확인, semantic은 NO_ALIGNED_EVIDENCE_ATOM 그대로이므로 SNS 실제PASS 아님. 미배포/새API평가 없음/runtime53304·Q91783 유지. 다음 typed nominal source조건 소유를 진단하며 최종검증·authority 완화하지 않음.
+
 - 2026-10-12 원문 heading경계 TDD: 실제RED58087 exit1/1실패0오류→명시적 본문 heading+바로다음 complete nominal 발주기준만 atomizeSource에서 결합(7줄, metadata차용/목록·중간heading·부정문 결합없음). 집중90453 exit0/394PASS, 전체80686 exit0/1566 실패0오류0제외19, diffcheck exit0. readonly 실제84023 sourceatom 결합 확인. control은 새source fragment를 scopedListItem으로 표시해 기존 verbatim-only가드로 비문자적membership 거부유지/semantic typed분류 미해결, 가드삭제 없음. 전체SNSpenaltyPASS 아님/미배포/새평가없음/runtime53304·Q91783 유지. 다음 조립출처의 literal경계보존과 의미분류 판정을 분리해 진행.
 
 - 2026-10-12 typed nominal 분류 readonly exit0: 개행결합 뒤 실제 source criterion은 parser subjects/actions/targetScopes/conditions 모두empty·relations=[포함]·PARTIAL. 같은 조건부 claim은 subject=[사업]/actions=[해당]/relations=[해당]/targetScopes=[소프트웨어사업에포함]/conditions 두개·COMPLETE. 따라서 단순 source결합만으로 semantic이 정렬될 수 없으며, source-only 명시적 heading/nominal 기준 typed해석과 conditional membership 결론의 소유조건 보존을 별도검증해야 함. 비대상OCR 조각을 긍정근거로 합성하지 않음. 제품verifier·authority·DB·runtime 불변/새API평가없음.

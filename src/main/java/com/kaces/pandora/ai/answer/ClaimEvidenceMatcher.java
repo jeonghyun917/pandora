@@ -842,6 +842,7 @@ public class ClaimEvidenceMatcher {
 		Set<String> unscopedAtoms = new LinkedHashSet<>(atomizer.atomize(text));
 		Set<String> fragments = new LinkedHashSet<>(unscopedAtoms);
 		fragments.addAll(atomizer.atomizeSource(text, chunkTitle));
+		String contiguousLiteralText = text.replaceAll("\\s+", " ").trim();
 		for (String fragment : fragments) {
 			String cleaned = fragment.replaceAll("\\s+", " ").trim();
 			if (cleaned.length() < 4) {
@@ -859,7 +860,7 @@ public class ClaimEvidenceMatcher {
 					anchorContext,
 					denseStructuralContext,
 					false,
-					!unscopedAtoms.contains(fragment)
+					!unscopedAtoms.contains(fragment) && !contiguousLiteralText.contains(cleaned)
 				));
 			}
 		}
