@@ -10,6 +10,22 @@ import tools.jackson.databind.ObjectMapper;
 
 class OpenAiAnswerClientPromptTests {
 	@Test
+	void literalProcedureRewriteHasRoomForScopeDutyAndException() {
+		var tokens = new java.util.concurrent.atomic.AtomicInteger();
+		var instructions = new java.util.concurrent.atomic.AtomicReference<String>();
+		var client = new OpenAiAnswerClient(new LawAiProperties(null, null, null, null), new ObjectMapper()) {
+			@Override protected String requestAnswer(String question, String input, int budget, String contract) {
+				tokens.set(budget); instructions.set(contract); return "답변";
+			}
+		};
+		client.rewriteConditional("운영 사업도 대상인가요?", List.of(
+			"국가기관 등이 발주하는 모든 SW사업",
+			"국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다."),
+			List.of("공공소프트웨어사업 과업심의 가이드"));
+		assertThat(tokens.get()).isEqualTo(2048);
+		assertThat(instructions.get()).contains("메타 설명을 답변에 복사하지", "실제 제도명", "세 문장");
+	}
+	@Test
 	void verifiedProcedureModeSeparatesScopePremiseFromLiteralDuty() {
 		var captured = new java.util.concurrent.atomic.AtomicReference<String>();
 		var client = new OpenAiAnswerClient(new LawAiProperties(null, null, null, null), new ObjectMapper()) {
