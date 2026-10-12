@@ -46,6 +46,10 @@ public class ClaimEvidenceMatcher {
 		"(?:^|\\s)([\\p{IsHangul}a-z0-9]{2,}?)(?:은|는|이|가)(?=\\s|$)",
 		Pattern.CASE_INSENSITIVE
 	);
+	private static final Pattern QUALIFIED_SINGLE_SUBJECT_ROLE = Pattern.compile(
+		"(?:^|\\s)[\\p{IsHangul}a-z0-9]{2,}의\\s+([\\p{IsHangul}])(?:은|는|이|가)(?=\\s|$)",
+		Pattern.CASE_INSENSITIVE
+	);
 	private static final Pattern LABELED_SUBJECT_ROLE = Pattern.compile(
 		"(?:^|[.!?;；\\n]\\s*)"
 			+ "([\\p{IsHangul}a-z0-9][\\p{IsHangul}a-z0-9()·ㆍ/\\-\\s]{1,80}?)"
@@ -408,6 +412,10 @@ public class ClaimEvidenceMatcher {
 		List<Candidate> supported = new ArrayList<>();
 		List<Candidate> contradicted = new ArrayList<>();
 		for (EvidenceSentence sentence : sentences) {
+			if (sentence.sourceLinkedDuty() != null
+				&& !preservesSourceLinkedDutySlots(claim, sentence.sourceLinkedDuty())) {
+				continue;
+			}
 			// A reconstructed list scope is safe for verbatim repair, not fuzzy
 			// entailment: shared heading words must not support an absent item.
 			if (sentence.scopedListItem() && !normalize(claim).equals(normalize(sentence.text()))) {
@@ -446,6 +454,10 @@ public class ClaimEvidenceMatcher {
 				continue;
 			}
 			ClaimSemantics evidenceSemantics = ClaimSemantics.from(sentence.text());
+			if (sentence.sourceLinkedDuty() != null) {
+				evidenceSemantics = evidenceSemantics.withInheritedDutyContext(sentence.sourceLinkedDuty());
+				if (!claimSemantics.roles().equals(evidenceSemantics.roles())) { continue; }
+			}
 			double coverage = (double) overlap / Math.max(1, new LinkedHashSet<>(claimTokens).size());
 			if (conditionalGenericBusinessSubjectAligned(claimSemantics, evidenceSemantics)) {
 				coverage = Math.max(
@@ -466,7 +478,11 @@ public class ClaimEvidenceMatcher {
 				contradicted.add(new Candidate(sentence, overlap, coverage, overlap + (coverage * 3.0d) + 2.0d));
 				continue;
 			}
-			Relation relation = relation(claimSemantics, evidenceSemantics, sentence.anchorContext());
+			// Only a validated closed paragraph can supply this exception's inherited context.
+			// Keep the literal evidence sentence; never synthesize a source proposition.
+			String relationContext = sentence.sourceLinkedDuty() == null ? sentence.anchorContext()
+				: sentence.sourceLinkedDuty().mainLiteral();
+			Relation relation = relation(claimSemantics, evidenceSemantics, relationContext);
 			double score = overlap + (coverage * 3.0d)
 				+ (relation == Relation.COMPATIBLE ? 1.5d : 0.0d)
 				+ exactPhraseBonus(claim, sentence.text());
@@ -770,6 +786,11 @@ public class ClaimEvidenceMatcher {
 					|| isStructuralSourceIntroduction(ground.snippet())
 					|| isStructuralSourceIntroduction(ground.parentContextText())
 			) && hasDenseStructuralLabels(structuralContext);
+			List<ClaimEvidenceAtomizer.SourceLinkedDuty> sourceBindings =
+				List.of(String.valueOf(ground.matchedChildText()), String.valueOf(ground.snippet()),
+					String.valueOf(ground.parentContextText())).stream()
+					.flatMap(source -> atomizer.sourceLinkedDutyContexts(source, new KoreanEvidenceAtomParser()).stream())
+					.distinct().toList();
 			addDocumentTitleEvidence(unique, ground.number(), ground.title(), anchorContext);
 			addEvidenceFragments(
 				unique,
@@ -777,7 +798,8 @@ public class ClaimEvidenceMatcher {
 				ground.matchedChildText(),
 				ground.chunkTitle(),
 				anchorContext,
-				denseStructuralContext
+				denseStructuralContext,
+				sourceBindings
 			);
 			addEvidenceFragments(
 				unique,
@@ -785,7 +807,8 @@ public class ClaimEvidenceMatcher {
 				ground.snippet(),
 				ground.chunkTitle(),
 				anchorContext,
-				denseStructuralContext
+				denseStructuralContext,
+				sourceBindings
 			);
 			addEvidenceFragments(
 				unique,
@@ -793,7 +816,8 @@ public class ClaimEvidenceMatcher {
 				ground.parentContextText(),
 				null,
 				anchorContext,
-				denseStructuralContext
+				denseStructuralContext,
+				sourceBindings
 			);
 		}
 		return List.copyOf(unique.values());
@@ -823,7 +847,8 @@ public class ClaimEvidenceMatcher {
 				anchorContext,
 				false,
 				true,
-				false
+				false,
+				null
 			)
 		);
 	}
@@ -834,7 +859,8 @@ public class ClaimEvidenceMatcher {
 		String text,
 		String chunkTitle,
 		String anchorContext,
-		boolean denseStructuralContext
+		boolean denseStructuralContext,
+		List<ClaimEvidenceAtomizer.SourceLinkedDuty> sourceBindings
 	) {
 		if (text == null || text.isBlank()) {
 			return;
@@ -845,6 +871,11 @@ public class ClaimEvidenceMatcher {
 		String contiguousLiteralText = text.replaceAll("\\s+", " ").trim();
 		for (String fragment : fragments) {
 			String cleaned = fragment.replaceAll("\\s+", " ").trim();
+			List<ClaimEvidenceAtomizer.SourceLinkedDuty> owned = sourceBindings.stream()
+				.filter(binding -> normalize(binding.atom().sourceText()).equals(normalize(cleaned)))
+				.distinct().toList();
+			if (owned.size() > 1) { continue; }
+			ClaimEvidenceAtomizer.SourceLinkedDuty sourceBinding = owned.isEmpty() ? null : owned.get(0);
 			if (cleaned.length() < 4) {
 				continue;
 			}
@@ -860,13 +891,34 @@ public class ClaimEvidenceMatcher {
 					anchorContext,
 					denseStructuralContext,
 					false,
-					!unscopedAtoms.contains(fragment) && !contiguousLiteralText.contains(cleaned)
+					!unscopedAtoms.contains(fragment) && !contiguousLiteralText.contains(cleaned),
+					sourceBinding
 				));
 			}
 		}
 	}
 
+	private boolean preservesSourceLinkedDutySlots(String claim, ClaimEvidenceAtomizer.SourceLinkedDuty binding) {
+		EvidenceAtom source = binding.atom();
+		Matcher actionTarget = Pattern.compile("발주\\s+전에\\s+(.+?에\\s+대하여)").matcher(binding.mainLiteral());
+		if (!actionTarget.find() || !normalize(claim).contains(normalize(actionTarget.group(1)))) { return false; }
+		EvidenceAtom parsed = new KoreanEvidenceAtomParser().parse(claim);
+		return parsed.parseStatus() == EvidenceAtom.ParseStatus.COMPLETE
+			&& parsed.subjects().equals(source.subjects()) && parsed.objects().equals(source.objects())
+			&& parsed.recipients().equals(source.recipients()) && parsed.actions().equals(source.actions())
+			&& parsed.relations().equals(source.relations()) && parsed.targetScopes().equals(source.targetScopes())
+			&& parsed.conditions().equals(source.conditions()) && parsed.exceptions().equals(source.exceptions())
+			&& parsed.numericAnchors().equals(source.numericAnchors())
+			&& parsed.modality() == source.modality() && parsed.polarity() == source.polarity();
+	}
+
 	private Relation relation(ClaimSemantics claim, ClaimSemantics evidence, String evidenceAnchorContext) {
+		if (claim.obligationMode() == ObligationMode.REQUIRED
+			&& evidence.obligationMode() == ObligationMode.REQUIRED
+			&& evidence.roles().subjects().stream().anyMatch(role -> !role.head().endsWith("에"))
+			&& claim.roles().subjects().isEmpty()) {
+			return Relation.NOT_ENTAILED;
+		}
 		if (hasDoubleNegatedTarget(claim.normalizedText())
 			|| hasDoubleNegatedTarget(evidence.normalizedText())) {
 			return Relation.NOT_ENTAILED;
@@ -1708,7 +1760,8 @@ public class ClaimEvidenceMatcher {
 		String anchorContext,
 		boolean denseStructuralSource,
 		boolean documentTitleMetadata,
-		boolean scopedListItem
+		boolean scopedListItem,
+		ClaimEvidenceAtomizer.SourceLinkedDuty sourceLinkedDuty
 	) {
 	}
 
@@ -1758,6 +1811,24 @@ public class ClaimEvidenceMatcher {
 		boolean ambiguousSubjectAttribution,
 		String normalizedText
 	) {
+		ClaimSemantics withInheritedDutyContext(ClaimEvidenceAtomizer.SourceLinkedDuty binding) {
+			ClaimSemantics main = from(binding.mainLiteral());
+			Set<RoleIdentity> sourceObjects = new LinkedHashSet<>(main.roles().objects());
+			sourceObjects.addAll(roles.objects());
+			Set<String> sourceBearers = new LinkedHashSet<>(main.responsibilityBearers());
+			sourceBearers.addAll(responsibilityBearers);
+			PropositionRoles inheritedRoles = new PropositionRoles(main.roles().subjects(), Set.copyOf(sourceObjects),
+				roles.recipients(), main.roles().permissionTargets());
+			// Literal source fields supply roles and lexical anchors only. All original relation guards still run.
+			return new ClaimSemantics(targetMode, obligationMode, permissionMode, permissionActions,
+				finiteAffirmedPredicateActions, affirmedPredicateActions, negatedPredicateActions, plannedPredicateActions,
+				ongoingPredicateActions, Set.copyOf(sourceBearers), universalScopeAnchors, enumerationScopeAnchors,
+				openEndedEnumeration, requiredItemEnumerationTerms, lexicalTerms, inheritedRoles, requiredRelationAnchors,
+				requiredConditionAnchors, requiredNumericAnchors, targetScopeAnchors, categories, conditional, narrowingCondition,
+				exclusiveRoleAnchors, disjunctiveCoordination, ambiguousSubjectAttribution,
+				normalizedText + main.normalizedText());
+		}
+
 		static ClaimSemantics from(String text) {
 			Matcher issuerCondition = COORDINATED_BUSINESS_ISSUER_CONDITION.matcher(
 				String.valueOf(text == null ? "" : text)
@@ -2719,7 +2790,7 @@ public class ClaimEvidenceMatcher {
 		private static final Set<String> ROLE_MODIFIER_BOUNDARY_WORDS = Set.of(
 			"및", "또는", "혹은", "하고", "등",
 			"모든", "전체", "각", "각종",
-			"위해", "위하여", "위한", "대한", "관한", "따른", "통해",
+			"위해", "위하여", "위한", "대한", "관한", "따른", "따라", "통해",
 			"즉시", "바로", "반드시", "직접", "별도로", "우선", "먼저", "다시",
 			"금지", "허용", "가능", "불가능", "하는", "하게", "하지", "못하게"
 		);
@@ -2761,7 +2832,7 @@ public class ClaimEvidenceMatcher {
 			Set<PermissionTargetAlternative> permissionTargets
 		) {
 			Set<RoleIdentity> tokens = new LinkedHashSet<>(
-				subjectRoleIdentities(text, SUBJECT_ROLE, PARENTHETICAL_SUBJECT_ROLE)
+				subjectRoleIdentities(text, SUBJECT_ROLE, QUALIFIED_SINGLE_SUBJECT_ROLE, PARENTHETICAL_SUBJECT_ROLE)
 			);
 			Matcher matcher = COORDINATED_SUBJECT_ROLE.matcher(String.valueOf(text == null ? "" : text));
 			while (matcher.find()) {
@@ -2915,7 +2986,7 @@ public class ClaimEvidenceMatcher {
 			String canonical = source.matches(".*\\s+.*")
 				? normalizeRoleToken(source)
 				: qualifiedRoleIdentity(text, roleStart, rawRole);
-			if (canonical.length() >= 2 && head.length() >= 2) {
+			if (canonical.length() >= 2 && !head.isEmpty()) {
 				identities.add(new RoleIdentity(canonical, head));
 			}
 		}
@@ -3014,7 +3085,7 @@ public class ClaimEvidenceMatcher {
 			String rawToken,
 			String particle
 		) {
-			if (rawToken.length() < 3 || !rawToken.endsWith(particle)) {
+			if (rawToken.length() < 2 || !rawToken.endsWith(particle)) {
 				return false;
 			}
 			char stemEnding = rawToken.charAt(rawToken.length() - particle.length() - 1);

@@ -222,6 +222,12 @@ final class ClaimEvidenceAtomizer {
 	List<EvidenceAtom> parseSourceAtomsForAlignment(String text, KoreanEvidenceAtomParser parser) {
 		List<EvidenceAtom> result = new ArrayList<>(atomizeSourceForAlignment(text).stream()
 			.map(parser::parse).toList());
+		result.addAll(sourceLinkedDutyContexts(text, parser).stream().map(SourceLinkedDuty::atom).toList());
+		return List.copyOf(result);
+	}
+
+	List<SourceLinkedDuty> sourceLinkedDutyContexts(String text, KoreanEvidenceAtomParser parser) {
+		List<SourceLinkedDuty> result = new ArrayList<>();
 		String joined = text == null ? "" : joinClosedLegalFirstParagraph(text);
 		Matcher paragraph = Pattern.compile(
 			"(?m)^제\\d+조(?:의\\d+)?[ \\t]*\\([^\\r\\n()]{1,80}\\)(?:[ \\t]*\\R|[ \\t]+(?=①))"
@@ -260,13 +266,15 @@ final class ClaimEvidenceAtomizer {
 			objects.addAll(exception.objects());
 			// Source-only interpretation: preserve the literal clause and its ground provenance.
 			// The same closed paragraph supplies actor/purpose; its explicit exception changes only timing.
-			result.add(new EvidenceAtom(exception.sourceText(), main.subjects(), objects, exception.recipients(),
+			result.add(new SourceLinkedDuty(new EvidenceAtom(exception.sourceText(), main.subjects(), objects, exception.recipients(),
 				exception.actions(), exception.relations(), exception.targetScopes(), conditions, exception.exceptions(),
 				exception.numericAnchors(), exception.modality(), exception.polarity(), EvidenceAtom.ParseStatus.COMPLETE,
-				List.of("SOURCE_LINKED_EXPLICIT_DUTY")));
+				List.of("SOURCE_LINKED_EXPLICIT_DUTY")), main.sourceText()));
 		}
 		return List.copyOf(result);
 	}
+
+	record SourceLinkedDuty(EvidenceAtom atom, String mainLiteral) { }
 
 	private String joinClosedLegalFirstParagraph(String text) {
 		Pattern paragraph = Pattern.compile(

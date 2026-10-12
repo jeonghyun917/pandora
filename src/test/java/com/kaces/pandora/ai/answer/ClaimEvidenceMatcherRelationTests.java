@@ -10,6 +10,54 @@ class ClaimEvidenceMatcherRelationTests {
 	private final ClaimEvidenceMatcher matcher = new ClaimEvidenceMatcher();
 
 	@Test
+	void qualifiedSingleSyllableActorCannotBeOmittedOrChanged() {
+		var grounds = List.of(ground("기관의 장은 자료를 제출해야 한다."));
+		assertThat(matcher.match("자료를 제출해야 한다.", grounds).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		assertThat(matcher.match("회사의 장은 자료를 제출해야 한다.", grounds).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void sourceBoundDutyExceptionPreservesCitationAndOpenTriggerBoundary() {
+		String main = "국가기관등의 장은 영 제47조제1항제1호에 따라 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		String exception = "다만, 사업수행일정 부족 등 불가피한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		String claim = "다만, 사업수행일정 부족 등 불가피한 경우에는 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 계약체결 전까지 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		assertThat(matcher.match(claim, List.of(ground("제25조(심의)\n① " + main + " " + exception + "\n② 다른 기준"))).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void sourceBoundDutyExceptionPreservesInheritedPurpose() {
+		String main = "국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		String exception = "다만 일정이 부족한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		String source = "제7조(심의)\n① " + main + " " + exception + "\n② 다른 기준";
+		String claim = "다만 일정이 부족한 경우에는 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 계약체결 전까지 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		assertThat(matcher.match(claim, List.of(ground(source))).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void sourceBoundDutyExceptionRejectsOmittedPurpose() {
+		String main = "국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		String exception = "다만 일정이 부족한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		String source = "제7조(심의)\n① " + main + " " + exception + "\n② 다른 기준";
+		String claim = "다만 일정이 부족한 경우에는 국가기관등의 장은 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		assertThat(matcher.match(claim, List.of(ground(source))).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void sourceBoundDutyExceptionCannotBorrowAcrossArticleBoundary() {
+		String main = "국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		String exception = "다만 일정이 부족한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		String source = "제7조(심의)\n① " + main + "\n제8조(다른 심의)\n① " + exception + "\n② 다른 기준";
+		String claim = "다만 일정이 부족한 경우에는 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		assertThat(matcher.match(claim, List.of(ground(source))).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
 	void recommendationPlanPreservesParentheticalDispatchInsteadOfReinterpretingItsOrdinal() {
 		String source = "향후 입찰공고(RFP)시 반영여부를 재확인하여 미준수 항목 권고(2차발송) 예정";
 		assertThat(matcher.match(source, List.of(ground(source))).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
@@ -19,6 +67,55 @@ class ClaimEvidenceMatcherRelationTests {
 		assertThat(matcher.match(
 			"향후 입찰공고(RFP)시 반영여부를 재확인하여 미준수 항목을 2차 권고할 예정입니다.",
 			List.of(ground(source))).status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void sourceBoundDutyExceptionCannotDropActionTargetOrAddQuestionPremise() {
+		String main = "국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		String exception = "다만 일정이 부족한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		String claim = "다만 일정이 부족한 경우에는 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 계약체결 전까지 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		var grounds = List.of(ground("제7조(심의)\n① " + main + " " + exception + "\n② 다른 기준"));
+		for (String changed : List.of(claim.replace("국가기관등의 장", "민간기관의 장"),
+			claim.replace("계약체결 전까지", "계약체결 후까지"),
+			claim.replace("사업계획서 또는 제안요청서에 대하여 ", ""),
+			claim.replace("사업계획서 또는 제안요청서", "사업계획서"),
+			claim.replace("일정이 부족한", "일정이 충분한"),
+			"온라인 사업이 SW사업에 해당하는 경우, " + claim)) {
+			assertThat(matcher.match(changed, grounds).status()).as(changed)
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
+	void sourceBoundDutyExceptionOwnerCannotBeShadowedByChildOrSnippet() {
+		String main = "국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		String exception = "다만 일정이 부족한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		String parent = "제7조(심의)\n① " + main + " " + exception + "\n② 다른 기준";
+		var evidence = new LawAiAnswerGround(1, 10L, 20L, "admrul", "지침", "기관", "문서", "2026-01-01", "CURRENT",
+			"1", "심의", null, exception, "source", "url", 1.0d, exception, parent, List.of(11L), "parent", "direct");
+		String omitted = "다만 일정이 부족한 경우에는 국가기관등의 장은 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		assertThat(matcher.match(omitted, List.of(evidence)).status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void sourceBoundDutyExceptionCannotDiscardANumericMainQualification() {
+		String main = "국가기관등의 장은 총사업비 100만원 이상인 소프트웨어사업의 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		String exception = "다만 일정이 부족한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		String claim = "다만 일정이 부족한 경우에는 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 계약체결 전까지 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		assertThat(matcher.match(claim, List.of(ground("제7조(심의)\n① " + main + " " + exception + "\n② 다른 기준"))).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void sourceBoundDutyExceptionConflictingOwnersFailClosedAcrossInputFields() {
+		String main = "국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		String exception = "다만 일정이 부족한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
+		String child = "제7조(심의)\n① " + main + " " + exception + "\n② 다른 기준";
+		String parent = child.replace("제7조", "제8조").replace("장은 과업내용", "장은 영 제47조제1항제2호에 따라 과업내용");
+		var evidence = new LawAiAnswerGround(1, 10L, 20L, "admrul", "지침", "기관", "문서", "2026-01-01", "CURRENT",
+			"1", "심의", null, exception, "source", "url", 1.0d, child, parent, List.of(11L), "parent", "direct");
+		String claim = "다만 일정이 부족한 경우에는 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 계약체결 전까지 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		assertThat(matcher.match(claim, List.of(evidence)).status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
 	}
 
 	@Test
