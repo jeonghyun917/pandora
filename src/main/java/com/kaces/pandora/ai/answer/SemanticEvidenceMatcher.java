@@ -182,6 +182,11 @@ public class SemanticEvidenceMatcher {
 			&& !claim.conditions().containsAll(evidence.conditions())) {
 			return SemanticMatch.insufficient("SOURCE_CONDITION_NOT_PRESERVED");
 		}
+		if (status == ClaimEvidenceMatcher.Status.SUPPORTED
+			&& claim.conditions().stream().anyMatch(condition ->
+				!overlaps(Set.of(condition), evidence.conditions()))) {
+			return SemanticMatch.insufficient("CLAIM_CONDITION_NOT_ESTABLISHED");
+		}
 		return new SemanticMatch(
 			status, Set.copyOf(aligned), indexed.groundNumber(), indexed.sentence(), coverage,
 			status == ClaimEvidenceMatcher.Status.SUPPORTED ? "ALIGNED" : "ALIGNED_OPPOSITE_POLARITY"

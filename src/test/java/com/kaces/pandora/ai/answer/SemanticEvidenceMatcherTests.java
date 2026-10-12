@@ -13,6 +13,14 @@ class SemanticEvidenceMatcherTests {
 	private final SemanticEvidenceMatcher matcher = new SemanticEvidenceMatcher();
 
 	@Test
+	void addedUnsupportedConditionCannotBorrowASeparateSupportedCondition() {
+		String source = "국가기관등의 장은 제2항에 따라 개선 권고를 받은 때에는 그 권고를 받은 날부터 1개월 이내에 조치 결과를 과학기술정보통신부장관에게 통보하여야 한다.";
+		var index = matcher.index(List.of(ground(source)));
+		assertThat(matcher.match(parser.parse("정보화시스템 법제도 준수안하면, " + source), index).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
 	void recommendationRecipientDutyCannotChangeItsActor() {
 		String source = "국가기관등의 장은 제2항에 따라 개선 권고를 받은 때에는 그 권고를 받은 날부터 1개월 이내에 조치 결과를 과학기술정보통신부장관에게 통보하여야 한다.";
 		var index = matcher.index(List.of(ground(source)));

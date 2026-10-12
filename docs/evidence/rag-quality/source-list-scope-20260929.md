@@ -1,5 +1,9 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-12 조건합집합 안전보강 검증완료: 집중84925 exit0/73PASS, 전체19677 exit0/1563 실패0오류0제외19. 현재8근거 readonly13503 exit0의 exact/숫자변조/주체변조/수령조건삭제/질문조건앞붙임 5건 cached/fresh 동일, exact만 양쪽SUPPORTED/나머지4개 양쪽INSUFFICIENT. 독립 좁은 변경검토 C/I/Minor0; 문자열 substring 조건동치의 일반 한계는 미해결로 구분. claim 각조건 근거검사만 추가했고 CONTRADICTED witness/control/authority/legacy 불변. 실제SNSpenalty 및 holdout/full 미완료, 새외부평가/배포 없음.
+
+- 2026-10-12 후속 조건합집합 RED69600 exit1/1실패0오류: 원질문조건 앞붙임이 SUPPORTED로 재현. align의 조건 slot은 any overlap이고 source-condition 보존은 source⊆claim만 검사하여 추가한 무근거 조건을 걸러내지 못함. SUPPORTED에 한해 각 claim condition의 evidence overlap을 검사하는 최소보강 진행, 반대근거 충돌판정/control/authority 불변. 집중84925 진행 중/결과미확정; 신규외부평가·배포·holdout/full 없음.
+
 - 2026-10-12 수정후 현재8근거 readonly 대조 exit0: exact/2개월/주체변조/수령조건삭제/질문조건앞붙임 5건 모두 cached/fresh Match record 동일. exact는 양쪽SUPPORTED, 숫자·주체·수령조건 변조는 양쪽INSUFFICIENT로 보강 확인. 질문조건앞붙임은 controlINSUFFICIENT이나 semanticSUPPORTED coverage0.7778로 별도 미해결 위험 유지(조건 일부overlap 경계 진단 필요). 独立좁은 parser 변경검토 C/I/Minor0, 미배포/실제SNSpenalty미완료/authority비활성 유지. 성능147ms/395ms는 로컬 표본이며 제품최적화 없음.
 
 - 2026-10-12 수령시점 semantic 안전회귀: 국가기관등의 장→소프트웨어사업자 치환 및 '제2항에 따라 개선 권고를 받은 때에는' 삭제 두 테스트 실제RED(67156 exit1/2실패0오류) 확인 후 KoreanEvidenceAtomParser의 받은 때 조건 추출/때에는 가짜주체 제외만 보강. 정확 원문 SUPPORTED 유지, 두 변조 INSUFFICIENT. 집중44736 exit0/64PASS, 전체58338 exit0/1562 tests 실패0오류0제외19, git diff --check exit0. control 최종verifier/legacy rewrite/authority/dataset/oracle 불변. 아직 미배포·새외부평가 없음; 이 로컬 안전회귀는 실제SNS·penalty PASS가 아니며 holdout/full 진입 금지 유지.
