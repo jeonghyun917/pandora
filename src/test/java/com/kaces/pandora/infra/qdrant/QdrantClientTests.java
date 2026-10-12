@@ -34,6 +34,29 @@ class QdrantClientTests {
 	private QdrantClient client;
 	private AtomicInteger searchBodyAttempts;
 
+	@Test
+	void activationStatusUpdatesUseMergePayloadInsteadOfDestructiveOverwrite() throws IOException {
+		AtomicReference<String> method = new AtomicReference<>();
+		AtomicReference<String> body = new AtomicReference<>();
+		server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		server.createContext("/collections/law_chunks/points/payload", exchange -> {
+			method.set(exchange.getRequestMethod());
+			body.set(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+			respond(exchange, 200, "{\"result\":{\"status\":\"completed\"}}");
+		});
+		server.start();
+		client = client("law_chunks", "rag");
+		client.markLawPointsActive(java.util.List.of(10L));
+		assertThat(method).hasValue("POST");
+		assertThat(body.get()).contains("\"activationStatus\":\"ACTIVE\"", "\"points\":[10]");
+		client.markLawPointsRetired(java.util.List.of(10L));
+		assertThat(method).hasValue("POST");
+		assertThat(body.get()).contains("\"activationStatus\":\"RETIRED\"");
+		client.markLawPointsCandidate(java.util.List.of(10L));
+		assertThat(method).hasValue("POST");
+		assertThat(body.get()).contains("\"activationStatus\":\"CANDIDATE\"");
+	}
+
 	@AfterEach
 	void tearDown() {
 		if (client != null) {

@@ -166,7 +166,7 @@ public class QdrantClient {
 		if (ids.isEmpty()) {
 			return;
 		}
-		restClient.put().uri("/collections/{collection}/points/payload?wait=true", properties.qdrant().collection())
+		restClient.post().uri("/collections/{collection}/points/payload?wait=true", properties.qdrant().collection())
 			.body(Map.of("payload", Map.of("activationStatus", status), "points", ids)).retrieve().toBodilessEntity();
 	}
 
