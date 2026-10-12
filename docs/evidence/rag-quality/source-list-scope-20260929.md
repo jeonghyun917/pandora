@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-12 HEADe381a9bd pushed/전체60768 1590f0e0 제외19 재사용. 공식staging46304 exit0→deploy30549 KEEPALIVE/PID7688/runtime282f1ae1-d3e9-49f0-8e08-d6bb439a747a/JARd18c05c33c0ea3fc4078cd67410c5c67bfd391edf8362fc75c22a65d064bdf8b. 이전32372/PID19728폐기/Q91783 PID58400유지/18080불변. 저장입력 읽기없이 정상로그인 버튼 클릭→공식 doc18109v2 activate UI 한번 결과 activatedtrue ACTIVE_METADATA_VERIFIED. readonly401e8e main52 owned52 ACTIVE52/statusOnly0, candidate52 owned52 CANDIDATE52; DB v2ACTIVE52/v1RETIRED11/opDONE 불변. 벡터읽기·재임베딩·후보생성·재promotion 없음. confige7b08ced/index2af35f0e/lexicalda8d51ce DB-Q211589·84248 parity/qreadytrue/qfail0 재확인. 새11261 owned-payload-20261012-2020 SNS1건 고유checkpoint/resumefalse 평가중/21910재생없음. 실제SNSpenaltyPASS 미확정/holdoutfull미진입.
+
 - 2026-10-12 완료 ACTIVE 후보 메타데이터 복구 경계: candidate/main 동일52개 payload만 vector=false로 읽고 소유·버전·상태 전체 확인 후 POST 병합/재조회 확인, 이미일치하면 쓰기생략. DONE operation FOR UPDATE·ACTIVE snapshot 일치 필수/DB활성화·promotion·임베딩 반복없음. RED52135 2FAIL0error/중복쓰기RED29091 1FAIL0error→집중72309 41PASS. 좁은검토 발견 rollback 진행중허용·candidate삭제 RED64454 2FAIL0error→non-DONE 차단/ACTIVE-only 정리 수정. 최종집중68535 55PASS/전체60768 exit0 1590f0e0 제외19(20:14:46KST)/diffcheck0/독립좁은재검토 Important0. 기존 rollback afterCommit 지연·삭제실패 완전직렬화는 별도 제한이며 완료주장없음. 공식배포·실제52개 payload복구 아직未실행/외부평가보류/기존21910 재생금지.
 
 - 2026-10-12 payload상태변경 최소수정 전체24983 exit0/1584f0e0 제외19(19:55:10KST), 집중67147 32PASS/RED98853 1FAIL0error. 수정은 Qdrant 상태변경 PUT→POST 한줄과 계약회귀뿐/최종verifier·질문조건·DB·임베딩불변. source52개 소유후보 보존 확인했으나 main52개 payload복구未실행/배포전이므로 외부평가보류. 동일제품트리 전체회귀 중복금지.
