@@ -230,6 +230,10 @@ public class LawDocumentWriter {
 		if (!TransactionSynchronizationManager.isSynchronizationActive()) {
 			return ChunkActivationResult.blocked(documentId, retiredVersion, "Rollback requires an active transaction.");
 		}
+		var operation = lawChunkMapper.findActivationOperation(documentId);
+		if (operation != null && !"DONE".equals(operation.phase())) {
+			return ChunkActivationResult.blocked(documentId, retiredVersion, "Rollback is blocked while activation is incomplete.");
+		}
 		if (!"RETIRED".equals(lawChunkMapper.findChunkVersionStatus(documentId, retiredVersion))) {
 			return ChunkActivationResult.blocked(documentId, retiredVersion, "Requested version is not retired.");
 		}
@@ -237,7 +241,7 @@ public class LawDocumentWriter {
 		if (!pointsArePresent(rollbackChunkIds)) {
 			return ChunkActivationResult.blocked(documentId, retiredVersion, "Retired version Qdrant verification failed.");
 		}
-		List<Long> activeChunkIds = lawChunkMapper.findChunkIdsByDocumentId(documentId).stream()
+		List<Long> activeChunkIds = lawChunkMapper.findActiveChunkIdsByDocumentId(documentId).stream()
 			.filter(chunkId -> !rollbackChunkIds.contains(chunkId))
 			.toList();
 		lawChunkMapper.retireActiveChunkVersionsExcept(documentId, retiredVersion);

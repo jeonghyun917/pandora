@@ -148,7 +148,7 @@
     SELECT document_id AS documentId, candidate_version AS candidateVersion, owner_token AS owner, runtime_instance_id AS runtimeInstanceId,
       lease_expires_at AS leaseExpiresAt, phase, prior_active_version AS priorActiveVersion,
       prior_point_ids_json AS priorPointIdsJson, candidate_point_ids_json AS candidatePointIdsJson, last_error AS lastError
-    FROM law_api_document_activation_operations WHERE document_id = #{documentId}
+    FROM law_api_document_activation_operations WHERE document_id = #{documentId} FOR UPDATE
   </select>
 
   <insert id="insertActivationOperation">

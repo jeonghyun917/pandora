@@ -35,6 +35,37 @@ class QdrantClientTests {
 	private AtomicInteger searchBodyAttempts;
 
 	@Test
+	void activeMetadataRepairReadsNoVectorsAndPreservesCandidateOwnership() throws Exception {
+		AtomicReference<String> repaired = new AtomicReference<>();
+		AtomicInteger writes = new AtomicInteger();
+		String source = "{\"chunkId\":10,\"documentId\":42,\"chunkVersion\":2,\"target\":\"admrul\",\"title\":\"rule\",\"activationStatus\":\"CANDIDATE\"}";
+		server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+		server.createContext("/collections", exchange -> {
+			String body = new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+			String path = exchange.getRequestURI().getPath();
+			if (path.endsWith("/payload")) {
+				assertThat(exchange.getRequestMethod()).isEqualTo("POST");
+				repaired.set(body);
+				writes.incrementAndGet();
+				respond(exchange, 200, "{\"result\":{\"status\":\"completed\"}}");
+			} else {
+				assertThat(body).contains("\"with_vector\":false");
+				String payload = path.contains("candidate") || repaired.get() != null
+					? source.replace("CANDIDATE", path.contains("candidate") ? "CANDIDATE" : "ACTIVE")
+					: "{\"activationStatus\":\"ACTIVE\"}";
+				respond(exchange, 200, "{\"result\":[{\"id\":10,\"payload\":" + payload + "}]}");
+			}
+		});
+		server.start();
+		client = client("law_chunks", "rag");
+		client.restoreActiveLawPayloadsFromCandidate(java.util.List.of(10L), 42L, 2);
+		assertThat(writes).hasValue(1);
+		assertThat(repaired.get()).contains("\"documentId\":42", "\"chunkVersion\":2", "\"target\":\"admrul\"", "\"activationStatus\":\"ACTIVE\"");
+		client.restoreActiveLawPayloadsFromCandidate(java.util.List.of(10L), 42L, 2);
+		assertThat(writes).as("verified metadata must not be rewritten").hasValue(1);
+	}
+
+	@Test
 	void activationStatusUpdatesUseMergePayloadInsteadOfDestructiveOverwrite() throws IOException {
 		AtomicReference<String> method = new AtomicReference<>();
 		AtomicReference<String> body = new AtomicReference<>();
@@ -55,6 +86,30 @@ class QdrantClientTests {
 		client.markLawPointsCandidate(java.util.List.of(10L));
 		assertThat(method).hasValue("POST");
 		assertThat(body.get()).contains("\"activationStatus\":\"CANDIDATE\"");
+	}
+
+	@Test
+	void activeMetadataRepairRejectsForeignOrIncompleteCandidateBeforeAnyWrite() throws IOException {
+		for (String source : java.util.List.of(
+			"{\"chunkId\":10,\"documentId\":99,\"chunkVersion\":2,\"target\":\"admrul\",\"activationStatus\":\"CANDIDATE\"}",
+			"{\"chunkId\":10,\"documentId\":42,\"chunkVersion\":3,\"target\":\"admrul\",\"activationStatus\":\"CANDIDATE\"}",
+			"{\"chunkId\":11,\"documentId\":42,\"chunkVersion\":2,\"target\":\"admrul\",\"activationStatus\":\"CANDIDATE\"}",
+			"{\"chunkId\":10,\"documentId\":42,\"chunkVersion\":2,\"target\":\"official_doc\",\"activationStatus\":\"CANDIDATE\"}",
+			"{\"activationStatus\":\"CANDIDATE\"}")) {
+			AtomicInteger writes = new AtomicInteger();
+			server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+			server.createContext("/collections", exchange -> {
+				String path = exchange.getRequestURI().getPath();
+				if (path.endsWith("/payload")) writes.incrementAndGet();
+				String payload = path.contains("candidate") ? source : "{\"activationStatus\":\"ACTIVE\"}";
+				respond(exchange, 200, "{\"result\":[{\"id\":10,\"payload\":" + payload + "}]}");
+			});
+			server.start();
+			client = client("law_chunks", "rag");
+			assertThatThrownBy(() -> client.restoreActiveLawPayloadsFromCandidate(java.util.List.of(10L), 42L, 2)).isInstanceOf(IllegalStateException.class);
+			assertThat(writes).hasValue(0);
+			tearDown();
+		}
 	}
 
 	@AfterEach

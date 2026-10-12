@@ -49,6 +49,8 @@ class LawChunkActivationSaga {
 	}
 
 	ChunkActivationResult activate(long documentId, int candidateVersion) {
+		ChunkActivationResult existingActive = transactions.inTransaction(() -> repairCompletedActivePayload(documentId, candidateVersion));
+		if (existingActive != null) return existingActive;
 		ActivationContext context = transactions.inTransaction(() -> prepare(documentId, candidateVersion, UUID.randomUUID().toString(), Instant.now()));
 		if (context.blockedReason != null) return ChunkActivationResult.blocked(documentId, candidateVersion, context.blockedReason);
 		if (context.cleanupOnly) return finalizeCleanup(context);
@@ -63,6 +65,24 @@ class LawChunkActivationSaga {
 			return failBeforeDatabaseFlip(context, "Database activation was not confirmed; retry is safe.");
 		}
 		return finalizeCleanup(context);
+	}
+
+	private ChunkActivationResult repairCompletedActivePayload(long documentId, int version) {
+		DocumentActivationOperation operation = mapper.findActivationOperation(documentId);
+		if (!"ACTIVE".equals(mapper.findChunkVersionStatus(documentId, version))) return null;
+		List<Long> activeIds = mapper.findActiveChunkIdsByDocumentId(documentId);
+		if (operation == null || operation.documentId() != documentId || operation.owner() == null || operation.owner().isBlank()
+			|| !DONE.equals(operation.phase()) || operation.candidateVersion() != version
+			|| mapper.findActiveChunkVersion(documentId) != version || activeIds.isEmpty()
+			|| !new java.util.LinkedHashSet<>(activeIds).equals(new java.util.LinkedHashSet<>(decodeIds(operation.candidatePointIdsJson())))) {
+			return ChunkActivationResult.blocked(documentId, version, "Active payload repair operation ownership is ambiguous.");
+		}
+		try {
+			qdrant.restoreActiveLawPayloadsFromCandidate(activeIds, documentId, version);
+			return new ChunkActivationResult(documentId, version, true, "ACTIVE_METADATA_VERIFIED", List.of());
+		} catch (RuntimeException exception) {
+			return ChunkActivationResult.blocked(documentId, version, "Active payload metadata repair was not confirmed.");
+		}
 	}
 
 	private ActivationContext prepare(long documentId, int candidateVersion, String owner, Instant now) {

@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-12 완료 ACTIVE 후보 메타데이터 복구 경계: candidate/main 동일52개 payload만 vector=false로 읽고 소유·버전·상태 전체 확인 후 POST 병합/재조회 확인, 이미일치하면 쓰기생략. DONE operation FOR UPDATE·ACTIVE snapshot 일치 필수/DB활성화·promotion·임베딩 반복없음. RED52135 2FAIL0error/중복쓰기RED29091 1FAIL0error→집중72309 41PASS. 좁은검토 발견 rollback 진행중허용·candidate삭제 RED64454 2FAIL0error→non-DONE 차단/ACTIVE-only 정리 수정. 최종집중68535 55PASS/전체60768 exit0 1590f0e0 제외19(20:14:46KST)/diffcheck0/독립좁은재검토 Important0. 기존 rollback afterCommit 지연·삭제실패 완전직렬화는 별도 제한이며 완료주장없음. 공식배포·실제52개 payload복구 아직未실행/외부평가보류/기존21910 재생금지.
+
 - 2026-10-12 payload상태변경 최소수정 전체24983 exit0/1584f0e0 제외19(19:55:10KST), 집중67147 32PASS/RED98853 1FAIL0error. 수정은 Qdrant 상태변경 PUT→POST 한줄과 계약회귀뿐/최종verifier·질문조건·DB·임베딩불변. source52개 소유후보 보존 확인했으나 main52개 payload복구未실행/배포전이므로 외부평가보류. 동일제품트리 전체회귀 중복금지.
 
 - 2026-10-12 Qdrant 활성 payload 손실 원인 확인: doc18109v2 ids11294105..11294156 후보52/52는 documentId18109·chunkVersion2·chunkId=id 보존, main52/52는 activationStatus만 남음(readonly04262a). 표본 제2조11294119/제25조11294144도 동일. QdrantClient 상태변경 PUT /points/payload가 전체덮어쓰기이며 공식 병합계약은 POST(https://api.qdrant.tech/api-reference/points/set-payload). RED98853 1FAIL0error expectedPOST actualPUT→한줄 POST수정/집중67147 32f0e0 exit0. 전체24983 진행중/미커밋·미배포·실제payload복구아직없음. 기존 후보·임베딩 재생성/재전송금지; DB-Q개수parity는 payload소유parity를 증명하지 않음/외부평가보류. 다음 동일52개 소유권·활성버전·완료operation 검증을 갖춘 공식 복구경계 필요/보호서비스직접호출금지.

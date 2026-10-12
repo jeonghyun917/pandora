@@ -30,6 +30,36 @@ import org.springframework.dao.DuplicateKeyException;
 
 class LawChunkActivationSagaTests {
 	@Test
+	void completedActiveVersionRepairsMetadataWithoutRepeatingActivation() {
+		LawChunkMapper mapper = preparedMapper();
+		when(mapper.findActivationOperation(42L)).thenReturn(new DocumentActivationOperation(
+			42L, 2, "completed-owner", "runtime", Instant.now(), "DONE", 1, "[101]", "[202,203]", null));
+		when(mapper.findChunkVersionStatus(42L, 2)).thenReturn("ACTIVE");
+		when(mapper.findActiveChunkVersion(42L)).thenReturn(2);
+		when(mapper.findActiveChunkIdsByDocumentId(42L)).thenReturn(List.of(202L,203L));
+		QdrantClient qdrant = mock(QdrantClient.class);
+		ChunkActivationResult result = saga(mapper, qdrant).activate(42L, 2);
+		assertThat(result.activated()).isTrue();
+		assertThat(result.reason()).isEqualTo("ACTIVE_METADATA_VERIFIED");
+		verify(qdrant, never()).promoteLawCandidatePoints(any());
+		verify(mapper, never()).activateCandidateChunksForOperation(anyLong(), anyInt(), anyString());
+	}
+
+	@Test
+	void activeMetadataRepairRejectsIncompleteOperationOrDifferentPointSnapshot() {
+		for (String phase : List.of("DONE", "DB_ACTIVE_CLEANUP_PENDING")) {
+			LawChunkMapper mapper = preparedMapper();
+			when(mapper.findActivationOperation(42L)).thenReturn(new DocumentActivationOperation(
+				42L, 2, "owner", "runtime", Instant.now(), phase, 1, "[101]", "[202,203]", null));
+			when(mapper.findChunkVersionStatus(42L, 2)).thenReturn("ACTIVE");
+			when(mapper.findActiveChunkVersion(42L)).thenReturn(2);
+			when(mapper.findActiveChunkIdsByDocumentId(42L)).thenReturn(phase.equals("DONE") ? List.of(202L) : List.of(202L,203L));
+			QdrantClient qdrant = mock(QdrantClient.class);
+			assertThat(saga(mapper, qdrant).activate(42L,2).activated()).isFalse();
+			verify(qdrant, never()).restoreActiveLawPayloadsFromCandidate(any(), anyLong(), anyInt());
+		}
+	}
+	@Test
 	void missingLegacyVersionMetadataDoesNotDiscardVerifiedCandidate() {
 		LawChunkMapper mapper = preparedMapper();
 		when(mapper.insertRetiredLegacyVersionForOperation(eq(42L), eq(1), anyString(), eq(1))).thenReturn(1);

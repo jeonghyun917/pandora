@@ -127,6 +127,69 @@ public class QdrantClient {
 		setLawPointActivationStatus(pointIds, "ACTIVE");
 	}
 
+	/** Restores only payload metadata; existing vectors and database activation are untouched. */
+	public void restoreActiveLawPayloadsFromCandidate(List<Long> pointIds, long documentId, int version) {
+		if (documentId <= 0 || version <= 0 || pointIds == null || pointIds.isEmpty() || pointIds.size() > 256
+			|| pointIds.stream().anyMatch(id -> id == null || id <= 0) || new LinkedHashSet<>(pointIds).size() != pointIds.size()) {
+			throw new IllegalArgumentException("Active payload repair requires a bounded, unique owned point set.");
+		}
+		Map<Long, Map<String, Object>> candidate = readLawPayloads(pointIds, lawCandidateCollection());
+		Map<Long, Map<String, Object>> active = readLawPayloads(pointIds, properties.qdrant().collection());
+		for (long id : pointIds) {
+			Map<String, Object> source = candidate.get(id), destination = active.get(id);
+			if (!ownedLawPayload(source, id, documentId, version) || !"CANDIDATE".equals(source.get("activationStatus"))
+				|| !"ACTIVE".equals(destination.get("activationStatus"))
+				|| !(destination.size() == 1 || ownedLawPayload(destination, id, documentId, version))) {
+				throw new IllegalStateException("Active payload repair ownership or status is ambiguous.");
+			}
+		}
+		for (long id : pointIds) {
+			Map<String, Object> payload = new LinkedHashMap<>(candidate.get(id));
+			payload.put("activationStatus", "ACTIVE");
+			if (active.get(id).entrySet().containsAll(payload.entrySet())) continue;
+			restClient.post().uri("/collections/{collection}/points/payload?wait=true", properties.qdrant().collection())
+				.body(Map.of("payload", payload, "points", List.of(id))).retrieve().toBodilessEntity();
+		}
+		Map<Long, Map<String, Object>> restored = readLawPayloads(pointIds, properties.qdrant().collection());
+		for (long id : pointIds) {
+			Map<String, Object> expected = new LinkedHashMap<>(candidate.get(id));
+			expected.put("activationStatus", "ACTIVE");
+			if (!restored.get(id).entrySet().containsAll(expected.entrySet())) {
+				throw new IllegalStateException("Active payload repair was not confirmed.");
+			}
+		}
+	}
+
+	private boolean ownedLawPayload(Map<String, Object> payload, long id, long documentId, int version) {
+		return payload != null && strictPositivePointId(payload.get("chunkId")) == id
+			&& strictPositivePointId(payload.get("documentId")) == documentId
+			&& strictPositivePointId(payload.get("chunkVersion")) == version
+			&& Set.of("law", "admrul").contains(payload.get("target"));
+	}
+
+	private Map<Long, Map<String, Object>> readLawPayloads(List<Long> ids, String collection) {
+		byte[] response = restClient.post().uri("/collections/{collection}/points", collection)
+			.body(Map.of("ids", ids, "with_payload", true, "with_vector", false)).retrieve().body(byte[].class);
+		try {
+			Map<?, ?> envelope = objectMapper.readValue(response, Map.class);
+			if (!(envelope.get("result") instanceof List<?> points) || points.size() != ids.size()) {
+				throw new IllegalStateException("Payload point set is incomplete.");
+			}
+			Map<Long, Map<String, Object>> result = new LinkedHashMap<>();
+			for (Object value : points) {
+				if (!(value instanceof Map<?, ?> point) || !(point.get("payload") instanceof Map<?, ?> source)) {
+					throw new IllegalStateException("Payload point is malformed.");
+				}
+				long id = strictPositivePointId(point.get("id"));
+				Map<String, Object> payload = new LinkedHashMap<>();
+				source.forEach((key, item) -> payload.put(String.valueOf(key), item));
+				if (!ids.contains(id) || result.put(id, payload) != null) throw new IllegalStateException("Payload point ownership is malformed.");
+			}
+			return result;
+		} catch (RuntimeException exception) { throw exception;
+		} catch (Exception exception) { throw new IllegalStateException("Payload response was not valid JSON.", exception); }
+	}
+
 	public void markLawPointsRetired(List<Long> pointIds) {
 		setLawPointActivationStatus(pointIds, "RETIRED");
 	}

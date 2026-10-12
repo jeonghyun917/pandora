@@ -26,6 +26,48 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 class LawDocumentWriterTests {
+	@Test
+	void rollbackRejectsInFlightActivationBeforeDatabaseChanges() {
+		for (String phase : List.of("QDRANT_ACTIVATING", "RECOVERY_REQUIRED", "DB_ACTIVE_CLEANUP_PENDING")) {
+			LawChunkMapper mapper = mock(LawChunkMapper.class);
+			QdrantClient qdrant = mock(QdrantClient.class);
+			when(mapper.findActivationOperation(42L)).thenReturn(new DocumentActivationOperation(
+				42L,2,"owner","runtime",java.time.Instant.now(),phase,1,"[101]","[202]",null));
+			when(mapper.findChunkVersionStatus(42L,1)).thenReturn("RETIRED");
+			when(mapper.findChunkIdsByDocumentIdAndVersion(42L,1)).thenReturn(List.of(101L));
+			when(mapper.findChunkIdsByDocumentId(42L)).thenReturn(List.of(101L,202L,303L));
+			when(qdrant.findExistingLawPointIds(List.of(101L))).thenReturn(java.util.Set.of(101L));
+			LawDocumentWriter writer = new LawDocumentWriter(mock(LawDocumentMapper.class),mock(LawDetailMapper.class),mapper,
+				mock(LawAssetMapper.class),mock(LawJsonWriter.class),qdrant,mock(LawVersionStatusService.class),testProperties());
+			TransactionSynchronizationManager.initSynchronization();
+			try {
+				assertThat(writer.rollbackToVersion(42L,1).activated()).isFalse();
+				verify(mapper,never()).retireActiveChunkVersionsExcept(42L,1);
+			} finally { TransactionSynchronizationManager.clearSynchronization(); }
+		}
+	}
+
+	@Test
+	void rollbackCleanupNeverIncludesUnactivatedCandidatePoints() {
+		LawChunkMapper mapper = mock(LawChunkMapper.class);
+		QdrantClient qdrant = mock(QdrantClient.class);
+		when(mapper.findActivationOperation(42L)).thenReturn(new DocumentActivationOperation(
+			42L,2,"owner","runtime",java.time.Instant.now(),"DONE",1,"[101]","[202]",null));
+		when(mapper.findChunkVersionStatus(42L,1)).thenReturn("RETIRED");
+		when(mapper.findChunkIdsByDocumentIdAndVersion(42L,1)).thenReturn(List.of(101L));
+		when(mapper.findChunkIdsByDocumentId(42L)).thenReturn(List.of(101L,202L,303L));
+		when(mapper.findActiveChunkIdsByDocumentId(42L)).thenReturn(List.of(202L));
+		when(qdrant.findExistingLawPointIds(List.of(101L))).thenReturn(java.util.Set.of(101L));
+		LawDocumentWriter writer = new LawDocumentWriter(mock(LawDocumentMapper.class),mock(LawDetailMapper.class),mapper,
+			mock(LawAssetMapper.class),mock(LawJsonWriter.class),qdrant,mock(LawVersionStatusService.class),testProperties());
+		TransactionSynchronizationManager.initSynchronization();
+		try {
+			assertThat(writer.rollbackToVersion(42L,1).activated()).isTrue();
+			for (var callback : TransactionSynchronizationManager.getSynchronizations()) callback.afterCommit();
+			verify(qdrant).deleteLawPointsBestEffort(List.of(202L));
+			verify(qdrant,never()).deleteLawPointsBestEffort(List.of(202L,303L));
+		} finally { TransactionSynchronizationManager.clearSynchronization(); }
+	}
 
 	@Test
 	void replaceChunksPersistsExactEmbeddingHashAndCanonicalParentSourcePath() {
