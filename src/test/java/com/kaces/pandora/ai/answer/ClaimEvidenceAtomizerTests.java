@@ -605,4 +605,25 @@ class ClaimEvidenceAtomizerTests {
 		assertThat(atomizer.atomize(null)).isEmpty();
 		assertThat(atomizer.atomize("  \r\n ")).isEmpty();
 	}
+
+	@Test
+	void preservesContiguousExplicitScopeHeadingWithItsNominalCriterion() {
+		assertThat(atomizer.atomizeSource(
+			"적용 대상 사업\n국가기관 등이 발주하는 모든 SW사업(상용SW포함)\n※ 건설사업은 비대상",
+			"p.5 적용 대상 사업"))
+			.contains("적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)")
+			.doesNotContain("적용 대상 사업", "국가기관 등이 발주하는 모든 SW사업(상용SW포함)");
+	}
+
+	@Test
+	void doesNotCarryScopeHeadingAcrossAnotherHeadingOrNumberedItem() {
+		for (String text : List.of(
+			"적용 대상 사업\n참고사항\n국가기관 등이 발주하는 모든 SW사업(상용SW포함)",
+			"적용 대상 사업\n1. 국가기관 등이 발주하는 모든 SW사업(상용SW포함)",
+			"적용 대상 사업\n국가기관 등이 발주하는 모든 SW사업은 비대상")) {
+			assertThat(atomizer.atomizeSource(text, "p.5 적용 대상 사업"))
+				.contains("적용 대상 사업")
+				.noneMatch(atom -> atom.startsWith("적용 대상 사업 "));
+		}
+	}
 }
