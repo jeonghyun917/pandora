@@ -9103,6 +9103,23 @@ public class LawAiAnswerService {
 			return finishLexicalChunks(chunks, query);
 		}
 		List<String> genericKeywords = focusedLookup ? genericLexicalKeywords(query) : keywords;
+		if (!boundedLawEvidenceMatched && !lawTargets.isEmpty() && chunks.isEmpty()) {
+			List<String> entityTitles = profile.entities().stream()
+				.flatMap(entity -> entity.aliases().stream())
+				.filter(value -> value != null && value.trim().length() >= 3)
+				.map(String::trim).filter(value -> !isLexicalControlKeyword(value))
+				.distinct().limit(12).toList();
+			List<String> entityLabels = profile.entities().stream().map(entity -> entity.label())
+				.filter(value -> value != null && value.trim().length() >= 3)
+				.map(String::trim).filter(value -> !isLexicalControlKeyword(value))
+				.distinct().limit(12).toList();
+			if (!entityTitles.isEmpty() && !entityLabels.isEmpty()) {
+				List<LawSemanticChunkRow> entityChunks = safeLexicalQuery("law entity title and text",
+					() -> lawChunkMapper.findSemanticChunksByDocumentTitleAndText(
+						lawTargets, entityTitles, entityLabels, includeFuture, LAW_TEXT_KEYWORD_FETCH_LIMIT));
+				if (!entityChunks.isEmpty()) return finishLexicalChunks(entityChunks, query);
+			}
+		}
 		if (!boundedRagDocumentTitleMatched && !ragTargets.isEmpty() && !genericKeywords.isEmpty()) {
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 			chunks.addAll(findRagChunksByText(

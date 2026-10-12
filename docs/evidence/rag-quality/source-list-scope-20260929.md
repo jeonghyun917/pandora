@@ -1,5 +1,9 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-12 일반 entity-scoped law 후보검색 RED99357 1FAIL0error→기존계획 entity aliases제목+label본문 교차 한정(각최대12)/기존 includeFuture·target·ACTIVE mapper·후보상한·정렬보존. 기존수집후보가없을때만 실행/빈결과·오류는기존 generic fallback 유지. 집중23312 109f0e0/빈결과fallback 추가후 전체12462 exit0 1593f0e0 제외19(20:46:17KST)/diffcheck0/좁은자체검토: 최종선택·verifier·기관발주/SW조건·legacy/API불변. 제품17줄/회귀2건; 실제배포·새SNS결과는 아직未확정/25761재생금지/holdoutfull미진입.
+
+- 2026-10-12 HEAD264f3dac pushed/전체63042 1591f0e0 제외19 재사용/staging42224 exit0→공식deploy16714 KEEPALIVE PID48932/runtimeba0c94c8-b380-4760-9f08-623981d50655/JAR99a5344fc2ae09f3065134138122392ff1885ea97287a828eff00c95f597329b. 이전30549/PID7688폐기/Q91783 PID58400·18080불변. 실제smoke DB-Q211589·84248/confige7b08ced/index2af35f0e/lexicalda8d51ce/qreadytrue/qfail0. 新25761 family-preserved-20261012-2038 FAIL0/1 exit1/gitDirtyfalse/unsafe0/조건부 제도명변경 unsupported1/selected8 official_doc만/재생금지. 실제law generic text 조회3초 timeout 로그확인. 독립readonly entity alias제목+범위24힌트384ms 20후보에서제25조누락, entity label본문한정269ms 11후보에현행v2제25조11294144 포함(소유·버전확인). 일반 entity-scoped 후보경로 RED99357 진행중/외부평가중복없음/verifier불변/실제SNSpenalty未PASS/holdoutfull금지.
+
 - 2026-10-12 문서군 fast-path 누락 RED68546 1FAIL0error→law/admrul 및 RAG 문서군 각각 같은 queryPlan/includeFuture로 검색 후 기존 dedup·정렬·상한으로 병합 7줄 수정. 집중97495 108f0e0/전체63042 exit0 1591f0e0 제외19(20:35:01KST)/diffcheck0/좁은검토 Critical·Important0. 후보검색만 변경/최종선택·verifier·dataset·oracle 불변. 실제SNSpenaltyPASS는 아직 아니며 공식배포 후 새고유 평가 필요/11261재생금지/holdoutfull미진입.
 
 - 2026-10-12 새11261 owned-payload-20261012-2020 SNSFAIL0/1 exit1 종료/재생금지. 생성의 조건부 대상분류는 controlSUPPORTED/semanticINSUFFICIENT CLAIM_PARSE_INCOMPLETE unsafe1, 원문 주절·명시예외SUPPORTED/최종거부 유지. selected8개 여전히 official_doc만/메타데이터복원≠SNSPASS. readonly source검색0be210에서 현행admrul v2 제25조11294144 직접회수 가능 확인. 코드 findLexicalChunks의 문서군별 fast return이 다른 요청 문서군을 생략할 가능성 발견→문서군 독립 후보검색 회귀68546 실행중. verifier·oracle·dataset불변/수행→발주 추론없음/holdoutfull금지.

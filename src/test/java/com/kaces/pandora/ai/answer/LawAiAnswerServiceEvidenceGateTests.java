@@ -17,6 +17,38 @@ import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
 	@Test
+	void emptyEntityScopedLawLookupPreservesGenericFallback() throws Exception {
+		var duty = chunk(99004L, "admrul", "소프트웨어사업 계약 및 관리감독에 관한 지침",
+			"과업내용의 확정 시기", "국가기관등의 장은 소프트웨어사업 발주 전에 과업심의위원회의 심의를 받아야 한다.");
+		LawChunkMapper law = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
+			LawChunkMapper.class.getClassLoader(), new Class<?>[]{LawChunkMapper.class},
+			(proxy, method, arguments) -> method.getName().equals("findSemanticChunksByText") ? List.of(duty) : List.of());
+		var service = service(law, null);
+		try {
+			var plan = QuestionSearchPlan.from("온라인 운영 사업도 과업심의 받아야 하나요?");
+			assertThat(findLexicalChunks(service, plan, List.of("admrul", "law"), false)).contains(duty);
+		} finally { service.shutdownExecutors(); }
+	}
+	@Test
+	void entityScopedLawCandidatesSurviveUnavailableGenericTextLookup() throws Exception {
+		var duty = chunk(99003L, "admrul", "소프트웨어사업 계약 및 관리감독에 관한 지침",
+			"과업내용의 확정 시기", "국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 과업심의위원회의 심의를 받아야 한다.");
+		LawChunkMapper law = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
+			LawChunkMapper.class.getClassLoader(), new Class<?>[]{LawChunkMapper.class},
+			(proxy, method, arguments) -> {
+				if (method.getName().equals("findSemanticChunksByDocumentTitleAndText")
+					&& ((List<?>) arguments[1]).contains("소프트웨어사업")
+					&& ((List<?>) arguments[2]).contains("과업심의")) return List.of(duty);
+				if (method.getName().equals("findSemanticChunksByText")) throw new IllegalStateException("generic text timeout");
+				return List.of();
+			});
+		var service = service(law, null);
+		try {
+			var plan = QuestionSearchPlan.from("온라인 운영 사업도 과업심의 받아야 하나요?");
+			assertThat(findLexicalChunks(service, plan, List.of("admrul", "law"), false)).contains(duty);
+		} finally { service.shutdownExecutors(); }
+	}
+	@Test
 	void lexicalFastPathMustPreserveEveryRequestedDocumentFamily() throws Exception {
 		var scope = chunk(99001L, "official_doc", "공공소프트웨어사업 과업심의 가이드",
 			"적용 대상 사업", "적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)");
