@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-12 SNS 예외 소유경계 readonly exit0: 현재87816 전체chunk는 제47조/제24조/제25조를 포함하며 제25조① main+다만 예외가 같은 닫힌항 안에 있음. 목적없이 국가기관등 주체만 넣은 예외는 controlSUPPORTED/semanticINSUFFICIENT; '과업내용을 확정하기 위하여' 보존하면 controlINSUFFICIENT/semanticSUPPORTED로 실측. control addEvidenceFragments는 atomize(text)+atomizeSource(text,chunkTitle)의 literal 분리문장, semantic parseSourceAtomsForAlignment는 닫힌제25조① actor/purpose를 예외에 보존하는 별도 source-linked interpretation임. 원문존재나 목적추가만으로 양쪽PASS가 아님. 메타bridge/semantic authority/조건삭제 없이 변경경계 설계가 필요; 실패3126 재평가 없음. 공식staging12458 exit0 SHA cc3d07579f3a12016930e0873d14f80a2abbe39682b54a58b632971471f75265 미배포/runtime53304·Q91783 KEEPALIVE 유지.
+
 - 2026-10-12 조건합집합 안전보강 검증완료: 집중84925 exit0/73PASS, 전체19677 exit0/1563 실패0오류0제외19. 현재8근거 readonly13503 exit0의 exact/숫자변조/주체변조/수령조건삭제/질문조건앞붙임 5건 cached/fresh 동일, exact만 양쪽SUPPORTED/나머지4개 양쪽INSUFFICIENT. 독립 좁은 변경검토 C/I/Minor0; 문자열 substring 조건동치의 일반 한계는 미해결로 구분. claim 각조건 근거검사만 추가했고 CONTRADICTED witness/control/authority/legacy 불변. 실제SNSpenalty 및 holdout/full 미완료, 새외부평가/배포 없음.
 
 - 2026-10-12 후속 조건합집합 RED69600 exit1/1실패0오류: 원질문조건 앞붙임이 SUPPORTED로 재현. align의 조건 slot은 any overlap이고 source-condition 보존은 source⊆claim만 검사하여 추가한 무근거 조건을 걸러내지 못함. SUPPORTED에 한해 각 claim condition의 evidence overlap을 검사하는 최소보강 진행, 반대근거 충돌판정/control/authority 불변. 집중84925 진행 중/결과미확정; 신규외부평가·배포·holdout/full 없음.
