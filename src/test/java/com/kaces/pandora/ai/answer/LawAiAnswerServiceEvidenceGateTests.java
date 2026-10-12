@@ -548,6 +548,19 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void reviewResultSubmissionIsNotCommitteeVotingNoise() throws Exception {
+		var service = service();
+		try {
+			Method method = LawAiAnswerService.class.getDeclaredMethod("isProjectReviewCommitteeOperationNoise", String.class);
+			method.setAccessible(true);
+			assertThat((boolean) method.invoke(service,
+				"국가기관등의 장은 과업심의위원회의 심의를 받아야 한다. 위원은 위원별 심의 결과서를 위원장에게 제출하여야 한다.")).isFalse();
+			assertThat((boolean) method.invoke(service,
+				"과업심의위원회는 심의 결과서를 검토하고 기피 여부를 의결한다.")).isTrue();
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void intentPreservationKeepsExplicitConfirmationProcedureAndItsExceptionOnly() throws Exception {
 		var scope = chunk(9911L, "official_doc", "공공소프트웨어사업 과업심의 가이드", "적용 대상 사업",
 			"적용 대상 사업은 국가기관 등이 발주하는 모든 SW사업이다.");

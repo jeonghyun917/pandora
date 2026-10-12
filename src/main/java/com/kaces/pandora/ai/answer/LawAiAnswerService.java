@@ -10280,12 +10280,13 @@ public class LawAiAnswerService {
 
 	private boolean isProjectReviewCommitteeOperationNoise(String normalizedText) {
 		String text = normalizeForMatch(normalizedText);
+		String votingText = text.replace("심의결과", "심사결과");
 		return text.contains("위원회회의")
 			|| text.contains("심의의결")
 			|| text.contains("제척요건")
 			|| (text.contains("위원장") && (text.contains("구성") || text.contains("운영")))
 			|| (text.contains("과업심의위원회") && (text.replace("위원회의", "위원회").contains("회의")
-				|| containsAny(text, "제척", "의결", "운영방법")));
+				|| containsAny(votingText, "제척", "의결", "운영방법")));
 	}
 
 	private boolean hasProjectReviewTargetEvidence(String normalizedText) {
