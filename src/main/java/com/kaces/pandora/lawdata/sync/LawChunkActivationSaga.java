@@ -135,10 +135,16 @@ class LawChunkActivationSaga {
 		}
 		if (mapper.activateCandidateChunksForOperation(context.documentId, context.candidateVersion, context.owner) != context.candidateIds.size()
 			|| mapper.markCandidateVersionCleanupPendingForOperation(context.documentId, context.candidateVersion, context.owner) != 1
-			|| (context.priorVersion > 0 && mapper.retirePriorVersionForOperation(context.documentId, context.priorVersion, context.owner) != 1)
+			|| (context.priorVersion > 0 && !retirePriorVersion(context))
 			|| mapper.transitionActivationOperation(context.documentId, context.owner, QDRANT_ACTIVATING, DB_ACTIVE_CLEANUP_PENDING, null) != 1) {
 			throw new IllegalStateException("Activation ownership changed before database flip.");
 		}
+	}
+
+	private boolean retirePriorVersion(ActivationContext context) {
+		if (mapper.retirePriorVersionForOperation(context.documentId, context.priorVersion, context.owner) == 1) return true;
+		if (mapper.findChunkVersionStatus(context.documentId, context.priorVersion) != null) return false;
+		return mapper.insertRetiredLegacyVersionForOperation(context.documentId, context.priorVersion, context.owner, context.priorIds.size()) == 1;
 	}
 
 	private ChunkActivationResult finalizeCleanup(ActivationContext context) {

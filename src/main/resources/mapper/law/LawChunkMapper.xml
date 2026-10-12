@@ -238,6 +238,24 @@
           AND o.prior_active_version=v.chunk_version AND o.owner_token=#{owner} AND o.phase='QDRANT_ACTIVATING')
   </update>
 
+  <insert id="insertRetiredLegacyVersionForOperation">
+    INSERT INTO law_api_document_chunk_versions
+      (document_id, chunk_version, activation_status, expected_chunk_count, preview_approved, unexplained_loss_span_count)
+    SELECT #{documentId}, #{priorVersion}, 'RETIRED', #{expectedCount}, FALSE, 0
+    FROM law_api_document_activation_operations o
+    LEFT JOIN law_api_document_chunk_versions v
+      ON v.document_id=#{documentId} AND v.chunk_version=#{priorVersion}
+    WHERE o.document_id=#{documentId} AND o.owner_token=#{owner} AND o.phase='QDRANT_ACTIVATING'
+      AND o.prior_active_version=#{priorVersion} AND o.candidate_version != #{priorVersion}
+      AND #{expectedCount} > 0
+      AND v.document_id IS NULL
+      AND NOT EXISTS (SELECT 1 FROM law_api_document_chunks c
+        WHERE c.document_id=#{documentId} AND c.chunk_version=#{priorVersion} AND c.activation_status='ACTIVE')
+      AND (SELECT COUNT(*) FROM law_api_document_chunks c
+        WHERE c.document_id=#{documentId} AND c.chunk_version=#{priorVersion}
+          AND c.activation_status='RETIRED' AND c.use_yn='Y') = #{expectedCount}
+  </insert>
+
   <update id="completeCandidateCleanupForOperation">
     UPDATE law_api_document_chunk_versions v
     SET v.activation_status='ACTIVE', v.activation_owner=NULL, v.updated_at=NOW()

@@ -30,6 +30,39 @@ import org.springframework.dao.DuplicateKeyException;
 
 class LawChunkActivationSagaTests {
 	@Test
+	void missingLegacyVersionMetadataDoesNotDiscardVerifiedCandidate() {
+		LawChunkMapper mapper = preparedMapper();
+		when(mapper.insertRetiredLegacyVersionForOperation(eq(42L), eq(1), anyString(), eq(1))).thenReturn(1);
+		when(mapper.insertActivationOperation(any())).thenReturn(1);
+		when(mapper.markCandidateActivatingForOperation(anyLong(), anyInt(), anyString())).thenReturn(1);
+		when(mapper.retireChunkIdsForOperation(anyLong(), any(), anyString())).thenReturn(1);
+		when(mapper.activateCandidateChunksForOperation(anyLong(), anyInt(), anyString())).thenReturn(2);
+		when(mapper.markCandidateVersionCleanupPendingForOperation(anyLong(), anyInt(), anyString())).thenReturn(1);
+		when(mapper.completeCandidateCleanupForOperation(anyLong(), anyInt(), anyString())).thenReturn(1);
+		QdrantClient qdrant = mock(QdrantClient.class);
+		when(qdrant.findExistingLawCandidatePointIds(List.of(202L,203L))).thenReturn(Set.of(202L,203L));
+		when(qdrant.findLawPointIdsWithActivationStatus(List.of(202L,203L), "ACTIVE")).thenReturn(Set.of(202L,203L));
+		assertThat(saga(mapper,qdrant).activate(42L,2).activated()).isTrue();
+	}
+
+	@Test
+	void existingPriorMetadataCannotUseLegacyFallback() {
+		LawChunkMapper mapper = preparedMapper();
+		when(mapper.findChunkVersionStatus(42L,1)).thenReturn("ACTIVE");
+		when(mapper.insertActivationOperation(any())).thenReturn(1);
+		when(mapper.markCandidateActivatingForOperation(anyLong(), anyInt(), anyString())).thenReturn(1);
+		when(mapper.retireChunkIdsForOperation(anyLong(), any(), anyString())).thenReturn(1);
+		when(mapper.activateCandidateChunksForOperation(anyLong(), anyInt(), anyString())).thenReturn(2);
+		when(mapper.markCandidateVersionCleanupPendingForOperation(anyLong(), anyInt(), anyString())).thenReturn(1);
+		QdrantClient qdrant = mock(QdrantClient.class);
+		when(qdrant.findExistingLawCandidatePointIds(List.of(202L,203L))).thenReturn(Set.of(202L,203L));
+		when(qdrant.findLawPointIdsWithActivationStatus(List.of(202L,203L), "ACTIVE")).thenReturn(Set.of(202L,203L));
+		when(qdrant.findLawPointIdsWithActivationStatus(List.of(202L,203L), "CANDIDATE")).thenReturn(Set.of(202L,203L));
+		assertThat(saga(mapper,qdrant).activate(42L,2).activated()).isFalse();
+		verify(mapper, never()).insertRetiredLegacyVersionForOperation(anyLong(), anyInt(), anyString(), anyInt());
+		verify(qdrant, never()).deleteLawPoints(any());
+	}
+	@Test
 	void productionConstructorIsExplicitlyAutowiredAndRuntimeTestSeamIsNot() {
 		Constructor<?> productionConstructor = Arrays.stream(LawChunkActivationSaga.class.getDeclaredConstructors())
 			.filter(constructor -> constructor.getParameterCount() == 4)

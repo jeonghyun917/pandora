@@ -20,6 +20,14 @@ import org.apache.ibatis.session.Configuration;
 import org.junit.jupiter.api.Test;
 
 class LawChunkMapperXmlTests {
+	@Test
+	void legacyRetirementIsOperationOwnedAndNeverFabricatesPreviewApproval() throws Exception {
+		Configuration configuration = parseMapper();
+		assertThat(configuration.hasStatement(LawChunkMapper.class.getName() + ".insertRetiredLegacyVersionForOperation")).isTrue();
+		String sql = normalizedSql(configuration.getMappedStatement(LawChunkMapper.class.getName() + ".insertRetiredLegacyVersionForOperation"),
+			Map.of("documentId", 42L, "priorVersion", 1, "owner", "owned", "expectedCount", 11));
+		assertThat(sql).contains("'RETIRED'", "FALSE", "o.owner_token=?", "o.phase='QDRANT_ACTIVATING'", "o.prior_active_version=?", "NOT EXISTS", "c.activation_status='ACTIVE'", "LEFT JOIN law_api_document_chunk_versions v", "v.document_id IS NULL");
+	}
 	private static final String MAPPER_RESOURCE = "mapper/law/LawChunkMapper.xml";
 	private static final String DISCOVERY_HEADING_STATEMENT =
 		"com.kaces.pandora.lawdata.persistence.LawChunkMapper.findSemanticChunksByHeadingOrDocumentTitle";

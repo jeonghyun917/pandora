@@ -107,6 +107,9 @@ public interface LawChunkMapper {
 
 	int retirePriorVersionForOperation(@Param("documentId") long documentId, @Param("priorVersion") int priorVersion, @Param("owner") String owner);
 
+	int insertRetiredLegacyVersionForOperation(@Param("documentId") long documentId, @Param("priorVersion") int priorVersion,
+		@Param("owner") String owner, @Param("expectedCount") int expectedCount);
+
 	int completeCandidateCleanupForOperation(@Param("documentId") long documentId, @Param("chunkVersion") int chunkVersion, @Param("owner") String owner);
 
 	void retireOtherActiveChunkVersionStates(

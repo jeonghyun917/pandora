@@ -9,7 +9,7 @@ import {
   RefreshCw,
   Send,
 } from 'lucide-react';
-import { fetchAdminOperations, fetchAdminPipelines, runMinistryCollection, previewDocumentRebuild } from '../api/lawApi';
+import { fetchAdminOperations, fetchAdminPipelines, runMinistryCollection, previewDocumentRebuild, createDocumentCandidate, indexDocumentCandidate, resumeCandidateIndex, activateDocumentCandidate } from '../api/lawApi';
 import { LandingConstellation } from './LandingPage';
 
 const agencyOptions = [
@@ -119,10 +119,19 @@ export function AdminPage({ onBack }) {
   const [previewResult, setPreviewResult] = useState(null);
   const [previewError, setPreviewError] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [candidateLoading, setCandidateLoading] = useState(false);
+  const [candidateResult, setCandidateResult] = useState(null);
+  const [candidateIndexStarted, setCandidateIndexStarted] = useState(false);
+  const [candidateIndexResult, setCandidateIndexResult] = useState(null);
+  const [resumeVersion, setResumeVersion] = useState('');
+  const [resumeLimit, setResumeLimit] = useState('');
+  const [activationStarted, setActivationStarted] = useState(false);
+  const [activationResult, setActivationResult] = useState(null);
 
   async function previewRebuild(event) {
     event.preventDefault();
-    if (previewLoading) return;
+    if (previewLoading || candidateLoading) return;
+    setCandidateResult(null);
     setPreviewLoading(true);
     setPreviewResult(null);
     setPreviewError('');
@@ -132,6 +141,64 @@ export function AdminPage({ onBack }) {
       setPreviewError(error.message);
     } finally {
       setPreviewLoading(false);
+    }
+  }
+
+  async function createCandidate() {
+    if (previewLoading || candidateLoading || candidateResult || !previewResult) return;
+    setCandidateLoading(true);
+    setPreviewError('');
+    const approvedPreview = previewResult;
+    setPreviewResult(null);
+    try {
+      setCandidateResult(await createDocumentCandidate(previewTarget, previewDocumentId, approvedPreview));
+    } catch (error) {
+      setPreviewError(error.message);
+    } finally {
+      setCandidateLoading(false);
+    }
+  }
+
+  async function indexCandidate() {
+    if (candidateLoading || candidateIndexStarted || !candidateResult) return;
+    setCandidateIndexStarted(true);
+    setCandidateLoading(true);
+    setPreviewError('');
+    try {
+      setCandidateIndexResult(await indexDocumentCandidate(previewTarget, candidateResult));
+    } catch (error) {
+      setPreviewError(error.message);
+    } finally {
+      setCandidateLoading(false);
+    }
+  }
+
+  async function resumeIndex(event) {
+    event.preventDefault();
+    if (candidateLoading || previewLoading || candidateIndexStarted) return;
+    setCandidateIndexStarted(true);
+    setCandidateLoading(true);
+    setPreviewError('');
+    try {
+      setCandidateIndexResult(await resumeCandidateIndex(previewTarget, previewDocumentId, resumeVersion, resumeLimit));
+    } catch (error) {
+      setPreviewError(error.message);
+    } finally {
+      setCandidateLoading(false);
+    }
+  }
+
+  async function activateCandidate() {
+    if (candidateLoading || activationStarted) return;
+    setActivationStarted(true);
+    setCandidateLoading(true);
+    setPreviewError('');
+    try {
+      setActivationResult(await activateDocumentCandidate(previewDocumentId, resumeVersion));
+    } catch (error) {
+      setPreviewError(error.message);
+    } finally {
+      setCandidateLoading(false);
     }
   }
 
@@ -279,20 +346,32 @@ export function AdminPage({ onBack }) {
       <section className="admin-dashboard">
         <section className="admin-panel admin-panel-wide" aria-label="문서 재구축 미리보기">
           <h2>문서 재구축 미리보기</h2>
-          <p>저장된 원문의 재청킹 계획만 조회합니다. 후보 생성·임베딩·활성화는 실행하지 않습니다.</p>
+          <p>저장된 원문의 재청킹 계획을 조회하고 손실 없는 계획의 검증 후보만 생성합니다. 임베딩·활성화는 자동 실행하지 않습니다.</p>
           <form onSubmit={previewRebuild} className="rebuild-preview-form">
             <label>문서 종류
-              <select value={previewTarget} onChange={(event) => { setPreviewTarget(event.target.value); setPreviewResult(null); }} disabled={previewLoading}>
+              <select value={previewTarget} onChange={(event) => { setPreviewTarget(event.target.value); setPreviewResult(null); setCandidateResult(null); }} disabled={previewLoading || candidateLoading}>
                 <option value="admrul">행정규칙</option><option value="law">법령</option>
               </select>
             </label>
             <label>문서 ID
-              <input value={previewDocumentId} onChange={(event) => { setPreviewDocumentId(event.target.value); setPreviewResult(null); }} inputMode="numeric" pattern="[1-9][0-9]*" required disabled={previewLoading} />
+              <input value={previewDocumentId} onChange={(event) => { setPreviewDocumentId(event.target.value); setPreviewResult(null); setCandidateResult(null); }} inputMode="numeric" pattern="[1-9][0-9]*" required disabled={previewLoading || candidateLoading} />
             </label>
-            <button type="submit" disabled={previewLoading}>{previewLoading ? '조회 중…' : '미리보기 조회'}</button>
+            <button type="submit" disabled={previewLoading || candidateLoading}>{previewLoading ? '조회 중…' : '미리보기 조회'}</button>
           </form>
           {previewError && <p role="alert">{previewError}</p>}
           {previewResult && <pre className="rebuild-preview-result" aria-label="재구축 미리보기 결과">{JSON.stringify(previewResult, (key, value) => ['approvalToken', 'sourceUrl'].includes(key) ? undefined : value, 2)}</pre>}
+          {previewResult && <button type="button" disabled={previewLoading || candidateLoading || previewResult.items?.[0]?.unexplainedLossSpanCount !== 0} onClick={createCandidate}>검증 후보 생성 (활성화하지 않음)</button>}
+          {candidateLoading && <p role="status">후보 처리 중…</p>}
+          {candidateResult && <pre className="rebuild-preview-result" aria-label="후보 생성 결과">{JSON.stringify(candidateResult, (key, value) => key === 'previewTokenHash' ? undefined : value, 2)}</pre>}
+          {candidateResult && <button type="button" disabled={candidateLoading || candidateIndexStarted} onClick={indexCandidate}>후보만 임베딩 (OpenAI 전송, 활성화하지 않음)</button>}
+          {candidateIndexResult && <pre aria-label="후보 임베딩 결과">{JSON.stringify(candidateIndexResult, null, 2)}</pre>}
+          <form className="rebuild-preview-form" onSubmit={resumeIndex}>
+            <label>기존 후보 버전<input value={resumeVersion} onChange={(event) => setResumeVersion(event.target.value)} inputMode="numeric" pattern="[1-9][0-9]*" required disabled={candidateLoading || candidateIndexStarted} /></label>
+            <label>후보 청크 수<input value={resumeLimit} onChange={(event) => setResumeLimit(event.target.value)} inputMode="numeric" pattern="[1-9][0-9]*" required disabled={candidateLoading || candidateIndexStarted} /></label>
+            <button disabled={candidateLoading || previewLoading || candidateIndexStarted}>기존 후보 임베딩 이어가기 (활성화하지 않음)</button>
+          </form>
+          <button type="button" disabled={candidateLoading || previewLoading || activationStarted || !previewDocumentId || !resumeVersion} onClick={activateCandidate}>명시한 후보 활성화 (서버 검증 게이트 적용)</button>
+          {activationResult && <pre aria-label="후보 활성화 결과">{JSON.stringify(activationResult, null, 2)}</pre>}
         </section>
         {adminSection === 'operations' && metrics.length > 0 && (
           <section className="admin-metric-grid" aria-label="quality metrics">

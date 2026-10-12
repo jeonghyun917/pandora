@@ -304,6 +304,56 @@ export async function runMinistryCollection(options = {}) {
   return readJsonResponse(response);
 }
 
+export async function indexDocumentCandidate(target, candidate) {
+  if (!['law', 'admrul'].includes(target) || !Number.isSafeInteger(candidate?.documentId) || candidate.documentId <= 0
+      || !Number.isInteger(candidate?.chunkVersion) || candidate.chunkVersion <= 0
+      || candidate?.activationStatus !== 'CANDIDATE' || candidate?.previewApproved !== true
+      || candidate?.unexplainedLossSpanCount !== 0 || !Number.isInteger(candidate?.expectedChunkCount)
+      || candidate.expectedChunkCount <= 0 || candidate.expectedChunkCount > 10000) {
+    throw new Error('검증된 비활성 후보가 필요합니다.');
+  }
+  return resumeCandidateIndex(target, candidate.documentId, candidate.chunkVersion, candidate.expectedChunkCount);
+}
+
+export async function resumeCandidateIndex(target, documentId, candidateVersion, limit) {
+  const values = [documentId, candidateVersion, limit].map((value) => String(value ?? '').trim());
+  if (!['law', 'admrul'].includes(target) || values.some((value) => !/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value))) || Number(values[2]) > 10000) {
+    throw new Error('문서·후보 버전·처리 수를 명시해야 합니다.');
+  }
+  const body = new URLSearchParams({ target, documentId: values[0], candidateVersion: values[1], limit: values[2] });
+  const response = await fetch('/api/law-data/semantic/index-candidate', { method: 'POST', credentials: 'same-origin', body });
+  if (response.status === 401) throw new Error('관리자 로그인이 필요합니다.');
+  if (!response.ok) throw new Error('후보 임베딩 실패: 자동 재시도하지 않습니다. 서버 상태를 확인하세요.');
+  return readJsonResponse(response);
+}
+
+export async function activateDocumentCandidate(documentId, candidateVersion) {
+  const values = [documentId, candidateVersion].map((value) => String(value ?? '').trim());
+  if (values.some((value) => !/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value)))) throw new Error('문서와 후보 버전을 명시해야 합니다.');
+  const body = new URLSearchParams({ documentId: values[0], candidateVersion: values[1] });
+  const response = await fetch('/api/law-data/chunks/activate-candidate', { method: 'POST', credentials: 'same-origin', body });
+  if (response.status === 401) throw new Error('관리자 로그인이 필요합니다.');
+  if (!response.ok) throw new Error('후보 활성화 요청 실패: 자동 재시도하지 않습니다.');
+  return readJsonResponse(response);
+}
+
+export async function createDocumentCandidate(target, documentId, preview) {
+  const id = String(documentId ?? '').trim();
+  const item = preview?.items?.[0];
+  if (!['law', 'admrul'].includes(target) || !/^[1-9]\d*$/.test(id)
+      || preview?.target !== target || preview?.documents !== 1 || preview?.items?.length !== 1
+      || String(item?.documentId) !== id || item?.target !== target
+      || !Number.isInteger(item?.projectedChunks) || item.projectedChunks <= 0
+      || item?.unexplainedLossSpanCount !== 0 || typeof item?.approvalToken !== 'string' || !item.approvalToken.trim()) {
+    throw new Error('동일 문서의 손실 없는 서버 미리보기가 필요합니다.');
+  }
+  const body = new URLSearchParams({ target, documentId: id, previewApprovalToken: item.approvalToken });
+  const response = await fetch('/api/law-data/chunks/create-candidate', { method: 'POST', credentials: 'same-origin', body });
+  if (response.status === 401) throw new Error('관리자 로그인이 필요합니다.');
+  if (!response.ok) throw new Error('후보 생성이 거부됐습니다. 새 미리보기와 서버 상태를 확인하세요.');
+  return readJsonResponse(response);
+}
+
 async function readJsonResponse(response) {
   const text = await response.text();
   if (!text.trim()) {

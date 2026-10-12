@@ -2,6 +2,10 @@
 
 ## 2026-10-01 조건 보존 평가 후속 진단
 
+- 2026-10-12 레거시 활성화 경계 회귀:missing mapper56528 RED1/실제 saga50660 RED1→정확 prior 청크퇴역 후 동일 소유트랜잭션의 누락 legacy RETIRED 이력만 보존(승인false/기존행 fallback금지/양수·정확개수·ACTIVE부재·operation owner/phase/prior version 검사). 집중1992·75214 exit0, 안정전체12024 exit0/XML1562 f0e0 제외19(잔여XML포함), Node7PASS/frontend buildPASS/diffcheck/독립C/I0. SQL target 하위쿼리는 직접 LEFT JOIN anti-join으로 바꾸고 전체검증 완료. sandbox60499 Mockito attacher 정체는 전체 프로세스 명령 확인 후 테스트5692/1556/64952만 종료해 권한분리50660 RED 확인; 앱80516/Q58400 보존. 아직 수정코드 미배포/공식 활성화 재시도 없음/실제SNSpenalty 미완료/holdoutfull 금지.
+
+- 2026-10-12 정상 관리자 UI에서 doc18109 v2 후보를 한 번 생성:52청크/previewApprovedtrue/원문손실0. 공식 candidate index 한 번 실행해 OpenAI text-embedding-3-small 52/52, law_chunks_candidate 정확 소유18109:2:CANDIDATE52 확인. DB readonly expected/candidate/indexed52·blocking0, 활성v1 유지. 공식 activation 한 번은 activatedfalse/Database activation was not confirmed; 재시도하지 않음. readonly 원인:활성v1 청크는 존재하지만 priorVersionStatus=null(레거시 버전관리 행 없음), 후보v2 CANDIDATE52 및 작업DONE로 복구됨. 기존 활성근거 유지/새 SNS·penalty 평가 없음/holdoutfull 미진입. 누락된 레거시 버전행을 소유작업·정확 prior snapshot 경계에서 처리하는 회귀 작성 중. 신규 frontend 후보/이어가기/활성화 경로 Node7PASS/buildPASS,8080미재배포/12429 KEEPALIVE 및 Q91783 보존.
+
 - 2026-10-12 재로그인 후 배포된8080 공식 관리자UI 단일doc18109/admrul preview 성공: current11/projected52/max2496/tiny2/short37/unexplainedLossSpanCount0 실제응답 확인. 이전1209와 구별된 신규미리보기이며 승인토큰 추출·로컬생성·표시없음. 제2조 적용범위55/제31조 성과관리79 literal samples 보존. 후보 생성·임베딩·활성화·API평가 아직없음/원문손실0을 SNS·penalty PASS로 오인하지 않음. 다음 공식 후보 lifecycle 검증 조건 확인/holdoutfull 미진입.
 
 - 2026-10-12 배포완료: 999b25f1eb36f9cd6a6605668662a9bf9998f9ab commit/push, 전체86885 exit0/1559 f0e0 제외19, Node3/frontend build 및 독립C/I0. 공식deploy12429 KEEPALIVE 새PID80516/runtimef29cd77b-8015-46d0-ba19-26054e1ea7af/JAR82bd22cd564a10562f050a3034ebaa3d6b3333587231e3beb159c34dda985181. 이전25805/44656identity 폐기. Q91783/PID58400·6333 유지/18080없음/공유main 불변. 배포 후 사용자탭 reload 실제 로그인화면 확인: 메모리세션 소멸, 정상 재로그인 필수/비밀번호·쿠키 추출·인증우회없음. 신규 공식 preview는 아직 미실행/후보 생성·활성화·API평가 없음. 로컬 원문손실0은 실제 SNS·penalty PASS 아님. 다음 정상로그인 후 doc18109 공식 preview 손실0 재확인부터; holdout/full 금지.
