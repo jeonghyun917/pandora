@@ -225,13 +225,28 @@ public class EvidenceJudge {
 			String body = literal.substring(literal.indexOf('①'));
 			String secondBody = body.substring(body.indexOf('②') + 1, body.lastIndexOf('③')).strip();
 			if (literal.length() <= 1_200
-				&& secondBody.matches("(?s).*[.!?]$")
+				&& (secondBody.matches("(?s).*[.!?]$") || isClosedNumberedSourceList(secondBody))
 				&& !java.util.regex.Pattern.compile("\\R[ \\t]*\\R|제\\s*\\d+\\s*조(?:의\\s*\\d+)?\\s*\\(").matcher(body).find()
 				&& !softwareConfirmationReviewDutyText(literal).isBlank()) {
 				return literal;
 			}
 		}
 		return "";
+	}
+
+	private static boolean isClosedNumberedSourceList(String body) {
+		String[] lines = body.split("\\R");
+		if (lines.length < 3 || !lines[0].strip().matches(".*다음 각 호.*[.!?]$")) { return false; }
+		int expected = 1;
+		for (int index = 1; index < lines.length; index++) {
+			var item = java.util.regex.Pattern.compile("^(\\d{1,2})\\.[ \\t]+(.+)$").matcher(lines[index].strip());
+			if (!item.matches() || Integer.parseInt(item.group(1)) != expected++) { return false; }
+			String text = item.group(2).strip();
+			if (!text.matches(".*[가-힣A-Za-z0-9).!?]$") || text.contains("다만")
+				|| text.matches(".*(?:경우에는|때에는|위하여|따라|이면|및|또는|그리고)$")) { return false; }
+		}
+		// This only retains the original bounded text; it does not infer list eligibility.
+		return expected > 2;
 	}
 
 	static String committeeEstablishmentRuleText(String source) {

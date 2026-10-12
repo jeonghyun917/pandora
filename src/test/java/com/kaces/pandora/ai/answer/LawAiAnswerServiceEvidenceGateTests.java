@@ -17,6 +17,23 @@ import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
 	@Test
+	void procedureSourceWindowPreservesClosedNumberedSecondParagraph() {
+		String first = "제25조(과업내용의 확정 시기)\n① 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다. 다만, 사업수행일정 부족 등 불가피한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.\n";
+		String second = "② 다음 각 호의 어느 하나에 해당하는 소프트웨어사업은 간소화된 방식으로 심의할 수 있다.\n1. 총 사업금액이 1억원 이하인 사업\n2. 기존 심의를 거친 사업을 변경없이 추가로 실시하는 사업\n";
+		String source = first + second + "③ 국가기관등의 장은 확정된 과업내용을 반영하여야 한다.";
+		assertThat(EvidenceJudge.softwareConfirmationReviewSourceWindow(source)).isEqualTo(first + second + "③");
+		for (String invalid : List.of(
+			source.replace("2. 기존", "3. 기존"), source.replace("2. 기존", "1. 기존"),
+			source.replace("추가로 실시하는 사업", "추가로 실시하는 경우에는"),
+			source.replace("추가로 실시하는 사업", "추가로 실시하는 사업 또는"),
+			source.replace("추가로 실시하는 사업", "추가로 실시하는 사업 다만 비밀자료인 경우에는"),
+			source.replace("③ 국가기관", "제26조(다른 기준)\n③ 국가기관"),
+			source.replace("③ 국가기관등의 장은 확정된 과업내용을 반영하여야 한다.", ""))) {
+			assertThat(EvidenceJudge.softwareConfirmationReviewSourceWindow(invalid)).isEmpty();
+		}
+	}
+
+	@Test
 	void procedureSourceWindowRejectsInlineArticleAndUnfinishedSecondParagraph() {
 		String duty = "제25조(과업내용의 확정 시기) ① 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다. 다만, 사업수행일정 부족 등 불가피한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
 		org.junit.jupiter.api.Assertions.assertAll(
