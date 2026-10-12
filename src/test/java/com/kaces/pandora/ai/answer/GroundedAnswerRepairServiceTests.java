@@ -15,6 +15,55 @@ import org.junit.jupiter.api.Test;
 
 class GroundedAnswerRepairServiceTests {
 	@Test
+	void conditionalRepairRetainsProcedureFromClosedSourceOwnedParagraph() {
+		String scope = "적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)";
+		String source = "제25조(과업내용의 확정 시기 및 기준 등)\n"
+			+ "① 국가기관등의 장은 영 제47조제1항제1호에 따라 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다. "
+			+ "다만, 사업수행일정 부족 등 불가피한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.\n"
+			+ "② 다음 각 호의 어느 하나에 해당하는 소프트웨어사업은 간소화된 방식으로 심의할 수 있다.\n"
+			+ "1. 총 사업금액이 1억원 이하인 사업\n2. 변경 없이 추가로 실시하는 사업\n③";
+		var captured = new AtomicReference<List<String>>();
+		var grounds = List.of(ground(1, scope, "공공소프트웨어사업 과업심의 가이드", null),
+			ground(2, source, "소프트웨어사업 계약 및 관리감독에 관한 지침", null));
+		var verifier = realVerificationService();
+		var service = new GroundedAnswerRepairService(verifier, new GroundedAnswerRewriter() {
+			@Override public String rewrite(String question, List<String> atoms) { throw new AssertionError("Conditional scope requires its own boundary"); }
+			@Override public String rewriteConditional(String question, List<String> atoms, List<String> titles) { captured.set(atoms); return ""; }
+		});
+		service.verifyAndRepair("온라인 운영 사업도 과업심의 받아야 하나요?", "모든 운영 사업은 무조건 심의를 받아야 합니다.", grounds);
+		assertThat(captured.get()).isNotNull().anySatisfy(atom -> assertThat(atom)
+			.contains("국가기관등의 장", "과업내용을 확정하기 위하여", "발주 전에", "사업계획서 또는 제안요청서"));
+		assertThat(captured.get()).anySatisfy(atom -> assertThat(atom)
+			.contains("국가기관등의 장", "과업내용을 확정하기 위하여", "사업수행일정 부족", "계약체결 전까지", "사업계획서 또는 제안요청서"));
+		for (String atom : captured.get()) {
+			assertThat(verifier.verify("온라인 운영 사업도 과업심의 받아야 하나요?", atom, grounds).claimResult().unsupportedClaims()).isEmpty();
+		}
+	}
+
+	@Test
+	void conditionalRepairCannotBorrowExceptionContextAcrossUnclosedOrDifferentSourceRoles() {
+		String source = "제25조(과업내용의 확정 시기 및 기준 등)\n"
+			+ "① 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다. "
+			+ "다만, 사업수행일정 부족 등 불가피한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.\n② 다음 항의 기준을 적용한다.\n③";
+		for (String invalid : List.of(source.replace("\n② 다음 항의 기준을 적용한다.\n③", ""),
+			source.replace("다만,", "제26조(다른 절차)\n다만,"),
+			source.replace("경우에는 소프트웨어사업", "경우에는 계약상대자는 소프트웨어사업"),
+			source.replace("과업내용을 확정하기 위하여 ", ""))) {
+			var captured = new AtomicReference<List<String>>();
+			var service = new GroundedAnswerRepairService(realVerificationService(), new GroundedAnswerRewriter() {
+				@Override public String rewrite(String question, List<String> atoms) { return ""; }
+				@Override public String rewriteConditional(String question, List<String> atoms, List<String> titles) { captured.set(atoms); return ""; }
+			});
+			service.verifyAndRepair("온라인 운영 사업도 과업심의 받아야 하나요?", "모든 운영 사업은 무조건 심의를 받아야 합니다.",
+				List.of(ground(1, "적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)", "공공소프트웨어사업 과업심의 가이드", null),
+					ground(2, invalid, "과업내용을 확정하기 위하여 소프트웨어사업 계약 및 관리감독에 관한 지침", null)));
+			assertThat(captured.get()).isNotNull();
+			assertThat(captured.get().stream().filter(atom -> atom.startsWith("다만")).toList()).noneSatisfy(atom -> assertThat(atom)
+				.contains("다만", "국가기관등의 장", "과업내용을 확정하기 위하여"));
+		}
+	}
+
+	@Test
 	void conditionalScopeRepairReceivesVerifiedCompleteReviewDutyAndItsException() {
 		String scope = "적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)";
 		String duty = "① 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다. 다만, 사업수행일정 부족 등 불가피한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";

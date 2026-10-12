@@ -580,7 +580,18 @@ public class GroundedAnswerRepairService {
 		if (scopeAtoms.isEmpty()) { return scopeAtoms; }
 		List<CandidateAtom> procedureCandidates = new ArrayList<>();
 		for (int index = 0; index < grounds.size(); index++) {
-			String duty = EvidenceJudge.softwareConfirmationReviewDutyText(matchedChildText(grounds.get(index)));
+			String child = matchedChildText(grounds.get(index));
+			List<ClaimEvidenceAtomizer.SourceLinkedDuty> bindings = atomizer.sourceLinkedDutyContexts(child,
+				new KoreanEvidenceAtomParser());
+			if (!bindings.isEmpty()) {
+				for (var binding : bindings) {
+					procedureCandidates.add(new CandidateAtom(index, 0, binding.mainLiteral()));
+					String explicitException = explicitSourceOwnedException(binding);
+					if (!explicitException.isBlank()) { procedureCandidates.add(new CandidateAtom(index, 1, explicitException)); }
+				}
+				continue;
+			}
+			String duty = EvidenceJudge.softwareConfirmationReviewDutyText(child);
 			if (!duty.isBlank()) { procedureCandidates.add(new CandidateAtom(index, 0, duty)); }
 		}
 		List<String> procedures = selectVerifiedAtoms(question, rejectedDraft, procedureCandidates, grounds,
@@ -593,6 +604,20 @@ public class GroundedAnswerRepairService {
 			}
 		}
 		return List.copyOf(selected);
+	}
+
+	private String explicitSourceOwnedException(ClaimEvidenceAtomizer.SourceLinkedDuty binding) {
+		// Render only slots inherited from this already validated closed paragraph.
+		// Keep the original main clause (including its reference) as a separate candidate;
+		// do not copy that reference into the exception as a new numeric claim.
+		var main = Pattern.compile("^(.+?(?:은|는))\\s+"
+			+ "(?:(?:법|영)\\s*제\\d+조(?:의\\d+)?(?:제\\d+항)?(?:제\\d+호)?에 따라\\s+)?"
+			+ "(.+?위하여)\\s+소프트웨어사업 발주 전에\\s+(.+)$").matcher(binding.mainLiteral());
+		var exception = Pattern.compile("^(다만,.*?경우에는)\\s+(소프트웨어사업.*?전까지)\\s+(.+)$")
+			.matcher(binding.atom().sourceText());
+		if (!main.matches() || !exception.matches()) { return ""; }
+		return exception.group(1) + " " + main.group(1) + " " + main.group(2) + " "
+			+ exception.group(2) + " " + main.group(3);
 	}
 
 	private boolean reusesRejectedDraft(String normalizedAtom, String normalizedRejectedDraft) {
