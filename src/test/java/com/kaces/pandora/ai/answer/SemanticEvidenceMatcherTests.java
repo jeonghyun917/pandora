@@ -13,6 +13,16 @@ class SemanticEvidenceMatcherTests {
 	private final SemanticEvidenceMatcher matcher = new SemanticEvidenceMatcher();
 
 	@Test
+	void additionalPurposeCannotUseSubstringOverlapAsItsEvidence() {
+		String source = "발주기관은 과업내용을 확정하기 위하여 사업자료를 통지해야 한다.";
+		var index = matcher.index(List.of(ground(source)));
+		assertThat(matcher.match(parser.parse(source), index).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(parser.parse("과업내용확정을 철회하기 위하여, " + source), index).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
 	void addedUnsupportedConditionCannotBorrowASeparateSupportedCondition() {
 		String source = "국가기관등의 장은 제2항에 따라 개선 권고를 받은 때에는 그 권고를 받은 날부터 1개월 이내에 조치 결과를 과학기술정보통신부장관에게 통보하여야 한다.";
 		var index = matcher.index(List.of(ground(source)));

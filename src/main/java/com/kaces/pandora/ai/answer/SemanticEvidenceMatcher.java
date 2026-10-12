@@ -183,8 +183,7 @@ public class SemanticEvidenceMatcher {
 			return SemanticMatch.insufficient("SOURCE_CONDITION_NOT_PRESERVED");
 		}
 		if (status == ClaimEvidenceMatcher.Status.SUPPORTED
-			&& claim.conditions().stream().anyMatch(condition ->
-				!overlaps(Set.of(condition), evidence.conditions()))) {
+			&& !evidence.conditions().containsAll(claim.conditions())) {
 			return SemanticMatch.insufficient("CLAIM_CONDITION_NOT_ESTABLISHED");
 		}
 		return new SemanticMatch(
