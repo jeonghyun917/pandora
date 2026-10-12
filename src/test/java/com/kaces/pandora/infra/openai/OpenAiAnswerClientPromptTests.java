@@ -10,7 +10,7 @@ import tools.jackson.databind.ObjectMapper;
 
 class OpenAiAnswerClientPromptTests {
 	@Test
-	void verifiedProcedureModeDoesNotSendTheScopeOnlySentenceTemplate() {
+	void verifiedProcedureModeSeparatesScopePremiseFromLiteralDuty() {
 		var captured = new java.util.concurrent.atomic.AtomicReference<String>();
 		var client = new OpenAiAnswerClient(new LawAiProperties(null, null, null, null), new ObjectMapper()) {
 			@Override protected String requestAnswer(String question, String input, int tokens, String instructions) {
@@ -24,6 +24,8 @@ class OpenAiAnswerClientPromptTests {
 		assertThat(captured.get()).doesNotContain("[원문 제도의] 대상입니다.");
 		assertThat(captured.get()).contains("과업내용 확정", "일정 예외", "조건부 절차");
 		assertThat(captured.get()).contains("입력 원문에 이미 있는 조문 참조", "선택·병렬 구조", "예외에도 계속 적용되는 목적");
+		assertThat(captured.get()).contains("범위 판단과 법정 절차를 분리", "의무 문장 앞에 붙이지");
+		assertThat(captured.get()).doesNotContain("명시 절차가 있으면 별도의 대상 분류 결론을 만들지");
 	}
 	@Test
 	void conditionalRewriteCanUseOnlyExplicitVerifiedProcedureWithoutDroppingItsConditions() {
@@ -35,11 +37,11 @@ class OpenAiAnswerClientPromptTests {
 		};
 		client.rewriteConditional("온라인 운영 사업도 심의 대상인가요?", List.of(
 			"적용 대상 사업 국가기관 등이 발주하는 모든 SW사업",
-			"국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 과업심의위원회의 심의를 받아야 한다."),
+			"국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다."),
 			List.of("공공소프트웨어사업 과업심의 가이드"));
 		assertThat(captured.get()).contains("검증된 명시 절차가 있는 경우에만", "과업내용 확정", "일정 예외", "대상 분류를 의무로 강화하지");
 		assertThat(captured.get()).contains("각 절차와 예외는 독립된 완결 문장", "하며", "명시된 동일 주체");
-		assertThat(captured.get()).contains("명시 절차가 있으면 별도의 대상 분류 결론을 만들지", "조건부 절차 문장");
+		assertThat(captured.get()).contains("범위 판단과 법정 절차를 분리", "조건부 대상 분류", "원문 그대로");
 	}
 	@Test
 	void outputTokenExhaustionIsDiagnosedWithoutLoggingResponseData() throws Exception {
