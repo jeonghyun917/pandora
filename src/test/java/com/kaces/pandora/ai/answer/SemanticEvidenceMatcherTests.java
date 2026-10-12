@@ -13,6 +13,27 @@ class SemanticEvidenceMatcherTests {
 	private final SemanticEvidenceMatcher matcher = new SemanticEvidenceMatcher();
 
 	@Test
+	void hypotheticalMembershipPreservesExactSourceClassification() {
+		var index = matcher.index(List.of(ground("등록된 공급사업은 심사 대상사업입니다.")));
+		assertThat(matcher.match(parser.parse(
+			"신규 사업이 등록된 공급사업에 해당하면 심사 대상사업입니다."), index).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
+	void hypotheticalMembershipCannotInventScopeOrStrengthenConclusion() {
+		var index = matcher.index(List.of(ground("등록된 공급사업은 심사 대상사업입니다.")));
+		for (String claim : List.of(
+			"신규 사업이 공급사업에 해당하면 심사 대상사업입니다.",
+			"신규 사업이 등록된 공급사업에 해당하면 반드시 심사를 받아야 합니다.",
+			"신규 사업은 심사 대상사업입니다.",
+			"신규 사업이 등록되지 않은 공급사업에 해당하면 심사 대상사업입니다.")) {
+			assertThat(matcher.match(parser.parse(claim), index).status()).as(claim)
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
 	void additionalPurposeCannotUseSubstringOverlapAsItsEvidence() {
 		String source = "발주기관은 과업내용을 확정하기 위하여 사업자료를 통지해야 한다.";
 		var index = matcher.index(List.of(ground(source)));

@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -12,6 +13,9 @@ import org.springframework.stereotype.Component;
 public class SemanticEvidenceMatcher {
 
 	private static final double MIN_SLOT_COVERAGE = 0.5d;
+	private static final Pattern HYPOTHETICAL_MEMBERSHIP = Pattern.compile(
+		"^([^,;.!?\\r\\n]+?)(?:이|가)\\s+([^,;.!?\\r\\n]+?)에\\s*해당하면\\s+([^,;.!?\\r\\n]+)[.]?$"
+	);
 	private final KoreanEvidenceAtomParser parser;
 
 	public SemanticEvidenceMatcher() {
@@ -48,6 +52,9 @@ public class SemanticEvidenceMatcher {
 		List<SemanticMatch> contradicted = new ArrayList<>();
 		for (IndexedAtom evidence : evidenceIndex == null ? List.<IndexedAtom>of() : evidenceIndex.atoms()) {
 			SemanticMatch result = align(claim, evidence);
+			if (result.status() == ClaimEvidenceMatcher.Status.INSUFFICIENT) {
+				result = matchHypotheticalMembership(claim, evidence);
+			}
 			if (result.status() == ClaimEvidenceMatcher.Status.SUPPORTED) {
 				supported.add(result);
 			} else if (result.status() == ClaimEvidenceMatcher.Status.CONTRADICTED) {
@@ -68,6 +75,29 @@ public class SemanticEvidenceMatcher {
 			return contradicted.get(0);
 		}
 		return SemanticMatch.insufficient("NO_ALIGNED_EVIDENCE_ATOM");
+	}
+
+	private SemanticMatch matchHypotheticalMembership(EvidenceAtom claim, IndexedAtom indexed) {
+		var membership = HYPOTHETICAL_MEMBERSHIP.matcher(claim.sourceText().trim());
+		EvidenceAtom source = indexed.atom();
+		if (!membership.matches() || source.parseStatus() == EvidenceAtom.ParseStatus.AMBIGUOUS
+			|| !source.conditions().isEmpty() || !source.exceptions().isEmpty()
+			|| claim.polarity() == EvidenceAtom.Polarity.NEGATIVE
+			|| source.polarity() == EvidenceAtom.Polarity.NEGATIVE) {
+			return SemanticMatch.insufficient("HYPOTHETICAL_MEMBERSHIP_NOT_PROVED");
+		}
+		// The assumption is retained verbatim; only a same-sentence universal classification
+		// licenses substitution. No title, metadata, other ground, or duty is borrowed.
+		String scope = membership.group(2).trim();
+		String conclusion = membership.group(3).trim();
+		String actual = canonical(source.sourceText().replaceFirst("[.]$", ""));
+		if (!actual.equals(canonical(scope + "은 " + conclusion))
+			&& !actual.equals(canonical(scope + "는 " + conclusion))) {
+			return SemanticMatch.insufficient("HYPOTHETICAL_MEMBERSHIP_NOT_PROVED");
+		}
+		return new SemanticMatch(ClaimEvidenceMatcher.Status.SUPPORTED,
+			Set.of("sourceScope", "exactConclusion", "retainedHypothesis"), indexed.groundNumber(),
+			indexed.sentence(), 1.0d, "SOURCE_OWNED_HYPOTHETICAL_MEMBERSHIP");
 	}
 
 	private SemanticMatch matchExactPartial(EvidenceAtom claim, EvidenceIndex evidenceIndex) {
