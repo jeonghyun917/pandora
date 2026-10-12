@@ -1,5 +1,9 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-13 readonly42c194 exit0: law2808 키워드색인 기존v1 30/신규v2 0 확인(실제DB v1RETIRED30/v2ACTIVE99). penalty검색 lawTextKeywords는 공백제거 질문전체1개라 새57조 회수없음; expanded SQL 대안55465 exit1 3초timeout으로 채택하지않음/timeout완화없음. 공식 기존 authenticated lexical rebuild API의 UI경로만 추가: 로컬현재ACTIVE색인 새버전/외부전송·임베딩·재청킹없음/중복실행·401·409자동재시도없음/결과·오류상태표시. Node RED f77825 2FAIL→GREEN f8a376 9PASS/frontbuildPASS. backend/verifier불변 cf0f97ff 전체1599PASS재사용. 아직 UI미배포·lexical갱신미실행/실제SNSpenaltyPASS 아님.
+
+- 2026-10-13 新56805 law-owned-20261013-0820 penalty1건 FAIL0/1 exit1 종료/재생금지. 법령2808 v2활성화 후 실제selected8은 official_doc87853/87811/84718/87815/87845/87846/87833/87854, 새법령57조 미선택. 생성3claim은 부장관→부 및 NIPA 주체추가·기관조건축약 등 unsupported/contradicted0/semantic差0 unsafe0/최종안전거부. 선택원문복구≠실제PASS. 다음 broad후보→선택경계 readonly진단과 원문 주체·조건 그대로 answer구성 확인, 일반제재혼합·조건삭제 금지/SNSpenalty 未PASS/holdoutfull 未진입. runtime39973/Q49707 유지.
+
 - 2026-10-13 활성화後readonly36770c exit0 law2808 v1RETIRED30/v2ACTIVE99 확인. 공식runtime-info df3a07 law DB-Q211658/rag84248 parity/qreadytrue/qfail0/runtime8879edea 동일/indexRevision e39713ce571b7502f930a6efe517c93ccc63d3147d04545314085d3e60d95fa5. 변경된 원문·인덱스 근거로 새고유 penalty 단일 평가 가능, SNS 미해결/holdoutfull 금지.
 
 - 2026-10-13 법령2808 공식 후보 임베딩 OpenAI99/99 완료(collection law_chunks_candidate), 재전송 금지. 기존 후보 지정 UI에서 공식 activate-candidate 한번 activatedtrue/reasonACTIVATED/v2 99 활성화·v1 30 retiredIds11115787..11115816 반환. 재생성·재임베딩·재promotion 금지. 다음 readonly DB 버전 소유·실제 Q payload·runtime fingerprint 확인 뒤 penalty 선택근거 경계 진단; 실제SNSpenaltyPASS 아님/holdoutfull 미진입.

@@ -1,4 +1,14 @@
 // 메소드 설명: searchLawData 처리 흐름을 수행합니다.
+export async function rebuildLexicalIndex() {
+  const response = await fetch('/api/admin/semantic-lexical-index/rebuild', {
+    method: 'POST', credentials: 'same-origin',
+  });
+  if (response.status === 401) throw new Error('관리자 로그인이 필요합니다.');
+  if (response.status === 409) throw new Error('키워드 색인 갱신이 이미 실행 중입니다.');
+  if (!response.ok) throw new Error('키워드 색인 갱신에 실패했습니다. 자동 재시도하지 않습니다.');
+  return readJsonResponse(response);
+}
+
 export async function previewDocumentRebuild(target, documentId) {
   const id = String(documentId ?? '').trim();
   if (!['law', 'admrul'].includes(target) || !/^[1-9]\d*$/.test(id)) {

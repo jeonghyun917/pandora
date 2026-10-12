@@ -9,7 +9,7 @@ import {
   RefreshCw,
   Send,
 } from 'lucide-react';
-import { fetchAdminOperations, fetchAdminPipelines, runMinistryCollection, previewDocumentRebuild, createDocumentCandidate, indexDocumentCandidate, resumeCandidateIndex, activateDocumentCandidate } from '../api/lawApi';
+import { fetchAdminOperations, fetchAdminPipelines, runMinistryCollection, previewDocumentRebuild, createDocumentCandidate, indexDocumentCandidate, resumeCandidateIndex, activateDocumentCandidate, rebuildLexicalIndex } from '../api/lawApi';
 import { LandingConstellation } from './LandingPage';
 
 const agencyOptions = [
@@ -127,6 +127,23 @@ export function AdminPage({ onBack }) {
   const [resumeLimit, setResumeLimit] = useState('');
   const [activationStarted, setActivationStarted] = useState(false);
   const [activationResult, setActivationResult] = useState(null);
+  const [lexicalStarted, setLexicalStarted] = useState(false);
+  const [lexicalLoading, setLexicalLoading] = useState(false);
+  const [lexicalResult, setLexicalResult] = useState(null);
+  const [lexicalError, setLexicalError] = useState('');
+
+  async function refreshLexicalIndex() {
+    if (lexicalStarted || candidateLoading || previewLoading) return;
+    setLexicalStarted(true);
+    setLexicalLoading(true);
+    try {
+      setLexicalResult(await rebuildLexicalIndex());
+    } catch (error) {
+      setLexicalError(error.message);
+    } finally {
+      setLexicalLoading(false);
+    }
+  }
 
   async function previewRebuild(event) {
     event.preventDefault();
@@ -344,6 +361,16 @@ export function AdminPage({ onBack }) {
       </nav>
 
       <section className="admin-dashboard">
+        <section className="admin-panel admin-panel-wide" aria-label="키워드 색인 갱신">
+          <h2>키워드 색인 갱신</h2>
+          <p>현재 활성 검색 청크의 로컬 키워드 색인을 새 버전으로 갱신합니다. 원문 재청킹·임베딩·OpenAI 전송은 하지 않습니다.</p>
+          <button type="button" disabled={lexicalStarted || candidateLoading || previewLoading} onClick={refreshLexicalIndex}>
+            {lexicalLoading ? '키워드 색인 갱신 중…' : '활성 청크 키워드 색인 갱신'}
+          </button>
+          {lexicalLoading && <p role="status">처리 중입니다. 중복 실행하지 마세요.</p>}
+          {lexicalError && <p role="alert">{lexicalError}</p>}
+          {lexicalResult && <pre aria-label="키워드 색인 갱신 결과">{JSON.stringify(lexicalResult, null, 2)}</pre>}
+        </section>
         <section className="admin-panel admin-panel-wide" aria-label="문서 재구축 미리보기">
           <h2>문서 재구축 미리보기</h2>
           <p>저장된 원문의 재청킹 계획을 조회하고 손실 없는 계획의 검증 후보만 생성합니다. 임베딩·활성화는 자동 실행하지 않습니다.</p>
