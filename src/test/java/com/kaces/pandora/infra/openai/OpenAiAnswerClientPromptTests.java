@@ -10,6 +10,20 @@ import tools.jackson.databind.ObjectMapper;
 
 class OpenAiAnswerClientPromptTests {
 	@Test
+	void explicitProcedureInputDoesNotTurnDocumentMetadataIntoTargetClassification() {
+		var input = new java.util.concurrent.atomic.AtomicReference<String>();
+		var client = new OpenAiAnswerClient(new LawAiProperties(null, null, null, null), new ObjectMapper()) {
+			@Override protected String requestAnswer(String question, String payload, int budget, String instructions) {
+				input.set(payload); return "답변";
+			}
+		};
+		String duty = "국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		client.rewriteConditional("운영 사업도 대상인가요?", List.of("국가기관 등이 발주하는 모든 SW사업", duty),
+			List.of("공공소프트웨어사업 과업심의 가이드(2022. 12.)"));
+		assertThat(input.get()).contains(duty, "국가기관 등이 발주하는 모든 SW사업", "운영 사업");
+		assertThat(input.get()).doesNotContain("가이드", "2022. 12.", "원문 문서 제목");
+	}
+	@Test
 	void literalProcedureRewriteHasRoomForScopeDutyAndException() {
 		var tokens = new java.util.concurrent.atomic.AtomicInteger();
 		var instructions = new java.util.concurrent.atomic.AtomicReference<String>();
