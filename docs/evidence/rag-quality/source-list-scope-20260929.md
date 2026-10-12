@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-12 heading개행 causal 대조 localreadonly exit0: 동일84023 정제본문의 첫 heading↔바로다음 발주기준 개행 하나만 공백으로 바꾼 throwaway grounds에서 단일주체 '온라인운영사업이 ... 해당하면 과업심의대상사업입니다' controlINSUFFICIENT→SUPPORTED 확인. semantic은 양쪽 NO_ALIGNED_EVIDENCE_ATOM 유지, '사업도'는 원래controlSUPPORTED이므로 이를 개선으로 오인하지 않음. 원문fragment 소유보존은 control 입력경계 하나를 해결할 후보이나 semantic/전체답변/SNSgate 해결이 아님. 제품변경·배포·새평가없음, 조건·기관·SW가드 보존한 회귀와 별도semantic typed분류 진단 필요.
+
 - 2026-10-12 실제 source fragment 경계 readonly exit0: 84023 clean matchedChildText→atomizeSource 결과에서 '적용 대상 사업'과 '국가기관 등이 발주하는 모든 SW사업(상용SW포함)'이 서로 별도atom으로 분리됨. synthetic 단일문장 fixture의 heading+발주관계와 현 입력의 분리fragment를 구별. 뒤 비대상 주의문구도 OCR '소프트웨어사/업' 분리 상태. 이것은 현재 조건부 분류 불일치의 구체적 입력경계이며 의미자동증명·verifier완화로 해결하지 않음. 다음 동일본문 내 연속 heading+명시적 nominal 기준 소유보존을 positive/기관·SW·부정·다른heading경계 negative 회귀로 진단하는 최소범위 필요. 제품코드·DB·runtime·API평가 변경없음/실제SNSpenalty未PASS.
 
 - 2026-10-12 후속 readonly 조건부 분류 진단: 평가/테스트 진행중없음·feature dirty없음 확인. 현재84023 v4 sort4 parentKey=null, 적용대상사업/국가기관등발주 모든SW사업(상용SW포함) 및 비대상 주의문구 실제존재. ParentContextAssembler는 child cleanDisplayText 후1200자/parent2800자 제한을 적용하므로 raw 전체와 검증grounds를 혼동하지 않는다. 현 conditional-only4표현은 control 하나SUPPORTED이나 semantic CLAIM_PARSE_INCOMPLETE 또는 NO_ALIGNED_EVIDENCE_ATOM, 나머지 controlINSUFFICIENT. 조건 삭제·주체치환으로 해소하지 않음. 기존3126 재생/외부API/DB변경 없음, SNSpenalty未PASS/holdoutfull미진입. 다음 일반분류의 명시적 heading·발주관계·전체조건이 어떤 fragment에 함께 소유되는지 진단 필요.
