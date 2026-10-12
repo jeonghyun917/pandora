@@ -1,5 +1,9 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-13 공식 lexical UI실행 BUILDING version6dca282f-56c2-477e-b1b1-66d35d5e9d56, readonly615d73 exit0 written19500 확인/기존READY98a3de8a-9511-455a-b849-955567b34283 count295796 유지. 완료까지 중복rebuild 금지/색인 변경 중 외부평가 보류. deploy12380 PID71372/Q49707 PID32056 KEEPALIVE. 다음 UI결과와 READY revision·新law2808v2 99 포함 확인, runtime/fingerprint재확인후 새평가. 종료56805·69152 등 재생금지.
+
+- 2026-10-13 HEAD18d4b145 pushed(UI5df65467 Node9/frontbuildPASS; backend cf0 전체1599PASS재사용). 공식static동기화(대상feature worktree 내부확인) staging24296 exit0 SHA22f530a36265f69d9612f7a350637a6f8a27c9c4e214e2ad6e978546bf69de52→공식deploy12380 KEEPALIVE PID71372/runtimee619c76e-4972-42dd-a821-93f60b6d2a8c. 이전39973/82116·3626/68164 identity폐기/Q49707 PID32056 유지/18080없음. 정상캐시로그인 버튼만 클릭·새 UI 실제확인. official semantic-lexical-index/rebuild UI 한번 실행중/중복금지/외부전송·재임베딩없음. 새smoke a846b6 DB-Qlaw211658 qreadytrue qfail0/indexe39713ce/lexicalda8d51ce(실행전). 완료後 신규v2 키워드포함·READY revision·DB-Q 재검증 필요. SNSpenalty 未PASS/holdoutfull 未진입.
+
 - 2026-10-13 readonly42c194 exit0: law2808 키워드색인 기존v1 30/신규v2 0 확인(실제DB v1RETIRED30/v2ACTIVE99). penalty검색 lawTextKeywords는 공백제거 질문전체1개라 새57조 회수없음; expanded SQL 대안55465 exit1 3초timeout으로 채택하지않음/timeout완화없음. 공식 기존 authenticated lexical rebuild API의 UI경로만 추가: 로컬현재ACTIVE색인 새버전/외부전송·임베딩·재청킹없음/중복실행·401·409자동재시도없음/결과·오류상태표시. Node RED f77825 2FAIL→GREEN f8a376 9PASS/frontbuildPASS. backend/verifier불변 cf0f97ff 전체1599PASS재사용. 아직 UI미배포·lexical갱신미실행/실제SNSpenaltyPASS 아님.
 
 - 2026-10-13 新56805 law-owned-20261013-0820 penalty1건 FAIL0/1 exit1 종료/재생금지. 법령2808 v2활성화 후 실제selected8은 official_doc87853/87811/84718/87815/87845/87846/87833/87854, 새법령57조 미선택. 생성3claim은 부장관→부 및 NIPA 주체추가·기관조건축약 등 unsupported/contradicted0/semantic差0 unsafe0/최종안전거부. 선택원문복구≠실제PASS. 다음 broad후보→선택경계 readonly진단과 원문 주체·조건 그대로 answer구성 확인, 일반제재혼합·조건삭제 금지/SNSpenalty 未PASS/holdoutfull 未진입. runtime39973/Q49707 유지.
