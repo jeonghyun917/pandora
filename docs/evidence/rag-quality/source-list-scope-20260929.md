@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-12 source-premise 소유 안전계약 회귀 추가: 별도 literal scope+법정의무는 질문사업 새전제를 지원하지 않음/법정의무 exact 양쪽SUPPORTED/동일 conditional 원문 자체가 있는 경우SUPPORTED를 동시에 고정. 집중93689 exit0/114 실패0오류0; 제품코드·verifier 불변, 기존전체1568 증거와 새test-only 검증 구별/전체재실행·배포·평가 없음. design docs/superpowers/specs/2026-10-12-source-premise-proof-boundary-design.md에서 질문가정 HYPOTHETICAL_UNPROVEN·source조건별 literal 소유진단만 다음최소범위로 정의; synthetic evidence/metadata bridge/조건완화/단순API재시도 제외. 실제52523 FAIL0/2 지속/holdoutfull금지.
+
 - 2026-10-12 추가전제 causal readonly exit0: 실제87816 의무 완결문은 control/semantic 양쪽SUPPORTED. 동일문 앞에 질문사업 membership 전제만 추가하면 양쪽INSUFFICIENT. ① 항번호를 진단에서 정렬한 뒤 parser 주체/목적어/행위/강도/극성은 동일, conditions에 질문사업 전체전제1개만 증가함을 확인. 따라서 이번 실패를 주체 projection버그나 개행문제로 오인하지 않으며, 현재 conditional 생성 지시와 source-owned 조건검증 사이의 계약불일치로 분리. 원문에 없는 전제를 삭제해 주장하거나 final verifier조건검사를 느슨하게 하지 않음. 제품코드·runtime·DB·API평가 변경없음/52523 실패재생없음/holdoutfull금지. 다음 일반답변 구성에서 질문의 가정과 원문의 법정조건을 별도 소유하는 proof계약 검토부터, 단순 prompt재시도 금지.
 
 - 2026-10-12 새실제52523 literal-boundary-20261012-1528 종료exit1/FAIL0/2/오류재시도없음. 고유JSON·MD·checkpoint 보존/재생금지. SNS conditional rewrite selectedAtom2 진입 뒤 REWRITE_VERIFICATION_FAILED: 질문사업조건을 법정주체 의무 앞에 붙인 claim unsupported1/standalone 예외 unsafe1. penalty unsupported6/unsafe1 지속. 최종거부 유지/SNSpenalty未PASS/holdoutfull금지. readonly84021..25 동일doc1/v4 parent=null/절차·과업변경·scope 별개 source경계 확인/인접성으로 proof합성금지. HEADf412e461 pushed/codee8f7c8a3/전체1568PASS/공식94648 PID30868(runtime1d5ba6ce)/Q91783 PID58400 KEEPALIVE 유지. 다음 추가전제·예외 source소유 진단/최종verifier·oracle 완화없음。

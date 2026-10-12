@@ -350,6 +350,34 @@ class SemanticEvidenceMatcherTests {
 	}
 
 	@Test
+	void separateLiteralScopeDoesNotEstablishAnAdditionalQuestionBusinessPremiseForDuty() {
+		String duty = "국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.";
+		String conditioned = "온라인 운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW포함)에 해당하는 경우, " + duty;
+		var scope = new LawAiAnswerGround(
+			1, 10L, 20L, "official_doc", "공공소프트웨어사업 과업심의 가이드", "기관", "문서", "2026-01-01", "CURRENT",
+			"1", "적용 대상 사업", null,
+			"적용 대상 사업\n국가기관 등이 발주하는 모든 SW사업(상용SW포함)", "source", "url", 1.0d
+		);
+		var rule = new LawAiAnswerGround(
+			2, 11L, 21L, "admrul", "사업 관리 지침", "기관", "문서", "2026-01-01", "CURRENT",
+			"2", "과업내용 확정", null, duty, "source", "url", 1.0d
+		);
+		var grounds = List.of(scope, rule);
+		var control = new ClaimEvidenceMatcher();
+		assertThat(parser.parse(conditioned).subjects()).isEqualTo(parser.parse(duty).subjects());
+		assertThat(parser.parse(conditioned).conditions()).containsAll(parser.parse(duty).conditions())
+			.hasSize(parser.parse(duty).conditions().size() + 1);
+		assertThat(control.match(duty, grounds).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(parser.parse(duty), matcher.index(grounds)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(control.match(conditioned, grounds).status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		assertThat(matcher.match(parser.parse(conditioned), matcher.index(grounds)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		assertThat(matcher.match(parser.parse(conditioned), SemanticEvidenceMatcher.EvidenceIndex.of(parser.parse(conditioned))).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
 	void procedureTitleAloneDoesNotCompleteANominalScopeDefinition() {
 		var ground = new LawAiAnswerGround(
 			1, 10L, 20L, "official_doc", "공공소프트웨어사업 과업심의 가이드", "기관", "문서", "2026-01-01", "CURRENT",
