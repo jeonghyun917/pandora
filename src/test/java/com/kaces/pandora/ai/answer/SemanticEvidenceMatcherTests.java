@@ -13,6 +13,24 @@ class SemanticEvidenceMatcherTests {
 	private final SemanticEvidenceMatcher matcher = new SemanticEvidenceMatcher();
 
 	@Test
+	void recommendationRecipientDutyCannotChangeItsActor() {
+		String source = "국가기관등의 장은 제2항에 따라 개선 권고를 받은 때에는 그 권고를 받은 날부터 1개월 이내에 조치 결과를 과학기술정보통신부장관에게 통보하여야 한다.";
+		var index = matcher.index(List.of(ground(source)));
+		assertThat(matcher.match(parser.parse(source), index).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(parser.parse(source.replace("국가기관등의 장", "소프트웨어사업자")), index).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void recommendationReceiptConditionCannotBeDropped() {
+		String source = "국가기관등의 장은 제2항에 따라 개선 권고를 받은 때에는 그 권고를 받은 날부터 1개월 이내에 조치 결과를 과학기술정보통신부장관에게 통보하여야 한다.";
+		var index = matcher.index(List.of(ground(source)));
+		assertThat(matcher.match(parser.parse(source.replace("제2항에 따라 개선 권고를 받은 때에는 ", "")), index).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
 	void negativeAntecedentDutyCannotBecomeUnconditionalOrChangeItsActor() {
 		String source = "발주기관이 법령을 준수하지 않으면, 발주기관은 자료를 보완해야 한다.";
 		var index = matcher.index(List.of(ground(source)));

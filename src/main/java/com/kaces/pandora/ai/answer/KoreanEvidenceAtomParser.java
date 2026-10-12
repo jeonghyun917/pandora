@@ -39,6 +39,9 @@ public class KoreanEvidenceAtomParser {
 	private static final Pattern POST_CONDITION = Pattern.compile(
 		"([\\p{IsHangul}A-Za-z0-9]{2,}?)(?:을|를)?(?:한|한\\s*)?\\s*후"
 	);
+	private static final Pattern RECEIPT_TIME_CONDITION = Pattern.compile(
+		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9]{2,}(?:\\s+[\\p{IsHangul}A-Za-z0-9]{2,}){0,3}?(?:을|를)\\s*받은)\\s+때(?:에는|에|만)?(?=\\s|[,，]|$)"
+	);
 	private static final Pattern BEFORE_ACTION_CONDITION = Pattern.compile(
 		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9]{2,}?)\\s+전(까지)?(?:에는|에)?(?=\\s|[,.!?]|$)"
 	);
@@ -106,6 +109,7 @@ public class KoreanEvidenceAtomParser {
 			conditions.add(canonical(conditionMatcher.group(1) + conditionMatcher.group(2)));
 		}
 		conditions.addAll(matches(source, POST_CONDITION, 1));
+		conditions.addAll(matches(source, RECEIPT_TIME_CONDITION, 1));
 		Matcher before = BEFORE_ACTION_CONDITION.matcher(source);
 		while (before.find()) {
 			conditions.add(canonical(before.group(1) + "전" + (before.group(2) == null ? "" : before.group(2))));
@@ -206,7 +210,7 @@ public class KoreanEvidenceAtomParser {
 			}
 			String token = matcher.group().strip();
 			if (token.endsWith("하는") || token.endsWith("되는") || token.endsWith("려는")
-				|| token.endsWith("경우에는")) {
+				|| token.endsWith("경우에는") || token.endsWith("때에는")) {
 				continue;
 			}
 			String value = canonical(matcher.group(1));
