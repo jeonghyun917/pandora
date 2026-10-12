@@ -8439,6 +8439,13 @@ public class LawAiAnswerService {
 		List<String> lawTargets = targets.stream()
 			.filter(this::isLawTarget)
 			.toList();
+		if (!ragTargets.isEmpty() && !lawTargets.isEmpty()) {
+			// A family-specific fast path must not suppress other requested sources.
+			List<LawSemanticChunkRow> familyCandidates = new java.util.ArrayList<>(
+				findLexicalChunks(queryPlan, lawTargets, includeFuture));
+			familyCandidates.addAll(findLexicalChunks(queryPlan, ragTargets, includeFuture));
+			return finishLexicalChunks(familyCandidates, query);
+		}
 		boolean strictDocumentEvidenceLookup = isStrictDocumentEvidenceAnchorQuestion(query, normalizedQuery)
 			&& !documentTitleAnchors.isEmpty();
 		QuestionIntentProfile profile = queryPlan.profile();

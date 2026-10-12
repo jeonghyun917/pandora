@@ -17,6 +17,25 @@ import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
 	@Test
+	void lexicalFastPathMustPreserveEveryRequestedDocumentFamily() throws Exception {
+		var scope = chunk(99001L, "official_doc", "공공소프트웨어사업 과업심의 가이드",
+			"적용 대상 사업", "적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)");
+		var duty = chunk(99002L, "admrul", "소프트웨어사업 계약 및 관리감독에 관한 지침",
+			"과업내용의 확정 시기", "국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다.");
+		RagDocumentMapper rag = (RagDocumentMapper) java.lang.reflect.Proxy.newProxyInstance(
+			RagDocumentMapper.class.getClassLoader(), new Class<?>[]{RagDocumentMapper.class},
+			(proxy, method, arguments) -> List.of(scope));
+		LawChunkMapper law = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
+			LawChunkMapper.class.getClassLoader(), new Class<?>[]{LawChunkMapper.class},
+			(proxy, method, arguments) -> List.of(duty));
+		var service = service(law, rag);
+		try {
+			var plan = QuestionSearchPlan.from("온라인 운영 사업도 과업심의 받아야 하나요?");
+			assertThat(findLexicalChunks(service, plan, List.of("official_doc", "admrul"), false))
+				.contains(scope, duty);
+		} finally { service.shutdownExecutors(); }
+	}
+	@Test
 	void procedureSourceWindowPreservesClosedNumberedSecondParagraph() {
 		String first = "제25조(과업내용의 확정 시기)\n① 국가기관등의 장은 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다. 다만, 사업수행일정 부족 등 불가피한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.\n";
 		String second = "② 다음 각 호의 어느 하나에 해당하는 소프트웨어사업은 간소화된 방식으로 심의할 수 있다.\n1. 총 사업금액이 1억원 이하인 사업\n2. 기존 심의를 거친 사업을 변경없이 추가로 실시하는 사업\n";
