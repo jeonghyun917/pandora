@@ -139,11 +139,7 @@ final class ClaimEvidenceAtomizer {
 		if (text != null) {
 			// Preserve a literal, contiguous heading and its complete nominal criterion.
 			// Never borrow metadata scope or cross a numbered item/another heading.
-			text = text.replaceAll(
-				"(?m)^(적용[ \\t]+대상[ \\t]+사업|대상[ \\t]+사업)[ \\t]*\\R"
-					+ "[ \\t]*([가-힣]{2,30}(?:[ \\t]+등)?이[ \\t]+발주하는[ \\t]+모든[ \\t]+"
-					+ "[가-힣A-Za-z]{2,30}사업(?:\\([^\\r\\n()]{1,40}\\))?)[ \\t]*$",
-				"$1 $2");
+			text = joinLiteralNominalScopeHeading(text);
 			text = joinClosedLegalFirstParagraph(text);
 			text = text.replaceAll("([,，])[ \\t]*\\R[ \\t]*(?![①-⑳•‣□○※*∙]|\\d{1,2}[.)])(?=\\S)", "$1 ");
 			text = joinWrappedSourceSentencePairs(text);
@@ -212,7 +208,15 @@ final class ClaimEvidenceAtomizer {
 	}
 
 	List<String> atomizeSourceForAlignment(String text) {
-		return atomize(text == null ? null : joinClosedLegalFirstParagraph(text), true);
+		return atomize(text == null ? null : joinClosedLegalFirstParagraph(joinLiteralNominalScopeHeading(text)), true);
+	}
+
+	private String joinLiteralNominalScopeHeading(String text) {
+		return text.replaceAll(
+			"(?m)^(적용[ \\t]+대상[ \\t]+사업|대상[ \\t]+사업)[ \\t]*\\R"
+				+ "[ \\t]*([가-힣]{2,30}(?:[ \\t]+등)?이[ \\t]+발주하는[ \\t]+모든[ \\t]+"
+				+ "[가-힣A-Za-z]{2,30}사업(?:\\([^\\r\\n()]{1,40}\\))?)[ \\t]*$",
+			"$1 $2");
 	}
 
 	List<EvidenceAtom> parseSourceAtomsForAlignment(String text, KoreanEvidenceAtomParser parser) {

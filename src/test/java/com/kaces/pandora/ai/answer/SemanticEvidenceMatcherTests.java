@@ -473,6 +473,27 @@ class SemanticEvidenceMatcherTests {
 	}
 
 	@Test
+	void preservesLiteralContiguousScopeForQuotationWithoutClassifyingAnIndividualBusiness() {
+		var ground = new LawAiAnswerGround(
+			1, 10L, 20L, "official_doc", "공공소프트웨어사업 과업심의 가이드", "기관", "문서", "2026-01-01", "CURRENT",
+			"1", "적용 대상 사업", null,
+			"적용 대상 사업\n국가기관 등이 발주하는 모든 SW사업(상용SW포함)\n※ 건설사업은 비대상", "source", "url", 1.0d
+		);
+		var index = matcher.index(List.of(ground));
+		assertThat(matcher.match(parser.parse(
+			"적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)"
+		), index).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		for (String claim : List.of(
+			"적용 대상 사업 민간기업이 발주하는 모든 SW사업(상용SW포함)",
+			"온라인 운영 사업은 과업심의 대상입니다.",
+			"온라인 운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW포함)에 해당하면 과업심의 대상입니다."
+		)) {
+			assertThat(matcher.match(parser.parse(claim), index).status()).as(claim)
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
 	void doesNotTreatANegatedContinuationAsAnExplanatoryPrefixMatch() {
 		EvidenceAtom claim = parser.parse("국가기관 등이 발주하는 모든 SW사업(상용SW포함)");
 		EvidenceAtom evidence = parser.parse(
