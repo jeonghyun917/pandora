@@ -21,6 +21,14 @@ import org.junit.jupiter.api.Test;
 
 class LawChunkMapperXmlTests {
 	@Test
+	void titleAndTextEvidenceSearchExcludesRetiredAndCandidateVersions() throws Exception {
+		String sql = normalizedSql(parseMapper().getMappedStatement(LawChunkMapper.class.getName()
+			+ ".findSemanticChunksByDocumentTitleAndText"), Map.of(
+			"targets", List.of("admrul"), "titleKeywords", List.of("지침"),
+			"textKeywords", List.of("적용범위"), "includeFuture", false, "limit", 8));
+		assertThat(sql).contains("c.use_yn = 'Y'", "c.activation_status = 'ACTIVE'");
+	}
+	@Test
 	void legacyRetirementIsOperationOwnedAndNeverFabricatesPreviewApproval() throws Exception {
 		Configuration configuration = parseMapper();
 		assertThat(configuration.hasStatement(LawChunkMapper.class.getName() + ".insertRetiredLegacyVersionForOperation")).isTrue();

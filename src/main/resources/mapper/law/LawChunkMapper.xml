@@ -916,6 +916,7 @@
     ) doc
     JOIN law_api_document_chunks c ON c.document_id = doc.document_id
     WHERE c.use_yn = 'Y'
+      AND c.activation_status = 'ACTIVE'
       <if test="targets != null and targets.size() > 0">
         AND doc.target IN
         <foreach collection="targets" item="target" open="(" separator="," close=")">

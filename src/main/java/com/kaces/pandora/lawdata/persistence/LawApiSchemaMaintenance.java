@@ -309,7 +309,7 @@ public class LawApiSchemaMaintenance implements ApplicationRunner {
 			CREATE TABLE IF NOT EXISTS law_api_document_chunk_versions (
 				document_id BIGINT NOT NULL,
 				chunk_version INT NOT NULL,
-				activation_status VARCHAR(20) NOT NULL DEFAULT 'CANDIDATE',
+				activation_status VARCHAR(32) NOT NULL DEFAULT 'CANDIDATE',
 				expected_chunk_count INT NOT NULL DEFAULT 0,
 				preview_approved TINYINT(1) NOT NULL DEFAULT 0,
 				unexplained_loss_span_count INT NOT NULL DEFAULT 0,
@@ -323,6 +323,15 @@ public class LawApiSchemaMaintenance implements ApplicationRunner {
 					FOREIGN KEY (document_id) REFERENCES law_api_documents (document_id) ON DELETE CASCADE
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 			""");
+		Integer statusLength = jdbcTemplate.queryForObject("""
+			SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS
+			WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='law_api_document_chunk_versions'
+			  AND COLUMN_NAME='activation_status'
+			""", Integer.class);
+		if (statusLength == null) throw new IllegalStateException("Version activation status column is missing.");
+		if (statusLength < 32) {
+			jdbcTemplate.execute("ALTER TABLE law_api_document_chunk_versions MODIFY activation_status VARCHAR(32) NOT NULL DEFAULT 'CANDIDATE'");
+		}
 		ensureVersionTableColumn("expected_chunk_count", "INT NOT NULL DEFAULT 0");
 		ensureVersionTableColumn("preview_approved", "TINYINT(1) NOT NULL DEFAULT 0");
 		ensureVersionTableColumn("unexplained_loss_span_count", "INT NOT NULL DEFAULT 0");

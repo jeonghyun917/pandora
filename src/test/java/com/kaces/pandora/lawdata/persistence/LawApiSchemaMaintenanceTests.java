@@ -35,6 +35,7 @@ class LawApiSchemaMaintenanceTests {
 			.anySatisfy(sql -> assertThat(sql).contains("idx_law_api_document_chunks_active_version"))
 			.anySatisfy(sql -> assertThat(sql).contains("idx_law_api_document_chunks_parent_child"))
 			.anySatisfy(sql -> assertThat(sql).contains("CREATE TABLE IF NOT EXISTS law_api_document_chunk_versions")
+				.contains("activation_status VARCHAR(32) NOT NULL DEFAULT 'CANDIDATE'")
 				.contains("expected_chunk_count INT NOT NULL DEFAULT 0")
 				.contains("preview_approved TINYINT(1) NOT NULL DEFAULT 0")
 				.contains("unexplained_loss_span_count INT NOT NULL DEFAULT 0")
@@ -61,6 +62,8 @@ class LawApiSchemaMaintenanceTests {
 				.contains("chk_law_missing_embedding_repair_item_state")
 				.contains("READY","PROCESSING","INDEXED","FAILED","NOT_ATTEMPTED"))
 			.anySatisfy(sql -> assertThat(sql).contains("ADD COLUMN runtime_instance_id CHAR(36) NULL"));
+		assertThat(ddl.getAllValues()).anySatisfy(sql -> assertThat(sql)
+			.contains("ALTER TABLE law_api_document_chunk_versions MODIFY activation_status VARCHAR(32) NOT NULL DEFAULT 'CANDIDATE'"));
 		assertThat(ddl.getAllValues()).anySatisfy(sql -> assertThat(sql)
 			.contains("ADD CONSTRAINT chk_law_chunk_versions_activation_status")
 			.contains("'CANDIDATE','ACTIVATING','ACTIVE_CLEANUP_PENDING','ACTIVE','RETIRED'"));
@@ -132,7 +135,10 @@ class LawApiSchemaMaintenanceTests {
 	@Test
 	void runDoesNotReplaceAnAlreadyCanonicalActivationStatusCheck() {
 		JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-		when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class))).thenAnswer(i -> i.getArgument(0, String.class).startsWith("SELECT COUNT(*) FROM law_missing") ? 0 : 1);
+		when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class))).thenAnswer(i -> {
+			String sql = i.getArgument(0, String.class);
+			return sql.contains("CHARACTER_MAXIMUM_LENGTH") ? 32 : sql.startsWith("SELECT COUNT(*) FROM law_missing") ? 0 : 1;
+		});
 		when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), any(Object[].class))).thenReturn(1);
 		when(jdbcTemplate.queryForList(anyString(), eq(String.class), any(Object[].class))).thenReturn(List.of("chk_law_chunk_versions_activation_status"));
 		when(jdbcTemplate.queryForList(anyString())).thenAnswer(invocation -> {
@@ -152,6 +158,7 @@ class LawApiSchemaMaintenanceTests {
 		verify(jdbcTemplate, org.mockito.Mockito.atLeast(1)).execute(ddl.capture());
 		assertThat(ddl.getAllValues())
 			.noneSatisfy(sql -> assertThat(sql).contains("DROP CONSTRAINT chk_law_chunk_versions_activation_status"))
-			.noneSatisfy(sql -> assertThat(sql).contains("ADD CONSTRAINT chk_law_chunk_versions_activation_status"));
+			.noneSatisfy(sql -> assertThat(sql).contains("ADD CONSTRAINT chk_law_chunk_versions_activation_status"))
+			.noneSatisfy(sql -> assertThat(sql).contains("MODIFY activation_status"));
 	}
 }
