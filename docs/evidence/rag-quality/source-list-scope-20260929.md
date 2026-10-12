@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-12 후속 readonly 조건부 분류 진단: 평가/테스트 진행중없음·feature dirty없음 확인. 현재84023 v4 sort4 parentKey=null, 적용대상사업/국가기관등발주 모든SW사업(상용SW포함) 및 비대상 주의문구 실제존재. ParentContextAssembler는 child cleanDisplayText 후1200자/parent2800자 제한을 적용하므로 raw 전체와 검증grounds를 혼동하지 않는다. 현 conditional-only4표현은 control 하나SUPPORTED이나 semantic CLAIM_PARSE_INCOMPLETE 또는 NO_ALIGNED_EVIDENCE_ATOM, 나머지 controlINSUFFICIENT. 조건 삭제·주체치환으로 해소하지 않음. 기존3126 재생/외부API/DB변경 없음, SNSpenalty未PASS/holdoutfull미진입. 다음 일반분류의 명시적 heading·발주관계·전체조건이 어떤 fragment에 함께 소유되는지 진단 필요.
+
 - 2026-10-12 후속 closed-paragraph readonly exit0: 현재87816 제25조① 본문+예외 literal 전체를 함께 유지하면 control 의무2개 모두SUPPORTED/unsupported0이나 실제SNS 질문 alignment MISSING_SUBJECT·RELATION. 현재84023+87816의 child-only grounds에서 두 조건부 membership 표현을 앞에 붙여도 각각 control/semantic INSUFFICIENT, 최종alignment 미충족. 이는 단순 예외 목적 추가나 원문 전체 인용만으로 해결되지 않음을 입증하며, 실제 서비스의 metadata·parent-context grounds와 동일하다고 단정하지 않는다. 외부API/DBmutation/실패3126재생없음. 검증코드1d95f3a1 pushed; 공식staging17746 exit0 SHA20e6a6a669753dd7f1af556253243b9ce5a0050803ac9661bae764eef0dcf08c 미배포/runtime53304·Q91783 유지. 다음 실제 선택근거 소유·문맥과 child-only 진단의 차이를 확인하여 일반 답변구성 경계로 이어간다. SNSpenalty/holdout/full未완료.
 
 - 2026-10-12 exact 조건 보강 全체11335 exit0/1564 실패0오류0제외19. 新확정철회 목적 RED73811→집중27751 74PASS→전체PASS, diff-check exit0/자가검토: SUPPORTED 판정만 보수화, source조건 역방향 보존과 CONTRADICTED witness/control/authority 불변. 同일검증코드 재테스트중복금지. 제품수정 미배포/staging cc3d0757은 이전c404601e artifact이므로 새코드 artifact로 오인금지. SNSpenalty実제FAIL 미해결/holdoutfull미진입.
