@@ -9,7 +9,7 @@ import {
   RefreshCw,
   Send,
 } from 'lucide-react';
-import { fetchAdminOperations, fetchAdminPipelines, runMinistryCollection, previewDocumentRebuild, createDocumentCandidate, indexDocumentCandidate, resumeCandidateIndex, activateDocumentCandidate, rebuildLexicalIndex } from '../api/lawApi';
+import { fetchAdminOperations, fetchAdminPipelines, runMinistryCollection, previewDocumentRebuild, createDocumentCandidate, indexDocumentCandidate, resumeCandidateIndex, activateDocumentCandidate, rebuildLexicalIndex, recoverAbandonedLexicalIndex } from '../api/lawApi';
 import { LandingConstellation } from './LandingPage';
 
 const agencyOptions = [
@@ -131,6 +131,22 @@ export function AdminPage({ onBack }) {
   const [lexicalLoading, setLexicalLoading] = useState(false);
   const [lexicalResult, setLexicalResult] = useState(null);
   const [lexicalError, setLexicalError] = useState('');
+  const [recoveryVersion, setRecoveryVersion] = useState('');
+  const [recoveryConfirmed, setRecoveryConfirmed] = useState(false);
+  const [recoveryStarted, setRecoveryStarted] = useState(false);
+  const [recoveryResult, setRecoveryResult] = useState('');
+
+  async function recoverLexical(event) {
+    event.preventDefault();
+    if (!recoveryConfirmed || recoveryStarted || lexicalLoading || candidateLoading || previewLoading) return;
+    setRecoveryStarted(true);
+    try {
+      const recovered = await recoverAbandonedLexicalIndex(recoveryVersion);
+      setRecoveryResult(recovered ? '중단 버전을 FAILED로 처리했습니다. 기존 READY는 유지됩니다.' : '변경되지 않았습니다. 해당 버전은 BUILDING이 아닙니다.');
+    } catch (error) {
+      setLexicalError(error.message);
+    }
+  }
 
   async function refreshLexicalIndex() {
     if (lexicalStarted || candidateLoading || previewLoading) return;
@@ -364,12 +380,21 @@ export function AdminPage({ onBack }) {
         <section className="admin-panel admin-panel-wide" aria-label="키워드 색인 갱신">
           <h2>키워드 색인 갱신</h2>
           <p>현재 활성 검색 청크의 로컬 키워드 색인을 새 버전으로 갱신합니다. 원문 재청킹·임베딩·OpenAI 전송은 하지 않습니다.</p>
-          <button type="button" disabled={lexicalStarted || candidateLoading || previewLoading} onClick={refreshLexicalIndex}>
+          <button type="button" disabled={lexicalStarted || recoveryStarted || candidateLoading || previewLoading} onClick={refreshLexicalIndex}>
             {lexicalLoading ? '키워드 색인 갱신 중…' : '활성 청크 키워드 색인 갱신'}
           </button>
           {lexicalLoading && <p role="status">처리 중입니다. 중복 실행하지 마세요.</p>}
           {lexicalError && <p role="alert">{lexicalError}</p>}
           {lexicalResult && <pre aria-label="키워드 색인 갱신 결과">{JSON.stringify(lexicalResult, null, 2)}</pre>}
+          <form onSubmit={recoverLexical}>
+            <h3>중단 색인 실패 처리</h3>
+            <p>실행이 종료된 BUILDING 버전만 FAILED로 표시합니다. 청크 삭제·READY 게시·재갱신은 하지 않습니다.</p>
+            <label>중단 색인 버전 <input value={recoveryVersion} onChange={(event) => setRecoveryVersion(event.target.value)} disabled={recoveryStarted} required /></label>
+            <label><input type="checkbox" checked={recoveryConfirmed} onChange={(event) => setRecoveryConfirmed(event.target.checked)} disabled={recoveryStarted} /> 해당 작업의 실행이 종료됐음을 확인했습니다.</label>
+            <button type="submit" disabled={!recoveryConfirmed || recoveryStarted || lexicalLoading || candidateLoading || previewLoading}>중단 버전 실패 처리</button>
+            {recoveryStarted && !recoveryResult && !lexicalError && <p role="status">처리 중입니다. 재시도하지 마세요.</p>}
+            {recoveryResult && <p role="status">{recoveryResult}</p>}
+          </form>
         </section>
         <section className="admin-panel admin-panel-wide" aria-label="문서 재구축 미리보기">
           <h2>문서 재구축 미리보기</h2>

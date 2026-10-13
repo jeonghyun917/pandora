@@ -21,6 +21,21 @@ import org.mockito.InOrder;
 class SemanticLexicalIndexServiceTests {
 
 	@Test
+	void abandonedRecoveryOnlyChangesOneBuildingVersion() {
+		SemanticLexicalMapper mapper = mock(SemanticLexicalMapper.class);
+		String version = "6dca282f-56c2-477e-b1b1-66d35d5e9d56";
+		when(mapper.markIndexFailed(version)).thenReturn(1);
+		SemanticLexicalIndexService service = new SemanticLexicalIndexService(mapper, new KoreanLexicalTokenizer());
+		assertThat(service.recoverAbandonedBuild(version)).isTrue();
+		verify(mapper, never()).markChunksReady(any());
+		verify(mapper, never()).markIndexReady(any(), any(), any(Integer.class), any(Double.class));
+		when(mapper.markIndexFailed(version)).thenReturn(0);
+		assertThat(service.recoverAbandonedBuild(version)).isFalse();
+		assertThatThrownBy(() -> service.recoverAbandonedBuild("not-a-version"))
+			.isInstanceOf(IllegalArgumentException.class);
+	}
+
+	@Test
 	void buildsSideBySideAndPublishesReadyOnlyAfterAllRowsAndStats() {
 		SemanticLexicalMapper mapper = mock(SemanticLexicalMapper.class);
 		when(mapper.findActiveSearchableChunks()).thenReturn(List.of(

@@ -9,6 +9,21 @@ export async function rebuildLexicalIndex() {
   return readJsonResponse(response);
 }
 
+export async function recoverAbandonedLexicalIndex(version) {
+  const indexVersion = String(version ?? '').trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(indexVersion)) {
+    throw new Error('올바른 중단 색인 버전을 입력하세요.');
+  }
+  const params = new URLSearchParams({ indexVersion, confirmedAbandoned: 'true' });
+  const response = await fetch(`/api/admin/semantic-lexical-index/recover-abandoned?${params}`, {
+    method: 'POST', credentials: 'same-origin',
+  });
+  if (response.status === 401) throw new Error('관리자 로그인이 필요합니다.');
+  if (response.status === 409) throw new Error('색인 작업이 실행 중입니다. 복구하지 않습니다.');
+  if (!response.ok) throw new Error('중단 색인 복구에 실패했습니다. 자동 재시도하지 않습니다.');
+  return readJsonResponse(response);
+}
+
 export async function previewDocumentRebuild(target, documentId) {
   const id = String(documentId ?? '').trim();
   if (!['law', 'admrul'].includes(target) || !/^[1-9]\d*$/.test(id)) {

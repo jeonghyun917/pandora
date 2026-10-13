@@ -87,6 +87,13 @@ public class SemanticLexicalIndexService {
 		}
 	}
 
+	public boolean recoverAbandonedBuild(String indexVersion) {
+		if (indexVersion == null || !indexVersion.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+			throw new IllegalArgumentException("A canonical index version is required.");
+		}
+		return mapper.markIndexFailed(indexVersion) == 1;
+	}
+
 	public BuildResult rebuild() {
 		String indexVersion = versionSupplier.get();
 		List<LexicalChunkDocument> documents = mapper.findActiveSearchableChunks();

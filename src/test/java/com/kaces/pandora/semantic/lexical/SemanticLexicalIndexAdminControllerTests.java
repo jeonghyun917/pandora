@@ -16,6 +16,14 @@ import org.springframework.web.server.ResponseStatusException;
 class SemanticLexicalIndexAdminControllerTests {
 
 	@Test
+	void rejectsRecoveryWithoutExplicitAbandonedConfirmation() {
+		SemanticLexicalIndexAdminController controller = new SemanticLexicalIndexAdminController(
+			mock(SemanticLexicalIndexService.class));
+		assertThatThrownBy(() -> controller.recover("6dca282f-56c2-477e-b1b1-66d35d5e9d56", false))
+			.isInstanceOf(ResponseStatusException.class);
+	}
+
+	@Test
 	void reportsTheReadyRevisionAndBuildState() {
 		SemanticLexicalIndexService service = mock(SemanticLexicalIndexService.class);
 		when(service.currentRevision()).thenReturn("ready-revision");
@@ -57,6 +65,8 @@ class SemanticLexicalIndexAdminControllerTests {
 		try {
 			Future<SemanticLexicalIndexService.BuildResult> first = executor.submit(controller::rebuild);
 			assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+			assertThatThrownBy(() -> controller.recoverAbandonedBuild("6dca282f-56c2-477e-b1b1-66d35d5e9d56"))
+				.isInstanceOf(ResponseStatusException.class);
 
 			assertThatThrownBy(controller::rebuild)
 				.isInstanceOf(ResponseStatusException.class)
