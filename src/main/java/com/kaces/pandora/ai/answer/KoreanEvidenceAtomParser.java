@@ -58,6 +58,10 @@ public class KoreanEvidenceAtomParser {
 	private static final Pattern RECEIPT_TIME_CONDITION = Pattern.compile(
 		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9]{2,}(?:\\s+[\\p{IsHangul}A-Za-z0-9]{2,}){0,3}?(?:을|를)\\s*받은)\\s+(?:때|경우)(?:에는|에|는|만)?(?=\\s|[,，]|$)"
 	);
+	private static final Pattern PAST_RECEIPT_TIME_CONDITION = Pattern.compile(
+		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9]{2,}(?:\\s+[\\p{IsHangul}A-Za-z0-9]{2,}){0,3}?"
+			+ "(?:을|를)\\s*(?:제출)?받았을)\\s+때(?:에는|에|는|만)?(?=\\s|[,，]|$)"
+	);
 	private static final Pattern BEFORE_ACTION_CONDITION = Pattern.compile(
 		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9]{2,}?)\\s+전(까지)?(?:에는|에)?(?=\\s|[,.!?]|$)"
 	);
@@ -139,6 +143,10 @@ public class KoreanEvidenceAtomParser {
 			conditions.add(KoreanQueryNormalizer.normalizeForMatch(existence.group(1)));
 		}
 		conditions.addAll(matches(source, RECEIPT_TIME_CONDITION, 1));
+		Matcher pastReceipt = PAST_RECEIPT_TIME_CONDITION.matcher(source);
+		while (pastReceipt.find()) {
+			conditions.add(KoreanQueryNormalizer.normalizeForMatch(pastReceipt.group(1)));
+		}
 		Matcher before = BEFORE_ACTION_CONDITION.matcher(source);
 		while (before.find()) {
 			conditions.add(canonical(before.group(1) + "전" + (before.group(2) == null ? "" : before.group(2))));

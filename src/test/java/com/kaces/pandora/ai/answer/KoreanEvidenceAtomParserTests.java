@@ -8,6 +8,14 @@ import org.junit.jupiter.api.Test;
 
 class KoreanEvidenceAtomParserTests {
 	@Test
+	void pastReceiptTimePreservesTheReceivedObject() {
+		var parser = new KoreanEvidenceAtomParser();
+		assertThat(parser.parse("자료를 제출받았을 때 기관은 결과를 통보한다.").conditions())
+			.contains("자료를제출받았을");
+		assertThat(parser.parse("자료를 받았을 때 기관은 결과를 통보한다.").conditions())
+			.contains("자료를받았을");
+	}
+	@Test
 	void explicitNominalCaseRetainsItsCondition() {
 		var parser = new KoreanEvidenceAtomParser();
 		assertThat(parser.parse("검토결과 미수용의 경우 기관은 사유를 등록한다.").conditions())
