@@ -14,7 +14,7 @@ public class SemanticEvidenceMatcher {
 
 	private static final double MIN_SLOT_COVERAGE = 0.5d;
 	private static final Pattern HYPOTHETICAL_MEMBERSHIP = Pattern.compile(
-		"^([^,;.!?\\r\\n]+?)(?:이|가)\\s+([^,;.!?\\r\\n]+?)에\\s*"
+		"^([^,;.!?\\r\\n]+?)(?:이|가|도)\\s+([^,;.!?\\r\\n]+?)에\\s*"
 			+ "(?:해당하면|해당하는\\s+경우에는)\\s+([^,;.!?\\r\\n]+)[.]?$"
 	);
 	private static final Pattern LITERAL_MEMBERSHIP_LABEL = Pattern.compile(
@@ -37,9 +37,10 @@ public class SemanticEvidenceMatcher {
 		for (LawAiAnswerGround ground : grounds == null ? List.<LawAiAnswerGround>of() : grounds) {
 			List<String> evidenceTexts = List.of(value(ground.matchedChildText()), value(ground.snippet()),
 				value(ground.parentContextText()));
-			// A shortened rendering must not hide an exception owned by the same ground.
+			// A shortened rendering must not hide a restriction owned by the same ground.
 			boolean membershipContextUnrestricted = evidenceTexts.stream()
-				.allMatch(text -> parser.parse(text).exceptions().isEmpty());
+				.map(parser::parse)
+				.allMatch(atom -> atom.conditions().isEmpty() && atom.exceptions().isEmpty());
 			for (String evidence : evidenceTexts) {
 				for (EvidenceAtom atom : atomizer.parseSourceAtomsForAlignment(evidence, parser)) {
 					atoms.add(new IndexedAtom(ground.number(), atom.sourceText(), atom,
@@ -106,12 +107,12 @@ public class SemanticEvidenceMatcher {
 		// licenses substitution. No title, metadata, other ground, or duty is borrowed.
 		String scope = membership.group(2).trim();
 		String conclusion = membership.group(3).trim();
-		String actual = canonical(source.sourceText().replaceFirst("[.]$", ""));
+		String actual = canonicalMembershipText(source.sourceText().replaceFirst("[.]$", ""));
 		var literalLabel = LITERAL_MEMBERSHIP_LABEL.matcher(conclusion);
 		boolean contiguousLiteralClassification = literalLabel.matches()
-			&& actual.equals(canonical(literalLabel.group(1) + " " + scope));
-		if (!actual.equals(canonical(scope + "은 " + conclusion))
-			&& !actual.equals(canonical(scope + "는 " + conclusion))
+			&& actual.equals(canonicalMembershipText(literalLabel.group(1) + " " + scope));
+		if (!actual.equals(canonicalMembershipText(scope + "은 " + conclusion))
+			&& !actual.equals(canonicalMembershipText(scope + "는 " + conclusion))
 			&& !contiguousLiteralClassification) {
 			return SemanticMatch.insufficient("HYPOTHETICAL_MEMBERSHIP_NOT_PROVED");
 		}
@@ -300,6 +301,13 @@ public class SemanticEvidenceMatcher {
 
 	private String canonical(String value) {
 		return KoreanQueryNormalizer.normalizeForMatch(value == null ? "" : value);
+	}
+
+	static String canonicalMembershipText(String value) {
+		// Expand only these explicit business-class phrases, never an issuer or institution name.
+		return KoreanQueryNormalizer.normalizeForMatch(value == null ? "" : value)
+			.replace("모든소프트웨어사업", "모든sw사업")
+			.replace("상용소프트웨어포함", "상용sw포함");
 	}
 
 	public record EvidenceIndex(List<IndexedAtom> atoms) {

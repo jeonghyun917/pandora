@@ -19,6 +19,9 @@ public class KoreanEvidenceAtomParser {
 	private static final Pattern COMPOUND_ROLE_SUBJECT = Pattern.compile(
 		"(?:^|[,.!?;；]\\s*|\\s)([\\p{IsHangul}A-Za-z0-9]{2,}(?:\\s+등)?의\\s*장)(?:은|는)(?=\\s)"
 	);
+	private static final Pattern ADDITIVE_MEMBERSHIP_SUBJECT = Pattern.compile(
+		"^([^.!?;]{2,100}?사업)도\\s+(?=[^.!?;]{2,240}?에\\s*해당(?:하면|하는\\s*경우))"
+	);
 	private static final Pattern OBJECT = Pattern.compile(
 		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9()·ㆍ/-]{2,}?)(?:을|를)(?=\\s|[,.!?]|$)"
 	);
@@ -99,6 +102,9 @@ public class KoreanEvidenceAtomParser {
 		String propositionSource = negativeProjected ? negativeConclusion : explicitMembershipConclusion(source);
 		String predicateSource = negativeProjected ? negativeConclusion : source;
 		Set<String> subjects = subjects(propositionSource);
+		if (propositionSource.equals(source)) {
+			subjects.addAll(matches(source, ADDITIVE_MEMBERSHIP_SUBJECT, 1));
+		}
 		Set<String> objects = matches(predicateSource, OBJECT, 1);
 		Set<String> recipients = matches(predicateSource, RECIPIENT, 1);
 		Set<String> actions = matches(predicateSource, ACTION, 1);

@@ -13,6 +13,41 @@ class SemanticEvidenceMatcherTests {
 	private final SemanticEvidenceMatcher matcher = new SemanticEvidenceMatcher();
 
 	@Test
+	void shortenedNominalSnippetCannotHideSameGroundConditions() {
+		String snippet = "대상 사업\n국가기관 등이 발주하는 모든 SW사업(상용SW포함)";
+		String restricted = snippet + "\n예산이 확보된 경우에는 적용한다.";
+		assertThat(parser.parse(restricted).conditions()).isNotEmpty();
+		for (boolean child : List.of(true, false)) {
+			var ground = new LawAiAnswerGround(
+				1, 10L, 20L, "official_doc", "가이드", "기관", "문서", "2026-01-01", "CURRENT",
+				"1", "대상 사업", null, snippet, "source", "url", 1.0d,
+				child ? restricted : null, child ? null : restricted, List.of(10L), "matched_child_only");
+			assertThat(matcher.match(parser.parse(
+				"신규 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW포함)에 해당하면 대상 사업입니다."),
+				matcher.index(List.of(ground))).status()).as("child=%s", child)
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
+	void nominalMembershipPreservesCompleteScopeAcrossSoftwareAliasAndAdditiveSubject() {
+		var grounds = List.of(ground("대상 사업\n국가기관 등이 발주하는 모든 SW사업(상용SW포함)"));
+		String claim = "새로운 사업도 국가기관 등이 발주하는 모든 소프트웨어사업(상용소프트웨어포함)에 해당하면 대상 사업입니다.";
+		assertThat(matcher.match(parser.parse(claim), matcher.index(grounds)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(new ClaimEvidenceMatcher().match(claim, grounds).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		for (String changed : List.of(
+			claim.replace("국가기관", "민간기업"),
+			claim.replace("소프트웨어사업", "건설사업"),
+			claim.replace("(상용소프트웨어포함)", ""),
+			claim.replace("대상 사업입니다", "반드시 심의를 받아야 합니다"))) {
+			assertThat(matcher.match(parser.parse(changed), matcher.index(grounds)).status()).as(changed)
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
 	void nominalMembershipUsesOnlyTheContiguousLiteralConclusion() {
 		var grounds = List.of(new LawAiAnswerGround(
 			1, 10L, 20L, "official_doc", "공공소프트웨어사업 과업심의 가이드", "기관", "문서", "2026-01-01", "CURRENT",
