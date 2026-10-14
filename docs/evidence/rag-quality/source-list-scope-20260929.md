@@ -1,5 +1,9 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-14 부정과거조건/명시단일결론 분리 전체80178exit0 XML1634 failures0 errors0 제외19/diff-check0 확인. 원문전제삭제·긍정결론부정변경은거부/복합결론·주체추론·숫자·최종질문정렬가드불변/실제16⑦ AMBIGUOUS거부유지/외부평가없음/penalty實PASS아님.
+
+- 2026-10-14 HEAD26a305ec pushed/검증전체36218 XML1632f0e0제외19→stage79998exit0→공식deploy58500 KEEPALIVE/PID73852/runtimea97d72c0-f95e-4964-b609-6cbc08f95f8e/JAR7e76031914150c9c79570f8415524cdc2502b641b172b5c3d115883c4b4cad27. smoke2fd758 confige7b08ced/law211658·rag84248 DB-Qparity/qreadytrue/qfail0/Q15840·main·18080불변/이전55149·45152·5be3runtime폐기. 미이행과거조건 극성 RED53589 1FAIL(하지않은경우의긍정결론통보한다→통보하지않는다도SUPPORTED)→기존negativeantecedent/marker에은경우를연결·전체전제보존/명시단일결론만projection/actor·길이·복합결론ambiguityguard유지/집중16582exit0/범위리뷰직접C/I없음/전체80178진행중. readonlyaed098 실제16⑦ 수령·미이행전제에제15조참조포함보존/여전히AMBIGUOUS安全거부/최종질문정렬완화없음/새外部평가없음/실제penaltyPASS아님. 현재부정과거조건은未commit·未deploy.
+
 - 2026-10-14 過去수령조건 집중30661exit0/범위리뷰직접C/I없음/전체36218exit0 XML1632 failures0 errors0 제외19/diff-check0 확인. readonlyfb9b88 실제16⑦ 조건에따라신청기관의장으로부터이행결과를제출받았을 보존/제15조참조전체와미이행경우는추가미해결, REQUIRED·AMBIGUOUS안전거부유지. 이번수정은수령predicate누락강화이며원문전체조건/권한증명·외부현행성·실제penaltyPASS를의미하지않음.
 
 - 2026-10-14 新 official16⑦ readonly13680/a70d3d 조건slot빈결과(actions통보·이행·요구/subject協의기관장/numeric15일/REQUIRED/AMBIGUOUS) 확인; 일반법제도불이익으로확대·분기강도합성없음. 수령과거조건 generic RED45856 2FAIL(조건빈결과·수령삭제semanticSUPPORTED)→bounded 을/를+[제출]받았을때 전체predicate·목적어직접보존/기존받은조건·ambiguityguard불변/한정리뷰직접C/I없음/집중30661진행중. 현행성외부검증·제품전체검증·commit배포아직없음/새외부평가없음/penalty實PASS아님.

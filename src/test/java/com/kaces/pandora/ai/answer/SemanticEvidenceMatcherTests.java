@@ -12,6 +12,17 @@ class SemanticEvidenceMatcherTests {
 	private final KoreanEvidenceAtomParser parser = new KoreanEvidenceAtomParser();
 	private final SemanticEvidenceMatcher matcher = new SemanticEvidenceMatcher();
 	@Test
+	void negativePastConditionCannotNegateItsPositiveConsequence() {
+		String source = "자료를 제출하지 않은 경우 기관은 해당 사업의 사전협의 검토결과 및 후속 처리결과를 통보한다.";
+		var evidence = matcher.index(List.of(ground(source)));
+		assertThat(matcher.match(parser.parse(source), evidence).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(parser.parse(source.replace("통보한다", "통보하지 않는다")), evidence).status())
+			.isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(parser.parse("기관은 해당 사업의 사전협의 검토결과 및 후속 처리결과를 통보한다."), evidence).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+	@Test
 	void pastReceiptTimeCannotBeRemovedFromTheConsequence() {
 		String source = "자료를 제출받았을 때 기관은 결과를 통보한다.";
 		var evidence = matcher.index(List.of(ground(source)));

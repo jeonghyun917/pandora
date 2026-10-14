@@ -73,10 +73,11 @@ public class KoreanEvidenceAtomParser {
 		"(?:^|[.!?;]\\s*)([^.!?;]{2,240}?에\\s*해당)(?:하면|하는\\s*경우)(?![\\p{IsHangul}A-Za-z0-9])"
 	);
 	private static final Pattern NEGATIVE_ANTECEDENT = Pattern.compile(
-		"(?:^|[.!?;]\\s*)([^.!?;]{2,240}?(?:하지\\s*않|안\\s*하))(?:으면|면)(?=\\s|[,，]|$)"
+		"(?:^|[.!?;]\\s*)([^.!?;]{2,240}?(?:하지\\s*않|안\\s*하))"
+			+ "(?:으면|면|은\\s+경우(?:에는|에|만)?)(?=\\s|[,，]|$)"
 	);
 	private static final Pattern NEGATIVE_ANTECEDENT_MARKER = Pattern.compile(
-		"(?:하지\\s*않으면|안\\s*하면)(?=\\s|[,，]|$)"
+		"(?:하지\\s*않(?:으면|은\\s+경우(?:에는|에|만)?)|안\\s*하면)(?=\\s|[,，]|$)"
 	);
 	private static final Pattern COMPOUND_OR_CONDITIONAL_CONCLUSION = Pattern.compile(
 		"(?:하고|하며|하되|하지만|이고|이며|거나|또는|혹은|그리고|또한|경우|하면|되면|이면|라면|않으면)"

@@ -8,6 +8,16 @@ import org.junit.jupiter.api.Test;
 
 class KoreanEvidenceAtomParserTests {
 	@Test
+	void negativePastCaseRetainsItsPremiseButProjectsOnlyTheExplicitConsequence() {
+		var parser = new KoreanEvidenceAtomParser();
+		var atom = parser.parse("자료를 제출하지 않은 경우 기관은 사유를 통보한다.");
+		assertThat(atom.conditions()).contains("자료를제출하지않");
+		assertThat(atom.actions()).containsExactly("통보");
+		assertThat(atom.polarity()).isEqualTo(EvidenceAtom.Polarity.POSITIVE);
+		assertThat(parser.parse("자료를 제출하지 않은 경우 기관은 등록하고 사업자는 통보한다.").parseStatus())
+			.isEqualTo(EvidenceAtom.ParseStatus.AMBIGUOUS);
+	}
+	@Test
 	void pastReceiptTimePreservesTheReceivedObject() {
 		var parser = new KoreanEvidenceAtomParser();
 		assertThat(parser.parse("자료를 제출받았을 때 기관은 결과를 통보한다.").conditions())
