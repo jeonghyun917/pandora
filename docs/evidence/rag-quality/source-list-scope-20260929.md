@@ -1,5 +1,13 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-14 格式부정전제 집중65508exit0/범위리뷰직접C/I없음/전체90594exit0/XML1644 failures0 errors0 제외19/diff-check0. readonlycc1f05 actual13⑦ 제6항보완요청·불구하고·신청기관장·미보완전제전체 condition보존/未知철회deemed결론 AMBIGUOUS安全거부;22②mixedmodal AMBIGUOUS유지. actions아니는남지만미증명원자지원불가/철회→허가대체음성통과/원문효과를새로추론하지않음/최종verifier·datasetoracle불변/외부평가없음/실제penaltyPASS아님.
+
+- 2026-10-14 generic격식부정 RED42990 2FAIL: 하지아니하면全전제누락 및 철회→허가 결론변경 semanticSUPPORTED 재현. 기존NEGATIVE_ANTECEDENT/marker에하지아니하면문법만연결2regex/명시1주체1행위결론projection·240자경계·복합/숫자/모호성가드불변/집중65508진행중. actual13⑦未知된것으로본다結론은미증명/철회action새추론없음/제품미commit미deploy/외부평가없음/실제penaltyPASS아님.
+
+- 2026-10-14 新 official13⑦/22② condition-slot 첫98574는청크첫항marker경계진단(22外조문가능)으로증명미사용→원문제13/22조경계내추출31951exit0. 13⑦ conditions[하지아니]/actions[아니]/COMPLETE·numeric빈결과(제6항요청·미보완전제전체미보존);22② actions실시/요청/반영·REQUIRED·AMBIGUOUS 안전거부유지. generic격식부정전제條件보존/미확인결론거부·철회→허가 결론대체 RED42990 진행중/제품parser미변경/공식2c759b71runtime유지/API없음/外部평가없음/실제penaltyPASS아님.
+
+- 2026-10-14 HEAD2c759b71 pushed/child+parent후보whole-note6줄 전체37512 XML1642f0e0제외19→stage19136exit0→공식deploy38005 KEEPALIVE/PID75336/runtimebcfc060f-88cb-4d4e-a0a3-11ea72bebed4/JAR3b922073ded5d40e42241e0dddf969955f610332e55eb8b9fac6c4b027bee7d2. smoke15a008 confige7b08ced/law211658·rag84248 DB-Q parity/qreadytrue/qfail0/Q15840·main18080불변/이전60946·64984·bc0ecruntime폐기. readonly36252 어근予算/중단/보완8候補→25065 full13/22源文:11138988doc22614v1PASS hashe7ac22f4…408b3은제6항보완요청후미보완→사전협의신청철회조건,11138992v1PASS hash87372c53…0c617은성과분석/필요판단후사업변경요구·규모조정요청. 原質問Judge 둘다no_direct_evidence;一般法제도위반조치로합성금지/DB원문현행성외부확인아님. 다음predicate-slot readonly진행/API·DB쓰기없음/외부평가없음/실제penaltyPASS未완료.
+
 - 2026-10-14 whole-note 보완 child+expanded-direct parent6줄 최종집중4428exit0 XML73f0e0/전체37512exit0 XML1642 failures0 errors0 제외19/범위리뷰직접C/I없음. 읽기전용3231 공식규정 정보시스템/정보화사업관리/지능정보화/전자정부 title + exact 예산조정/사업중단/개선요구/보완요구 후보0(一般제재부재증명아님/최대12·future제외·API/DB쓰기없음). 후보원문보존수정만검증, 질문조건소유/actualpenaltyPASS는미해결/외부평가없음.
 
 - 2026-10-14 expanded-direct 부모후보 whole-note 분해 RED66264 1FAIL→기존direct/evidence-role/parent_context_expanded guard안에서만sourceFragments literal전체보존3줄·一般fragment기존plainatomize유지. 추가delta리뷰직접C/I없음/집중4428진행중/child+parent6줄미commit미deploy/최종검증·숫자·강도·선택한도·API경계불변/실제penaltyPASS미완료/외부평가없음.
