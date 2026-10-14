@@ -1,5 +1,17 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-14 주석소유 전체3936 exit0/XML1638 failures0 errors0 제외19/diff-check0 확인. 原文주석참조atom의 단독지원 및 동일ground 축약표현우회를 차단, 이미증명된절차항목전체각주지원과비주석원문지원 유지. 의미검증·control 양쪽 실제87811 축약문거부 확인/새외부평가없음/실제penaltyPASS미완료/질문최종정렬가드불변. 검증커밋·공식배포를이어감.
+
+- 2026-10-14 주석소유 집중23757 exit0(Relation311 failures0/errors0 및Semantic·Atomizer 포함)/readonlyab04e6 실제87811 축약예정문 control+semantic 양쪽INSUFFICIENT로변경·강제개선요구도거부유지. 주석전체 소유증명이없는 atom만제외·provenclosedprocedure whole-note회귀유지/범위재검토직접C/I없음. 전체3936 진행중/미commit·미deploy/현재096e1eaf공식runtime유지/새외부평가없음/실제penaltyPASS아님.
+
+- 2026-10-14 shortened-rendering 주석우회 RED62659 1FAIL→동일ground child/snippet/parent의 미증명inline참조atom을 각matcher정규화로수집·원문/marker삭제동일표현 색인제외; provenclosedprocedure literal-only 전체note지원은수집제외. 집중74116 인스턴스메서드참조 컴파일오류(평가실패아님)→this::normalize/this::canonical 수정/집중23757 진행중. 범위재검토 이전Important해결/직접추가C/I없음. 新주석경계미commit·미deploy/현재공식096e1eaf런타임유지/실제penaltyPASS아님/최종verifier·주체·강도·숫자불변.
+
+- 2026-10-14 종료30288 artifact selected8 분석498bd7:84722·84723未선택,87811(doc20)rank2·84718rank3·87043rank1. readonly27573 87811v4PASS/hash2244b350cb21ed91673515957aada6501f0a5ca73f9d5f064a7c99d7512919fb: 시스템운영·유지보수 사례/기관SW사업공고 법령준수권고/향후RFP반영 재확인* 및 미준수항목2차권고예정 서식. 66242 주석참조와note를생략한축약예정문 control+semanticSUPPORTED 관찰(증명으로미사용); 강제일반개선요구주장 양matcherINSUFFICIENT. generic주석조건삭제 RED11489 1FAIL→nonliteral inline참조atom 단독색인 차단6줄/51321exit0. 리뷰Important 동일ground shortenedchild/snippet이fullparent주석우회 가능, 추가62659 RED진행중. 現HEAD096e1eaf배포유지/후속주석경계미commit미deploy/외부평가없음/최종verifier불변/실제penaltyPASS未達.
+
+- 2026-10-14 동일ACTIVE doc6 정보시스템범위 정의 readonly88691 exit0 최대12후보 중84722v4PASS/hashac50ba02ceb486c30e0e61df57622b7ccb6046e1371b95afbe33b9d5c5f06642에 대상SW사업예시표(정보시스템개발/유지관리) 발견. 83137exit0 scope PARTIAL/actions없음/예시labeltrue/보편정보화시스템정의false. 90752exit0 원문전체grounds 유지한 조건부 개발서비스→대상사업 주장 및 모든정보화시스템→SW사업 주장은 둘다INSUFFICIENT. 예시표를 보편대상·법제도미준수결과로 확대하지 않음/제품변경없음/API·DB쓰기없음/새외부평가없음/실제penaltyPASS미완료. 다음 실제선택근거에범위표 포함여부를 종료artifact 분석만으로확인(평가재생금지).
+
+- 2026-10-14 HEAD096e1eaf pushed/전체69676 XML1636f0e0제외19→stage69246exit0→공식deploy45953 KEEPALIVE/PID77892/runtime983404ee-b1fd-4bd8-8264-b53c026032a0/JAR e7cc638c4cfb768852f5915ff20d5a5f42f0ebb7caf9794fdce7279b30eafda9. smoke50cf94 confige7b08ced/law211658·rag84248 DB-Q parity/qreadytrue/qfail0/Q15840·main·18080불변. 이전36487·51376·2fcddruntime폐기. 다음동일ACTIVE doc6 원문의 정보화시스템/정보시스템 명시범위정의 검색88691 진행중(API없음/DB쓰기없음/최대12·3초); title/절차인접으로membership상속금지/실제penaltyPASS未達/새외부평가없음.
+
 - 2026-10-14 후보선택 수정 전체69676 exit0/XML1636 failures0 errors0 제외19/diff-check0/범위 재검토 직접 Critical·Important 없음(incidental 법제도변경·critical concept은 topic 선행제외 확인). 실제 penalty/SNS 추가 평가 없음, 최종조건정렬·원문조건·제재강도 불변. 검증 커밋/공식배포를 이어감.
 
 - 2026-10-14 후보선택 집중37407 exit1/97개 중 기존 양성2FAIL 확인: relevance 일괄필수 경계가 미준수항목 재권고와 명시조건 개선권고도 제외. 본문의 명시 문법연결만 예외로 제한 후20734 exit0/97PASS. 리뷰 제안 incidental-law-change 음성103 추가9608 exit0(기존 topicAligned=false 선행필터가 이미 거부하므로 RED 아님); guard 삭제/완화 없음. readonly25373 실제84723·87043 directtrue/relevant1 유지·87468 directfalse/topic0 제외. readonlyaf6035 법령목적+별도운영품질11079298 및 사전협의제시조건11138991 모두 no_direct_evidence/selected빈결과: 일반법제도미준수로 coverage승격 차단. 전체회귀 진행중/미commit·미deploy/새외부평가없음/penalty實PASS아님.

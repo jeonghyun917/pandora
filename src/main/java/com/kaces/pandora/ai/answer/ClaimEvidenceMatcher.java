@@ -806,6 +806,9 @@ public class ClaimEvidenceMatcher {
 				.filter(ClaimEvidenceAtomizer.SourceFragment::literalOnly)
 				.map(fragment -> normalize(fragment.text())).distinct().toList();
 			addDocumentTitleEvidence(unique, ground.number(), ground.title(), anchorContext);
+			List<String> unownedAnnotations = List.of(String.valueOf(ground.matchedChildText()),
+				String.valueOf(ground.snippet()), String.valueOf(ground.parentContextText())).stream()
+				.flatMap(source -> atomizer.unownedAnnotatedItems(source).stream()).map(this::normalize).distinct().toList();
 			addEvidenceFragments(
 				unique,
 				ground.number(),
@@ -814,7 +817,7 @@ public class ClaimEvidenceMatcher {
 				anchorContext,
 				denseStructuralContext,
 				sourceBindings,
-				literalItems
+				literalItems, unownedAnnotations
 			);
 			addEvidenceFragments(
 				unique,
@@ -824,7 +827,7 @@ public class ClaimEvidenceMatcher {
 				anchorContext,
 				denseStructuralContext,
 				sourceBindings,
-				literalItems
+				literalItems, unownedAnnotations
 			);
 			addEvidenceFragments(
 				unique,
@@ -834,7 +837,7 @@ public class ClaimEvidenceMatcher {
 				anchorContext,
 				denseStructuralContext,
 				sourceBindings,
-				literalItems
+				literalItems, unownedAnnotations
 			);
 		}
 		return List.copyOf(unique.values());
@@ -878,7 +881,7 @@ public class ClaimEvidenceMatcher {
 		String anchorContext,
 		boolean denseStructuralContext,
 		List<ClaimEvidenceAtomizer.SourceLinkedDuty> sourceBindings,
-		List<String> literalItems
+		List<String> literalItems, List<String> unownedAnnotations
 	) {
 		if (text == null || text.isBlank()) {
 			return;
@@ -892,6 +895,7 @@ public class ClaimEvidenceMatcher {
 		String contiguousLiteralText = sourceText.replaceAll("\\s+", " ").trim();
 		for (String fragment : fragments) {
 			String cleaned = fragment.replaceAll("\\s+", " ").trim();
+			if (ClaimEvidenceAtomizer.hasUnownedInlineAnnotation(cleaned, sourceFragment.literalOnly())) { continue; }
 			List<ClaimEvidenceAtomizer.SourceLinkedDuty> owned = sourceBindings.stream()
 				.filter(binding -> normalize(binding.atom().sourceText()).equals(normalize(cleaned)))
 				.distinct().toList();
@@ -901,6 +905,7 @@ public class ClaimEvidenceMatcher {
 				continue;
 			}
 			String normalizedText = normalize(cleaned);
+			if (unownedAnnotations.contains(normalizedText)) { continue; }
 			if (literalItems.stream().anyMatch(item -> item.contains(normalizedText) && !item.equals(normalizedText))) {
 				continue;
 			}

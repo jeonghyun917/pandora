@@ -165,6 +165,16 @@ final class ClaimEvidenceAtomizer {
 
 	record SourceFragment(String text, boolean literalOnly) { }
 
+	static boolean hasUnownedInlineAnnotation(String text, boolean literalOnly) {
+		return !literalOnly && Pattern.compile("[\\p{IsHangul}A-Za-z0-9)]\\*").matcher(text).find();
+	}
+
+	List<String> unownedAnnotatedItems(String text) {
+		return sourceFragments(text).stream().filter(fragment -> !fragment.literalOnly())
+			.flatMap(fragment -> atomize(fragment.text()).stream())
+			.filter(item -> hasUnownedInlineAnnotation(item, false)).toList();
+	}
+
 	private boolean safeProcedureLiteralWrap(String body) {
 		if (!body.contains("*")) { return !body.contains("※") && safeLegalWrap(body); }
 		if (body.contains("※") || body.contains("@")) { return false; }

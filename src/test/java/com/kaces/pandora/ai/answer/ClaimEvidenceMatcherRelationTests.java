@@ -9,6 +9,28 @@ class ClaimEvidenceMatcherRelationTests {
 
 	private final ClaimEvidenceMatcher matcher = new ClaimEvidenceMatcher();
 	@Test
+	void annotatedPlannedRemedyCannotDropItsOwnedConditionNote() {
+		String source = "기관은 미준수 항목을 재확인*하여 개선권고할 예정이다.\n"
+			+ "* 사전규격공개 대상인 경우에만 해당한다.";
+		String shortened = "기관은 미준수 항목을 재확인하여 개선권고할 예정이다.";
+		var grounds = List.of(ground(source));
+		assertThat(matcher.match(shortened, grounds).status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		var semantic = new SemanticEvidenceMatcher();
+		assertThat(semantic.match(new KoreanEvidenceAtomParser().parse(shortened), semantic.index(grounds)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+	@Test
+	void shortenedRenderingCannotHideUnprovedAnnotationOwnership() {
+		String source = "기관은 미준수 항목을 재확인*하여 개선권고할 예정이다.\n"
+			+ "* 사전규격공개 대상인 경우에만 해당한다.";
+		String shortened = "기관은 미준수 항목을 재확인하여 개선권고할 예정이다.";
+		var grounds = List.of(groundWithContext(shortened, source));
+		assertThat(matcher.match(shortened, grounds).status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		var semantic = new SemanticEvidenceMatcher();
+		assertThat(semantic.match(new KoreanEvidenceAtomParser().parse(shortened), semantic.index(grounds)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+	@Test
 	void annotatedItemCannotBorrowAnUnownedNote() {
 		String body = "기관은 결과를 등록*하고 처리결과를 통보";
 		String note = "* 온라인 등록이 가능한 경우 온라인으로 제출";

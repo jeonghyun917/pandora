@@ -41,6 +41,9 @@ public class SemanticEvidenceMatcher {
 				.flatMap(source -> atomizer.sourceFragments(source).stream())
 				.filter(ClaimEvidenceAtomizer.SourceFragment::literalOnly)
 				.map(fragment -> canonical(fragment.text())).distinct().toList();
+			List<String> unownedAnnotations = evidenceTexts.stream()
+				.flatMap(source -> atomizer.unownedAnnotatedItems(source).stream())
+				.map(this::canonical).distinct().toList();
 			// A shortened rendering must not hide a restriction owned by the same ground.
 			boolean membershipContextUnrestricted = evidenceTexts.stream()
 				.map(parser::parse)
@@ -49,7 +52,9 @@ public class SemanticEvidenceMatcher {
 				for (ClaimEvidenceAtomizer.SourceFragment fragment : atomizer.sourceFragments(evidence)) {
 					for (EvidenceAtom atom : fragment.literalOnly() ? List.of(parser.parse(fragment.text()))
 						: atomizer.parseSourceAtomsForAlignment(fragment.text(), parser)) {
+						if (ClaimEvidenceAtomizer.hasUnownedInlineAnnotation(atom.sourceText(), fragment.literalOnly())) { continue; }
 						String canonicalText = canonical(atom.sourceText());
+						if (unownedAnnotations.contains(canonicalText)) { continue; }
 						if (literalItems.stream().anyMatch(item -> item.contains(canonicalText) && !item.equals(canonicalText))) {
 							continue;
 						}
