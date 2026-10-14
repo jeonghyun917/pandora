@@ -1,5 +1,11 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-14 전체19694 최종XML1629 failures0 errors0 제외19/diff-check0 확인. source-item note전체보존변경은로컬양matcher증명까지만검증됨/최종answer전체claim不足·penalty實PASS未達 유지.
+
+- 2026-10-14 닫힌절차항목각주전체보존 RED29955 1FAIL→전체note동일literal-only/주석삭제양matcher거부59072exit0; 빈줄주석차용 RED13216 1FAIL→blankgap거부/집중33031exit0/범위리뷰직접C/I없음/전체19694exit0(XML집계별도). 단일inline*·마지막note·연속항목폐쇄만허용/주소·다중note·참조없음·경계넘음거부. readonly14881/50eaae 실제84723④ 각주전체소유조건[의견등록가능,보완,미수용,수용] 유지/control+semanticSUPPORTED; AnswerVerificationService는CLAIM_INSUFFICIENT/질문정렬미평가로안전거부유지(실제평가PASS아님). 다음claim atomization의전체각주분할 경계읽기전용진단; 최종verifier완화·주석삭제·조건상속없음/⑧주소주석거부/새外部평가없음。
+
+- 2026-10-14 HEAD7c3e4bfa72b71e6df0db07df7fd7a6c93727e677 pushed/remoteSHA一致/gitclean(다음test전), 전체83896 XML1627f0e0제외19 재사용→stage21068exit0→공식deploy80947 KEEPALIVE/PID20176/runtime1d862d03-2129-49cf-9795-56e4fde93a4e/JAR4ddb414c5c9978ea1e7cb861c303726f1b65c77352a73cbb6fd6ebddf983e542. smoke1c98f2 confige7b08ced/law211658·rag84248 DB-Qparity/qreadytrue/qfail0/Q15840·main·18080불변;이전72948·93568·f433runtime폐기. readonly31791/98f19e 원문④각주온라인가능조건+대체공문·메일채널/⑧회신예시·주소포함 확인(주소출력없음). 각주삭제금지·본문만완전증명없음. 다음닫힌번호항목의전체소유각주포함exactliteral-only 최소경계설계/원문범위·주석전체보존·주소거부·비연속/새표제/축약거부, generictest29955 진행중/제품아직변경없음/새외부평가없음/penalty實PASS아님.
+
 - 2026-10-14 명사형경우조건 최종focused30117 exit0/재검토직접C/I없음/전체83896 exit0 XML1627 failures0 errors0 제외19/diff-check0. readonlyddc0ac 실제84723④⑧ 수용·미수용조건동시보존/②⑥ 미준수존재조건·발주기관유지; parsePARTIAL/분기전체literal證明·최종정렬은미해결. 조건삭제SUPPORTED오판을거부하는강화이며최종verifier·oracle·dataset·강도변경없음/새外部평가없음/SNS75581실제PASS保존/penalty實PASS아님/holdoutfull未진입.
 
 - 2026-10-14 readonlye48059 실제84723④⑧ 명시수용/미수용의경우 조건slot누락(보완후만남음)/각주·분기semanticCLAIM_PARSE_INCOMPLETE 확인. generic nominalcase parser RED25416 1FAIL(미수용누락), 의미검증 RED26908 1FAIL(조건삭제SUPPORTED)→bounded 명사+의경우 조건보존 최소구현/집중22581 exit0/한정리뷰직접C/I없음. 추가명사 차이의경우 RED4964 1FAIL(canonical조사제거로차누락)→nominal명사normalizeForMatch직접보존/집중30117진행중. 원문분기합성·scope상속·최종verifier변경없음/이후전체·commit未검증/외부평가없음/penaltyPASS아님.

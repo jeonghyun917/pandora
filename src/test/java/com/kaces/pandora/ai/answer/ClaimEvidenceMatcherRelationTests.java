@@ -9,6 +9,36 @@ class ClaimEvidenceMatcherRelationTests {
 
 	private final ClaimEvidenceMatcher matcher = new ClaimEvidenceMatcher();
 	@Test
+	void annotatedItemCannotBorrowAnUnownedNote() {
+		String body = "기관은 결과를 등록*하고 처리결과를 통보";
+		String note = "* 온라인 등록이 가능한 경우 온라인으로 제출";
+		var atomizer = new ClaimEvidenceAtomizer();
+		for (String invalid : List.of(body + "\n\n" + note,
+			body.replace("*", "") + "\n" + note,
+			body + "\n" + note + " user@example.invalid",
+			body + "\n" + note + "\n* 다른 항목 조건")) {
+			String source = "□ 처리절차\n① 접수\n② " + invalid + "\n③ 결과 관리";
+			assertThat(atomizer.sourceFragments(source)).as(invalid)
+				.noneMatch(ClaimEvidenceAtomizer.SourceFragment::literalOnly);
+		}
+	}
+	@Test
+	void closedAnnotatedItemPreservesItsEntireOwnedNote() {
+		String body = "기관의 검토결과 미수용의 경우 사유를 등록*하고, 수용의 경우 계획서 보완 후 공고 추진";
+		String note = "* 온라인 등록이 가능한 경우 온라인으로 제출하고 그 외에는 공문으로 제출";
+		String source = "□ 처리절차\n① 접수\n② " + body + "\n" + note + "\n③ 결과 관리";
+		String literal = body + " " + note;
+		var grounds = List.of(ground(source));
+		var semantic = new SemanticEvidenceMatcher();
+		var parser = new KoreanEvidenceAtomParser();
+		assertThat(matcher.match(literal, grounds).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(semantic.match(parser.parse(literal), semantic.index(grounds)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(body, grounds).status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		assertThat(semantic.match(parser.parse(body), semantic.index(grounds)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+	@Test
 	void shortenedRenderingCannotHideClosedItemConditions() {
 		String tail = "수용여부를 통보하며, 미수용의 경우 그 사유를 1개월 이내 통보";
 		String source = "□ 처리절차\n① 접수\n② 발주기관의 검토결과 수용의 경우 계획서 보완 후 재공고하고 1개월 이내\n"

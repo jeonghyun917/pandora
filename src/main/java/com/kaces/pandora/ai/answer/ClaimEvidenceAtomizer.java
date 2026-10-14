@@ -149,9 +149,8 @@ final class ClaimEvidenceAtomizer {
 				Matcher item = Pattern.compile("(?m)[ \\t]*" + marker + "[ \\t]+([^" + next
 					+ "]{1,1800}?)(?=^[ \\t]*" + next + "[ \\t]+)")
 					.matcher(text).region(cursor, text.length());
-				if (!item.lookingAt() || !safeLegalWrap(item.group(1))) { break; }
+				if (!item.lookingAt() || !safeProcedureLiteralWrap(item.group(1))) { break; }
 				String body = item.group(1).stripTrailing();
-				if (body.contains("*") || body.contains("※")) { break; }
 				if (body.matches("(?s).*\\R.*")) {
 					if (item.start() > copied) { result.add(new SourceFragment(text.substring(copied, item.start()), false)); }
 					result.add(new SourceFragment(body.replaceAll("\\s+", " ").trim(), true));
@@ -165,6 +164,20 @@ final class ClaimEvidenceAtomizer {
 	}
 
 	record SourceFragment(String text, boolean literalOnly) { }
+
+	private boolean safeProcedureLiteralWrap(String body) {
+		if (!body.contains("*")) { return !body.contains("※") && safeLegalWrap(body); }
+		if (body.contains("※") || body.contains("@")) { return false; }
+		String[] lines = body.stripTrailing().split("\\R", -1);
+		if (java.util.Arrays.stream(lines).anyMatch(String::isBlank)) { return false; }
+		if (lines.length < 2 || !lines[lines.length - 1].trim().matches("\\*\\s+[^*①-⑳□○※]{2,300}")) {
+			return false;
+		}
+		String main = String.join("\n", java.util.Arrays.copyOf(lines, lines.length - 1));
+		return main.chars().filter(character -> character == '*').count() == 1
+			&& Pattern.compile("\\S\\*").matcher(main).find()
+			&& safeLegalWrap(main);
+	}
 
 	/** Carry only an explicit source heading over its contiguous numbered list. */
 	List<String> atomizeSource(String text, String chunkTitle) {
