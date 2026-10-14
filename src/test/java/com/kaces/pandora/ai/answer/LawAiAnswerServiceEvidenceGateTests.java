@@ -17,6 +17,24 @@ import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
 	@Test
+	void compliancePenaltyLookupRetainsSourceOwnedPreconsultationConsequences() throws Exception {
+		var consequence = chunk(99008L, "official_doc", "정보화사업 사전협의 안내", "미준수 시 불이익",
+			"전자정부 성과관리 지침에 따라 정보화사업의 발주 현황을 점검한다. 사전협의 절차를 미이행하고 발주를 추진한 사업에 대해 발주 중지 요청 및 사전협의 이행을 권고한다. 이행 권고에도 불구하고 사전협의를 미이행하는 경우 감사기관에 통보한다.");
+		var detection = chunk(99009L, "official_doc", "정보화사업 사전협의 안내", "미준수 점검",
+			"정보화사업 사전협의 절차 미준수 항목을 점검한다.");
+		RagDocumentMapper rag = (RagDocumentMapper) java.lang.reflect.Proxy.newProxyInstance(
+			RagDocumentMapper.class.getClassLoader(), new Class<?>[]{RagDocumentMapper.class},
+			(proxy, method, arguments) -> arguments != null && arguments.length > 1
+				&& arguments[1] instanceof List<?> titles && titles.contains("정보화사업")
+				? List.of(consequence, detection) : List.of());
+		var service = service((LawChunkMapper) null, rag);
+		try {
+			assertThat(findLexicalChunks(service, QuestionSearchPlan.from("정보화사업 법령을 준수하지 않으면 어떤 조치가 있나요?"),
+				List.of("official_doc"), false)).contains(consequence).doesNotContain(detection);
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void bidNoticeRestrictionReasonDoesNotReceiveSanctionPriority() throws Exception {
 		var service = service((LawChunkMapper) null, (RagDocumentMapper) null);
 		try {

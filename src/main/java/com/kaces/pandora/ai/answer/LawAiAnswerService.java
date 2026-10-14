@@ -8202,6 +8202,7 @@ public class LawAiAnswerService {
 				ragTargets,
 				List.of(
 					"정보화사업 보안성 검토",
+					"정보화사업",
 					"보안성 검토 가이드",
 					"공공SW사업 법제도 관리감독",
 					"소프트웨어사업관련 법령준수",
@@ -10810,6 +10811,10 @@ public class LawAiAnswerService {
 		if (text.isBlank()) {
 			return false;
 		}
+		String body = normalizeForMatch(chunk.chunkText());
+		boolean preConsultationConsequence = body.contains("정보화사업") && body.contains("사전협의")
+			&& containsAny(body, "미이행", "미준수", "미반영")
+			&& containsAny(body, "감사", "발주중지", "감점");
 		boolean complianceContext = containsAny(
 			text,
 			"정보화사업보안성검토",
@@ -10852,7 +10857,8 @@ public class LawAiAnswerService {
 		);
 		boolean lowSignalPurpose = containsAny(text, "목적", "적용범위", "정의")
 			&& !containsAny(text, "미준수", "불이익", "제재", "위약금", "입찰참가자격", "개선권고", "보완");
-		return complianceContext && consequenceSignal && !lowSignalPurpose
+		return (complianceContext || preConsultationConsequence)
+			&& (consequenceSignal || preConsultationConsequence) && !lowSignalPurpose
 			&& EvidenceJudge.hasPenaltyConsequenceSignal(chunk.chunkText(), chunk.chunkTitle(), chunk.parentSectionTitle());
 	}
 
