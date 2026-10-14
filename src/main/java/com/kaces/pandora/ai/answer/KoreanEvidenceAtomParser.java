@@ -42,6 +42,11 @@ public class KoreanEvidenceAtomParser {
 	private static final Pattern POST_CONDITION = Pattern.compile(
 		"([\\p{IsHangul}A-Za-z0-9]{2,}?)(?:을|를)?(?:한|한\\s*)?\\s*후"
 	);
+	private static final Pattern NOMINAL_EXISTENCE_CONDITION = Pattern.compile(
+		"(?:^|\\s)((?:[\\p{IsHangul}A-Za-z0-9]{2,}\\s+){0,3}"
+			+ "[\\p{IsHangul}A-Za-z0-9]{0,20}(?:사항|사유|사실)(?:이|가)\\s+"
+			+ "(?:있|없)(?:을\\s+경우(?:에는|에|만)?|으면))(?=\\s|[,，]|$)"
+	);
 	private static final Pattern RECEIPT_TIME_CONDITION = Pattern.compile(
 		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9]{2,}(?:\\s+[\\p{IsHangul}A-Za-z0-9]{2,}){0,3}?(?:을|를)\\s*받은)\\s+(?:때|경우)(?:에는|에|는|만)?(?=\\s|[,，]|$)"
 	);
@@ -115,6 +120,11 @@ public class KoreanEvidenceAtomParser {
 			conditions.add(canonical(conditionMatcher.group(1) + conditionMatcher.group(2)));
 		}
 		conditions.addAll(matches(source, POST_CONDITION, 1));
+		Matcher existence = NOMINAL_EXISTENCE_CONDITION.matcher(source);
+		while (existence.find()) {
+			// Keep existence/absence itself; canonical() strips these endings.
+			conditions.add(KoreanQueryNormalizer.normalizeForMatch(existence.group(1)));
+		}
 		conditions.addAll(matches(source, RECEIPT_TIME_CONDITION, 1));
 		Matcher before = BEFORE_ACTION_CONDITION.matcher(source);
 		while (before.find()) {

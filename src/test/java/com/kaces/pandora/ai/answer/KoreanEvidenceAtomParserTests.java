@@ -7,6 +7,17 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class KoreanEvidenceAtomParserTests {
+	@Test
+	void explicitExistenceConditionPreservesItsWholeNominalPredicate() {
+		var parser = new KoreanEvidenceAtomParser();
+		assertThat(parser.parse("미준수 사항이 있을 경우 기관은 자료를 보완해야 한다.").conditions())
+			.contains("미준수사항이있을경우");
+		assertThat(parser.parse("분쟁 사유가 있으면 기관은 자료를 검토해야 한다.").conditions())
+			.contains("분쟁사유가있으면");
+		assertThat(parser.parse("미준수 사항이 없을 경우 기관은 결과를 통보해야 한다.").conditions())
+			.contains("미준수사항이없을경우").doesNotContain("미준수사항이있을경우");
+		assertThat(parser.parse("기관은 자료를 보완해야 한다.").conditions()).isEmpty();
+	}
 
 	@Test
 	void negativeAntecedentIsPreservedWithoutNegatingItsExplicitDutyConclusion() {
