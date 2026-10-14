@@ -9,6 +9,29 @@ class ClaimEvidenceAtomizerTests {
 
 	private final ClaimEvidenceAtomizer atomizer = new ClaimEvidenceAtomizer();
 	@Test
+	void keepsWrappedConditionalProcedureWithItsReceiptCondition() {
+		String source = "이행 권고를 받은 경우 정해진 절차에 따라 검토를\n"
+			+ "신청하고, 통보받은 검토결과를 계획에 반영한 후 사업을 추진하여야 함";
+		assertThat(atomizer.atomizeSource(source, "절차"))
+			.contains("이행 권고를 받은 경우 정해진 절차에 따라 검토를 신청하고, 통보받은 검토결과를 계획에 반영한 후 사업을 추진하여야 함");
+		for (List<String> atoms : List.of(atomizer.atomize(source), atomizer.atomizeSourceForAlignment(source))) {
+			assertThat(atoms).noneSatisfy(atom -> assertThat(atom)
+				.contains("추진하여야 함").doesNotContain("이행 권고를 받은 경우"));
+		}
+	}
+
+	@Test
+	void doesNotJoinConditionalProcedureAcrossSourceBoundaries() {
+		for (String boundary : List.of("\n\n", "\n□ 다른 절차\n", "\n-\n", "\n다만, ")) {
+			String source = "이행 권고를 받은 경우 정해진 절차에 따라 검토를" + boundary
+				+ "신청하고, 통보받은 검토결과를 계획에 반영한 후 사업을 추진하여야 함";
+			assertThat(atomizer.atomizeSource(source, "절차"))
+				.noneSatisfy(atom -> assertThat(atom).contains("이행 권고를 받은 경우", "추진하여야 함"));
+		}
+		assertThat(atomizer.atomizeSource("이행 권고를 받은 경우 정해진 절차에 따라 검토를\n다른 기관은 결과를 공개하여야 함", "절차"))
+			.noneSatisfy(atom -> assertThat(atom).contains("이행 권고를 받은 경우", "공개하여야 함"));
+	}
+	@Test
 	void closedLegalParagraphKeepsPrintedMultiLineAuthorityTogether() {
 		String source = "제7조(준수 여부의 확인)\n① 장관은 국가기관등의 장이 소프트웨어\n"
 			+ "사업을 추진하는 경우 법령 준수 여부를 확인하고 그 결과를\n공개할 수 있다.\n② 장관은 위반사항을 확인한 경우 개선을 권고할 수 있다.";

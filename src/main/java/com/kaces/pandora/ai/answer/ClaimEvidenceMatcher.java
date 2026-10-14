@@ -935,6 +935,11 @@ public class ClaimEvidenceMatcher {
 				? Relation.COMPATIBLE
 				: Relation.NOT_ENTAILED;
 		}
+		// A later "after" condition cannot replace an earlier explicit "in case" trigger.
+		if (evidence.conditional() && evidence.normalizedText().contains("받은경우")
+			&& !conditionAnchorsCovered(evidence.requiredConditionAnchors(), claim.normalizedText())) {
+			return Relation.NOT_ENTAILED;
+		}
 		boolean equivalentProposition = exactProposition
 			|| canonicalAssertiveEndingText(claim.normalizedText())
 				.equals(canonicalAssertiveEndingText(evidence.normalizedText()))

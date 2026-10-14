@@ -8,6 +8,19 @@ import org.junit.jupiter.api.Test;
 class ClaimEvidenceMatcherRelationTests {
 
 	private final ClaimEvidenceMatcher matcher = new ClaimEvidenceMatcher();
+	@Test
+	void wrappedReceiptProcedureCannotLoseItsCondition() {
+		String continuation = "신청하고, 통보받은 검토결과를 계획에 반영한 후 사업을 추진하여야 함";
+		String source = "이행 권고를 받은 경우 정해진 절차에 따라 검토를\n" + continuation;
+		var grounds = List.of(ground(source));
+		assertThat(matcher.match(source.replace('\n', ' '), grounds).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(continuation, grounds).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		var semantic = new SemanticEvidenceMatcher();
+		assertThat(semantic.match(new KoreanEvidenceAtomParser().parse(continuation), semantic.index(grounds)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
 
 	@Test
 	void qualifiedSingleSyllableActorCannotBeOmittedOrChanged() {

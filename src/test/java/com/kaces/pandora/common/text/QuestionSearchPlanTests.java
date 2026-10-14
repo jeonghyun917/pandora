@@ -6,6 +6,12 @@ import org.junit.jupiter.api.Test;
 
 class QuestionSearchPlanTests {
 	@Test
+	void penaltyFocusPreservesEachSourceConditionAndAuthority() {
+		assertThat(join(QuestionSearchPlan.from("계약 위반 시 어떤 조치가 있나요?").answerFocusInstructions()))
+			.contains("원문 조건과 권한 주체", "일반적인 총괄 결론", "원문에 없는 제출 의무");
+	}
+
+	@Test
 	void genericObligationDoesNotRequirePublicDataProvisionEvidence() {
 		for (String question : java.util.List.of("계약 의무를 안하면 어떤 불이익?", "운영 기준을 반드시 준수해야 하나요?")) {
 			assertThat(QuestionSearchPlan.from(question).profile().directEvidenceGroups())

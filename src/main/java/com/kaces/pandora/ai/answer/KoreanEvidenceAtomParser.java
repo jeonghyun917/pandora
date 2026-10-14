@@ -43,7 +43,7 @@ public class KoreanEvidenceAtomParser {
 		"([\\p{IsHangul}A-Za-z0-9]{2,}?)(?:을|를)?(?:한|한\\s*)?\\s*후"
 	);
 	private static final Pattern RECEIPT_TIME_CONDITION = Pattern.compile(
-		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9]{2,}(?:\\s+[\\p{IsHangul}A-Za-z0-9]{2,}){0,3}?(?:을|를)\\s*받은)\\s+때(?:에는|에|만)?(?=\\s|[,，]|$)"
+		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9]{2,}(?:\\s+[\\p{IsHangul}A-Za-z0-9]{2,}){0,3}?(?:을|를)\\s*받은)\\s+(?:때|경우)(?:에는|에|는|만)?(?=\\s|[,，]|$)"
 	);
 	private static final Pattern BEFORE_ACTION_CONDITION = Pattern.compile(
 		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9]{2,}?)\\s+전(까지)?(?:에는|에)?(?=\\s|[,.!?]|$)"

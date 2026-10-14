@@ -142,7 +142,7 @@ final class ClaimEvidenceAtomizer {
 			text = joinLiteralNominalScopeHeading(text);
 			text = joinClosedLegalFirstParagraph(text);
 			text = text.replaceAll("([,，])[ \\t]*\\R[ \\t]*(?![①-⑳•‣□○※*∙]|\\d{1,2}[.)])(?=\\S)", "$1 ");
-			text = joinWrappedSourceSentencePairs(text);
+			text = joinWrappedSourceSentencePairs(text, false);
 		}
 		if (text == null || chunkTitle == null) {
 			return atomize(text);
@@ -317,14 +317,25 @@ final class ClaimEvidenceAtomizer {
 		return true;
 	}
 
-	private String joinWrappedSourceSentencePairs(String text) {
+	private String joinWrappedSourceSentencePairs(String text, boolean conditionalOnly) {
 		String[] lines = text.split("\\R", -1);
 		List<String> joined = new ArrayList<>();
 		for (int index = 0; index < lines.length; index++) {
 			String left = lines[index].trim();
 			if (index + 1 < lines.length) {
 				String right = lines[index + 1].trim();
+				// A conditional procedure printed across two lines is still one literal clause.
+				// Join only an unfinished object into a verb-led nominal-ending continuation.
 				if (!sourceContinuationBoundary(left) && !sourceContinuationBoundary(right)
+					&& !hasCompleteAssertion(left)
+					&& left.matches(".+\\s경우(?:에는|에|는)?\\s.+(?:을|를)$")
+					&& right.matches("[가-힣]{2,}(?:하고|하여)(?:[,，]\\s*|\\s+).*(?:하여야|해야)\\s*함[.!?]?$")
+					&& explicitSubjects(right, true).isEmpty()) {
+					joined.add(left + " " + right);
+					index++;
+					continue;
+				}
+				if (!conditionalOnly && !sourceContinuationBoundary(left) && !sourceContinuationBoundary(right)
 					&& !left.matches(".*[.!?]$") && !hasCompleteAssertion(left)
 					&& !explicitSubjects(left, false).isEmpty()
 					&& explicitSubjects(right, true).isEmpty()
@@ -351,6 +362,7 @@ final class ClaimEvidenceAtomizer {
 		if (text == null || text.isBlank()) {
 			return List.of();
 		}
+		text = joinWrappedSourceSentencePairs(text, true);
 		Set<String> atoms = new LinkedHashSet<>();
 		for (String structural : STRUCTURAL_BOUNDARY.split(text.replace('\r', '\n'))) {
 			String deheaded = stripRepeatedOcrPageHeading(structural);
