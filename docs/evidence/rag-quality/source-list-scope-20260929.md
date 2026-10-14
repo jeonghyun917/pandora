@@ -1,5 +1,13 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-14 whole-note 보완 child+expanded-direct parent6줄 최종집중4428exit0 XML73f0e0/전체37512exit0 XML1642 failures0 errors0 제외19/범위리뷰직접C/I없음. 읽기전용3231 공식규정 정보시스템/정보화사업관리/지능정보화/전자정부 title + exact 예산조정/사업중단/개선요구/보완요구 후보0(一般제재부재증명아님/최대12·future제외·API/DB쓰기없음). 후보원문보존수정만검증, 질문조건소유/actualpenaltyPASS는미해결/외부평가없음.
+
+- 2026-10-14 expanded-direct 부모후보 whole-note 분해 RED66264 1FAIL→기존direct/evidence-role/parent_context_expanded guard안에서만sourceFragments literal전체보존3줄·一般fragment기존plainatomize유지. 추가delta리뷰직접C/I없음/집중4428진행중/child+parent6줄미commit미deploy/최종검증·숫자·강도·선택한도·API경계불변/실제penaltyPASS미완료/외부평가없음.
+
+- 2026-10-14 whole-note보완후보 전체25114exit0/XML1641f0e0제외19/diff-check0 확인. readonly38955 후보29개/whole-note있음이나 원질문 selectSupportedAlignedAtoms selected0/whole-note선택false/初alignment NOT_EVALUATED_CLAIM_INSUFFICIENT 유지(API없음/rewriterthrowguard). 다음명시direct parent_context_expanded후보도whole-note분해경계확인 genericRED66264진행중/제품child3줄미commit미deploy/현재bfd1e9f2공식runtime유지/외부평가없음/실제penaltyPASS아님.
+
+- 2026-10-14 실제87811 보완후보 경계 readonly27674exit0 fallback30개/whole-note없음/관련본문·note2조각 확인(진단javac2995e3 abstractrewriter 타입오류→수정/API호출불가능throwguard/평가실패아님). genericRED92760 1FAIL→fallbackCandidateAtoms sourceFragments literal-only전체유지3줄/집중22801exit0 XML72f0e0/범위리뷰직접C/I없음. readonly242d55 후보29개/whole-note존재/관련1조각 확인. 非literal원문기존atomizeSource·후보순서·한도·최종검증·API경계불변/전체25114진행중/미commit미deploy/실제penaltyPASS아님/외부평가없음.
+
 - 2026-10-14 제품bfd1e9f2d561a350aba56afe820a53da5f26f329 pushed/전체11249 XML1640f0e0제외19 재사용. Git object쓰기경고뒤커밋파일3개/원격SHA일치/gitclean d3197a확인. stage40814exit0→공식deploy60946 KEEPALIVE/PID64984/runtimebc0ec2c8-547e-48f8-a247-c8fc49ce64e3/JARc7372624e1f27868e7d7dd855174f65b63f327241083e6c6e1ea2d808e36ed36. 이전62884·21616·f72f6runtime폐기/Q15840·main18080불변. 실제87811 whole-note 양matcherSUPPORTED/unsupported0은원문전체인용증명뿐, 원질문MISSING_CONDITION+DIRECT_CONCLUSION未해소. 원문84722예시보편화·단계순서조건상속·예정권고의강제개선요구변환 금지. SNS75581實PASS 유지/penalty30288實FAIL 재생없음/새외부평가없음/holdoutfull未진입/100%未완료. 다음조건부source-owned 연결은기존가드를보존하는원문직접연결만증명, 상태기록반복/중복회귀/근거없는외부평가재시도금지.
 
 - 2026-10-14 명시※whole-note 全体11249exit0/XML1640 failures0 errors0 제외19/diff-check0/범위리뷰직접C/I없음. 실제87811 whole-note readonly35859exit0 control+semanticSUPPORTED/unsupported빈결과, 원질문 alignment MISSING_CONDITION(CONDITION,DIRECT_CONCLUSION) 유지. 조건보존원문인용까지만증명/일반미준수개선요구로확대없음/새외부평가없음/penalty實PASS未達. 검증커밋·배포를이어감.

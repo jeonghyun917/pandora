@@ -702,7 +702,9 @@ public class GroundedAnswerRepairService {
 		List<CandidateAtom> fallback = new ArrayList<>();
 		for (int groundIndex = 0; groundIndex < grounds.size(); groundIndex++) {
 			LawAiAnswerGround ground = grounds.get(groundIndex);
-			List<String> atoms = atomizer.atomizeSource(matchedChildText(ground), ground.chunkTitle());
+			List<String> atoms = atomizer.sourceFragments(matchedChildText(ground)).stream()
+				.flatMap(fragment -> fragment.literalOnly() ? java.util.stream.Stream.of(fragment.text())
+					: atomizer.atomizeSource(fragment.text(), ground.chunkTitle()).stream()).toList();
 			for (int atomIndex = 0; atomIndex < atoms.size(); atomIndex++) {
 				fallback.add(new CandidateAtom(groundIndex, atomIndex, atoms.get(atomIndex)));
 			}
@@ -727,7 +729,9 @@ public class GroundedAnswerRepairService {
 				|| ground.parentContextText().isBlank()) {
 				continue;
 			}
-			List<String> parentAtoms = atomize(ground.parentContextText());
+			List<String> parentAtoms = atomizer.sourceFragments(ground.parentContextText()).stream()
+				.flatMap(fragment -> fragment.literalOnly() ? java.util.stream.Stream.of(fragment.text())
+					: atomize(fragment.text()).stream()).toList();
 			for (int atomIndex = 0; atomIndex < parentAtoms.size(); atomIndex++) {
 				candidates.add(new CandidateAtom(
 					groundIndex,

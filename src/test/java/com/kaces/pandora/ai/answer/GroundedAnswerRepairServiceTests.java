@@ -15,6 +15,44 @@ import org.junit.jupiter.api.Test;
 
 class GroundedAnswerRepairServiceTests {
 	@Test
+	void expandedDirectParentCandidatesKeepTheirWholeOwnedAnnotation() throws Exception {
+		String body = "향후 입찰공고시 반영여부를 재확인*하여 미준수 항목 개선권고 예정";
+		String note = "* (사전규격공개 미적용 권고사항, 신규 미준수 법령사항 등)";
+		String parent = "기관은 자료를 제출한다.\n※\n" + body + "\n" + note + "\n□ 다음 항목";
+		var service = new GroundedAnswerRepairService(realVerificationService(), new GroundedAnswerRewriter() {
+			@Override public String rewrite(String question, List<String> atoms) { throw new AssertionError("Candidate inspection must not rewrite"); }
+		});
+		var method = GroundedAnswerRepairService.class.getDeclaredMethod("configuredCoverageCandidateAtoms", List.class, List.class);
+		method.setAccessible(true);
+		var candidates = (List<?>) method.invoke(service, List.of(ground(1, "자료 제출 안내", "법령준수 가이드", parent)), List.of());
+		List<String> texts = new ArrayList<>();
+		for (Object candidate : candidates) {
+			var accessor = candidate.getClass().getDeclaredMethod("text");accessor.setAccessible(true);
+			texts.add((String) accessor.invoke(candidate));
+		}
+		assertThat(texts).contains("※ " + body + " " + note, "기관은 자료를 제출한다.");
+		assertThat(texts).doesNotContain(body, note);
+	}
+	@Test
+	void repairCandidatesPreserveTheWholeOwnedAnnotationInsteadOfItsParts() throws Exception {
+		String body = "향후 입찰공고시 반영여부를 재확인*하여 미준수 항목 개선권고 예정";
+		String note = "* (사전규격공개 미적용 권고사항, 신규 미준수 법령사항 등)";
+		String source = "기관은 자료를 제출한다.\n※\n" + body + "\n" + note + "\n□ 다음 항목";
+		var service = new GroundedAnswerRepairService(realVerificationService(), new GroundedAnswerRewriter() {
+			@Override public String rewrite(String question, List<String> atoms) { throw new AssertionError("Candidate inspection must not rewrite"); }
+		});
+		var method = GroundedAnswerRepairService.class.getDeclaredMethod("fallbackCandidateAtoms", List.class);
+		method.setAccessible(true);
+		var candidates = (List<?>) method.invoke(service, List.of(ground(1, source, "법령준수 가이드", null)));
+		List<String> texts = new ArrayList<>();
+		for (Object candidate : candidates) {
+			var accessor = candidate.getClass().getDeclaredMethod("text");accessor.setAccessible(true);
+			texts.add((String) accessor.invoke(candidate));
+		}
+		assertThat(texts).contains("※ " + body + " " + note, "기관은 자료를 제출한다.");
+		assertThat(texts).doesNotContain(body, note);
+	}
+	@Test
 	void conditionalRepairRetainsProcedureFromClosedSourceOwnedParagraph() {
 		String scope = "적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)";
 		String source = "제25조(과업내용의 확정 시기 및 기준 등)\n"
