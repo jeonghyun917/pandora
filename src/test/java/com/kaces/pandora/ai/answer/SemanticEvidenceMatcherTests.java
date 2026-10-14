@@ -12,6 +12,19 @@ class SemanticEvidenceMatcherTests {
 	private final KoreanEvidenceAtomParser parser = new KoreanEvidenceAtomParser();
 	private final SemanticEvidenceMatcher matcher = new SemanticEvidenceMatcher();
 	@Test
+	void nominalPastConditionCannotBorrowAnotherBusinessScope() {
+		String source = "지역사업 기준을 미준수한 경우 관리기관은 보완을 권고할 수 있다.";
+		var evidence = matcher.index(List.of(ground(source)));
+		assertThat(matcher.match(parser.parse(source), evidence).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(parser.parse(source.replace("지역사업", "중앙사업")), evidence).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		assertThat(matcher.match(parser.parse(source.replace("미준수한", "준수한")), evidence).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		assertThat(matcher.match(parser.parse(source.replace("권고할 수 있다", "요구하여야 한다")), evidence).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+	@Test
 	void formalNegativePremiseCannotSubstituteADifferentDeemedConsequence() {
 		String source = "기관이 점검을 하지 아니하면 해당 신청이 철회된 것으로 본다.";
 		var evidence = matcher.index(List.of(ground(source)));

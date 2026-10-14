@@ -1,5 +1,11 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-15 조건원문범위4줄 최종전체76355 exit0/surefire1644 failures0 errors0 제외19/집중35661 220PASS/diff-check0. 원문앞조건·괄호차용막음·동일조건동일원문지원/사업범위교체·긍정조건대체·권고강화거부. 자체범위리뷰: 조건집합만추가보존, 기존SOURCE_CONDITION_NOT_PRESERVED/CLAIM_CONDITION_NOT_ESTABLISHED 양방향 exact소유가드·주체·숫자·강도·최종정렬불변. 실제84723 readonly817a96에서교차조건제거확인/질문membership未증명. 새외부평가없음/실제penalty未PASS/holdoutfull未진입. 검증커밋을진행하되 평가통과로간주하지않음.
+
+- 2026-10-15 nominal 전제범위최소경계 집중31631 219PASS/중간전체10862 exit0(surefire1643 f0e0 제외19), 실제84723 readonlya05589에서leading past-case가앞존재조건을넘어뒤괄호가능조건까지포함하는추가차용발견. generic fixture끝괄호첫23358·30267는차용재현안됨→원문형후속채널문구보존15dfbd/RED65657 1FAIL로확인. 첫조건(경우/하면/되면/으면)·괄호를넘지않는regex1줄제한→35661 220PASS/readonly817a96 exit0 실제②교차조건제거·미준수존재조건/발주기관recipient·⑧1개월보존. 조건전체보존4줄·최종verifier·동치판정·API·oracle·dataset불변. 최종전체진행/미commit미deploy/실제penalty未PASS/원문미준수항목의법제도기준참조·범위증명은미해결.
+
+- 2026-10-15 일반조건 source-scope 진단4f8484/1f69c6 exit0: `준수하지 않으면`은명시주체없으면AMBIGUOUS, 주체명시시COMPLETE/동일원문SUPPORTED·긍정조건/권고→요구는INSUFFICIENT. 별도`미준수한 경우` nominal조건은앞선사업범위가누락됨. parser RED57226 1FAIL→leading past-case 조건 전체원문을추가보존4줄/집중61300 161PASS. 범위차용 음성 RED78957 1FAIL(중앙사업으로바꿔도SUPPORTED)→보존한줄복구/집중31631 진행중. 최종정렬·oracle·dataset·API경계미변경/동의어동치허용없음/실제penalty未PASS/미commit미deploy. 제품은일반적인조건원문보존만이며 특정질문·source ID 하드코딩없음.
+
 - 2026-10-15 독립 조건문 진단233245 exit0/API·DB호출0: 일반fixture `지역사업 기준 준수안하면 어떤 조치?`의conditionGroups=[지역사업,기준,준수안하면]. 동일지역사업·기준을보존한 `미준수한 경우`와 `준수하지 않으면` 양표현 모두missingLiteralAnchors=[준수안하면]. 현AnswerQuestionAlignmentVerifier.conditionGroups는질문원문token을모아candidate조건에서allMatch contains를요구함. 의미부정동치가자동정렬되지않는 별도경계를확인했지만, source범위·주체·강도증명없이동의어완화/질문token삽입으로통과금지; 최종verifier제품미변경. throwaway최초타입명오류37fd34→정정0e55d5, 출력encoding JVM옵션분리5e6399→정정233245(품질평가재시도아님). 새외부평가없음/penalty未PASS. 다음source-owned 의미전제와 최종literal정렬의 양립가능성검토; 원문상승격·전제삭제금지.
 
 - 2026-10-15 공식status1a4458 및 포트365534에서8080/6333 리스너 없음 확인. 검증JAR SHA2aa39b14…fb11e 그대로 공식deploy7820 KEEPALIVE/PID23980/runtimee00e213a-aee6-4a6d-a282-07cf5b792ac4 복구; 공식start-qdrant45368 KEEPALIVE/PID13672. 새smoke9c491d/a1bc44: lawDB=Q211658/ragDB=Q84248/qreadytrue/qfail0/readyz all shards ready,18080리스너없음·공유main불변. 이전41948/15840 runtime identity는현재값으로미사용. 원본절차도 재검토: 준수여부검토→의견발송 연결은 있으나 미준수 분기라벨없음; 반영여부검토→보완/사유회신 갈림의 수용조건을 삭제한 일반보완의무로해석금지. OCR정책거부분기보류유지/외부평가재실행없음/실제penalty未PASS. 다음은 질문의 조건표현과 source-owned 조건정렬 경계 독립진단; 최종verifier·oracle·dataset 불변.

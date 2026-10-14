@@ -47,6 +47,9 @@ public class KoreanEvidenceAtomParser {
 	private static final Pattern POST_CONDITION = Pattern.compile(
 		"([\\p{IsHangul}A-Za-z0-9]{2,}?)(?:을|를)?(?:한|한\\s*)?\\s*후"
 	);
+	private static final Pattern LEADING_PAST_CASE_CONDITION = Pattern.compile(
+		"^((?:(?!경우|하면|되면|으면)[^.!?;()]){2,240}?)한\\s+경우(?:에는|에|만)?(?=\\s|[,，]|$)"
+	);
 	private static final Pattern NOMINAL_EXISTENCE_CONDITION = Pattern.compile(
 		"(?:^|\\s)((?:[\\p{IsHangul}A-Za-z0-9]{2,}\\s+){0,3}"
 			+ "[\\p{IsHangul}A-Za-z0-9]{0,20}(?:사항|사유|사실)(?:이|가)\\s+"
@@ -134,6 +137,7 @@ public class KoreanEvidenceAtomParser {
 			conditions.add(canonical(conditionMatcher.group(1) + conditionMatcher.group(2)));
 		}
 		conditions.addAll(matches(source, POST_CONDITION, 1));
+		conditions.addAll(matches(source, LEADING_PAST_CASE_CONDITION, 1));
 		Matcher nominalCase = NOMINAL_CASE_CONDITION.matcher(source);
 		while (nominalCase.find()) {
 			conditions.add(KoreanQueryNormalizer.normalizeForMatch(nominalCase.group(1)));

@@ -8,6 +8,20 @@ import org.junit.jupiter.api.Test;
 
 class KoreanEvidenceAtomParserTests {
 	@Test
+	void leadingPastCaseCannotCrossAnEarlierExistenceCondition() {
+		var atom = new KoreanEvidenceAtomParser().parse(
+			"미준수 사항이 있을 경우 기관은 검토의견을 발주기관에 전달 (온라인 의견등록이 가능한 경우 온라인으로 전달).");
+		assertThat(atom.conditions()).contains("미준수사항이있을경우");
+		assertThat(atom.conditions()).noneMatch(condition -> condition.contains("발주기관에전달"));
+	}
+	@Test
+	void nominalNoncomplianceConditionPreservesTheWholeSourceScope() {
+		var atom = new KoreanEvidenceAtomParser().parse(
+			"지역사업 기준을 미준수한 경우 관리기관은 보완을 권고할 수 있다.");
+		assertThat(atom.conditions()).contains("지역사업기준을미준수");
+		assertThat(atom.modality()).isEqualTo(EvidenceAtom.Modality.PERMITTED);
+	}
+	@Test
 	void formalNegativePremiseRetainsItsWholeConditionAndRejectsUnknownConclusion() {
 		var parser = new KoreanEvidenceAtomParser();
 		var known = parser.parse("자료를 제출하지 아니하면 기관은 결과를 통보한다.");
