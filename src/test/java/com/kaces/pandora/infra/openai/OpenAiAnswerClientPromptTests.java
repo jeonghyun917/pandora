@@ -111,6 +111,7 @@ class OpenAiAnswerClientPromptTests {
 				assertThat(payload.path("instructions").asText()).contains("대상 분류를 의무로 강화하지", "별도 확인필요 주장을 추가하지");
 				assertThat(payload.path("instructions").asText()).contains("제목과 메타 설명을 답변에 복사하지", "조건 충족 시의 대상 분류를 명확히");
 				assertThat(payload.path("instructions").asText()).contains("주어와 조건을 쉼표로 나열하지", "에 해당하면", "완전한 조건문");
+				assertThat(payload.path("instructions").asText()).contains("원문 본문의 분류 표제", "제도명으로 바꾸지");
 				assertThat(payload.path("input").asText()).contains("CRM 운영 사업", "국가기관 등이 발주하는 모든 SW사업");
 			})
 			.andRespond(org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess(

@@ -17,6 +17,9 @@ public class SemanticEvidenceMatcher {
 		"^([^,;.!?\\r\\n]+?)(?:이|가)\\s+([^,;.!?\\r\\n]+?)에\\s*"
 			+ "(?:해당하면|해당하는\\s+경우에는)\\s+([^,;.!?\\r\\n]+)[.]?$"
 	);
+	private static final Pattern LITERAL_MEMBERSHIP_LABEL = Pattern.compile(
+		"^(적용\\s+대상\\s+사업|대상\\s+사업)(?:입니다|이다)$"
+	);
 	private final KoreanEvidenceAtomParser parser;
 
 	public SemanticEvidenceMatcher() {
@@ -104,8 +107,12 @@ public class SemanticEvidenceMatcher {
 		String scope = membership.group(2).trim();
 		String conclusion = membership.group(3).trim();
 		String actual = canonical(source.sourceText().replaceFirst("[.]$", ""));
+		var literalLabel = LITERAL_MEMBERSHIP_LABEL.matcher(conclusion);
+		boolean contiguousLiteralClassification = literalLabel.matches()
+			&& actual.equals(canonical(literalLabel.group(1) + " " + scope));
 		if (!actual.equals(canonical(scope + "은 " + conclusion))
-			&& !actual.equals(canonical(scope + "는 " + conclusion))) {
+			&& !actual.equals(canonical(scope + "는 " + conclusion))
+			&& !contiguousLiteralClassification) {
 			return SemanticMatch.insufficient("HYPOTHETICAL_MEMBERSHIP_NOT_PROVED");
 		}
 		return new SemanticMatch(ClaimEvidenceMatcher.Status.SUPPORTED,

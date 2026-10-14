@@ -22,6 +22,9 @@ public class ClaimEvidenceMatcher {
 
 	private static final int MIN_OVERLAP = 2;
 	private static final double MIN_COVERAGE = 0.34d;
+	private static final Pattern LITERAL_NOMINAL_MEMBERSHIP = Pattern.compile(
+		"^.+?사업(?:이|가)(.+?)에해당(?:하면|하는경우에는)(적용대상사업|대상사업)(?:입니다|이다)$"
+	);
 	private static final Pattern COORDINATED_BUSINESS_ISSUER_CONDITION = Pattern.compile(
 		"^([\\p{IsHangul}a-z0-9\\s]{2,80}사업)(?:이|가)\\s+"
 			+ "([\\p{IsHangul}a-z0-9]{2,40}사업)에\\s+해당하고\\s+발주기관이\\s+"
@@ -1126,6 +1129,13 @@ public class ClaimEvidenceMatcher {
 		}
 		Set<String> claimAnchors = claim.targetScopeAnchors();
 		Set<String> evidenceAnchors = evidence.targetScopeAnchors();
+		Matcher literalMembership = LITERAL_NOMINAL_MEMBERSHIP.matcher(claim.normalizedText());
+		// Only an exact body-owned label and complete scope can stand without a metadata-derived institution.
+		if (claimAnchors.isEmpty() && evidenceAnchors.isEmpty() && literalMembership.matches()
+			&& evidence.normalizedText().equals(literalMembership.group(2) + literalMembership.group(1))
+			&& new KoreanEvidenceAtomParser().parse(evidenceAnchorContext).exceptions().isEmpty()) {
+			return true;
+		}
 		if (claim.normalizedText().equals(evidence.normalizedText())
 			&& !claim.requiredConditionAnchors().isEmpty()
 			&& claimAnchors.isEmpty()

@@ -13,6 +13,37 @@ class SemanticEvidenceMatcherTests {
 	private final SemanticEvidenceMatcher matcher = new SemanticEvidenceMatcher();
 
 	@Test
+	void nominalMembershipUsesOnlyTheContiguousLiteralConclusion() {
+		var grounds = List.of(new LawAiAnswerGround(
+			1, 10L, 20L, "official_doc", "공공소프트웨어사업 과업심의 가이드", "기관", "문서", "2026-01-01", "CURRENT",
+			"1", "적용 대상 사업", null,
+			"적용 대상 사업\n국가기관 등이 발주하는 모든 SW사업(상용SW포함)", "source", "url", 1.0d));
+		var index = matcher.index(grounds);
+		assertThat(new ClaimEvidenceMatcher().match(
+			"온라인 운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW포함)에 해당하면 적용 대상 사업입니다.", grounds).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(parser.parse(
+			"온라인 운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW포함)에 해당하면 적용 대상 사업입니다."), index).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		for (String claim : List.of(
+			"온라인 운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW포함)에 해당하면 과업심의 대상입니다.",
+			"온라인 운영 사업이 민간기관이 발주하는 모든 SW사업(상용SW포함)에 해당하면 적용 대상 사업입니다.",
+			"온라인 운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW포함)에 해당하면 반드시 심의를 받아야 합니다.")) {
+			assertThat(matcher.match(parser.parse(claim), index).status()).as(claim)
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+		for (String text : List.of(
+			"적용 대상 사업\n참고사항\n국가기관 등이 발주하는 모든 SW사업(상용SW포함)",
+			"적용 대상 사업\n1. 국가기관 등이 발주하는 모든 SW사업(상용SW포함)",
+			"적용 대상 사업\n국가기관 등이 발주하는 모든 SW사업(상용SW포함)\n다만, 소액사업은 제외됩니다.")) {
+			assertThat(matcher.match(parser.parse(
+				"온라인 운영 사업이 국가기관 등이 발주하는 모든 SW사업(상용SW포함)에 해당하면 적용 대상 사업입니다."),
+				matcher.index(List.of(ground(text)))).status()).as(text)
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
 	void hypotheticalMembershipPreservesExactSourceClassification() {
 		var index = matcher.index(List.of(ground("등록된 공급사업은 심사 대상사업입니다.")));
 		assertThat(matcher.match(parser.parse(
