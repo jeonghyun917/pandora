@@ -13,6 +13,43 @@ class EvidenceJudgeTests {
 	// 메소드 설명: EvidenceJudge 처리 흐름을 수행합니다.
 	private final EvidenceJudge judge = new EvidenceJudge();
 	@Test
+	void sameSentenceCooccurrenceIsNotALegalViolationBinding() {
+		var source = chunk(101, "official_doc", "공공데이터베이스 표준화 관리 매뉴얼", "신청사유 검토",
+			"법제도 변경 등으로 신규 적용이 필요한 용어는 신청사유로 인정하고, 공통표준용어 정의기준 미준수 시 보완요청한다.",
+			"검토 기준", "procedure");
+		assertThat(judge.judge("정보화시스템 법제도 준수안하면 어떤 불이익?", List.of(source), Map.of(), 8)
+			.directEvidenceFound()).isFalse();
+	}
+
+	@Test
+	void legalChangeBoundToTheViolationRemainsDirectEvidence() {
+		var source = chunk(100, "official_doc", "정보화사업 관리 가이드", "법제도 변경 점검",
+			"정보화시스템은 법제도 변경에 따른 의무를 미준수하면 개선권고를 받는다.",
+			"준수 점검", "procedure");
+		assertThat(judge.judge("정보화시스템 법제도 준수안하면 어떤 불이익?", List.of(source), Map.of(), 8)
+			.directEvidenceFound()).isTrue();
+	}
+
+	@Test
+	void incidentalLegalChangeDoesNotBindAnUnrelatedDefinitionRemedy() {
+		var source = chunk(98, "official_doc", "공공데이터베이스 표준화 관리 매뉴얼", "신규등록 신청 검토 기준",
+			"공통표준용어 정의기준 준수여부 (미준수 시 보완요청). "
+				+ "타당한 신청사유 예시: 다기관 시스템 연계 및 정보 공동활용, 법제도 변경 등으로 신규 적용이 필요한 용어. "
+				+ "의견수렴이 필요한 경우: 법령에서 특정하여 소관기관을 지정하고 있는 경우.",
+			"신규등록 신청사유의 타당성", "procedure");
+		var result = judge.judge("정보화시스템 법제도 준수안하면 어떤 불이익?", List.of(source), Map.of(), 8);
+		assertThat(result.directEvidenceFound()).isFalse();
+		assertThat(result.chunks()).doesNotContain(source);
+		var specific = judge.judge("공공데이터베이스 공통표준용어 정의기준 미준수 시 보완요청은?",
+			List.of(source), Map.of(), 8);
+		assertThat(specific.chunks()).contains(source);
+		var actual = chunk(99, "정보화사업 법제도 관리감독 가이드", "점검절차",
+			"법제도 변경을 안내한다. SW사업의 법제도 준수여부를 점검하고 미준수 사항이 있으면 개선권고를 전달한다.");
+		assertThat(judge.judge("정보화시스템 법제도 준수안하면 어떤 불이익?", List.of(actual), Map.of(), 8)
+			.directEvidenceFound()).isTrue();
+	}
+
+	@Test
 	void recoversInlineNumberedDutyOnlyWithinItsClosedArticle() {
 		String duty = "① 국가기관등의 장은 영 제47조제1항제1호에 따른 과업내용을 확정하기 위하여 소프트웨어사업 발주 전에 사업계획서 또는 제안요청서에 대하여 과업심의위원회의 심의를 받아야 한다. 다만, 일정이 부족한 경우에는 소프트웨어사업 계약체결 전까지 과업심의위원회의 심의를 받아야 한다.";
 		String source = "제25조(과업내용의 확정 시기) " + duty + "② 다른 운영 사항";

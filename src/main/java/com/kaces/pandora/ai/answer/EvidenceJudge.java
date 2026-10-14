@@ -1014,7 +1014,8 @@ public class EvidenceJudge {
 			topicAligned = false;
 		}
 		if (penaltyConsequenceQuestion && (!hasPenaltyConsequenceSignal(body, chunkHeading, parentSectionTitle)
-			|| isSecurityContractConsequenceOutsideQuestion(profile.normalizedQuestion(), body, documentTitle, chunkHeading))) {
+			|| isSecurityContractConsequenceOutsideQuestion(profile.normalizedQuestion(), body, documentTitle, chunkHeading)
+			|| hasUnboundLegalChangeContext(profile.normalizedQuestion(), chunk.chunkText()))) {
 			directEvidence = false;
 			relevant = false;
 			topicAligned = false;
@@ -2595,6 +2596,21 @@ public class EvidenceJudge {
 			|| text.contains("반영하지않")
 			|| text.contains("시정명령")
 			|| text.contains("입찰참가자격제한");
+	}
+
+	private boolean hasUnboundLegalChangeContext(String question, String body) {
+		List<String> legalTerms = List.of("법제도", "관계법령", "법령", "법률");
+		if (!containsAny(normalize(question), legalTerms)) { return false; }
+		String normalized = normalize(body);
+		if (!java.util.regex.Pattern.compile("(?:법제도|관계법령|법령|법률)(?:변경|개정)")
+			.matcher(normalized).find()) { return false; }
+		// A changed-law example or agency-designation clause is not a violation predicate.
+		return !java.util.regex.Pattern.compile(
+			"(?:법제도|관계법령|법령|법률)\\s*"
+				+ "(?:(?:변경|개정)\\s*(?:에\\s*따른\\s*(?:의무|규정|기준|요건)|내용|사항)?"
+				+ "|제\\s*\\d+\\s*조(?:의\\s*\\d+)?(?:제\\s*\\d+\\s*항)?)?\\s*"
+				+ "(?:을|를|의)?\\s*(?:미준수|위반|불이행|준수\\s*(?:여부|하지\\s*않|안|점검))")
+			.matcher(String.valueOf(body)).find();
 	}
 
 	static boolean isSecurityContractConsequenceOutsideQuestion(
