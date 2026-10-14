@@ -52,6 +52,9 @@ public class KoreanEvidenceAtomParser {
 			+ "[\\p{IsHangul}A-Za-z0-9]{0,20}(?:사항|사유|사실)(?:이|가)\\s+"
 			+ "(?:있|없)(?:을\\s+경우(?:에는|에|만)?|으면))(?=\\s|[,，]|$)"
 	);
+	private static final Pattern NOMINAL_CASE_CONDITION = Pattern.compile(
+		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9]{2,40})의\\s+경우(?:에는|에|만)?(?=\\s|[,，]|$)"
+	);
 	private static final Pattern RECEIPT_TIME_CONDITION = Pattern.compile(
 		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9]{2,}(?:\\s+[\\p{IsHangul}A-Za-z0-9]{2,}){0,3}?(?:을|를)\\s*받은)\\s+(?:때|경우)(?:에는|에|는|만)?(?=\\s|[,，]|$)"
 	);
@@ -126,6 +129,10 @@ public class KoreanEvidenceAtomParser {
 			conditions.add(canonical(conditionMatcher.group(1) + conditionMatcher.group(2)));
 		}
 		conditions.addAll(matches(source, POST_CONDITION, 1));
+		Matcher nominalCase = NOMINAL_CASE_CONDITION.matcher(source);
+		while (nominalCase.find()) {
+			conditions.add(KoreanQueryNormalizer.normalizeForMatch(nominalCase.group(1)));
+		}
 		Matcher existence = NOMINAL_EXISTENCE_CONDITION.matcher(source);
 		while (existence.find()) {
 			// Keep existence/absence itself; canonical() strips these endings.

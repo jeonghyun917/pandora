@@ -12,6 +12,15 @@ class SemanticEvidenceMatcherTests {
 	private final KoreanEvidenceAtomParser parser = new KoreanEvidenceAtomParser();
 	private final SemanticEvidenceMatcher matcher = new SemanticEvidenceMatcher();
 	@Test
+	void nominalCaseConditionCannotBeRemoved() {
+		String source = "미수용의 경우 기관은 사유를 등록한다.";
+		var evidence = matcher.index(List.of(ground(source)));
+		assertThat(matcher.match(parser.parse(source), evidence).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(parser.parse("기관은 사유를 등록한다."), evidence).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+	@Test
 	void explicitTransferRecipientCannotBeChangedOrBroadened() {
 		String source = "신청인은 자료를 발주기관에 제출한다.";
 		var evidence = matcher.index(List.of(ground(source)));

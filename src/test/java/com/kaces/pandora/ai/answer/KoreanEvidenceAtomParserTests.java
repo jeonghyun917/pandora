@@ -8,6 +8,17 @@ import org.junit.jupiter.api.Test;
 
 class KoreanEvidenceAtomParserTests {
 	@Test
+	void explicitNominalCaseRetainsItsCondition() {
+		var parser = new KoreanEvidenceAtomParser();
+		assertThat(parser.parse("검토결과 미수용의 경우 기관은 사유를 등록한다.").conditions())
+			.contains("미수용");
+		assertThat(parser.parse("수용의 경우 기관은 자료를 보완한다.").conditions())
+			.contains("수용").doesNotContain("미수용");
+		assertThat(parser.parse("기관은 자료를 보완한다.").conditions()).isEmpty();
+		assertThat(parser.parse("차이의 경우 기관은 사유를 등록한다.").conditions())
+			.contains("차이").doesNotContain("차");
+	}
+	@Test
 	void transferDestinationPreservesTheExplicitRecipient() {
 		var parser = new KoreanEvidenceAtomParser();
 		assertThat(parser.parse("미준수 사항이 있을 경우 검토의견서를 발주기관에 이메일로 발송").recipients())
