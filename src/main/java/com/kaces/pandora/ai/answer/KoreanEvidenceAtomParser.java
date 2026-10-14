@@ -91,10 +91,10 @@ public class KoreanEvidenceAtomParser {
 	);
 	// Keep the quoted finding as an explicit condition, not unconditional authority.
 	private static final Pattern QUOTED_RECOGNITION_CONDITION = Pattern.compile(
-		"(?:^|[.!?;]\\s*)([^.!?;]{2,240}?다고\\s+인정)(?:하는\\s+경우(?:에는|에|만)?|하면)(?=\\s|[,.!?]|$)"
+		"(?:^|[.!?;]\\s*)([^.!?;]{2,240}?다고\\s+(?:인정|판단))(?:하는\\s+경우(?:에는|에|만)?|하면)(?=\\s|[,.!?]|$)"
 	);
 	private static final Pattern RECOGNITION_CONDITION_MARKER = Pattern.compile(
-		"다고\\s+인정(?:하는\\s+경우(?:에는|에|만)?|하면)(?=\\s|[,.!?]|$)"
+		"다고\\s+(?:인정|판단)(?:하는\\s+경우(?:에는|에|만)?|하면)(?=\\s|[,.!?]|$)"
 	);
 	private static final Pattern EXCEPTION = Pattern.compile("(?:다만|예외적으로)\\s*([^.!?]{2,160})");
 	private static final Pattern EXCEPTION_TRIGGER = Pattern.compile(
