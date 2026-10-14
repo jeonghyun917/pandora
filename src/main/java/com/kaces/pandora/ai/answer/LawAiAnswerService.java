@@ -10865,7 +10865,9 @@ public class LawAiAnswerService {
 		if (containsAny(text, "정보화사업보안성검토", "보안성검토가이드", "보안성검토")) {
 			priority += 12.0;
 		}
-		if (containsAny(text, "입찰참가자격제한", "보안위약금", "부정당업자")) {
+		// Notice requirements describe procurement procedure, not a sanction on noncompliance.
+		String sanctionText = text.replaceAll("입찰참가자격(?:을)?제한사유(?:를)?명시", "");
+		if (containsAny(sanctionText, "입찰참가자격제한", "입찰참가자격을제한", "보안위약금", "부정당업자")) {
 			priority += 10.0;
 		}
 		if (containsAny(text, "불이익", "제재조치", "위반시", "위규처리기준")) {

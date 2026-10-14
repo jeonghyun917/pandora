@@ -17,6 +17,25 @@ import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
 	@Test
+	void bidNoticeRestrictionReasonDoesNotReceiveSanctionPriority() throws Exception {
+		var service = service((LawChunkMapper) null, (RagDocumentMapper) null);
+		try {
+			Method priority = LawAiAnswerService.class.getDeclaredMethod(
+				"informationSystemCompliancePenaltyEvidencePriority", LawSemanticChunkRow.class);
+			priority.setAccessible(true);
+			var notice = chunk(99005L, "official_doc", "소프트웨어사업 법령준수", "계약 방식",
+				"경쟁성이 확보되는 경우에는 제한경쟁에 의할 수 있다. 이 경우 입찰공고에 입찰참가자격제한 사유를 명시하여야 한다.");
+			var sanction = chunk(99006L, "official_doc", "소프트웨어사업 법령준수", "위반 시 조치",
+				"계약 의무를 위반한 사업자는 입찰참가자격을 제한할 수 있다.");
+			assertThat((double) priority.invoke(service, notice)).isLessThan(10.0);
+			assertThat((double) priority.invoke(service, sanction)).isGreaterThanOrEqualTo(10.0);
+			var mixed = chunk(99007L, "official_doc", "소프트웨어사업 법령준수", "계약과 조치",
+				"입찰공고에 입찰참가자격제한 사유를 명시하여야 한다. 계약 의무 위반 시 입찰참가자격을 제한할 수 있다.");
+			assertThat((double) priority.invoke(service, mixed)).isGreaterThanOrEqualTo(10.0);
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void emptyEntityScopedLawLookupPreservesGenericFallback() throws Exception {
 		var duty = chunk(99004L, "admrul", "소프트웨어사업 계약 및 관리감독에 관한 지침",
 			"과업내용의 확정 시기", "국가기관등의 장은 소프트웨어사업 발주 전에 과업심의위원회의 심의를 받아야 한다.");
