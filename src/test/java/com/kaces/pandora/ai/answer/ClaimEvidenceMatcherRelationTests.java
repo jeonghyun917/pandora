@@ -9,6 +9,34 @@ class ClaimEvidenceMatcherRelationTests {
 
 	private final ClaimEvidenceMatcher matcher = new ClaimEvidenceMatcher();
 	@Test
+	void closedMarkedAnnotationSupportsOnlyTheWholeLiteral() {
+		String body = "향후 입찰공고시 반영여부를 재확인*하여 미준수 항목 개선권고 예정";
+		String note = "* (사전규격공개 미적용 권고사항, 신규 미준수 법령사항 등)";
+		String source = "※\n" + body + "\n" + note + "\n□ 다른 항목";
+		String literal = "※ " + body + " " + note;
+		var grounds = List.of(ground(source));
+		assertThat(matcher.match(literal, grounds).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		var semantic = new SemanticEvidenceMatcher();
+		assertThat(semantic.match(new KoreanEvidenceAtomParser().parse(literal), semantic.index(grounds)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(body.replace("*", ""), grounds).status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		assertThat(semantic.match(new KoreanEvidenceAtomParser().parse(body.replace("*", "")), semantic.index(grounds)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+	@Test
+	void markedAnnotationCannotBorrowAnIncompleteOrAmbiguousNote() {
+		String body = "기관은 미준수 항목을 재확인*하여 개선권고 예정";
+		String note = "* (사전규격공개 대상인 경우에만 해당)";
+		var atomizer = new ClaimEvidenceAtomizer();
+		for (String invalid : List.of(body + "\n\n" + note, body.replace("*", "") + "\n" + note,
+			body + "\n" + note.replace(")", ""), body + "\n" + note + "\n* (다른 조건)",
+			body + "\n" + note.replace(")", " user@example.invalid)"),
+			body + "\n" + note + "\n\n* (다른 조건)")) {
+			assertThat(atomizer.sourceFragments("※\n" + invalid + "\n□ 다음 항목"))
+				.as(invalid).noneMatch(ClaimEvidenceAtomizer.SourceFragment::literalOnly);
+		}
+	}
+	@Test
 	void annotatedPlannedRemedyCannotDropItsOwnedConditionNote() {
 		String source = "기관은 미준수 항목을 재확인*하여 개선권고할 예정이다.\n"
 			+ "* 사전규격공개 대상인 경우에만 해당한다.";

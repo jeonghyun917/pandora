@@ -160,10 +160,26 @@ final class ClaimEvidenceAtomizer {
 			}
 		}
 		if (copied < text.length()) { result.add(new SourceFragment(text.substring(copied), false)); }
-		return List.copyOf(result);
+		return result.stream().flatMap(fragment -> fragment.literalOnly()
+			? java.util.stream.Stream.of(fragment) : closedMarkedAnnotations(fragment.text()).stream()).toList();
 	}
 
 	record SourceFragment(String text, boolean literalOnly) { }
+
+	private List<SourceFragment> closedMarkedAnnotations(String text) {
+		Matcher block = Pattern.compile("(?m)^※[ \\t]*\\R"
+			+ "[^*①-⑳□○※@\\r\\n]{2,600}\\*[^*①-⑳□○※@\\r\\n]{2,600}\\R"
+			+ "[ \\t]*\\*[ \\t]+\\([^*()①-⑳□○※@\\r\\n]{2,300}\\)"
+			+ "(?=\\R|$)(?!\\R(?:[ \\t]*\\R)*[ \\t]*\\*)").matcher(text);
+		List<SourceFragment> result = new ArrayList<>();int copied = 0;
+		while (block.find()) {
+			if (block.start() > copied) { result.add(new SourceFragment(text.substring(copied, block.start()), false)); }
+			result.add(new SourceFragment(block.group().replaceAll("\\s+", " ").trim(), true));
+			copied = block.end();
+		}
+		if (copied < text.length()) { result.add(new SourceFragment(text.substring(copied), false)); }
+		return List.copyOf(result);
+	}
 
 	static boolean hasUnownedInlineAnnotation(String text, boolean literalOnly) {
 		return !literalOnly && Pattern.compile("[\\p{IsHangul}A-Za-z0-9)]\\*").matcher(text).find();

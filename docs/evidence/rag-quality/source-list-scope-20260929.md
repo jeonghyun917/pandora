@@ -1,5 +1,13 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-14 명시※whole-note 全体11249exit0/XML1640 failures0 errors0 제외19/diff-check0/범위리뷰직접C/I없음. 실제87811 whole-note readonly35859exit0 control+semanticSUPPORTED/unsupported빈결과, 원질문 alignment MISSING_CONDITION(CONDITION,DIRECT_CONCLUSION) 유지. 조건보존원문인용까지만증명/일반미준수개선요구로확대없음/새외부평가없음/penalty實PASS未達. 검증커밋·배포를이어감.
+
+- 2026-10-14 명시※ 전체주석 경계 음성76483 1FAIL(빈줄뒤 추가note를놓침)→추가note lookahead가빈줄까지보존/집중69240exit0(ControlRelation·Semantic·Atomizer·ClaimVerifier)/범위리뷰직접C/I없음. 원문whole-note문자그대로만지원·조건삭제/강도변경/주소/참조없음/빈줄차용/다중note거부·기존procedureliteral유지. 실제87811 whole-note readonly35859와전체11249 진행중/미commit미deploy/공식45fb9bb4runtime유지/새외부평가없음/실제penaltyPASS아님。
+
+- 2026-10-14 일반markedannotation source-owned 전체인용 최소경계 RED40668 1FAIL→명시※·단일본문line/inline*·즉시이어지는완결괄호note전체만literal-only(주소/새구조/다중marker거부), marker·note본문전체보존24595exit0 양matcher전체SUPPORTED·축약INSUFFICIENT. 새음성76483 진행중(빈줄/미완결/다중note/주소/참조없는note); 제품아직미commit·미deploy/현재45fb9bb4공식runtime유지. 전체원문quotedclaim 지원 경계일뿐 일반법제도미준수결과/질문membership 증명아님/최종verifier불변/외부평가없음。
+
+- 2026-10-14 HEAD45fb9bb45ab75d65044d95eb59ee463c2d60caa8/전체3936 XML1638f0e0제외19 검증커밋. 최초GitHub푸시remote500 실패124663→원격096e1eaf미반영확인5cddad→전송만557fc4成功/원격SHA9ee133일치. stage90630exit0→공식deploy62884 KEEPALIVE/PID21616/runtimef72f6dfd-5256-4a63-8b72-baa8f4887bb8/JAR40d9c824cb47ad3336bd90d3bcd919fc48ecdaa75ccd4da064993c99870dece8. Q15840/main18080불변/이전45953·77892·983404runtime폐기. 원문일반법제도미준수→보완/개선요구 연결과 시스템범위·조건 증명은未완료/실제penalty30288未PASS·再生없음/SNS75581PASS유지/holdoutfull未진입/100%아님. 다음안전범위: 원문전체조건·소유각주를포함한source-owned 증명경계 진단; 표현변경·예시보편화·메타bridge·최종가드완화로통과시키지않음.
+
 - 2026-10-14 주석소유 전체3936 exit0/XML1638 failures0 errors0 제외19/diff-check0 확인. 原文주석참조atom의 단독지원 및 동일ground 축약표현우회를 차단, 이미증명된절차항목전체각주지원과비주석원문지원 유지. 의미검증·control 양쪽 실제87811 축약문거부 확인/새외부평가없음/실제penaltyPASS미완료/질문최종정렬가드불변. 검증커밋·공식배포를이어감.
 
 - 2026-10-14 주석소유 집중23757 exit0(Relation311 failures0/errors0 및Semantic·Atomizer 포함)/readonlyab04e6 실제87811 축약예정문 control+semantic 양쪽INSUFFICIENT로변경·강제개선요구도거부유지. 주석전체 소유증명이없는 atom만제외·provenclosedprocedure whole-note회귀유지/범위재검토직접C/I없음. 전체3936 진행중/미commit·미deploy/현재096e1eaf공식runtime유지/새외부평가없음/실제penaltyPASS아님.
