@@ -12,6 +12,15 @@ class SemanticEvidenceMatcherTests {
 	private final KoreanEvidenceAtomParser parser = new KoreanEvidenceAtomParser();
 	private final SemanticEvidenceMatcher matcher = new SemanticEvidenceMatcher();
 	@Test
+	void explicitCompletionLimitCannotBeRemovedFromPermittedAction() {
+		String source = "담당기관은 검토가 완료될 때까지 절차를 보류할 수 있다.";
+		var evidence = matcher.index(List.of(ground(source)));
+		assertThat(matcher.match(parser.parse(source), evidence).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(parser.parse("담당기관은 절차를 보류할 수 있다."), evidence).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+	@Test
 	void explicitJudgmentPremiseCannotBeRemovedFromItsPermittedConsequence() {
 		String source = "담당기관은 위험성이 높다고 판단하는 경우 신청인에게 보완을 요구할 수 있다.";
 		var evidence = matcher.index(List.of(ground(source)));

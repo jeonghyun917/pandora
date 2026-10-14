@@ -96,6 +96,10 @@ public class KoreanEvidenceAtomParser {
 	private static final Pattern RECOGNITION_CONDITION_MARKER = Pattern.compile(
 		"다고\\s+(?:인정|판단)(?:하는\\s+경우(?:에는|에|만)?|하면)(?=\\s|[,.!?]|$)"
 	);
+	private static final Pattern COMPLETION_TIME_CONDITION = Pattern.compile(
+		"(?:^|[.!?;]\\s*)([^.!?;]{2,240}?될\\s+때까지)(?=\\s|[,.!?]|$)"
+	);
+	private static final Pattern COMPLETION_TIME_MARKER = Pattern.compile("될\\s+때까지(?=\\s|[,.!?]|$)");
 	private static final Pattern EXCEPTION = Pattern.compile("(?:다만|예외적으로)\\s*([^.!?]{2,160})");
 	private static final Pattern EXCEPTION_TRIGGER = Pattern.compile(
 		"^[,，]?\\s*([^.!?]{2,160}?경우)(?:에는|에|만)?(?=\\s|[,，]|$)"
@@ -137,6 +141,7 @@ public class KoreanEvidenceAtomParser {
 			conditions.add(canonical(conditionMatcher.group(1) + conditionMatcher.group(2)));
 		}
 		conditions.addAll(matches(source, POST_CONDITION, 1));
+		conditions.addAll(matches(source, COMPLETION_TIME_CONDITION, 1));
 		conditions.addAll(matches(source, LEADING_PAST_CASE_CONDITION, 1));
 		Matcher nominalCase = NOMINAL_CASE_CONDITION.matcher(source);
 		while (nominalCase.find()) {
@@ -211,6 +216,10 @@ public class KoreanEvidenceAtomParser {
 		}
 		if (RECOGNITION_CONDITION_MARKER.matcher(source).results().count() > parsedRecognitionConditions) {
 			reasons.add("UNPARSED_RECOGNITION_CONDITION");
+		}
+		if (COMPLETION_TIME_MARKER.matcher(source).results().count()
+			> COMPLETION_TIME_CONDITION.matcher(source).results().count()) {
+			reasons.add("UNPARSED_COMPLETION_TIME_CONDITION");
 		}
 		if (subjects.isEmpty() && !actions.isEmpty() && !matches(source, SUBJECT, 1).isEmpty()) {
 			reasons.add("AMBIGUOUS_SUBJECT_FORM");

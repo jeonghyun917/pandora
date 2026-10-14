@@ -181,6 +181,9 @@ public class ClaimEvidenceMatcher {
 	private static final Pattern POST_EVENT_CONDITION = Pattern.compile(
 		"[\\p{IsHangul}]{2,}(?:한|된|받은|마친)후(?:에는|에|부터)?"
 	);
+	private static final Pattern COMPLETION_TIME_CONDITION = Pattern.compile(
+		"(?:^|[.!?;]\\s*)([^.!?;]{2,240}?될\\s+때까지)(?=\\s|[,.!?]|$)"
+	);
 	private static final Pattern CASE_CONDITION_PREFIX = Pattern.compile(
 		"(?:^|[.!?]\\s*)([^.!?\\n]{2,80}?)\\s+(?:경우|때)(?:에는|엔|에|는)?(?=\\s|$)",
 		Pattern.CASE_INSENSITIVE
@@ -962,7 +965,8 @@ public class ClaimEvidenceMatcher {
 		}
 		// A later condition cannot replace an explicit receipt or concessive antecedent.
 		if ((evidence.normalizedText().contains("받은경우")
-			|| evidence.normalizedText().contains("에도불구하고"))
+			|| evidence.normalizedText().contains("에도불구하고")
+			|| evidence.normalizedText().contains("될때까지"))
 			&& !conditionAnchorsCovered(evidence.requiredConditionAnchors(), claim.normalizedText())) {
 			return Relation.NOT_ENTAILED;
 		}
@@ -1235,6 +1239,9 @@ public class ClaimEvidenceMatcher {
 
 	private String canonicalConditionAnchor(String anchor) {
 		String normalizedAnchor = normalize(anchor);
+		if (normalizedAnchor.endsWith("될때까지")) {
+			return canonicalSoftwareTerm(normalizedAnchor);
+		}
 		if (normalizedAnchor.endsWith("처럼")
 			&& normalizedAnchor.length() > "처럼".length() + 1) {
 			normalizedAnchor = normalizedAnchor.substring(
@@ -1989,7 +1996,7 @@ public class ClaimEvidenceMatcher {
 				categories.add(SemanticCategory.DEADLINE);
 			}
 			boolean conditional = containsAny(conditionNormalized,
-				"경우", "때에는", "일때", "이면", "라면", "조건", "한하여",
+				"경우", "때에는", "일때", "될때까지", "이면", "라면", "조건", "한하여",
 				"하면", "한다면", "되면", "된다면", "받으면", "있으면", "없으면",
 				"않으면", "지나면", "넘으면")
 				|| POST_EVENT_CONDITION.matcher(conditionNormalized).find();
@@ -2456,6 +2463,10 @@ public class ClaimEvidenceMatcher {
 				.trim();
 			Matcher matcher = NUMERIC_NARROWING_ANCHOR.matcher(searchable);
 			Set<String> anchors = new LinkedHashSet<>();
+			Matcher completion = COMPLETION_TIME_CONDITION.matcher(searchable);
+			while (completion.find()) {
+				anchors.add(KoreanQueryNormalizer.normalizeForMatch(completion.group(1)));
+			}
 			Matcher antecedent = CONCESSIVE_ANTECEDENT.matcher(String.valueOf(text == null ? "" : text));
 			while (antecedent.find()) {
 				anchors.add(KoreanQueryNormalizer.normalizeForMatch(antecedent.group(1)));

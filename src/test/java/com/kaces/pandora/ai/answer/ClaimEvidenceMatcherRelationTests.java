@@ -9,6 +9,18 @@ class ClaimEvidenceMatcherRelationTests {
 
 	private final ClaimEvidenceMatcher matcher = new ClaimEvidenceMatcher();
 	@Test
+	void permittedActionMustRetainItsExplicitCompletionLimit() {
+		String source = "조치가 완료될 때까지 정보시스템의 운용을 일시 제한할 수 있다.";
+		var grounds = List.of(ground(source));
+		assertThat(matcher.match(source, grounds).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match("정보시스템의 운용을 일시 제한할 수 있다.", grounds).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		for (String changed : List.of("조치가 완료될 때에는", "조치가 완료된 후", "등록이 완료될 때까지")) {
+			assertThat(matcher.match(changed + " 정보시스템의 운용을 일시 제한할 수 있다.", grounds).status())
+				.as(changed).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+	@Test
 	void closedMarkedAnnotationSupportsOnlyTheWholeLiteral() {
 		String body = "향후 입찰공고시 반영여부를 재확인*하여 미준수 항목 개선권고 예정";
 		String note = "* (사전규격공개 미적용 권고사항, 신규 미준수 법령사항 등)";
