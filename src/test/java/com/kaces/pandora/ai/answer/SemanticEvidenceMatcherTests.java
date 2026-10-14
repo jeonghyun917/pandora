@@ -21,6 +21,44 @@ class SemanticEvidenceMatcherTests {
 	}
 
 	@Test
+	void hypotheticalMembershipAcceptsExplicitCaseConditionWithoutChangingProof() {
+		var index = matcher.index(List.of(ground("등록된 공급사업은 심사 대상사업입니다.")));
+		var claimAtom = parser.parse("신규 사업이 등록된 공급사업에 해당하는 경우에는 심사 대상사업입니다.");
+		assertThat(matcher.match(claimAtom, index).status()).as("claim=%s", claimAtom)
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		for (String claim : List.of(
+			"신규 사업이 공급사업에 해당하는 경우에는 심사 대상사업입니다.",
+			"신규 사업이 등록된 공급사업에 해당하는 경우에는 반드시 심사를 받아야 합니다.",
+			"신규 사업이 등록되지 않은 공급사업에 해당하는 경우에는 심사 대상사업입니다.")) {
+			assertThat(matcher.match(parser.parse(claim), index).status()).as(claim)
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+		for (String source : List.of(
+			"등록된 공급사업은 심사 대상사업이 아닙니다.",
+			"승인을 받은 경우 등록된 공급사업은 심사 대상사업입니다.",
+			"등록된 공급사업은 심사 대상사업입니다. 다만, 소액사업은 제외됩니다.")) {
+			var restricted = matcher.index(List.of(ground(source)));
+			assertThat(matcher.match(claimAtom, restricted).status()).as(source)
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
+	void shortenedSnippetCannotHideAnExceptionFromMembershipProof() {
+		var restricted = new LawAiAnswerGround(
+			1, 10L, 20L, "law", "법령", "기관", "법률", "2026-01-01", "CURRENT",
+			"1", "제1조", null, "등록된 공급사업은 심사 대상사업입니다.", "source", "url", 1.0d,
+			"등록된 공급사업은 심사 대상사업입니다. 다만, 소액사업은 제외됩니다.", null,
+			List.of(10L), "matched_child_only");
+		var index = matcher.index(List.of(restricted));
+		for (String condition : List.of("해당하면", "해당하는 경우에는")) {
+			assertThat(matcher.match(parser.parse(
+				"신규 사업이 등록된 공급사업에 " + condition + " 심사 대상사업입니다."), index).status())
+				.as(condition).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
 	void hypotheticalMembershipCannotInventScopeOrStrengthenConclusion() {
 		var index = matcher.index(List.of(ground("등록된 공급사업은 심사 대상사업입니다.")));
 		for (String claim : List.of(

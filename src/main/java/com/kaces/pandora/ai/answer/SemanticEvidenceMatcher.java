@@ -14,7 +14,8 @@ public class SemanticEvidenceMatcher {
 
 	private static final double MIN_SLOT_COVERAGE = 0.5d;
 	private static final Pattern HYPOTHETICAL_MEMBERSHIP = Pattern.compile(
-		"^([^,;.!?\\r\\n]+?)(?:이|가)\\s+([^,;.!?\\r\\n]+?)에\\s*해당하면\\s+([^,;.!?\\r\\n]+)[.]?$"
+		"^([^,;.!?\\r\\n]+?)(?:이|가)\\s+([^,;.!?\\r\\n]+?)에\\s*"
+			+ "(?:해당하면|해당하는\\s+경우에는)\\s+([^,;.!?\\r\\n]+)[.]?$"
 	);
 	private final KoreanEvidenceAtomParser parser;
 
@@ -31,10 +32,15 @@ public class SemanticEvidenceMatcher {
 		List<IndexedAtom> atoms = new ArrayList<>();
 		ClaimEvidenceAtomizer atomizer = new ClaimEvidenceAtomizer();
 		for (LawAiAnswerGround ground : grounds == null ? List.<LawAiAnswerGround>of() : grounds) {
-			for (String evidence : List.of(value(ground.matchedChildText()), value(ground.snippet()),
-				value(ground.parentContextText()))) {
+			List<String> evidenceTexts = List.of(value(ground.matchedChildText()), value(ground.snippet()),
+				value(ground.parentContextText()));
+			// A shortened rendering must not hide an exception owned by the same ground.
+			boolean membershipContextUnrestricted = evidenceTexts.stream()
+				.allMatch(text -> parser.parse(text).exceptions().isEmpty());
+			for (String evidence : evidenceTexts) {
 				for (EvidenceAtom atom : atomizer.parseSourceAtomsForAlignment(evidence, parser)) {
-					atoms.add(new IndexedAtom(ground.number(), atom.sourceText(), atom));
+					atoms.add(new IndexedAtom(ground.number(), atom.sourceText(), atom,
+						membershipContextUnrestricted));
 				}
 			}
 		}
@@ -46,6 +52,12 @@ public class SemanticEvidenceMatcher {
 			return SemanticMatch.insufficient("CLAIM_PARSE_INCOMPLETE");
 		}
 		if (claim.parseStatus() == EvidenceAtom.ParseStatus.PARTIAL && claim.actions().isEmpty()) {
+			for (IndexedAtom evidence : evidenceIndex == null ? List.<IndexedAtom>of() : evidenceIndex.atoms()) {
+				SemanticMatch membership = matchHypotheticalMembership(claim, evidence);
+				if (membership.status() == ClaimEvidenceMatcher.Status.SUPPORTED) {
+					return membership;
+				}
+			}
 			return matchExactPartial(claim, evidenceIndex);
 		}
 		List<SemanticMatch> supported = new ArrayList<>();
@@ -80,7 +92,8 @@ public class SemanticEvidenceMatcher {
 	private SemanticMatch matchHypotheticalMembership(EvidenceAtom claim, IndexedAtom indexed) {
 		var membership = HYPOTHETICAL_MEMBERSHIP.matcher(claim.sourceText().trim());
 		EvidenceAtom source = indexed.atom();
-		if (!membership.matches() || source.parseStatus() == EvidenceAtom.ParseStatus.AMBIGUOUS
+		if (!membership.matches() || !indexed.membershipContextUnrestricted()
+			|| source.parseStatus() == EvidenceAtom.ParseStatus.AMBIGUOUS
 			|| !source.conditions().isEmpty() || !source.exceptions().isEmpty()
 			|| claim.polarity() == EvidenceAtom.Polarity.NEGATIVE
 			|| source.polarity() == EvidenceAtom.Polarity.NEGATIVE) {
@@ -297,7 +310,11 @@ public class SemanticEvidenceMatcher {
 		}
 	}
 
-	public record IndexedAtom(int groundNumber, String sentence, EvidenceAtom atom) {
+	public record IndexedAtom(int groundNumber, String sentence, EvidenceAtom atom,
+		boolean membershipContextUnrestricted) {
+		public IndexedAtom(int groundNumber, String sentence, EvidenceAtom atom) {
+			this(groundNumber, sentence, atom, atom.exceptions().isEmpty());
+		}
 	}
 
 	public record SemanticMatch(
