@@ -307,6 +307,18 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void keepsComplianceRemedyWhenRequestForProposalIsTheRemedyObject() {
+		var remedy = chunk(97, "공공SW사업 법제도 관리감독 가이드", "점검절차",
+			"SW사업을 수집하여 법제도 준수여부를 점검한다. 미준수 사항이 있을 경우 개선권고 검토의견을 발주기관에 전달한다. "
+				+ "발주기관이 검토결과를 수용한 경우 제안요청서 보완 후 재공고한다.");
+		var result = judge.judge("정보화시스템 법제도 준수안하면 어떤 불이익?", List.of(remedy), Map.of(), 8);
+		assertThat(result.chunks()).contains(remedy);
+		assertThat(result.directEvidenceFound()).isTrue();
+		var scopeResult = judge.judge("정보화사업 법제도 미준수 제재 대상은?", List.of(remedy), Map.of(), 8);
+		assertThat(scopeResult.chunks()).doesNotContain(remedy);
+	}
+
+	@Test
 	void noncomplianceDetectionAloneDoesNotEstablishAConsequence() {
 		LawSemanticChunkRow detectionOnly = chunk(
 			96,

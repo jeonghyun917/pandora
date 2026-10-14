@@ -707,7 +707,9 @@ public class EvidenceJudge {
 		boolean preConsultationTargetQuestion = !autonomyPreConsultationQuestion
 			&& isPreConsultationTargetQuestion(profile.normalizedQuestion());
 		boolean targetScopeQuestion = profile.preferredSectionTypes().contains("target_scope")
-			&& !autonomyPreConsultationProcedureQuestion;
+			&& !autonomyPreConsultationProcedureQuestion
+			&& (!penaltyConsequenceQuestion || containsAny(profile.normalizedQuestion(),
+				List.of("대상", "범위", "면제", "제외")));
 		boolean criticalConceptMissing = isCriticalConceptMissing(profile.normalizedQuestion(), text);
 		boolean projectReviewScopeChunk = isProjectReviewScopeChunk(body, documentTitle, chunkHeading);
 		boolean projectReviewAdjacentChunk = isProjectReviewAdjacentChunk(body, documentTitle, chunkHeading);
