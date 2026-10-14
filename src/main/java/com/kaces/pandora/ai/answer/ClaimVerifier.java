@@ -87,7 +87,8 @@ public class ClaimVerifier {
 				0
 			);
 		}
-		List<String> sentences = splitSentences(answer);
+		List<String> sentences = isExactAnnotatedSourceItem(answer, grounds)
+			? List.of(answer.trim()) : splitSentences(answer);
 		List<String> kept = new ArrayList<>();
 		List<String> unsupportedClaims = new ArrayList<>();
 		List<String> unsupportedNumericClaims = new ArrayList<>();
@@ -217,6 +218,16 @@ public class ClaimVerifier {
 			.filter(value -> !value.isBlank())
 			.flatMap(value -> claimAtomizer.atomize(value).stream())
 			.toList();
+	}
+
+	private boolean isExactAnnotatedSourceItem(String answer, List<LawAiAnswerGround> grounds) {
+		String expected = normalize(answer);
+		return !expected.isBlank() && grounds.stream().filter(ground -> ground != null)
+			.flatMap(ground -> java.util.stream.Stream.of(
+				ground.matchedChildText(), ground.snippet(), ground.parentContextText()))
+			.flatMap(text -> claimAtomizer.sourceFragments(text).stream())
+			.filter(fragment -> fragment.literalOnly() && fragment.text().contains("*"))
+			.anyMatch(fragment -> expected.equals(normalize(fragment.text())));
 	}
 
 	private boolean isFormatOnlyStructuralLabel(String atom) {

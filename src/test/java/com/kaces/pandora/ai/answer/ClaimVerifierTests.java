@@ -10,6 +10,21 @@ class ClaimVerifierTests {
 	private final ClaimVerifier verifier = new ClaimVerifier();
 
 	@Test
+	void exactOwnedAnnotatedItemIsVerifiedWithoutSplittingAwayItsNote() {
+		String body = "기관의 검토결과 미수용의 경우 사유를 등록*하고, 수용의 경우 계획서 보완 후 공고 추진";
+		String note = "* 온라인 등록이 가능한 경우 온라인으로 제출하고 그 외에는 공문으로 제출";
+		String source = "□ 처리절차\n① 접수\n② " + body + "\n" + note + "\n③ 결과 관리";
+		var grounds = List.of(ground("처리 가이드", "처리절차", source));
+		var result = verifier.verifyDetailed(body + " " + note, grounds);
+		assertThat(result.insufficientEvidence()).as(result.toString()).isFalse();
+		assertThat(result.unsupportedClaims()).isEmpty();
+		assertThat(result.supportedStrongClaimCount()).isEqualTo(1);
+		assertThat(verifier.verifyDetailed(body, grounds).insufficientEvidence()).isTrue();
+		assertThat(verifier.verifyDetailed(body + " " + note + " 모든 위반자는 처벌된다.", grounds)
+			.unsupportedClaims()).isNotEmpty();
+	}
+
+	@Test
 	void keepsStrongClaimWhenEvidenceTermsOverlap() {
 		String answer = "공공소프트웨어사업이면 과업심의 대상입니다. "
 			+ "단순 H/W 도입은 과업심의 비대상으로 확인해야 합니다.";

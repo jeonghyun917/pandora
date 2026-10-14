@@ -1,5 +1,9 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-14 전체25116 exit0 XML1630 failures0 errors0 제외19/diff-check0 확인/실제④ 전체각주claim묶음은source-owned normalized-exact인경우만허용/외부평가없음/원질문최종조건정렬未PASS. 조건부의미검증가드·최종verifier·dataset·oracle·제재강도불변.
+
+- 2026-10-14 HEAD e52fcee8 pushed/전체19694 XML1629f0e0제외19→stage98421exit0→공식deploy77698 KEEPALIVE/PID88808/runtimeda03b446-f6a4-4fbc-ac8e-fa8a137145d6/JARdac9cbc33fe9e150e0ed3959fe54029f960789e574738d067923c52af1576dbf. smoke06ed43 confige7b08ced/law211658·rag84248 DB-Qparity/qreadytrue/qfail0/Q15840·main·18080불변/이전80947·20176·1d862runtime폐기. readonly79303/9b8530 전체각주주장이body/note2개로분할되어拒否 재현→genericClaimVerifier RED16198 1FAIL→실제본문 sourceFragments literal-only 각주전체와답변전체 normalized-exact일치시에만1claim유지; control/semantic/숫자·질문정렬검사그대로/축약·추가제재 거부/focused55669exit0/리뷰직접C/I없음/전체25116진행중. readonly62a742 실제④ 각주조건전체 보존·unsupported빈결과/최종질문정렬 MISSING_CONDITION(CONDITION,DIRECT_CONCLUSION) 유지. 최종verifier완화·전제삭제·metadata bridge없음/새外部평가없음/penalty實PASS아님/현재claim묶음미커밋·미배포。
+
 - 2026-10-14 전체19694 최종XML1629 failures0 errors0 제외19/diff-check0 확인. source-item note전체보존변경은로컬양matcher증명까지만검증됨/최종answer전체claim不足·penalty實PASS未達 유지.
 
 - 2026-10-14 닫힌절차항목각주전체보존 RED29955 1FAIL→전체note동일literal-only/주석삭제양matcher거부59072exit0; 빈줄주석차용 RED13216 1FAIL→blankgap거부/집중33031exit0/범위리뷰직접C/I없음/전체19694exit0(XML집계별도). 단일inline*·마지막note·연속항목폐쇄만허용/주소·다중note·참조없음·경계넘음거부. readonly14881/50eaae 실제84723④ 각주전체소유조건[의견등록가능,보완,미수용,수용] 유지/control+semanticSUPPORTED; AnswerVerificationService는CLAIM_INSUFFICIENT/질문정렬미평가로안전거부유지(실제평가PASS아님). 다음claim atomization의전체각주분할 경계읽기전용진단; 최종verifier완화·주석삭제·조건상속없음/⑧주소주석거부/새外部평가없음。
