@@ -185,6 +185,9 @@ public class ClaimEvidenceMatcher {
 		"(?:^|[.!?]\\s*)([^.!?\\n]{2,80}?)\\s+(?:경우|때)(?:에는|엔|에|는)?(?=\\s|$)",
 		Pattern.CASE_INSENSITIVE
 	);
+	private static final Pattern CONCESSIVE_ANTECEDENT = Pattern.compile(
+		"(?:^|[.!?;；]\\s*)([^.!?;；,，\\n]{2,100}?)에도\\s*불구하고(?=\\s|[,，]|$)"
+	);
 	private static final Pattern NAMED_CONDITION_PREFIX = Pattern.compile(
 		"(?:^|[.!?;；,\\n]\\s*)([^.!?;；,\\n]{2,60}?)\\s+(?:요건|조건)(?:을|를)?\\s*"
 			+ "(?:충족|만족|갖춘|갖추)",
@@ -935,8 +938,9 @@ public class ClaimEvidenceMatcher {
 				? Relation.COMPATIBLE
 				: Relation.NOT_ENTAILED;
 		}
-		// A later "after" condition cannot replace an earlier explicit "in case" trigger.
-		if (evidence.conditional() && evidence.normalizedText().contains("받은경우")
+		// A later condition cannot replace an explicit receipt or concessive antecedent.
+		if ((evidence.normalizedText().contains("받은경우")
+			|| evidence.normalizedText().contains("에도불구하고"))
 			&& !conditionAnchorsCovered(evidence.requiredConditionAnchors(), claim.normalizedText())) {
 			return Relation.NOT_ENTAILED;
 		}
@@ -2430,6 +2434,10 @@ public class ClaimEvidenceMatcher {
 				.trim();
 			Matcher matcher = NUMERIC_NARROWING_ANCHOR.matcher(searchable);
 			Set<String> anchors = new LinkedHashSet<>();
+			Matcher antecedent = CONCESSIVE_ANTECEDENT.matcher(String.valueOf(text == null ? "" : text));
+			while (antecedent.find()) {
+				anchors.add(KoreanQueryNormalizer.normalizeForMatch(antecedent.group(1)));
+			}
 			Matcher parentheticalClass = Pattern.compile(
 				"([\\p{IsHangul}a-zA-Z0-9]{2,})\\(([^()]{1,80})\\)에\\s*해당하면")
 				.matcher(String.valueOf(text == null ? "" : text)
