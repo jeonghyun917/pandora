@@ -37,14 +37,25 @@ public class SemanticEvidenceMatcher {
 		for (LawAiAnswerGround ground : grounds == null ? List.<LawAiAnswerGround>of() : grounds) {
 			List<String> evidenceTexts = List.of(value(ground.matchedChildText()), value(ground.snippet()),
 				value(ground.parentContextText()));
+			List<String> literalItems = evidenceTexts.stream()
+				.flatMap(source -> atomizer.sourceFragments(source).stream())
+				.filter(ClaimEvidenceAtomizer.SourceFragment::literalOnly)
+				.map(fragment -> canonical(fragment.text())).distinct().toList();
 			// A shortened rendering must not hide a restriction owned by the same ground.
 			boolean membershipContextUnrestricted = evidenceTexts.stream()
 				.map(parser::parse)
 				.allMatch(atom -> atom.conditions().isEmpty() && atom.exceptions().isEmpty());
 			for (String evidence : evidenceTexts) {
-				for (EvidenceAtom atom : atomizer.parseSourceAtomsForAlignment(evidence, parser)) {
-					atoms.add(new IndexedAtom(ground.number(), atom.sourceText(), atom,
-						membershipContextUnrestricted));
+				for (ClaimEvidenceAtomizer.SourceFragment fragment : atomizer.sourceFragments(evidence)) {
+					for (EvidenceAtom atom : fragment.literalOnly() ? List.of(parser.parse(fragment.text()))
+						: atomizer.parseSourceAtomsForAlignment(fragment.text(), parser)) {
+						String canonicalText = canonical(atom.sourceText());
+						if (literalItems.stream().anyMatch(item -> item.contains(canonicalText) && !item.equals(canonicalText))) {
+							continue;
+						}
+						atoms.add(new IndexedAtom(ground.number(), atom.sourceText(), atom,
+							membershipContextUnrestricted, fragment.literalOnly() || literalItems.contains(canonicalText)));
+					}
 				}
 			}
 		}
@@ -67,6 +78,7 @@ public class SemanticEvidenceMatcher {
 		List<SemanticMatch> supported = new ArrayList<>();
 		List<SemanticMatch> contradicted = new ArrayList<>();
 		for (IndexedAtom evidence : evidenceIndex == null ? List.<IndexedAtom>of() : evidenceIndex.atoms()) {
+			if (evidence.literalOnly() && !canonical(claim.sourceText()).equals(canonical(evidence.sentence()))) { continue; }
 			SemanticMatch result = align(claim, evidence);
 			if (result.status() == ClaimEvidenceMatcher.Status.INSUFFICIENT) {
 				result = matchHypotheticalMembership(claim, evidence);
@@ -94,6 +106,7 @@ public class SemanticEvidenceMatcher {
 	}
 
 	private SemanticMatch matchHypotheticalMembership(EvidenceAtom claim, IndexedAtom indexed) {
+		if (indexed.literalOnly()) { return SemanticMatch.insufficient("LITERAL_SOURCE_ITEM_ONLY"); }
 		var membership = HYPOTHETICAL_MEMBERSHIP.matcher(claim.sourceText().trim());
 		EvidenceAtom source = indexed.atom();
 		if (!membership.matches() || !indexed.membershipContextUnrestricted()
@@ -131,6 +144,7 @@ public class SemanticEvidenceMatcher {
 				continue;
 			}
 			boolean exact = expected.equals(canonical(evidence.atom().sourceText()));
+			if (evidence.literalOnly() && !exact) { continue; }
 			boolean explanatoryPrefix = expected.length() >= 20
 				&& claim.polarity() == evidence.atom().polarity()
 				&& evidence.atom().numericAnchors().containsAll(claim.numericAnchors())
@@ -327,9 +341,12 @@ public class SemanticEvidenceMatcher {
 	}
 
 	public record IndexedAtom(int groundNumber, String sentence, EvidenceAtom atom,
-		boolean membershipContextUnrestricted) {
+		boolean membershipContextUnrestricted, boolean literalOnly) {
+		public IndexedAtom(int groundNumber, String sentence, EvidenceAtom atom, boolean membershipContextUnrestricted) {
+			this(groundNumber, sentence, atom, membershipContextUnrestricted, false);
+		}
 		public IndexedAtom(int groundNumber, String sentence, EvidenceAtom atom) {
-			this(groundNumber, sentence, atom, atom.exceptions().isEmpty());
+			this(groundNumber, sentence, atom, atom.exceptions().isEmpty(), false);
 		}
 	}
 

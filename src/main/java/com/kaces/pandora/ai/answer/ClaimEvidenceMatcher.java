@@ -800,6 +800,11 @@ public class ClaimEvidenceMatcher {
 					String.valueOf(ground.parentContextText())).stream()
 					.flatMap(source -> atomizer.sourceLinkedDutyContexts(source, new KoreanEvidenceAtomParser()).stream())
 					.distinct().toList();
+			List<String> literalItems = List.of(String.valueOf(ground.matchedChildText()),
+				String.valueOf(ground.snippet()), String.valueOf(ground.parentContextText())).stream()
+				.flatMap(source -> atomizer.sourceFragments(source).stream())
+				.filter(ClaimEvidenceAtomizer.SourceFragment::literalOnly)
+				.map(fragment -> normalize(fragment.text())).distinct().toList();
 			addDocumentTitleEvidence(unique, ground.number(), ground.title(), anchorContext);
 			addEvidenceFragments(
 				unique,
@@ -808,7 +813,8 @@ public class ClaimEvidenceMatcher {
 				ground.chunkTitle(),
 				anchorContext,
 				denseStructuralContext,
-				sourceBindings
+				sourceBindings,
+				literalItems
 			);
 			addEvidenceFragments(
 				unique,
@@ -817,7 +823,8 @@ public class ClaimEvidenceMatcher {
 				ground.chunkTitle(),
 				anchorContext,
 				denseStructuralContext,
-				sourceBindings
+				sourceBindings,
+				literalItems
 			);
 			addEvidenceFragments(
 				unique,
@@ -826,7 +833,8 @@ public class ClaimEvidenceMatcher {
 				null,
 				anchorContext,
 				denseStructuralContext,
-				sourceBindings
+				sourceBindings,
+				literalItems
 			);
 		}
 		return List.copyOf(unique.values());
@@ -869,15 +877,19 @@ public class ClaimEvidenceMatcher {
 		String chunkTitle,
 		String anchorContext,
 		boolean denseStructuralContext,
-		List<ClaimEvidenceAtomizer.SourceLinkedDuty> sourceBindings
+		List<ClaimEvidenceAtomizer.SourceLinkedDuty> sourceBindings,
+		List<String> literalItems
 	) {
 		if (text == null || text.isBlank()) {
 			return;
 		}
-		Set<String> unscopedAtoms = new LinkedHashSet<>(atomizer.atomize(text));
+		for (ClaimEvidenceAtomizer.SourceFragment sourceFragment : atomizer.sourceFragments(text)) {
+		String sourceText = sourceFragment.text();
+		Set<String> unscopedAtoms = new LinkedHashSet<>(sourceFragment.literalOnly()
+			? List.of(sourceText) : atomizer.atomize(sourceText));
 		Set<String> fragments = new LinkedHashSet<>(unscopedAtoms);
-		fragments.addAll(atomizer.atomizeSource(text, chunkTitle));
-		String contiguousLiteralText = text.replaceAll("\\s+", " ").trim();
+		if (!sourceFragment.literalOnly()) { fragments.addAll(atomizer.atomizeSource(sourceText, chunkTitle)); }
+		String contiguousLiteralText = sourceText.replaceAll("\\s+", " ").trim();
 		for (String fragment : fragments) {
 			String cleaned = fragment.replaceAll("\\s+", " ").trim();
 			List<ClaimEvidenceAtomizer.SourceLinkedDuty> owned = sourceBindings.stream()
@@ -889,6 +901,9 @@ public class ClaimEvidenceMatcher {
 				continue;
 			}
 			String normalizedText = normalize(cleaned);
+			if (literalItems.stream().anyMatch(item -> item.contains(normalizedText) && !item.equals(normalizedText))) {
+				continue;
+			}
 			String key = groundNumber + "|" + normalizedText + "|" + denseStructuralContext;
 			if (!normalizedText.isBlank()) {
 				unique.putIfAbsent(key, new EvidenceSentence(
@@ -900,10 +915,12 @@ public class ClaimEvidenceMatcher {
 					anchorContext,
 					denseStructuralContext,
 					false,
-					!unscopedAtoms.contains(fragment) && !contiguousLiteralText.contains(cleaned),
+					sourceFragment.literalOnly() || literalItems.contains(normalizedText)
+						|| (!unscopedAtoms.contains(fragment) && !contiguousLiteralText.contains(cleaned)),
 					sourceBinding
 				));
 			}
+		}
 		}
 	}
 

@@ -9,6 +9,52 @@ class ClaimEvidenceMatcherRelationTests {
 
 	private final ClaimEvidenceMatcher matcher = new ClaimEvidenceMatcher();
 	@Test
+	void shortenedRenderingCannotHideClosedItemConditions() {
+		String tail = "수용여부를 통보하며, 미수용의 경우 그 사유를 1개월 이내 통보";
+		String source = "□ 처리절차\n① 접수\n② 발주기관의 검토결과 수용의 경우 계획서 보완 후 재공고하고 1개월 이내\n"
+			+ tail + "\n③ 결과 관리";
+		var grounds = List.of(groundWithContext(tail, source));
+		assertThat(matcher.match(tail, grounds).status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		var semantic = new SemanticEvidenceMatcher();
+		assertThat(semantic.match(new KoreanEvidenceAtomParser().parse(tail), semantic.index(grounds)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+	}
+
+	@Test
+	void wrappedProcedureItemDoesNotCrossUnownedBoundaries() {
+		var atomizer = new ClaimEvidenceAtomizer();
+		String body = "② 기관은 수용의 경우 계획서를 보완하고\n처리결과를 통보\n③ 결과 관리";
+		for (String source : List.of(
+			body,
+			"□ 처리절차\n① 접수\n" + body.replace("\n처리결과", "\n\n처리결과"),
+			"□ 처리절차\n① 접수\n" + body.replace("\n처리결과", "\n※ 별도 조건\n처리결과"),
+			"□ 처리절차\n① 접수\n" + body.replace("\n처리결과", "\n□ 다른절차\n처리결과"),
+			"□ 처리절차\n① 접수\n" + body.replace("③", "④"),
+			"□ 처리절차\n① 접수\n" + body.replace("\n③ 결과 관리", ""))) {
+			assertThat(atomizer.sourceFragments(source)).noneMatch(ClaimEvidenceAtomizer.SourceFragment::literalOnly);
+		}
+	}
+
+	@Test
+	void closedWrappedProcedureItemSupportsOnlyItsCompleteLiteral() {
+		String literal = "발주기관의 검토결과 수용의 경우 계획서 보완 후 재공고하고 1개월 이내 "
+			+ "수용여부를 통보하며, 미수용의 경우 그 사유를 1개월 이내 통보";
+		String source = "□ 처리절차\n① 신청서 접수\n② 발주기관의 검토결과 수용의 경우 계획서 보완 후 재공고하고 1개월 이내\n"
+			+ "수용여부를 통보하며, 미수용의 경우 그 사유를 1개월 이내 통보\n③ 처리결과 관리";
+		var grounds = List.of(ground(source));
+		assertThat(matcher.match(literal, grounds).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		var semantic = new SemanticEvidenceMatcher();
+		var parser = new KoreanEvidenceAtomParser();
+		assertThat(semantic.match(parser.parse(literal), semantic.index(grounds)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		for (String changed : List.of(literal.replace("1개월", "2개월"), literal.replace("발주기관", "사업자"),
+			literal.replace("발주기관의 검토결과 수용의 경우 ", ""))) {
+			assertThat(matcher.match(changed, grounds).status()).isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+			assertThat(semantic.match(parser.parse(changed), semantic.index(grounds)).status())
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+	@Test
 	void priorRecommendationDespiteClauseCannotBeRemovedFromConsequence() {
 		var grounds = List.of(ground("이행 권고에도 불구하고, 기준을 미준수하는 경우 감사기관에 통보함"));
 		assertThat(matcher.match("이행 권고에도 불구하고, 기준을 미준수하는 경우 감사기관에 통보함", grounds).status())

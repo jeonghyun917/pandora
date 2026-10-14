@@ -134,6 +134,38 @@ final class ClaimEvidenceAtomizer {
 		return atomize(text, false);
 	}
 
+	/** Keep a wrapped, closed item literal-only; do not infer scope from another item. */
+	List<SourceFragment> sourceFragments(String text) {
+		if (text == null || text.isBlank()) { return List.of(); }
+		List<SourceFragment> result = new ArrayList<>();
+		Matcher heading = Pattern.compile("(?m)^[ \\t]*[□○][ \\t]*[가-힣]{0,12}절차[ \\t]*\\R")
+			.matcher(text);
+		int copied = 0;
+		while (heading.find()) {
+			int cursor = heading.end();
+			for (int number = 1; number < 20; number++) {
+				char marker = (char) ('①' + number - 1);
+				char next = (char) (marker + 1);
+				Matcher item = Pattern.compile("(?m)[ \\t]*" + marker + "[ \\t]+([^" + next
+					+ "]{1,1800}?)(?=^[ \\t]*" + next + "[ \\t]+)")
+					.matcher(text).region(cursor, text.length());
+				if (!item.lookingAt() || !safeLegalWrap(item.group(1))) { break; }
+				String body = item.group(1).stripTrailing();
+				if (body.contains("*") || body.contains("※")) { break; }
+				if (body.matches("(?s).*\\R.*")) {
+					if (item.start() > copied) { result.add(new SourceFragment(text.substring(copied, item.start()), false)); }
+					result.add(new SourceFragment(body.replaceAll("\\s+", " ").trim(), true));
+					copied = item.end();
+				}
+				cursor = item.end();
+			}
+		}
+		if (copied < text.length()) { result.add(new SourceFragment(text.substring(copied), false)); }
+		return List.copyOf(result);
+	}
+
+	record SourceFragment(String text, boolean literalOnly) { }
+
 	/** Carry only an explicit source heading over its contiguous numbered list. */
 	List<String> atomizeSource(String text, String chunkTitle) {
 		if (text != null) {
