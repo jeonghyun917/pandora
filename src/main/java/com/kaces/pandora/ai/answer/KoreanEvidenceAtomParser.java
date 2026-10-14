@@ -28,6 +28,11 @@ public class KoreanEvidenceAtomParser {
 	private static final Pattern RECIPIENT = Pattern.compile(
 		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9()·ㆍ/-]{2,}?)(?:에게|한테)(?=\\s|[,.!?]|$)"
 	);
+	private static final Pattern TRANSFER_DESTINATION = Pattern.compile(
+		"(?:^|\\s)(?!(?:이내|이후|이전|당일|익일)에\\s)([\\p{IsHangul}A-Za-z0-9()·ㆍ/-]{2,}?)에\\s+"
+			+ "(?:[\\p{IsHangul}]{2,}(?:으로|로)\\s+){0,2}"
+			+ "(?:전달|발송|제출|통보|회신)(?=해야|하여야|한다|합니다|함|하고|하며|하지|할|\\s|[.!?(),]|$)"
+	);
 	private static final Pattern ACTION = Pattern.compile(
 		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9]{2,}?)(?:을|를)?\\s*"
 			+ "(?:해야|하여야|받아야|할\\s*수|하지\\s*않|한다|된다|합니다|됩니다|한다면|하면)"
@@ -112,6 +117,7 @@ public class KoreanEvidenceAtomParser {
 		}
 		Set<String> objects = matches(predicateSource, OBJECT, 1);
 		Set<String> recipients = matches(predicateSource, RECIPIENT, 1);
+		recipients.addAll(matches(predicateSource, TRANSFER_DESTINATION, 1));
 		Set<String> actions = matches(predicateSource, ACTION, 1);
 		actions.addAll(matches(predicateSource, DUTY_ACTION, 1));
 		Set<String> conditions = new LinkedHashSet<>();

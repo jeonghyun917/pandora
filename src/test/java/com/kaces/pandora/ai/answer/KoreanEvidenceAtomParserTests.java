@@ -8,6 +8,17 @@ import org.junit.jupiter.api.Test;
 
 class KoreanEvidenceAtomParserTests {
 	@Test
+	void transferDestinationPreservesTheExplicitRecipient() {
+		var parser = new KoreanEvidenceAtomParser();
+		assertThat(parser.parse("미준수 사항이 있을 경우 검토의견서를 발주기관에 이메일로 발송").recipients())
+			.containsExactly("발주기관");
+		assertThat(parser.parse("검토의견을 협의기관에 전달(온라인 의견등록)").recipients())
+			.containsExactly("협의기관");
+		assertThat(parser.parse("자료를 온라인에 등록한다.").recipients()).isEmpty();
+		assertThat(parser.parse("신청인은 1개월 이내에 이메일로 회신한다.").recipients()).isEmpty();
+	}
+
+	@Test
 	void explicitExistenceConditionPreservesItsWholeNominalPredicate() {
 		var parser = new KoreanEvidenceAtomParser();
 		assertThat(parser.parse("미준수 사항이 있을 경우 기관은 자료를 보완해야 한다.").conditions())

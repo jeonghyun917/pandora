@@ -218,6 +218,9 @@ public class SemanticEvidenceMatcher {
 			|| !slotAligned(claim.recipients(), evidence.recipients(), "recipient", aligned)) {
 			return SemanticMatch.insufficient("ROLE_MISMATCH");
 		}
+		if (!evidence.recipients().containsAll(claim.recipients())) {
+			return SemanticMatch.insufficient("RECIPIENT_IDENTITY_MISMATCH");
+		}
 		if (!slotAligned(claim.targetScopes(), evidence.targetScopes(), "targetScope", aligned)) {
 			return SemanticMatch.insufficient("TARGET_SCOPE_MISMATCH");
 		}

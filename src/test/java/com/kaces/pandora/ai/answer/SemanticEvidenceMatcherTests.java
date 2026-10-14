@@ -11,6 +11,16 @@ class SemanticEvidenceMatcherTests {
 
 	private final KoreanEvidenceAtomParser parser = new KoreanEvidenceAtomParser();
 	private final SemanticEvidenceMatcher matcher = new SemanticEvidenceMatcher();
+	@Test
+	void explicitTransferRecipientCannotBeChangedOrBroadened() {
+		String source = "신청인은 자료를 발주기관에 제출한다.";
+		var evidence = matcher.index(List.of(ground(source)));
+		assertThat(matcher.match(parser.parse(source), evidence).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		for (String destination : List.of("회사", "기관")) {
+			assertThat(matcher.match(parser.parse(source.replace("발주기관에", destination + "에")), evidence).status())
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
 
 	@Test
 	void nominalMembershipPreservesPreposedCommercialInclusionQualifier() {
