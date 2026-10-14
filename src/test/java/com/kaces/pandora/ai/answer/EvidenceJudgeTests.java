@@ -13,6 +13,28 @@ class EvidenceJudgeTests {
 	// 메소드 설명: EvidenceJudge 처리 흐름을 수행합니다.
 	private final EvidenceJudge judge = new EvidenceJudge();
 	@Test
+	void irrelevantPenaltyCoverageCannotBecomeDirectThroughCrossChunkFallback() {
+		var source = chunk(102, "admrul", "국토교통부 전자정부 구현에 관한 규정", "제1조(목적) (7/12)",
+			"제29조(사업관리) ① 사업주관부서의 장은 정보화사업관련 법령 및 규정이 정한 바에 따라 사업관리를 철저히 하여야 한다. "
+				+ "③ 지능정보화책임관은 관계기관의 장이 운영하는 모바일 앱, 웹 사이트에 대하여 공공성, 보안성, 활용성 관점에서 운영실태 점검을 할 수 있으며, "
+				+ "점검 결과 보완ㆍ통합ㆍ폐지 등 개선이 필요하다고 판단되면 개선을 요구할 수 있다.",
+			"제1조(목적)", "article");
+		var result = judge.judge("정보화시스템 법제도 준수안하면 어떤 불이익?", List.of(source), Map.of(), 8);
+		assertThat(result.directEvidenceCount()).isZero();
+		assertThat(result.relevantCount()).isZero();
+		assertThat(result.directEvidenceFound()).isFalse();
+		assertThat(result.chunks()).isEmpty();
+	}
+	@Test
+	void explicitRemedyCannotRestoreIncidentalLegalChangeCoverage() {
+		var source = chunk(103, "official_doc", "공공데이터베이스 표준화 관리 매뉴얼", "신청사유 검토",
+			"법제도 변경 등으로 신규 적용이 필요한 용어는 신청사유로 인정한다. "
+				+ "공통표준용어 정의기준 미준수 사항이 있을 경우 개선권고한다.",
+			"검토 기준", "procedure");
+		assertThat(judge.judge("정보화시스템 법제도 준수안하면 어떤 불이익?", List.of(source), Map.of(), 8)
+			.directEvidenceFound()).isFalse();
+	}
+	@Test
 	void sameSentenceCooccurrenceIsNotALegalViolationBinding() {
 		var source = chunk(101, "official_doc", "공공데이터베이스 표준화 관리 매뉴얼", "신청사유 검토",
 			"법제도 변경 등으로 신규 적용이 필요한 용어는 신청사유로 인정하고, 공통표준용어 정의기준 미준수 시 보완요청한다.",

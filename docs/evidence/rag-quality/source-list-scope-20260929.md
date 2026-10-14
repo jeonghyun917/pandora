@@ -1,5 +1,11 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-14 후보선택 수정 전체69676 exit0/XML1636 failures0 errors0 제외19/diff-check0/범위 재검토 직접 Critical·Important 없음(incidental 법제도변경·critical concept은 topic 선행제외 확인). 실제 penalty/SNS 추가 평가 없음, 최종조건정렬·원문조건·제재강도 불변. 검증 커밋/공식배포를 이어감.
+
+- 2026-10-14 후보선택 집중37407 exit1/97개 중 기존 양성2FAIL 확인: relevance 일괄필수 경계가 미준수항목 재권고와 명시조건 개선권고도 제외. 본문의 명시 문법연결만 예외로 제한 후20734 exit0/97PASS. 리뷰 제안 incidental-law-change 음성103 추가9608 exit0(기존 topicAligned=false 선행필터가 이미 거부하므로 RED 아님); guard 삭제/완화 없음. readonly25373 실제84723·87043 directtrue/relevant1 유지·87468 directfalse/topic0 제외. readonlyaf6035 법령목적+별도운영품질11079298 및 사전협의제시조건11138991 모두 no_direct_evidence/selected빈결과: 일반법제도미준수로 coverage승격 차단. 전체회귀 진행중/미commit·미deploy/새외부평가없음/penalty實PASS아님.
+
+- 2026-10-14 HEAD518de472 pushed/전체80178 XML1634f0e0제외19→stage41280exit0→공식deploy36487 KEEPALIVE/PID51376/runtime2fcdd2e1-66e0-4662-9450-944dc2c7532b/JARa2f94d2031a09b84941789ecb91f5b60488d8d0b2d17cd6df5c3b5072b97317c. smoke844072 confige7b08ced/law211658·rag84248 DB-Qparity/qreadytrue/qfail0/Q15840·main·18080불변/이전58500·73852·a97runtime폐기. 新 official候補Judge診斷22358はFoundtrue/relevant0/topic1、54146/f7b9e3で個別directCount0/policycross_chunk_direct確認. genericRED30961 1FAIL(関連0の法令目的+別運用品質改善をcoverageで直接昇格)→penalty類cross候補は関連性必須の3行境界/他intentfallback・個別direct・最終検証不変/集中37407進行中. この境界は関連0の迂回昇格阻止のみ、全cross文脈因果証明解決ではない。actual84723/87043正常根拠維持は後続readonly確認/未commit未deploy/新外部評価なし/penalty實PASS未達。
+
 - 2026-10-14 부정과거조건/명시단일결론 분리 전체80178exit0 XML1634 failures0 errors0 제외19/diff-check0 확인. 원문전제삭제·긍정결론부정변경은거부/복합결론·주체추론·숫자·최종질문정렬가드불변/실제16⑦ AMBIGUOUS거부유지/외부평가없음/penalty實PASS아님.
 
 - 2026-10-14 HEAD26a305ec pushed/검증전체36218 XML1632f0e0제외19→stage79998exit0→공식deploy58500 KEEPALIVE/PID73852/runtimea97d72c0-f95e-4964-b609-6cbc08f95f8e/JAR7e76031914150c9c79570f8415524cdc2502b641b172b5c3d115883c4b4cad27. smoke2fd758 confige7b08ced/law211658·rag84248 DB-Qparity/qreadytrue/qfail0/Q15840·main·18080불변/이전55149·45152·5be3runtime폐기. 미이행과거조건 극성 RED53589 1FAIL(하지않은경우의긍정결론통보한다→통보하지않는다도SUPPORTED)→기존negativeantecedent/marker에은경우를연결·전체전제보존/명시단일결론만projection/actor·길이·복합결론ambiguityguard유지/집중16582exit0/범위리뷰직접C/I없음/전체80178진행중. readonlyaed098 실제16⑦ 수령·미이행전제에제15조참조포함보존/여전히AMBIGUOUS安全거부/최종질문정렬완화없음/새外部평가없음/실제penaltyPASS아님. 현재부정과거조건은未commit·未deploy.

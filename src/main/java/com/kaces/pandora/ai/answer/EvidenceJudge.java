@@ -392,6 +392,10 @@ public class EvidenceJudge {
 		if (chunk.bodyDirectEvidenceMatches() <= 0 || isTableOfContentsLike(chunk.chunk())) {
 			return false;
 		}
+		if (isPenaltyConsequenceQuestion(profile) && !chunk.relevant()
+			&& !hasExplicitNoncomplianceRemedy(chunk.chunk().chunkText())) {
+			return false;
+		}
 		String body = normalize(chunk.chunk().chunkText());
 		String documentTitle = normalize(chunk.chunk().title());
 		String chunkHeading = normalize(chunk.chunk().chunkTitle());
@@ -2584,6 +2588,13 @@ public class EvidenceJudge {
 		String question = normalize(profile.normalizedQuestion());
 		return profile.preferredSectionTypes().contains("penalty")
 			|| containsPenaltyConsequenceCue(question);
+	}
+
+	private static boolean hasExplicitNoncomplianceRemedy(String body) {
+		// Preserve an explicit remedy predicate, not separate purpose and inspection clauses.
+		return java.util.regex.Pattern.compile(
+			"미준수\\s*(?:사항(?:이)?\\s*있을\\s*경우\\s*개선권고|항목(?:을|에)\\s*(?:다시\\s*)?권고)")
+			.matcher(String.valueOf(body)).find();
 	}
 
 	static boolean hasPenaltyConsequenceSignal(String body, String chunkHeading, String parentSectionTitle) {
