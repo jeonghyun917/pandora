@@ -13,6 +13,26 @@ class SemanticEvidenceMatcherTests {
 	private final SemanticEvidenceMatcher matcher = new SemanticEvidenceMatcher();
 
 	@Test
+	void nominalMembershipPreservesPreposedCommercialInclusionQualifier() {
+		var grounds = List.of(new LawAiAnswerGround(
+			1, 10L, 20L, "official_doc", "공공소프트웨어사업 과업심의 가이드", "기관", "문서", "2026-01-01", "CURRENT",
+			"1", "적용 대상 사업", null, "적용 대상 사업\n국가기관 등이 발주하는 모든 SW사업(상용SW포함)", "source", "url", 1.0d));
+		String claim = "새로운 사업도 국가기관 등이 발주하는 상용소프트웨어를 포함한 모든 소프트웨어사업에 해당하면 적용 대상 사업입니다.";
+		assertThat(matcher.match(parser.parse(claim), matcher.index(grounds)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(new ClaimEvidenceMatcher().match(claim, grounds).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		for (String changed : List.of(claim.replace("국가기관", "민간기업"),
+			claim.replace("모든 ", ""), claim.replace("상용소프트웨어를 포함한 ", ""),
+			claim.replace("상용소프트웨어를 포함한", "상용소프트웨어만인"))) {
+			assertThat(matcher.match(parser.parse(changed), matcher.index(grounds)).status()).as(changed)
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+			assertThat(new ClaimEvidenceMatcher().match(changed, grounds).status()).as("control: %s", changed)
+				.isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+		}
+	}
+
+	@Test
 	void shortenedNominalSnippetCannotHideSameGroundConditions() {
 		String snippet = "대상 사업\n국가기관 등이 발주하는 모든 SW사업(상용SW포함)";
 		String restricted = snippet + "\n예산이 확보된 경우에는 적용한다.";

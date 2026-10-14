@@ -403,7 +403,10 @@ public class ClaimEvidenceMatcher {
 		List<String> claimTokens = tokenize(claim);
 		Set<String> claimNumbers = ClaimNumericNormalizer.tokens(claim);
 		List<String> orderedClaimNumbers = ClaimNumericNormalizer.orderedTokens(claim);
-		ClaimSemantics claimSemantics = ClaimSemantics.from(claim);
+		String semanticClaim = LITERAL_NOMINAL_MEMBERSHIP.matcher(normalize(claim)).matches()
+			? claim.replaceAll("상용\\s*소프트웨어를\\s*포함한\\s*모든\\s*소프트웨어사업", "모든 SW사업(상용SW포함)")
+			: claim;
+		ClaimSemantics claimSemantics = ClaimSemantics.from(semanticClaim);
 		boolean singleActionPermissionClaim = claimTokens.size() == 1
 			&& claimSemantics.permissionActions().size() == 1
 			&& claimSemantics.permissionMode() != PermissionMode.UNSPECIFIED;

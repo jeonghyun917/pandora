@@ -306,6 +306,7 @@ public class SemanticEvidenceMatcher {
 	static String canonicalMembershipText(String value) {
 		// Expand only these explicit business-class phrases, never an issuer or institution name.
 		return KoreanQueryNormalizer.normalizeForMatch(value == null ? "" : value)
+			.replace("상용소프트웨어를포함한모든소프트웨어사업", "모든sw사업상용sw포함")
 			.replace("모든소프트웨어사업", "모든sw사업")
 			.replace("상용소프트웨어포함", "상용sw포함");
 	}

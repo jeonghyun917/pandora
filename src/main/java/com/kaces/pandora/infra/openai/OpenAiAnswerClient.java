@@ -142,6 +142,9 @@ public class OpenAiAnswerClient extends GroundedAnswerRewriter {
 			+ "본문의 '적용 대상 사업' 또는 '대상 사업'을 제목의 제도명으로 바꾸지 마세요. "
 			+ "제목에서 분류 결론을 보충하지 말고, 원문 본문의 표제와 전체 범위가 명시된 경우에만 "
 			+ "'[사업]이 [본문의 전체 범위]에 해당하면 [본문의 분류 표제]입니다.' 구조로 쓰세요. "
+			+ "질문에서 사업 주어에 사용한 '도'는 조건부 분류에서도 유지하세요. "
+			+ "본문의 '모든 SW사업(상용SW포함)'은 자연어로 '상용소프트웨어를 포함한 모든 소프트웨어사업'으로 풀어 쓰세요. "
+			+ "발주기관과 모든·상용 포함 조건은 그대로 보존하고, 다른 사업 종류나 추가 적용 범위로 바꾸지 마세요. "
 			+ "이 규칙은 위의 제도 식별 자리표시자보다 우선하며 원문의 기관·SW 조건과 예외를 생략하지 않습니다.";
 		return requestAnswer(question, "질문:\n" + question + "\n검증된 근거:\n" + context,
 			explicitProcedure ? Math.max(2048, answerMaxOutputTokens()) : answerMaxOutputTokens(), requestInstructions);

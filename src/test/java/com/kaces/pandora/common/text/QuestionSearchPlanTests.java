@@ -5,6 +5,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 
 class QuestionSearchPlanTests {
+	@Test
+	void genericObligationDoesNotRequirePublicDataProvisionEvidence() {
+		for (String question : java.util.List.of("계약 의무를 안하면 어떤 불이익?", "운영 기준을 반드시 준수해야 하나요?")) {
+			assertThat(QuestionSearchPlan.from(question).profile().directEvidenceGroups())
+				.as(question).noneSatisfy(group -> assertThat(group).contains("제공 의무"));
+		}
+		assertThat(QuestionSearchPlan.from("공공기관은 공공데이터를 제공해야 하나요?").profile().directEvidenceGroups())
+			.anySatisfy(group -> assertThat(group).contains("제공 의무"));
+	}
 
 	@Test
 	void buildsDeterministicGroupBalancedBm25Variants() {
