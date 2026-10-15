@@ -29,6 +29,7 @@ final class LawSemanticChunkPlanner {
 	private static final Pattern APPENDIX_HEADING = Pattern.compile("^(별표\\s*\\d*)");
 	private static final Pattern LAW_ARTICLE_SOURCE_PATH = Pattern.compile("^(.*?조문단위\\[[0-9]+\\]).*$");
 	private static final Pattern LAW_APPENDIX_SOURCE_PATH = Pattern.compile("^(.*?별표단위\\[[0-9]+\\]).*$");
+	private static final Pattern LAW_SUPPLEMENTARY_SOURCE_PATH = Pattern.compile("^(.*?부칙단위\\[[0-9]+\\]).*$");
 	private static final Pattern SOURCE_UNIT_INDEX = Pattern.compile("(조문단위|조문내용|별표단위|부칙단위)\\[([0-9]+)]");
 	private static final List<String> TINY_APPENDIX_FORM_TERMS = List.of(
 		"별지", "서식", "진단서", "보증서", "제출", "요청번호", "요청일",
@@ -1059,6 +1060,10 @@ final class LawSemanticChunkPlanner {
 		var appendix = LAW_APPENDIX_SOURCE_PATH.matcher(sourcePath);
 		if (appendix.matches()) {
 			return appendix.group(1);
+		}
+		var supplementary = LAW_SUPPLEMENTARY_SOURCE_PATH.matcher(sourcePath);
+		if (supplementary.matches()) {
+			return supplementary.group(1);
 		}
 		String unitPath = sourcePath.replaceFirst("(\\[[0-9]+\\])(?:\\..*)$", "$1");
 		if (!unitPath.equals(sourcePath)) {

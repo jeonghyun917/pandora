@@ -12,6 +12,25 @@ class LawSemanticChunkPlannerTests {
 	private final ChunkPlanningContext planningContext = new ChunkPlanningContext("law", 41L, "Personal Information Protection Act");
 
 	@Test
+	void supplementaryUnitsWithTheSameArticleNumberKeepSeparateParents() {
+		var sections = List.of(
+			new SyncDetailSection("text", "제2조", "경과조치", "첫 번째 부칙의 적용 시점을 정한다.",
+				"$.법령.부칙.부칙단위[3].부칙내용[0]", 1, 1),
+			new SyncDetailSection("text", "제2조", "경과조치", "두 번째 부칙의 적용 시점을 별도로 정한다.",
+				"$.법령.부칙.부칙단위[8].부칙내용[0]", 1, 1));
+		var chunks = planner.plan(planningContext, sections);
+		assertThat(chunks).hasSize(2);
+		assertThat(chunks).extracting(PlannedLawChunk::parentSourcePath).containsExactly(
+			"$.법령.부칙.부칙단위[3]", "$.법령.부칙.부칙단위[8]");
+		assertThat(chunks).extracting(PlannedLawChunk::parentKey).doesNotHaveDuplicates();
+		assertThat(chunks).extracting(PlannedLawChunk::childOrder).containsExactly(0, 0);
+		assertThat(chunks).extracting(PlannedLawChunk::text).containsExactly(
+			"첫 번째 부칙의 적용 시점을 정한다.", "두 번째 부칙의 적용 시점을 별도로 정한다.");
+		assertThat(ChunkPreviewApproval.assess("law", 41L, 1L, "raw", sections, chunks)
+			.unexplainedLossSpanCount()).isZero();
+	}
+
+	@Test
 	void versionedAppendixRetainsDuplicateCellsOwnedByDifferentParents() {
 		String cell = "별표1 확인 서명 제출 구분 ".repeat(8);
 		var sections = List.of(
