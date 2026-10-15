@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-15 10:56 mixed 실제본문 READ ONLY52d610 exit0: doc2041 ACTIVE10500748(`제7조 등`,source_path조문단위[10]) 한본문에명시제7조와제11조및사이문단이함께있음; 10500749(`제13조 등`,조문단위[16])에도명시제14조와뒤문단이혼합됨. 이전5550c2의번호추정이아닌실제본문소유경계혼합확인. 단일기존source_path나첫조문번호로전체청크parent를backfill하면오소유위험이므로금지. 다음원문raw→현행schema2 readonly preview로조문경계·손실·증가량을검증하며candidate/임베딩/승격은아직실행하지않음. 제품·ACTIVE본문·READY·DB/Q불변/OpenAI0/penalty및최종평가미완료.
+
 - 2026-10-15 10:46 유형별첫청크 경로/번호 READ ONLY5550c2 exit0: law article1464131 doc729 `$.법령.조문.조문단위[0].조문내용`,paragraph2009135 doc2694 `...조문단위[0].항.항단위[0].항내용`; admrul2830099 doc5640 `$.AdmRulService.조문.조문내용[0]`. 반면 mixed10500748/10500749/10500763은 `제7조 등/제13조 등/제118조 등`와단일source_path만있어그경로를전체본문parent로자동승격할수없음(실제본문소유span추가검증필요). 경로없는text예시는2849935 `제개정이유 1-10`,1429107 `개정문 1-11`로개정메타성격과본문detail10902989/11057660을구분해야함. 기존planner canonical경로·번호 기반schema2계약과legacy수동채움은동일하지않음. 다음mixed 원문span/개정메타·detail 경계를읽기검증, 제품·DB·Q·READY불변/OpenAI0.
 
 - 2026-10-15 10:36 빈parent READ ONLY shape8a3c21 exit0: 대상law96641/admrul114866 모두chunk_schema_version1. admrul text107477(문서18610/source_path빈38),admin-rule-article6919(4551/빈0),detail470(457/빈470); law paragraph27937/articlemixed26100/text21645(빈37)/paragraphmixed17266/article3484/subparagraphmixed141/subparagraph40/textmixed26/detail2(빈2). 모든parent_source_path는빈값. 즉전체source_path빈547/원문경로존재210960이나 경로존재만으로명시parent단위증명은아님. legacy유형·원문경로별복원가능성과경로없는detail의별도검토를분리할근거확보, 임의parent채우기·전체재청킹·후보/embedding/승격없음. ParentContextAssembler의bounded matched-child1200/parent2800 경계는현행유지. 다음유형별소유단위유도계약을원문과대조; penalty와최종평가미완료.
