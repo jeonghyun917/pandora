@@ -199,6 +199,7 @@ public class AdminOverviewService {
 			WHERE d.use_yn = 'Y'
 			  AND c.use_yn = 'Y'
 			  AND CHAR_LENGTH(c.chunk_text) < 80
+			  AND c.activation_status = 'ACTIVE'
 			""");
 		long lowSignalTiny = queryLong("""
 			SELECT COUNT(*)
@@ -207,6 +208,7 @@ public class AdminOverviewService {
 			WHERE d.use_yn = 'Y'
 			  AND c.use_yn = 'Y'
 			  AND CHAR_LENGTH(c.chunk_text) < 80
+			  AND c.activation_status = 'ACTIVE'
 			  AND (
 			    LOWER(c.chunk_text) LIKE '%<img%'
 			    OR c.chunk_text LIKE '%상단%'
@@ -243,6 +245,7 @@ public class AdminOverviewService {
 			  AND c.use_yn = 'Y'
 			  AND d.target IN ('law', 'admrul')
 			  AND e.chunk_id IS NULL
+			  AND c.activation_status = 'ACTIVE'
 			""");
 		long ragEmbeddingBacklog = queryLong("""
 			SELECT COUNT(*)
@@ -641,6 +644,7 @@ public class AdminOverviewService {
 			WHERE doc.target IN ('law', 'admrul')
 			  AND doc.use_yn = 'Y'
 			  AND c.use_yn = 'Y'
+			  AND c.activation_status = 'ACTIVE'
 			GROUP BY doc.target
 			""", rs -> {
 			String target = rs.getString("target");

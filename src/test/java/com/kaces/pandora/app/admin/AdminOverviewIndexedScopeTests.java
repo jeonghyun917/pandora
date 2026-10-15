@@ -6,9 +6,23 @@ import com.kaces.pandora.semantic.config.LawAiProperties;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import tools.jackson.databind.ObjectMapper;
 
 class AdminOverviewIndexedScopeTests {
+
+	@Test
+	void lawPipelineAggregationExcludesCandidateAndRetiredChunks() throws Exception {
+		var jdbc = new CapturingJdbcTemplate();
+		var service = new AdminOverviewService(jdbc, new LawAiProperties(null, null, null, null), new ObjectMapper());
+		var aggregates = AdminOverviewService.class.getDeclaredMethod("lawAggregates");
+		aggregates.setAccessible(true);
+		aggregates.invoke(service);
+		assertThat(jdbc.sql.replaceAll("\\s+", " "))
+			.contains("FROM law_api_document_chunks c")
+			.contains("c.activation_status = 'ACTIVE'")
+			.contains("c.use_yn = 'Y'");
+	}
 
 	@Test
 	void lawParityCountQueriesExcludeRetiredVersionsForBothTargets() throws Exception {
@@ -31,6 +45,11 @@ class AdminOverviewIndexedScopeTests {
 	private static final class CapturingJdbcTemplate extends JdbcTemplate {
 		private String sql;
 		private Object[] arguments;
+
+		@Override
+		public void query(String sql, RowCallbackHandler callback) {
+			this.sql = sql;
+		}
 
 		@Override
 		public <T> T queryForObject(String sql, Class<T> requiredType, Object... args) {
