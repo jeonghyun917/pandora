@@ -70,6 +70,19 @@ class RagTextExtractorTests {
     }
 
     @Test
+    void preservesNestedTableBoundariesRegardlessOfNamespacePrefix() throws Exception {
+        for (String prefix : new String[]{"hp", "alt"}) {
+            Path file = temp.resolve("nested-"+prefix+".hwpx");
+            String nested="<"+prefix+":tbl colCnt='1'><tr>"+cell(0,0,1,1,"INNER")+"</tr></"+prefix+":tbl>";
+            String xml="<section xmlns:hp='urn:hp' xmlns:alt='urn:hp'><tbl colCnt='1'><tr><tc>"
+                +"<cellAddr rowAddr='0' colAddr='0'/><cellSpan rowSpan='1' colSpan='1'/>"
+                +"<t>BEFORE</t>"+nested+"<t>AFTER</t></tc></tr></tbl></section>";
+            try(var zip=new ZipOutputStream(Files.newOutputStream(file))){entry(zip,"Contents/section0.xml",xml);}
+            assertThat(new RagTextExtractor().extract(file).text()).isEqualTo("BEFORE\nINNER\nAFTER");
+        }
+    }
+
+    @Test
     void preservesRawTextWhenCellAddressesOverlapOrSpanIsInvalid() throws Exception {
         for (int span : new int[]{0, 3}) {
             Path file = temp.resolve("invalid"+span+".hwpx");

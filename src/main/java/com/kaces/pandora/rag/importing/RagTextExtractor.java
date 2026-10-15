@@ -150,8 +150,10 @@ public class RagTextExtractor {
 			Node[][] grid = new Node[rows.size()][columns];
 			for (int r = 0; r < rows.size(); r++) {
 				for (Node cell : children(rows.get(r), "tc")) {
-					if (((Element) cell).getElementsByTagName("hp:tbl").getLength() > 0
-						|| ((Element) cell).getElementsByTagName("tbl").getLength() > 0) { return null; }
+					var descendants = ((Element) cell).getElementsByTagName("*");
+					for (int i = 0; i < descendants.getLength(); i++) {
+						if ("tbl".equals(localName(descendants.item(i)))) { return null; }
+					}
 					List<Node> addresses = children(cell, "cellAddr"), spans = children(cell, "cellSpan");
 					if (addresses.size() != 1 || spans.size() != 1) { return null; }
 					Element address = (Element) addresses.get(0), span = (Element) spans.get(0);
