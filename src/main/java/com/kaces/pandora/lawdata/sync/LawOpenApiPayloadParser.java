@@ -188,6 +188,10 @@ public class LawOpenApiPayloadParser {
 			if (isExcludedLongTextPath(path)) {
 				return;
 			}
+			if (ADMIN_RULE_ARTICLE_CONTENT_PATH.equals(path) && stripHtmlTags(node.asText()).length() < 80) {
+				addStructuredSection(sections, "text", null, path, node.asText(), path, 0, 1);
+				return;
+			}
 			addTextSections(sections, "text", null, path, node.asText());
 			return;
 		}

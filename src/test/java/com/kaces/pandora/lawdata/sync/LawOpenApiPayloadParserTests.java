@@ -12,6 +12,31 @@ class LawOpenApiPayloadParserTests {
 	private final LawOpenApiPayloadParser parser = new LawOpenApiPayloadParser(objectMapper, new LawJsonWriter(objectMapper));
 
 	@Test
+	void preservesShortExplicitAdministrativeRuleBody() {
+		String body = "담당청은 가격지수를 1.0123으로 한다.";
+		SyncDetailDocument document = parser.parseDetailDocument(
+			"{\"AdmRulService\":{\"조문내용\":\"" + body + "\"}}", "가격지수 고시");
+
+		assertThat(document.sections()).hasSize(1);
+		assertThat(document.sections().get(0).body()).isEqualTo(body);
+		assertThat(document.sections().get(0).sourcePath()).isEqualTo("$.AdmRulService.조문내용");
+		var chunks = new LawSemanticChunkPlanner().plan(
+			new ChunkPlanningContext("admrul", 41L, "가격지수 고시"), document.sections());
+		assertThat(chunks).hasSize(1);
+		assertThat(chunks.get(0).text()).isEqualTo(body);
+		assertThat(chunks.get(0).sourcePath()).isEqualTo("$.AdmRulService.조문내용");
+	}
+
+	@Test
+	void doesNotPromoteShortMetadataOrUnownedBodyFields() {
+		SyncDetailDocument document = parser.parseDetailDocument("""
+			{"AdmRulService":{"제목":"가격지수 고시","조문내용":"   "},
+			 "기타":{"조문내용":"담당청은 가격지수를 1.0123으로 한다."}}
+			""", "가격지수 고시");
+		assertThat(document.sections()).isEmpty();
+	}
+
+	@Test
 	void parseDetailDocumentPreservesNestedSourcePathForFallbackTextSections() {
 		String detailJson = """
 			{

@@ -71,3 +71,11 @@ CLI 감사 `fc6db1`은 최초 runtime metadata 검증에서 중단됐다. 직접
 - 두 스크립트의 조회 범위는 서로 다르고, 기존 legacy 쿼리의 short 전체10428과 동일한 검색가능 집합이라고 단정하지 않는다. 원문·quality status·embedding·Qpoint를 수정하지 않았다. 자동 분류를 최종 사람 검토로 위장하거나 권고만으로 청크를 제외하지 않는다.
 
 penalty 실제 PASS와 후속 release ladder는 여전히 미완료다.
+
+## 짧은 명시 본문 누락과 백업 자격 정정
+
+- 실제 doc5792의 명시 본문은37자 STRING이지만 기존 파서는 일반80자 필터로 sections0을 반환했다(1b395e). 일반 수치 고시 fixture RED12795 1FAIL로 재현했다.
+- 정확한 `$.AdmRulService.조문내용`의 짧은 scalar만 기존 structured helper로 보존한다. 다른 경로의 같은 필드명·짧은 메타·공백은 여전히 제외하며 일반80자 필터와 긴 본문 경로는 변경하지 않았다.
+- 집중6504 57PASS; 최종전체82068 exit0/1650 tests failures0 errors0 skipped19. 실제 SELECT 전용 bef1bd에서 sections1/37자 원문과1.0161 보존 확인. 기존 DB 청크/후보/embedding/승격 변경 없음. 외부 Answer 평가 미실행.
+- 사용자가 기존 DB 자격 설정을 지적했다. 공식 application.properties의 중첩 datasource 환경변수 fallback을 값 출력 없이 정상 해석해 공식 backup-mariadb.ps1에 메모리상 전달했다. PANDORA_DB_PASSWORD 미설정만으로 자격이 없다고 판단한 앞선 기록을 정정한다. 비밀번호 추측·채팅 전송·토큰/쿠키 추출은 없다.
+- backup40536 진행 중이며 f9d87f 호스트 파일5.6GB 증가를 확인했다. 종료코드/완결성 확인 전 백업 성공 또는 대량재색인 준비 완료로 간주하지 않는다.
