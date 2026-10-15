@@ -110,7 +110,6 @@ public class RagImportService {
 				candidateFiles = discoverCandidateFiles(root);
 			}
 			List<Path> files = selectPreferredFiles(candidateFiles);
-			deactivateUnpreferredDuplicateDocuments(candidateFiles, files);
 			discovered = files.size();
 			for (Path file : files) {
 				try {
@@ -120,6 +119,11 @@ public class RagImportService {
 					} else {
 						imported++;
 						indexed += outcome.indexedCount();
+						if (indexNow && outcome.indexedCount() > 0) {
+							List<Path> ownedAlternatives = candidateFiles.stream()
+								.filter(candidate -> duplicateKey(candidate).equals(duplicateKey(file))).toList();
+							deactivateUnpreferredDuplicateDocuments(ownedAlternatives, List.of(file));
+						}
 					}
 				} catch (Exception exception) {
 					failed++;

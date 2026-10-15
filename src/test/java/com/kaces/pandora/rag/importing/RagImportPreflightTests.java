@@ -41,6 +41,69 @@ class RagImportPreflightTests {
     }
 
     @Test
+    void failedPreferredFileMustNotDeactivateItsAlternativeDocument() throws Exception {
+        Files.writeString(temp.resolve("guide.pdf"),"invalid PDF");
+        Files.writeString(temp.resolve("guide.hwpx"),"alternative source is not reimported");
+        var mapper=mock(RagDocumentMapper.class);
+        var index=mock(RagChunkSearchIndexService.class);
+        var qdrant=mock(com.kaces.pandora.infra.qdrant.QdrantClient.class);
+        doAnswer(call->{((RagImportJobKey)call.getArgument(0)).setImportJobId(1L);return null;})
+            .when(mapper).insertImportJob(any(),anyString(),any());
+        when(mapper.findActiveChunkIdsByFilePathsAndVersion(anyList(),eq(4))).thenReturn(List.of(17L));
+        var service=new RagImportService(mapper,new RagTextExtractor(),new RagChunker(),new RagChunkQualityGate(),
+            index,null,qdrant,null,null);
+        var result=service.importFolder("official_doc",temp.toString(),false,true);
+        assertThat(result.failedCount()).isEqualTo(1);
+        verify(mapper,never()).deactivateChunksByFilePathsAndVersion(anyList(),anyInt());
+        verify(mapper,never()).deactivateDocumentsByFilePaths(anyList());
+        verify(mapper,never()).markEmbeddingsSupersededByChunkIds(anyList());
+        verifyNoInteractions(qdrant,index);
+    }
+
+    @Test
+    void alternativesAreCleanedOnlyAfterThePreferredDocumentIsIndexed() throws Exception {
+        for(boolean indexNow : new boolean[]{false,true}) {
+            Path folder=Files.createDirectory(temp.resolve("index-"+indexNow));
+            Files.writeString(folder.resolve("guide.txt"),"자료 처리 가이드\n\n"+
+                "기관은 원본 자료를 검토하고 처리 결과를 기록하여야 한다. 담당자는 변경 이력을 보존하고 필요한 경우 원본과 대조하여 확인하여야 한다. ".repeat(8));
+            Path alternative=folder.resolve("guide.md");
+            Files.writeString(alternative,"기존 대체 문서");
+            var mapper=mock(RagDocumentMapper.class);
+            var index=mock(RagChunkSearchIndexService.class);
+            var qdrant=mock(com.kaces.pandora.infra.qdrant.QdrantClient.class);
+            var embedding=mock(com.kaces.pandora.infra.openai.OpenAiEmbeddingClient.class);
+            var properties=mock(com.kaces.pandora.semantic.config.LawAiProperties.class,RETURNS_DEEP_STUBS);
+            when(properties.openai().embeddingModel()).thenReturn("fixture");
+            when(properties.qdrant().ragCollection()).thenReturn("fixture");
+            when(properties.rag().importBatchSize()).thenReturn(1);
+            doAnswer(call->{((RagImportJobKey)call.getArgument(0)).setImportJobId(1L);return null;})
+                .when(mapper).insertImportJob(any(),anyString(),any());
+            when(mapper.findDocumentIdByHash(anyString())).thenReturn(42L);
+            when(mapper.findChunkIdsByDocumentId(42L)).thenReturn(List.of());
+            when(mapper.findActiveChunkIdsByFilePathsAndVersion(anyList(),eq(4))).thenReturn(List.of(17L));
+            var row=new com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow(7L,42L,"official_doc","42","가이드","","","20260101","CURRENT",
+                "chunk 1","가이드","자료 처리 본문",null,"$.v4.chunks[0]",null,0,"hash","가이드","body","PASS","자료 처리 본문",null,4);
+            when(mapper.findSemanticIndexChunksByDocumentId(42L,4)).thenReturn(List.of(row));
+            when(embedding.embed(anyList())).thenReturn(List.of(List.of(0.0)));
+            var service=new RagImportService(mapper,new RagTextExtractor(),new RagChunker(),new RagChunkQualityGate(),
+                index,embedding,qdrant,properties,null);
+            var result=service.importFolder("official_doc",folder.toString(),indexNow,true);
+            assertThat(result.failedCount()).isZero();
+            assertThat(result.indexedCount()).isEqualTo(indexNow?1:0);
+            if(indexNow) {
+                var order=inOrder(mapper);
+                order.verify(mapper).upsertEmbeddingStatus(eq(7L),anyString(),anyString(),anyString(),anyString(),eq("INDEXED"),isNull());
+                order.verify(mapper).deactivateChunksByFilePathsAndVersion(eq(List.of(alternative.toAbsolutePath().toString())),eq(4));
+                verify(qdrant).deleteRagPointsBestEffort(List.of(17L));
+            } else {
+                verify(mapper,never()).deactivateChunksByFilePathsAndVersion(anyList(),anyInt());
+                verify(mapper,never()).deactivateDocumentsByFilePaths(anyList());
+                verifyNoInteractions(qdrant,embedding);
+            }
+        }
+    }
+
+    @Test
     void rejectedReplacementCannotMutateDocumentOrActiveChunks() throws Exception {
         Path file=temp.resolve("rejected.txt");
         Files.writeString(file,"문서 제목");
