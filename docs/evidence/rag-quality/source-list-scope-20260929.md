@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-15 12:01 정상로그인버튼만재인증(입력읽기/추출없음)→doc2041 새UI preview1355/손실0 확인→수정계획새비활성v3를1회생성: CANDIDATE1355/previewApprovedtrue/손실0/IDs11295608–11296962. READ ONLY7bcfe4 실제저장 v1ACTIVE167/v2CANDIDATE1352/v3CANDIDATE1355, v3부칙교차unit parent충돌0/CONTEXT_ONLY144/PASS1211. 최초읽기3d40f4는존재하지않는테이블명으로exit1, mapper실제테이블확인후수정조회이며후보생성재시도없음. v2진단후보유지·임베딩금지, v3도아직임베딩·활성화없음/OpenAI0/ACTIVE/Q/READY불변. 다음v3전체소유경계및임베딩대상quality필터계약확인후다음단계; 전체parent전환·penalty·최종평가미완료.
+
 - 2026-10-15 11:49 실제doc2041 원문을공식datasource설정의정상클라이언트 READ ONLY로읽어수정제품75f48386 parser→planner독립진단 ca1d46 exit0: 전체1355(기존충돌후보1352), 부칙child18/parent17/원문unit와parent_path불일치0/교차unit parent충돌0/설명되지않은손실0. 진단도구는stdin원문만사용/DB쓰기0/OpenAI0, 기존거부helper재사용없음. 이는실제원문새계획검증이며저장후보·검색·Answer PASS증거가아님. 기존v2진단후보임베딩·활성화·재생성금지유지. 다음정상UI 새preview와새비활성version의저장경계검증을분리진행; ACTIVE/Q/READY불변/전체parent전환·penalty·최종평가미완료.
 
 - 2026-10-15 11:44 제품75f48386 pushed/전체4313 exit0 1652f0e0 제외19→공식stage51250 exit0 SHA939578b4c234c7644e1c6b1a9745d2e0672bbb7289c57efe4818eed2c4b973a6. status8b0648/Java소유확인→공식stop0a587f PID56612→리스너없음확인후deploy29824 KEEPALIVE PID36092/runtime864c6ca1-f5c6-4202-a342-bebd555aa455. fresh9d1799 DB=Q law211658/rag84248/qreadytrue/qfail0/confige7b08ced/indexe39713ce/lexical15b68153 유지. 부칙parent보존수정배포완료이나실제원문새계획parent검증은다음작업. 기존doc2041v2는충돌진단후보로보존/임베딩·활성화·재생성금지. Q13672/18080/main/output불변, 실제penalty·전체parent전환·최종평가미완료.
