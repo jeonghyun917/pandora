@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-15 12:20 소비경계독립재현 e6d601 exit0(API/DB/Q/OpenAI0): 동일통지본문의PASS/CONTEXT_ONLY/REJECT를EvidenceJudge→DirectEvidenceSelectionPolicy로전달하니모두policySelected1/DIRECT_ATOM_PRESERVED. EvidenceJudge는searchable()로CONTEXT_ONLY·REJECT를제외하지만후속policy의safeChunks/rejectionReason은quality를검사하지않고원래judgeContextChunks를다시후보로받는다(90cf5a/5ff2ef). 즉기본judge품질제외가후속직접근거보존에서재도입될수있는실제경계결함확인; live질문오답이나실제gateFAIL로단정하지않음. 다음일반품질상태fixture RED→기존searchable계약을그대로보존하는최소수정/TDD. doc2041v3임베딩·활성화보류/v2금지유지/제품·ACTIVE·Q·READY불변. 전체품질미완료.
+
 - 2026-10-15 12:09 v3전체저장계약 READ ONLY53153c exit0: doc2041/v3 1355개 parent빈0/parent_path빈0/schema2아님0/REVIEW·REJECT0/동일parent childOrder중복0/0시작연속순서위반0/기존embedding0. 코드읽기74cd4e·6fe9fc·7d501b: 후보임베딩은quality필터없이전체를별도candidate collection에저장하고, activation검증도전체expected count에맞는INDEXED를요구한다. 따라서CONTEXT_ONLY144개를임의빼서1211개만임베딩하면현행완전성계약불일치이며이단계에서그런변경·호출없음. CONTEXT_ONLY는reranker감점이며검색직접근거차단과동일하지않으므로다음direct-ground선택소비경계의기존가드·테스트를확인한다. v2금지유지/v3미임베딩·미활성/ACTIVE/Q/READY불변/실제품질평가미실행.
 
 - 2026-10-15 12:01 정상로그인버튼만재인증(입력읽기/추출없음)→doc2041 새UI preview1355/손실0 확인→수정계획새비활성v3를1회생성: CANDIDATE1355/previewApprovedtrue/손실0/IDs11295608–11296962. READ ONLY7bcfe4 실제저장 v1ACTIVE167/v2CANDIDATE1352/v3CANDIDATE1355, v3부칙교차unit parent충돌0/CONTEXT_ONLY144/PASS1211. 최초읽기3d40f4는존재하지않는테이블명으로exit1, mapper실제테이블확인후수정조회이며후보생성재시도없음. v2진단후보유지·임베딩금지, v3도아직임베딩·활성화없음/OpenAI0/ACTIVE/Q/READY불변. 다음v3전체소유경계및임베딩대상quality필터계약확인후다음단계; 전체parent전환·penalty·최종평가미완료.
