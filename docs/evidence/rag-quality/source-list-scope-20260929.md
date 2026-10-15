@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-15 13:32 rollback전제읽기4021e6의main activationStatus=ACTIVE count0은point손실아님: 알려진10500748 payload c76d31에서doc2041/version1존재·activationStatus필드누락확인, 정확doc/version count366a9b는167. 구형payload호환과DB ACTIVE를구분/임의metadata복구없음. 원래계획은RAG behavior승격전focused/full품질gate를요구하므로DB/staging수량통과만으로v3활성화하지않음. 현행SNS+penalty→Difficult12→holdout57→full1003 선행품질계약유지. 공식wave스크립트존재확인/실행없음. 다음독립short-chunk 원문검토및penalty새직접원문증명으로진행하며동일후보임베딩·종료평가재실행금지.
+
 - 2026-10-15 13:29 격리v3검증 READ ONLY2905fa: expected1355/stored1355/indexed_current(hash일치)1355/previewApproved1/손실0/blockingQuality0, v2는CANDIDATE1352/embedding없음유지. 전체Qpayload 3a8965 1355개/고유ID1355/문서2041·버전3·CANDIDATE·law·원문경로소유불일치0. LawChunkVersionVerification.databaseGatesPass의모든DB조건및staging ID존재경계를충족하나이를검색품질/최종release gate로대체하지않음. 격리collection에는quality/parent필드가없고원문소유경로만있어해당정보소비는DB row계약으로구분. main활성화·READY재빌드없음. 다음승격전원문보존·검색품질검증계약을확정하고기존ACTIVE167의rollback가능성을확인; 전체parent전환·penalty·최종평가미완료.
 
 - 2026-10-15 13:19 freshd4411f runtime49eec22d/JAR6d369e38 DB=Q law211658/rag84248/qreadytrue/qfail0확인. 정상인증UI에서law/doc2041/기존후보v3/1355정확지정후격리임베딩1회실행(활성화버튼미클릭): 실제완료응답law_chunks_candidate/text-embedding-3-small/requested1355/indexed1355. Qdrant readonly exact count ab0639 동일doc/v3 candidate1355/main0. v2재생·임베딩없음, 보호doc불변/기존ACTIVE와READY유지. OpenAI전송은승인된law후보1355개범위이며Answer평가아님. 다음DB embedding hash·격리payload소유/품질보존과후보검증gate확인전활성화금지. 전체parent전환·penalty실제PASS·후속최종평가미완료.
