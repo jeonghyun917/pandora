@@ -17,6 +17,7 @@ import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.springframework.stereotype.Component;
 import org.w3c.dom.Node;
+import org.w3c.dom.Element;
 
 @Component
 public class RagTextExtractor {
@@ -116,6 +117,14 @@ public class RagTextExtractor {
 		if (node == null) {
 			return;
 		}
+		if ("tbl".equals(localName(node))) {
+			String table = tableText(node);
+			if (table != null) {
+				if (builder.length() > 0) { builder.append('\n'); }
+				builder.append(table);
+				return;
+			}
+		}
 		if (node.getNodeType() == Node.TEXT_NODE) {
 			String value = node.getNodeValue();
 			if (value != null && !value.isBlank()) {
@@ -129,6 +138,69 @@ public class RagTextExtractor {
 		for (Node child = node.getFirstChild(); child != null; child = child.getNextSibling()) {
 			appendText(child, builder);
 		}
+	}
+
+	// Preserve only relations explicitly owned by XML cell addresses and spans.
+	// Malformed or nested tables retain the existing raw-text fallback.
+	private String tableText(Node table) {
+		try {
+			int columns = Integer.parseInt(((Element) table).getAttribute("colCnt"));
+			List<Node> rows = children(table, "tr");
+			if (columns < 1 || columns > 200 || rows.isEmpty() || rows.size() > 10000) { return null; }
+			Node[][] grid = new Node[rows.size()][columns];
+			for (int r = 0; r < rows.size(); r++) {
+				for (Node cell : children(rows.get(r), "tc")) {
+					if (((Element) cell).getElementsByTagName("hp:tbl").getLength() > 0
+						|| ((Element) cell).getElementsByTagName("tbl").getLength() > 0) { return null; }
+					List<Node> addresses = children(cell, "cellAddr"), spans = children(cell, "cellSpan");
+					if (addresses.size() != 1 || spans.size() != 1) { return null; }
+					Element address = (Element) addresses.get(0), span = (Element) spans.get(0);
+					int row = Integer.parseInt(address.getAttribute("rowAddr"));
+					int col = Integer.parseInt(address.getAttribute("colAddr"));
+					int height = Integer.parseInt(span.getAttribute("rowSpan"));
+					int width = Integer.parseInt(span.getAttribute("colSpan"));
+					if (row != r || col < 0 || height < 1 || width < 1
+						|| height > rows.size() - row || width > columns - col) { return null; }
+					for (int y = row; y < row + height; y++) {
+						for (int x = col; x < col + width; x++) {
+							if (grid[y][x] != null) { return null; }
+							grid[y][x] = cell;
+						}
+					}
+				}
+			}
+			List<String> lines = new ArrayList<>();
+			for (Node[] row : grid) {
+				List<String> values = new ArrayList<>();
+				Node previous = null;
+				for (Node cell : row) {
+					if (cell == null) { return null; }
+					if (cell != previous) {
+						StringBuilder text = new StringBuilder();
+						appendText(cell, text);
+						values.add(text.toString().replaceAll("\\s+", " ").trim());
+					}
+					previous = cell;
+				}
+				lines.add(String.join(" | ", values));
+			}
+			return String.join("\n", lines);
+		} catch (NumberFormatException exception) {
+			return null;
+		}
+	}
+
+	private List<Node> children(Node parent, String name) {
+		List<Node> result = new ArrayList<>();
+		for (Node child = parent.getFirstChild(); child != null; child = child.getNextSibling()) {
+			if (child.getNodeType() == Node.ELEMENT_NODE && name.equals(localName(child))) { result.add(child); }
+		}
+		return result;
+	}
+
+	private String localName(Node node) {
+		String name = node.getNodeName();
+		return name.substring(name.indexOf(':') + 1);
 	}
 
 	// 메소드 설명: normalize 처리 흐름을 수행합니다.

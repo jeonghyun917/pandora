@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-16 HWPX 표 행 보존: XML cellAddr/cellSpan의 명시적 행·열·병합 범위만 사용하여 행을 보존하고 잘못된 주소·겹침·span은 원문 재귀 추출로 fallback. 표 밖 단서나 공통 표제를 자동 소유시키지 않음. TDD RED93948 exit1→집중67170 exit0(추출기4건 포함)→전체52872 exit0; fresh XML83a01b 1659 tests/f0/e0/skipped19, diff-check0. 실제 doc1765 원본 consumer 진단3f89ae: 근거조각18개 중 기관·일정 공동행1개, 원문 행 literal SUPPORTED/날짜 교체 INSUFFICIENT. 자연어 재진술은 여전히 INSUFFICIENT이며 실제 답변·penalty PASS 아님. 기존 DB 재수집/ACTIVE 교체/검증기 완화 없음. 다음은 검증 tree 커밋·공식 배포 및 건강 확인; penalty 조건 소유와 데이터 복구는 미완료 유지.
+
 - 2026-10-16 권한설정변경후승인실행 aa0914 git add성공→검증동일코드SHA확인c17d99/diff-check0→제품82456329 commit0fc712/pushee708d. 전체71912의1656 f0e0 제외19검증tree와동일하여테스트재실행없음. 공식stage76226 exit0→호스트status9558d0/직접소켓·HTTP e0d9f9에서8080/6333부재확인(이전PID현재로사용안함)→공식deploy90148 KEEPALIVE PID44636/runtime a520d343-bfbd-4ec5-8e29-d8c7b174a026/JAR6c99e4ccdf7281f925897f698cdeaae0e086b21bea60b8d3024fc7c5e7c6a302. Qdrant는종료·재설치없이공식start-qdrant.cmd 승인기동22759유지. fresh08a633 readyz200/allshardsready/양collectiongreen·optimizerok/DB=Q law211658/rag84248/qreadytrue/qfail0/confige7b08ced/indexe39713ce/lexical15b68153. 18080·공유main·ACTIVE데이터수정없음. 문서밖보존진단을table-context-diagnostic-20261016.md/manual-source-review-20261016.md로통합; 해당문서의쓰기차단기록은당시상태이며현재승인Git쓰기복구. 기존DB오염청크복구·표행소유구현·penalty실제PASS·최종gate는미완료, 자동완료/authority승격없음.
 
 - 이전읽기전용e8506b에서doc1188/1442 각13개추가1차검토(개별누적275, 전체수동해결아님).1188은역사법령집표지·목차/163320은실제부칙시행문/163231은별표업무열거조각이라일괄삭제금지·원래법령소유보존.1442는개인정보연차보고서장표제/112960은종사자300인이상민간부문표제이며다음성인정보주체와구분. 개인정보위반행정처분이나해외동향을일반정보화법제도제재의직접증명으로차용하지않음. target전체/활성동일버전후속130자제한을구분, 원본PDF/현행성검증·품질적용없음.

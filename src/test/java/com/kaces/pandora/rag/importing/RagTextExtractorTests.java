@@ -32,4 +32,51 @@ class RagTextExtractorTests {
         zip.write(xml.getBytes(StandardCharsets.UTF_8));
         zip.closeEntry();
     }
+
+    @Test
+    void keepsTableRowsTogetherAndCarriesCellsOnlyWithinTheirDeclaredSpan() throws Exception {
+        Path file = temp.resolve("rows.hwpx");
+        String xml = "<section><tbl colCnt='2'>"
+            + "<tr>" + cell(0,0,1,1,"기관") + cell(0,1,1,1,"일정") + "</tr>"
+            + "<tr>" + cell(1,0,1,1,"가람기관") + cell(1,1,2,1,"연중") + "</tr>"
+            + "<tr>" + cell(2,0,1,1,"누리기관") + "</tr>"
+            + "<tr>" + cell(3,0,1,1,"다음기관") + cell(3,1,1,1,"3~4월") + "</tr>"
+            + "</tbl><p><t>여건에 따라 변경될 수 있음</t></p></section>";
+        try (var zip = new ZipOutputStream(Files.newOutputStream(file))) {
+            entry(zip, "Contents/section0.xml", xml);
+        }
+        assertThat(new RagTextExtractor().extract(file).text()).isEqualTo(
+            "기관 | 일정\n가람기관 | 연중\n누리기관 | 연중\n다음기관 | 3~4월\n여건에 따라 변경될 수 있음");
+    }
+
+    private static String cell(int row, int column, int rowSpan, int colSpan, String text) {
+        return "<tc><cellAddr rowAddr='"+row+"' colAddr='"+column+"'/>"
+            + "<cellSpan rowSpan='"+rowSpan+"' colSpan='"+colSpan+"'/>"
+            + "<subList><p><t>"+text+"</t></p></subList></tc>";
+    }
+
+    @Test
+    void retainsFullWidthSectionRowsAndRepeatedHeadersWithoutCrossingTables() throws Exception {
+        Path file = temp.resolve("sections.hwpx");
+        String xml = "<section><tbl colCnt='2'><tr>"+cell(0,0,1,2,"종합감사")+"</tr>"
+            + "<tr>"+cell(1,0,1,1,"기관")+cell(1,1,1,1,"일정")+"</tr>"
+            + "<tr>"+cell(2,0,1,1,"가람")+cell(2,1,1,1,"3월")+"</tr>"
+            + "<tr>"+cell(3,0,1,2,"특정감사")+"</tr>"
+            + "<tr>"+cell(4,0,1,1,"기관")+cell(4,1,1,1,"일정")+"</tr></tbl>"
+            + "<tbl colCnt='2'><tr>"+cell(0,0,1,1,"누리")+cell(0,1,1,1,"5월")+"</tr></tbl></section>";
+        try (var zip = new ZipOutputStream(Files.newOutputStream(file))) { entry(zip,"Contents/section0.xml",xml); }
+        assertThat(new RagTextExtractor().extract(file).text()).isEqualTo(
+            "종합감사\n기관 | 일정\n가람 | 3월\n특정감사\n기관 | 일정\n누리 | 5월");
+    }
+
+    @Test
+    void preservesRawTextWhenCellAddressesOverlapOrSpanIsInvalid() throws Exception {
+        for (int span : new int[]{0, 3}) {
+            Path file = temp.resolve("invalid"+span+".hwpx");
+            String xml="<section><tbl colCnt='2'><tr>"+cell(0,0,1,span,"원문조건")
+                +cell(0,0,1,1,"금액50원")+"</tr></tbl></section>";
+            try(var zip=new ZipOutputStream(Files.newOutputStream(file))){entry(zip,"Contents/section0.xml",xml);}
+            assertThat(new RagTextExtractor().extract(file).text()).isEqualTo("원문조건\n금액50원");
+        }
+    }
 }
