@@ -1,5 +1,9 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-15 09:35 새공식lexical갱신은정상로그인UI 단일실행진행중/기존READY da8d51ce 보존. app56516/Q13672/MariaDBRunning/디스크여유85.68GiB/최근디스크관련이벤트0. 부하중bba89b·ebea2b runtime-info의DB/Q수량필드는null이므로이를fresh parityPASS로오인금지(qreadytrue/qfail0만확인). 새평가보류/빌드중복·8080재시작금지. 백업완료증거는직전항목, helper의hardcoded credential fallback 거부후재시도·우회없음. 실제빌드완료응답과coverage확인까지미완료유지.
+
+- 2026-10-15 백업40536 exit0: `runtime/backups/mariadb/pandora-20261015-091953.sql` 10587843857 bytes/완결마커true/err0/프로세스종료(01389d), SHA2567a2a6430b8e9fcd0cc4f82446299d787fe836d221e8ac3fa9853a891dcff0a47. 복원 실행시험은아님. 공식Qsnapshot27041 exit0 두컬렉션200/manifest092919. 자격fallback 보조DBhealth는보안검토거부로중단/우회없음; 이후공개health a839fa parity211658/84248·qreadytrue/qfail0/MariaDBRunning. 정상로그인 UI공식keyword갱신을새고유버전으로1회시작/버튼disabled `처리 중입니다. 중복 실행하지 마세요.` 확인. 기존READY보존/기존FAILED재생없음. 진행중중복실행·8080재시작금지, 완료/실패확인전lexical151해결단정금지.
+
 - 2026-10-15 제품2bcef88e pushed/전체82068 exit0 1650f0e0 제외19→공식stage99554 exit0 SHA73f05577fa12306a235a074432efe558102ea1e7cda721942eee8ae0372513d8→소유PID31684/공식stop4847c9→리스너없음확인→deploy26516 KEEPALIVE PID56516/runtime8c053ce1-a13c-4c26-ad24-30a957e11190. fresh5b6eec lawDB=Q211658/ragDB=Q84248/qreadytrue/qfail0/confige7b08ced/indexe39713ce/lexicalda8d51ce 유지. 정상로그인버튼만 재로그인 실제UI readonly preview5792 projected0→1/37자전체·수치1.0161/손실0 확인. 후보생성·임베딩·활성화없음. Q13672/18080/main/output불변. backup40536은계속실행중/9GiB이상 증가/오류로그0; 종료성공과복원가능성은미확정, 대량lexical시작안함.
 
 - 2026-10-15 짧은 명시 행정규칙 본문 누락: 실제doc5792 원문 `$.AdmRulService.조문내용` STRING37자 존재/기존파싱0(1b395e). 일반fixture RED12795 1FAIL→정확한 본문경로의80자미만만 structured 보존4줄/임의메타·다른경로·공백은거부 유지. 집중6504 57PASS, planner연결 assertion 포함 최종전체82068 exit0 1650 tests f0e0 제외19. 실제readonly bef1bd 본문37자·파싱1/수치1.0161 보존/DB쓰기0/OpenAI0. 기존청크·후보·embedding·승격 불변, 실제평가아님. 사용자 지적 후 공식datasource 중첩환경변수 fallback 존재를 값출력없이 확인: PANDORA_DB_PASSWORD 미설정만으로 자격없음 판단은정정. 정상공식backup 40536 진행중/호스트f9d87f 파일5.6GB 증가 확인, 종료·백업성공은아직미확정. credential 추측/토큰추출/보안우회 없음. penalty/releasegate 미완료.

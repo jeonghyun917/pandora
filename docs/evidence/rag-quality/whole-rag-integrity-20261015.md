@@ -80,3 +80,7 @@ penalty 실제 PASS와 후속 release ladder는 여전히 미완료다.
 - 사용자가 기존 DB 자격 설정을 지적했다. 공식 application.properties의 중첩 datasource 환경변수 fallback을 값 출력 없이 정상 해석해 공식 backup-mariadb.ps1에 메모리상 전달했다. PANDORA_DB_PASSWORD 미설정만으로 자격이 없다고 판단한 앞선 기록을 정정한다. 비밀번호 추측·채팅 전송·토큰/쿠키 추출은 없다.
 - backup40536 진행 중이며 f9d87f 호스트 파일5.6GB 증가를 확인했다. 종료코드/완결성 확인 전 백업 성공 또는 대량재색인 준비 완료로 간주하지 않는다.
 - 제품2bcef88e pushed/전체1650 f0e0 제외19. stage99554 exit0/JAR73f05577…513d8, 소유31684만 공식stop4847c9 후 deploy26516 KEEPALIVE PID56516/runtime8c053ce1-a13c-4c26-ad24-30a957e11190. 5b6eec에서 DB/Q parity와config/index/lexical 불변 확인. 실제 정상로그인 UI preview5792도 projected0→1,37자전체/수치/손실0 확인. 후보생성·임베딩·활성화 없이 종료했다.
+- backup40536 exit0/10587843857 bytes/완결마커true/err0/프로세스종료。SHA256 `7a2a6430b8e9fcd0cc4f82446299d787fe836d221e8ac3fa9853a891dcff0a47`。백업의 실제 복원 시험은 하지 않았다.
+- 공식 Qsnapshot27041 exit0: law_chunks와rag_chunks_v4 각각200, manifest `runtime/backups/qdrant/qdrant-snapshots-20261015-092919.json`。포인트 변경/종료 없음.
+- DB 상태 보조진단은 하드코딩 credential fallback 때문에 보안검토 거부되어 실행하지 않았다. 해당 경로 재시도/우회 금지. 공개health a839fa는DB/Q211658/84248 일치/qreadytrue/qfail0/MariaDB Running을 확인했다.
+- 백업부하 후 정상 health를 확인하고 정상로그인 UI의 공식 keyword index 갱신을 새 버전으로1회 시작했다. 버튼disabled/중복금지 안내를 확인했다. 진행 중이므로 다시 시작하거나8080재시작하지 않는다. 완료 결과와현재READY coverage 검증 전 누락151 해결로 기록하지 않는다.
