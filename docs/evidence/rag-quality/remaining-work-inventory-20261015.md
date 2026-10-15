@@ -28,7 +28,8 @@
 | 전체 gate의 curated/answer-oracle/NO_GROUNDS·필수 claim 안전성 | 최신 최종 통과 미확인 | 최종 full1003에서 ID 완전성·중복·실패·안전 지표 확인 |
 | candidate-present 직접근거 선택률 ≥80% 및 과거 two85 계약 | 직접근거 선택률 최신 증거 미확인; oracle 집합 대조 완료 | readonly76ec32에서 현재 frozen1003의 answerVerificationRequired는89개, NO_GROUNDS31개다. 과거85와 현재89를 동일 집합으로 간주하지 않는다. 최신 full1003의89개 oracle gate를 확인하며 과거 two85 재실행으로 대체하지 않는다. 추가 반복실행이 필요한지 manifest 계약을 먼저 확인 |
 | 검색·의미검증 authority 승격 | 보류 | 모든 해당 shadow/독립 선택/후속 필수 gate 통과 후 승인된 별도 commit. 현재 training SELECTED만으로 승격 금지 |
-| active searchable embedding backlog·DB/Q 정합성·lexical 전체 coverage·parent identity | 최근 일부 증거만 있음 | 최종 artifact 기준 기존 검증의 유효성 대조 및 필요한 읽기전용 검사. 수량 일치를 fingerprint/coverage 증명으로 대체 금지; 재임베딩·재promotion 금지 범위 유지 |
+| active searchable embedding backlog·DB/Q 정합성 | 현재 상태 읽기전용 확인 | `whole-rag-integrity-20261015.md`: ACTIVE embedding 누락0, 법률/행정규칙 전수감사의41건은전부RETIRED v1. 최종artifact의 동일성 유지 여부는 마지막fence에서 확인 |
+| lexical 전체 coverage·parent identity | 미완료 | READY lexical에서doc18109v2 52/doc2808v2 99 누락. 기존DB crash·백업/안정성선행조건 해소 전 대량재색인 재시도 금지. parent_key 공백은 원문과index동일하므로 별도명시소유계약으로 검토 |
 | 최종 배포·rollback·인계 | 미완료 | gate 통과 제품의 공식 8080 smoke, flag/version/revision/JAR 기록, 최종 인계. 18080/main/output 불변 |
 
 ## 실행 규칙

@@ -357,6 +357,7 @@ public class AdminOverviewService {
 			JOIN law_api_documents d ON d.document_id = c.document_id
 			WHERE d.use_yn = 'Y'
 			  AND c.use_yn = 'Y'
+			  AND c.activation_status = 'ACTIVE'
 			  AND d.target = ?
 			  AND e.embedding_model = 'text-embedding-3-small'
 			  AND e.vector_store = 'law_chunks'
