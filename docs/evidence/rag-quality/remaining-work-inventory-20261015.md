@@ -23,6 +23,8 @@
 | 항목 | 현재 상태 | 다음 유효한 행동/선행조건 |
 | --- | --- | --- |
 | penalty 직접 근거와 질문 범위·조건 소유 | 미해결 | 새 source-owned 증명 경로. 일반제재 혼합·기관/SW 범위 차용·최종 verifier 완화 금지 |
+| 원문 표의 열·값 소유 | 추출/청킹/의미 입력 전달 구현·검증·배포, 자연어 조건소유 미완료 | 4ca407b2·24da5cff: 명시헤더 또는 엄격한 번호형 구조만 연결, 병합구역/표전환/모호한 새헤더에서 이전소유 차단. 실제원문102개 텍스트노드 누락0, literal지원/날짜변이거부. 문서말미 단서의 특정표 적용은 별도 증명 필요 |
+| 기존 RAG 코퍼스 안전 교체 | 사전검사 보호033f4467 배포, 실제교체 미실행 | importFile 품질거부 전에 DB쓰기 없음. 상위중복비활성화/트랜잭션 자기호출/후속임베딩실패의 DB·Q보상/candidate·rollback 계약이 남아 bulk force reimport 금지 |
 | penalty 실제 평가 | 미통과 | 위 근거 문제 해결과 전체 외부 실행 fence 확인 뒤 새 고유 checkpoint; 종료 FAIL 재생 금지 |
 | Difficult12 → holdout57 → full1003 | 현재 최종 제품에서 미완료 | SNS+penalty 실제 PASS 후 순차 실행. 승인 dataset hash `6b85990a6395c501138628877d4c9efda61c218afde4d0ab5a886f3588ce044c` 유지 |
 | 전체 gate의 curated/answer-oracle/NO_GROUNDS·필수 claim 안전성 | 최신 최종 통과 미확인 | 최종 full1003에서 ID 완전성·중복·실패·안전 지표 확인 |
