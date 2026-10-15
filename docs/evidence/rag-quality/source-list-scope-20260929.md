@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-15 12:49 fresh2fc100 runtimeb46f9635/JARfb70bbe5 DB=Q law211658/rag84248/qreadytrue/qfail0 유지, candidate upsert는별도collection/CANDIDATE고정으로코드확인. 정상cached login버튼만재인증/후보embedding미시작. 새UI차이에서평가신뢰성문제확인: law대기2707=진단v2 1352+v3 1355, 전체대기5159→7866로후보수만큼증가. AdminOverviewService 실제SQL16a7b4는qualityMetrics backlog/tiny와pipeline집계에ACTIVE조건이없어현행검색backlog표시에비활성후보가혼입됨. 기존Q정합성SQL만ACTIVE조건있음. 다음일반ACTIVE/CANDIDATE/RETIRED fixture RED로표시집계경계를고정하고후보보존최소수정. 실제ACTIVE임베딩누락이나Q불일치로단정하지않음/v2금지·v3미embedding·미activation/READY불변/전체품질미완료.
+
 - 2026-10-15 12:39 제품4be3b179(품질제외재도입차단/전체1653f0e0 제외19) 공식stage31812 exit0 SHAfb70bbe538dead09f7c9cb69118d59bc3769b1f0f20a3f9b79f612877258464b. status800c20/Java소유확인후공식stop9e60fa PID36092→8080리스너없음확인→deploy36522 KEEPALIVE PID43896/runtimeb46f9635-68e3-4bb3-bf86-fca12bb899a0. fresh8abb91 DB=Q law211658/rag84248/qreadytrue/qfail0/confige7b08ced/indexe39713ce/lexical15b68153 유지. 기존runtime864c6ca1은폐기. Q13672/18080/main/output불변, 후보v2금지/v3미임베딩·미활성. 다음승인된v3후보임베딩전원격준비조건확인과격리후보검증; 실제penalty·후속최종평가·전체parent전환미완료.
 
 - 2026-10-15 12:30 품질제외재도입최소수정 전체65187 exit0 1653tests f0e0 제외19/집중103PASS/자체diff검토·diff-check0. TDD의CONTEXT_ONLY·REJECT×후보/기존선택목록4경계와기존PASS회귀보존. 아래실행중표시는이종료증거로대체. 제품미배포/다음공식stage·배포건강확인, v3후보미임베딩·미활성, 실제SNS·penalty후속평가아님.
