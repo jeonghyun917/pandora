@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-15 10:36 빈parent READ ONLY shape8a3c21 exit0: 대상law96641/admrul114866 모두chunk_schema_version1. admrul text107477(문서18610/source_path빈38),admin-rule-article6919(4551/빈0),detail470(457/빈470); law paragraph27937/articlemixed26100/text21645(빈37)/paragraphmixed17266/article3484/subparagraphmixed141/subparagraph40/textmixed26/detail2(빈2). 모든parent_source_path는빈값. 즉전체source_path빈547/원문경로존재210960이나 경로존재만으로명시parent단위증명은아님. legacy유형·원문경로별복원가능성과경로없는detail의별도검토를분리할근거확보, 임의parent채우기·전체재청킹·후보/embedding/승격없음. ParentContextAssembler의bounded matched-child1200/parent2800 경계는현행유지. 다음유형별소유단위유도계약을원문과대조; penalty와최종평가미완료.
+
 - 2026-10-15 10:26 전체새READY coverage f3b16e(공식설정/정상MariaDB READ ONLY/statement20초제한/exit0): admrul114918/law96740/official_doc84248 합295906 각각lexical누락0·본문hash불일치0. law/admrul parent불일치도0이나 source_parent_empty law96641/admrul114866는여전하여명시parent소유계약미완료. 원문과동일한빈값을명시소유증명으로대체하지않음. 새READY6d3f27f9/lexical15b68153의전체coverage검증이며추가빌드·재임베딩·DB쓰기·OpenAI0. 다음빈parent의원문구조/소유단위 계약 진단과별개penalty증명, 최종평가미진입유지.
 
 - 2026-10-15 10:16 실제개별coverage0cfb0a: 공식datasource 설정의정상해석·비밀값출력없이 정상MariaDB클라이언트 READ ONLY transaction(자동보안검토승인)으로새READY6d3f27f9 확인. doc2808 law ACTIVE99/lexical누락0/hash불일치0/parent불일치0; doc18109 admrul ACTIVE52/누락0/hash0/parent0. 기존하드코딩helper는사용·수정·재시도하지않음. 과거누락151 해소는이범위에서확인했으나 빈parent의명시소유계약·penalty·최종품질평가는별개미완료. 문서쓰기불가라고추정한이전artifact문구는정상apply_patch성공으로정정/권한우회없음.
