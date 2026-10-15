@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-15 11:24 제품c4b36fd5 pushed/전체30320 1651f0e0 제외19→공식stage12884 exit0 SHA3253679e46a61a09751cbc3d8b5fa5d265dc974b27427986a30b31a3876c6d1b. status4d393a 소유56516확인→공식stop594572 직후리스너지연으로배포보류→0fa1ee에서이전PID/파일/리스너없음확인후deploy75472 KEEPALIVE PID56612/runtime9ddb6511-31fc-40e1-a0f4-9c24b50efd8d. fresh7fd208 DB=Q law211658/rag84248/qreadytrue/qfail0/confige7b08ced/indexe39713ce/lexical15b68153 유지. 정상로그인버튼만재로그인→같은doc2041 readonly preview는1352/tiny549/손실0 그대로, 편·장표제의실제`제1조`오소유없음(`조문1/2`는generic source index label), 실제제1조/2조번호보존. 구조표제CONTEXT_ONLY·parent분리는일반회귀로검증/UI응답은quality필드미표시. 후보/임베딩/승격없음/Q13672/18080/main/output불변. legacy전체parent전환·penalty실제PASS·후속평가는여전미완료.
+
 - 2026-10-15 11:21 구조표제 오소유 일반fixture RED66653 exit1/1FAIL(전문표제에제4조번호전파)→원문조문여부`전문`·항없는단위만structure-heading/번호없음보존5줄, versioned계획CONTEXT_ONLY/STRUCTURAL_HEADING로구분. 실제조문PASS·표제본문·별도parent·손실0 assertion 고정. 집중35356 exit0 61PASS/최종전체30320 exit0 1651 tests f0e0 제외19/diff-check0. 기존원문/ACTIVE/READY/DB/Q/최종verifier·dataset불변, API호출없음. 제품은아직live미배포이며다음공식stage·배포후동일doc2041 readonly preview확인. candidate생성·임베딩·승격/실제penalty·최종평가없음.
 
 - 2026-10-15 11:06 정상로그인UI doc2041(law 민법) readonly preview: current167→projected1352/tiny549/short1345/max2498/설명되지않은손실0. 하지만 `제1편 총칙`6자·`제1장 통칙`6자가제1조소속샘플로표시돼미리보기손실0만으로후보승인하지않음/후보생성없음. 실제raw READ ONLY907cb4(detail2041) 첫2단위는조문번호1·조문키0001000·조문여부`전문`인편/장표제, 세번째만조문여부`조문`/키0001001의제1조본문임을확인. 현행collectLawArticleSections가이구조구분을반영하지않는경계를다음일반fixture RED로고정하고표제보존·비조문소유경계를최소설계검증한다. 표제삭제로손실가드회피·대량재청킹·candidate/embedding/승격없음/제품과READY불변/penalty실제미PASS.
