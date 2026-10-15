@@ -79,3 +79,4 @@ penalty 실제 PASS와 후속 release ladder는 여전히 미완료다.
 - 집중6504 57PASS; 최종전체82068 exit0/1650 tests failures0 errors0 skipped19. 실제 SELECT 전용 bef1bd에서 sections1/37자 원문과1.0161 보존 확인. 기존 DB 청크/후보/embedding/승격 변경 없음. 외부 Answer 평가 미실행.
 - 사용자가 기존 DB 자격 설정을 지적했다. 공식 application.properties의 중첩 datasource 환경변수 fallback을 값 출력 없이 정상 해석해 공식 backup-mariadb.ps1에 메모리상 전달했다. PANDORA_DB_PASSWORD 미설정만으로 자격이 없다고 판단한 앞선 기록을 정정한다. 비밀번호 추측·채팅 전송·토큰/쿠키 추출은 없다.
 - backup40536 진행 중이며 f9d87f 호스트 파일5.6GB 증가를 확인했다. 종료코드/완결성 확인 전 백업 성공 또는 대량재색인 준비 완료로 간주하지 않는다.
+- 제품2bcef88e pushed/전체1650 f0e0 제외19. stage99554 exit0/JAR73f05577…513d8, 소유31684만 공식stop4847c9 후 deploy26516 KEEPALIVE PID56516/runtime8c053ce1-a13c-4c26-ad24-30a957e11190. 5b6eec에서 DB/Q parity와config/index/lexical 불변 확인. 실제 정상로그인 UI preview5792도 projected0→1,37자전체/수치/손실0 확인. 후보생성·임베딩·활성화 없이 종료했다.
