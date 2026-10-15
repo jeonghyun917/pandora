@@ -1,5 +1,11 @@
 # RAG table context diagnostic handoff
 
+## Current checkpoint: 2026-10-16
+
+Legitimate approved Git writes are restored. Product `84e63a31` preserves explicit HWPX cell addresses and spans as evidence rows; malformed tables fall back to raw text. Four extraction tests pass; full backend session52872 exited0 with1659 tests, failures0/errors0/skipped19. The product was pushed and officially deployed (session86031, PID14812, runtime9c2c5c7a-94b1-4e97-9ff8-5b17654265fc, JARc69748e9b2914c2d401b65bb6ee3194b4f980585aaa3291e2243605efc63e308). DB/Q counts match211658+84248; Qdrant ready and search failures0.
+
+Actual source diagnostic3f89ae now has18 evidence fragments and one jointly owned institution/schedule row. The literal source row is SUPPORTED and a date-substituted row is INSUFFICIENT. Natural-language schedule paraphrases remain INSUFFICIENT; cross-table context selection still exists. This is not live Answer or penalty PASS. No database replacement or verifier relaxation occurred. Next implementation must resolve typed semantic/header/section ownership without attributing document-end qualifications by proximity. Any corpus replacement needs a bounded per-document candidate, rollback, and parity contract; bulk force reimport is not a preview. The historical permission-blocked notes below are superseded, not current blockers.
+
 2026-10-15 heartbeat 07:26 UTC. Worktree HEAD 8e2eb09c, branch codex/group-balanced-bm25. Goal null. Existing dirty product files were preserved; no commit, push, deployment, DB write, or external evaluation was attempted.
 
 ## New evidence
