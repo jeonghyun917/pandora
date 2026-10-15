@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-15 10:46 유형별첫청크 경로/번호 READ ONLY5550c2 exit0: law article1464131 doc729 `$.법령.조문.조문단위[0].조문내용`,paragraph2009135 doc2694 `...조문단위[0].항.항단위[0].항내용`; admrul2830099 doc5640 `$.AdmRulService.조문.조문내용[0]`. 반면 mixed10500748/10500749/10500763은 `제7조 등/제13조 등/제118조 등`와단일source_path만있어그경로를전체본문parent로자동승격할수없음(실제본문소유span추가검증필요). 경로없는text예시는2849935 `제개정이유 1-10`,1429107 `개정문 1-11`로개정메타성격과본문detail10902989/11057660을구분해야함. 기존planner canonical경로·번호 기반schema2계약과legacy수동채움은동일하지않음. 다음mixed 원문span/개정메타·detail 경계를읽기검증, 제품·DB·Q·READY불변/OpenAI0.
+
 - 2026-10-15 10:36 빈parent READ ONLY shape8a3c21 exit0: 대상law96641/admrul114866 모두chunk_schema_version1. admrul text107477(문서18610/source_path빈38),admin-rule-article6919(4551/빈0),detail470(457/빈470); law paragraph27937/articlemixed26100/text21645(빈37)/paragraphmixed17266/article3484/subparagraphmixed141/subparagraph40/textmixed26/detail2(빈2). 모든parent_source_path는빈값. 즉전체source_path빈547/원문경로존재210960이나 경로존재만으로명시parent단위증명은아님. legacy유형·원문경로별복원가능성과경로없는detail의별도검토를분리할근거확보, 임의parent채우기·전체재청킹·후보/embedding/승격없음. ParentContextAssembler의bounded matched-child1200/parent2800 경계는현행유지. 다음유형별소유단위유도계약을원문과대조; penalty와최종평가미완료.
 
 - 2026-10-15 10:26 전체새READY coverage f3b16e(공식설정/정상MariaDB READ ONLY/statement20초제한/exit0): admrul114918/law96740/official_doc84248 합295906 각각lexical누락0·본문hash불일치0. law/admrul parent불일치도0이나 source_parent_empty law96641/admrul114866는여전하여명시parent소유계약미완료. 원문과동일한빈값을명시소유증명으로대체하지않음. 새READY6d3f27f9/lexical15b68153의전체coverage검증이며추가빌드·재임베딩·DB쓰기·OpenAI0. 다음빈parent의원문구조/소유단위 계약 진단과별개penalty증명, 최종평가미진입유지.
