@@ -1,5 +1,9 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-15 10:16 실제개별coverage0cfb0a: 공식datasource 설정의정상해석·비밀값출력없이 정상MariaDB클라이언트 READ ONLY transaction(자동보안검토승인)으로새READY6d3f27f9 확인. doc2808 law ACTIVE99/lexical누락0/hash불일치0/parent불일치0; doc18109 admrul ACTIVE52/누락0/hash0/parent0. 기존하드코딩helper는사용·수정·재시도하지않음. 과거누락151 해소는이범위에서확인했으나 빈parent의명시소유계약·penalty·최종품질평가는별개미완료. 문서쓰기불가라고추정한이전artifact문구는정상apply_patch성공으로정정/권한우회없음.
+
+- 2026-10-15 09:56 정상로그인 UI의기존단일lexical빌드 완료응답: version6d3f27f9-b276-4ed4-95fd-70b1e419ab60/contentFingerprint15b6815309c3184ee707c3b151ca3b8775d884ce4a9a538e0e18a2903552c660/active295906/term41924787. 10:06 호스트de328f 동일runtime8c053ce1/JAR73f05577·indexe39713ce 유지, 새lexical15b68153 반영/lawDB=Q211658/ragDB=Q84248/qreadytrue/qfail0 복구확인. aggregate295906 일치가 개별누락151·parent계약 검증을대체하지않음. 원래helper credential fallback 거부후재시도없음. 상세허용artifact `C:/Users/kaces/.codex/visualizations/2026/07/15/019f631f-ef8f-7e21-b324-86164e1416a5/lexical-build-20261015-0956-evidence.md`. 실제penalty/releasegate미완료/추가빌드·평가·재시작없음.
+
 - 2026-10-15 09:35 새공식lexical갱신은정상로그인UI 단일실행진행중/기존READY da8d51ce 보존. app56516/Q13672/MariaDBRunning/디스크여유85.68GiB/최근디스크관련이벤트0. 부하중bba89b·ebea2b runtime-info의DB/Q수량필드는null이므로이를fresh parityPASS로오인금지(qreadytrue/qfail0만확인). 새평가보류/빌드중복·8080재시작금지. 백업완료증거는직전항목, helper의hardcoded credential fallback 거부후재시도·우회없음. 실제빌드완료응답과coverage확인까지미완료유지.
 
 - 2026-10-15 백업40536 exit0: `runtime/backups/mariadb/pandora-20261015-091953.sql` 10587843857 bytes/완결마커true/err0/프로세스종료(01389d), SHA2567a2a6430b8e9fcd0cc4f82446299d787fe836d221e8ac3fa9853a891dcff0a47. 복원 실행시험은아님. 공식Qsnapshot27041 exit0 두컬렉션200/manifest092919. 자격fallback 보조DBhealth는보안검토거부로중단/우회없음; 이후공개health a839fa parity211658/84248·qreadytrue/qfail0/MariaDBRunning. 정상로그인 UI공식keyword갱신을새고유버전으로1회시작/버튼disabled `처리 중입니다. 중복 실행하지 마세요.` 확인. 기존READY보존/기존FAILED재생없음. 진행중중복실행·8080재시작금지, 완료/실패확인전lexical151해결단정금지.
