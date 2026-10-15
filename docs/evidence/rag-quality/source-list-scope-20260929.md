@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-15 11:49 실제doc2041 원문을공식datasource설정의정상클라이언트 READ ONLY로읽어수정제품75f48386 parser→planner독립진단 ca1d46 exit0: 전체1355(기존충돌후보1352), 부칙child18/parent17/원문unit와parent_path불일치0/교차unit parent충돌0/설명되지않은손실0. 진단도구는stdin원문만사용/DB쓰기0/OpenAI0, 기존거부helper재사용없음. 이는실제원문새계획검증이며저장후보·검색·Answer PASS증거가아님. 기존v2진단후보임베딩·활성화·재생성금지유지. 다음정상UI 새preview와새비활성version의저장경계검증을분리진행; ACTIVE/Q/READY불변/전체parent전환·penalty·최종평가미완료.
+
 - 2026-10-15 11:44 제품75f48386 pushed/전체4313 exit0 1652f0e0 제외19→공식stage51250 exit0 SHA939578b4c234c7644e1c6b1a9745d2e0672bbb7289c57efe4818eed2c4b973a6. status8b0648/Java소유확인→공식stop0a587f PID56612→리스너없음확인후deploy29824 KEEPALIVE PID36092/runtime864c6ca1-f5c6-4202-a342-bebd555aa455. fresh9d1799 DB=Q law211658/rag84248/qreadytrue/qfail0/confige7b08ced/indexe39713ce/lexical15b68153 유지. 부칙parent보존수정배포완료이나실제원문새계획parent검증은다음작업. 기존doc2041v2는충돌진단후보로보존/임베딩·활성화·재생성금지. Q13672/18080/main/output불변, 실제penalty·전체parent전환·최종평가미완료.
 
 - 2026-10-15 11:41 부칙 동일조문번호 일반fixture RED55076 exit1/1FAIL: 서로다른부칙단위[3]/[8]가실제1청크로합쳐지고parent_path index탈락. 알려진부칙단위경로를조문/별표와같이정규화시보존하는5줄최소수정→집중85917 exit0 62PASS/손실0·본문분리·parent_key중복없음·childOrder각0 확인. 전체4313 exit0 1652 tests f0e0 제외19/diff-check0/자체검토완료. doc2041 v2는진단후보로유지/임베딩·활성화·재생성없음. 제품은미배포, ACTIVE/Q/READY/최종verifier/dataset불변. 다음공식stage·배포후원문계획parent경계검증. 전체parent전환·penalty실제PASS·후속최종평가미완료.
