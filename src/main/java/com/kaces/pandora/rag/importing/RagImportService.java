@@ -206,6 +206,14 @@ public class RagImportService {
 		if (trustLevel != 1 && trustLevel != 5) {
 			trustLevel = defaultTrustLevel(documentType);
 		}
+		// Validate a read-only draft before touching the current searchable version.
+		List<RagDocumentChunkRow> rawChunks = chunker.chunkV4(0L, extracted, meta.sourceUrl(), title);
+		RagChunkQualityGate.Result qualityResult = chunkQualityGate.evaluate(title, rawChunks);
+		if (qualityResult.searchableCount() == 0) {
+			throw new IllegalStateException(
+				"RAG chunk quality gate rejected all searchable chunks for " + file.getFileName()
+			);
+		}
 
 		mapper.upsertDocument(
 			documentType,
@@ -229,13 +237,6 @@ public class RagImportService {
 		List<Long> oldChunkIds = mapper.findChunkIdsByDocumentId(documentId);
 		markEmbeddingsSuperseded(oldChunkIds);
 		mapper.deactivateChunksByDocumentIdAndVersion(documentId, ACTIVE_CHUNK_VERSION);
-		List<RagDocumentChunkRow> rawChunks = chunker.chunkV4(documentId, extracted, meta.sourceUrl(), title);
-		RagChunkQualityGate.Result qualityResult = chunkQualityGate.evaluate(title, rawChunks);
-		if (qualityResult.searchableCount() == 0) {
-			throw new IllegalStateException(
-				"RAG chunk quality gate rejected all searchable chunks for " + file.getFileName()
-			);
-		}
 		log.info(
 			"RAG chunk quality gate documentId={} pass={} review={} contextOnly={} rejected={}",
 			documentId,
@@ -245,7 +246,13 @@ public class RagImportService {
 			qualityResult.rejectedCount()
 		);
 		for (RagDocumentChunkRow chunk : qualityResult.retainedChunks()) {
-			mapper.insertChunk(chunk);
+			mapper.insertChunk(new RagDocumentChunkRow(
+				chunk.chunkId(), documentId, chunk.chunkVersion(), chunk.chunkNo(),
+				chunk.parentSectionTitle(), chunk.chunkTitle(), chunk.sectionType(),
+				chunk.chunkText(), chunk.embeddingText(), chunk.pageNo(), chunk.sourcePath(),
+				chunk.sourceUrl(), chunk.sortOrder(), chunk.contentHash(),
+				chunk.qualityStatus(), chunk.qualityReason()
+			));
 		}
 		searchIndexService.rebuildDocument(documentId, ACTIVE_CHUNK_VERSION);
 		if (!indexNow) {
