@@ -266,6 +266,11 @@ public class LawOpenApiPayloadParser {
 
 	private void collectLawArticleSections(JsonNode article, String path, List<SyncDetailSection> sections) {
 		String articleBody = stripHtmlTags(firstText(article, "조문내용"));
+		if ("전문".equals(firstText(article, "조문여부")) && !hasLawUnits(article.get("항"))) {
+			addStructuredSection(sections, "structure-heading", null, articleBody, articleBody,
+				path + ".조문내용", 0, 0);
+			return;
+		}
 		String articleNo = articleNo(article, articleBody);
 		String articleTitle = articleTitle(article, articleBody, articleNo);
 		if (!hasLawUnits(article.get("항")) || !isHeadingOnlyArticleBody(articleBody, articleTitle)) {

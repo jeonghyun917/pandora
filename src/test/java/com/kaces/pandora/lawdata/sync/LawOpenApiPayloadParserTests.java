@@ -12,6 +12,30 @@ class LawOpenApiPayloadParserTests {
 	private final LawOpenApiPayloadParser parser = new LawOpenApiPayloadParser(objectMapper, new LawJsonWriter(objectMapper));
 
 	@Test
+	void preservesStructuralPreambleWithoutOwningTheFollowingArticle() {
+		var document = parser.parseDetailDocument("""
+			{"법령":{"조문":{"조문단위":[
+			 {"조문번호":"4","조문여부":"전문","조문내용":"제3장 절차"},
+			 {"조문번호":"4","조문여부":"조문","조문제목":"신청","조문내용":"제4조(신청) 신청인은 서류를 제출한다."}
+			]}}}
+			""", "절차법");
+		assertThat(document.sections()).hasSize(2);
+		assertThat(document.sections().get(0).body()).isEqualTo("제3장 절차");
+		assertThat(document.sections().get(0).no()).isNullOrEmpty();
+		assertThat(document.sections().get(1).no()).isEqualTo("제4조");
+		var chunks = new LawSemanticChunkPlanner().plan(
+			new ChunkPlanningContext("law", 73L, "절차법"), document.sections());
+		assertThat(chunks).hasSize(2);
+		assertThat(chunks.get(0).text()).isEqualTo("제3장 절차");
+		assertThat(chunks.get(0).no()).doesNotContain("제4조");
+		assertThat(chunks.get(0).qualityStatus()).isEqualTo("CONTEXT_ONLY");
+		assertThat(chunks.get(0).parentKey()).isNotEqualTo(chunks.get(1).parentKey());
+		assertThat(chunks.get(1).qualityStatus()).isEqualTo("PASS");
+		assertThat(ChunkPreviewApproval.assess("law", 73L, 1L, "raw", document.sections(), chunks)
+			.unexplainedLossSpanCount()).isZero();
+	}
+
+	@Test
 	void preservesShortExplicitAdministrativeRuleBody() {
 		String body = "담당청은 가격지수를 1.0123으로 한다.";
 		SyncDetailDocument document = parser.parseDetailDocument(

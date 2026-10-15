@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-15 11:21 구조표제 오소유 일반fixture RED66653 exit1/1FAIL(전문표제에제4조번호전파)→원문조문여부`전문`·항없는단위만structure-heading/번호없음보존5줄, versioned계획CONTEXT_ONLY/STRUCTURAL_HEADING로구분. 실제조문PASS·표제본문·별도parent·손실0 assertion 고정. 집중35356 exit0 61PASS/최종전체30320 exit0 1651 tests f0e0 제외19/diff-check0. 기존원문/ACTIVE/READY/DB/Q/최종verifier·dataset불변, API호출없음. 제품은아직live미배포이며다음공식stage·배포후동일doc2041 readonly preview확인. candidate생성·임베딩·승격/실제penalty·최종평가없음.
+
 - 2026-10-15 11:06 정상로그인UI doc2041(law 민법) readonly preview: current167→projected1352/tiny549/short1345/max2498/설명되지않은손실0. 하지만 `제1편 총칙`6자·`제1장 통칙`6자가제1조소속샘플로표시돼미리보기손실0만으로후보승인하지않음/후보생성없음. 실제raw READ ONLY907cb4(detail2041) 첫2단위는조문번호1·조문키0001000·조문여부`전문`인편/장표제, 세번째만조문여부`조문`/키0001001의제1조본문임을확인. 현행collectLawArticleSections가이구조구분을반영하지않는경계를다음일반fixture RED로고정하고표제보존·비조문소유경계를최소설계검증한다. 표제삭제로손실가드회피·대량재청킹·candidate/embedding/승격없음/제품과READY불변/penalty실제미PASS.
 
 - 2026-10-15 10:56 mixed 실제본문 READ ONLY52d610 exit0: doc2041 ACTIVE10500748(`제7조 등`,source_path조문단위[10]) 한본문에명시제7조와제11조및사이문단이함께있음; 10500749(`제13조 등`,조문단위[16])에도명시제14조와뒤문단이혼합됨. 이전5550c2의번호추정이아닌실제본문소유경계혼합확인. 단일기존source_path나첫조문번호로전체청크parent를backfill하면오소유위험이므로금지. 다음원문raw→현행schema2 readonly preview로조문경계·손실·증가량을검증하며candidate/임베딩/승격은아직실행하지않음. 제품·ACTIVE본문·READY·DB/Q불변/OpenAI0/penalty및최종평가미완료.

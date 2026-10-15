@@ -361,9 +361,11 @@ final class LawSemanticChunkPlanner {
 			int childOrder = nextChildOrders.getOrDefault(parentKey, 0);
 			nextChildOrders.put(parentKey, childOrder + 1);
 			String embeddingText = embeddingText(context.documentTitle(), parentNumber, parentTitle, chunk);
+			boolean structuralHeading = "structure-heading".equals(chunk.type());
 			versioned.add(new PlannedLawChunk(
 				chunk.type(), chunk.no(), chunk.title(), chunk.text(), chunk.sourcePath(),
-				2, parentKey, parentTitle, parentPath, childOrder, embeddingText, "PASS", null
+				2, parentKey, parentTitle, parentPath, childOrder, embeddingText,
+				structuralHeading ? "CONTEXT_ONLY" : "PASS", structuralHeading ? "STRUCTURAL_HEADING" : null
 			));
 		}
 		return versioned;
