@@ -70,6 +70,44 @@ class RagTextExtractorTests {
     }
 
     @Test
+    void bindsUnmarkedHeadersOnlyWithAnExplicitNumberColumnAndFollowingNumberedRow() throws Exception {
+        Path file=temp.resolve("numbered-headers.hwpx");
+        String xml="<section><tbl colCnt='3'><tr>"+cell(0,0,1,3,"종합 점검")
+            +"</tr><tr>"+cell(1,0,1,1,"연번")+cell(1,1,1,1,"기관")+cell(1,2,1,1,"일정")
+            +"</tr><tr>"+cell(2,0,1,1,"1")+cell(2,1,1,1,"가람")+cell(2,2,1,1,"3월")
+            +"</tr><tr>"+cell(3,0,1,3,"별도 점검")
+            +"</tr><tr>"+cell(4,0,1,1,"2")+cell(4,1,1,1,"누리")+cell(4,2,1,1,"5월")+"</tr></tbl></section>";
+        try(var zip=new ZipOutputStream(Files.newOutputStream(file))){entry(zip,"Contents/section0.xml",xml);}
+        assertThat(new RagTextExtractor().extract(file).text()).isEqualTo(
+            "종합 점검\n연번 | 기관 | 일정\n연번: 1 | 기관: 가람 | 일정: 3월\n별도 점검\n2 | 누리 | 5월");
+    }
+
+    @Test
+    void doesNotInferNumberedHeadersWithoutACompleteNumberedSuccessor() throws Exception {
+        for(String successor : new String[]{
+            cell(1,0,1,1,"예시")+cell(1,1,1,1,"가람"),
+            cell(1,0,1,2,"1"),
+            cell(1,0,1,1,"0")+cell(1,1,1,1,"가람")}) {
+            Path file=temp.resolve("unproven-numbered-header.hwpx");
+            String xml="<section><tbl colCnt='2'><tr>"+cell(0,0,1,1,"번호")+cell(0,1,1,1,"기관")
+                +"</tr><tr>"+successor+"</tr></tbl></section>";
+            try(var zip=new ZipOutputStream(Files.newOutputStream(file))){entry(zip,"Contents/section0.xml",xml);}
+            assertThat(new RagTextExtractor().extract(file).text()).startsWith("번호 | 기관\n").doesNotContain("번호:","기관:");
+        }
+    }
+
+    @Test
+    void anAmbiguousNumberHeaderCannotKeepThePreviousHeaderOwner() throws Exception {
+        Path file=temp.resolve("changed-header.hwpx");
+        String xml="<section><tbl colCnt='3'><tr>"
+            +(cell(0,0,1,1,"기관")+cell(0,1,1,1,"일정")+cell(0,2,1,1,"구분")).replace("<tc>","<tc header='1'>")
+            +"</tr><tr>"+cell(1,0,1,1,"번호")+cell(1,1,1,1,"이름")+cell(1,2,1,1,"이 름")
+            +"</tr><tr>"+cell(2,0,1,1,"1")+cell(2,1,1,1,"가람")+cell(2,2,1,1,"3월")+"</tr></tbl></section>";
+        try(var zip=new ZipOutputStream(Files.newOutputStream(file))){entry(zip,"Contents/section0.xml",xml);}
+        assertThat(new RagTextExtractor().extract(file).text()).endsWith("번호 | 이름 | 이 름\n1 | 가람 | 3월");
+    }
+
+    @Test
     void carriesOnlyExplicitColumnHeadersIntoTheirOwnDataRows() throws Exception {
         Path file=temp.resolve("owned-headers.hwpx");
         String xml="<section><tbl colCnt='2'><tr>"

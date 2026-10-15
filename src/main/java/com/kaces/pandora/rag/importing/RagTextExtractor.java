@@ -173,7 +173,8 @@ public class RagTextExtractor {
 			}
 			List<String> lines = new ArrayList<>();
 			List<String> headers = List.of();
-			for (Node[] row : grid) {
+			for (int rowIndex = 0; rowIndex < grid.length; rowIndex++) {
+				Node[] row = grid[rowIndex];
 				List<String> values = new ArrayList<>();
 				Node previous = null;
 				boolean anyHeader = false, allHeaders = true;
@@ -183,17 +184,23 @@ public class RagTextExtractor {
 					anyHeader |= header;
 					allHeaders &= header;
 					if (cell != previous) {
-						StringBuilder text = new StringBuilder();
-						appendText(cell, text);
-						values.add(text.toString().replaceAll("\\s+", " ").trim());
+						values.add(cellText(cell));
 					}
 					previous = cell;
 				}
-				// A merged section row or partial header cannot own later columns.
-				if (values.size() != columns || anyHeader) {
+				boolean numberLabel = !values.isEmpty()
+					&& values.get(0).replaceAll("\\s+", "").matches("(?i)(?:연번|번호|순번|no\\.?)");
+				// Ambiguous new headings must also end the previous header's ownership.
+				if (values.size() != columns || anyHeader || numberLabel) {
 					headers = List.of();
 				}
-				if (allHeaders && columns > 1 && values.size() == columns
+				boolean numberedHeader = !anyHeader && numberLabel && values.size() == columns && columns > 1
+					&& values.stream().allMatch(value -> value.length() <= 40 && !value.matches(".*[0-9].*"))
+					&& rowIndex + 1 < grid.length
+					&& java.util.Arrays.stream(grid[rowIndex + 1]).allMatch(java.util.Objects::nonNull)
+					&& java.util.Arrays.stream(grid[rowIndex + 1]).distinct().count() == columns
+					&& cellText(grid[rowIndex + 1][0]).matches("[1-9][0-9]{0,5}");
+				if ((allHeaders || numberedHeader) && columns > 1 && values.size() == columns
 					&& values.stream().allMatch(value -> !value.isBlank() && !value.contains(":") && !value.contains("|") && !value.contains("："))
 					&& values.stream().map(value -> value.replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT))
 						.distinct().count() == columns) {
@@ -209,6 +216,12 @@ public class RagTextExtractor {
 		} catch (NumberFormatException exception) {
 			return null;
 		}
+	}
+
+	private String cellText(Node cell) {
+		StringBuilder text = new StringBuilder();
+		appendText(cell, text);
+		return text.toString().replaceAll("\\s+", " ").trim();
 	}
 
 	private List<Node> children(Node parent, String name) {
