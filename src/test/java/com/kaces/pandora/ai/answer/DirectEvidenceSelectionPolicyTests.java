@@ -14,6 +14,22 @@ class DirectEvidenceSelectionPolicyTests {
 	private final DirectEvidenceSelectionPolicy policy = new DirectEvidenceSelectionPolicy();
 
 	@Test
+	void neverReintroducesNonSearchableQualityAsDirectEvidence() {
+		String question = "계약상대자는 완료 후 통지해야 하는가?";
+		for (String quality : List.of("CONTEXT_ONLY", "REJECT")) {
+			var excluded = new LawSemanticChunkRow(
+				2L, 102L, "law", "ext-2", "법령", "기관", "법률", "2026-01-01", "CURRENT",
+				"제1조", "통지", "계약상대자는 완료 후 통지해야 한다.", 1, "source", "url", 2, "hash-2",
+				"제1조", "body", quality);
+			for (var selected : List.of(List.<LawSemanticChunkRow>of(), List.of(excluded))) {
+				var result = policy.apply(question, QuestionIntentProfile.from(question), selected,
+					List.of(excluded), Map.of(), Set.of("law"), 10);
+				assertThat(result.chunks()).as("quality=%s initiallySelected=%s", quality, selected.size()).isEmpty();
+			}
+		}
+	}
+
+	@Test
 	void preservesAnOmittedCurrentChunkOnlyWhenItsSemanticAtomDirectlyMatches() {
 		LawSemanticChunkRow judged = chunk(1L, "CURRENT", "law", "계약상대자는 검사 결과를 보관한다.");
 		LawSemanticChunkRow direct = chunk(2L, "CURRENT", "law", "계약상대자는 완료 후 통지해야 한다.");

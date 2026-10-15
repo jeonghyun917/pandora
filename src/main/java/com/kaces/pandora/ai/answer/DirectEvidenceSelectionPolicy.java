@@ -2,6 +2,7 @@ package com.kaces.pandora.ai.answer;
 
 import com.kaces.pandora.common.text.QuestionIntentProfile;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
+import com.kaces.pandora.rag.chunk.RagChunkQualityStatus;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -129,7 +130,9 @@ public class DirectEvidenceSelectionPolicy {
 	}
 
 	private List<LawSemanticChunkRow> safeChunks(List<LawSemanticChunkRow> chunks) {
-		return chunks == null ? List.of() : List.copyOf(chunks);
+		return chunks == null ? List.of() : chunks.stream()
+			.filter(chunk -> chunk != null && RagChunkQualityStatus.from(chunk.qualityStatus()).searchable())
+			.toList();
 	}
 
 	private Map<String, Double> safeScores(Map<String, Double> scores) {
