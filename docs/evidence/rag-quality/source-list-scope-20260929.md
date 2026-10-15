@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-15 13:09 제품33fe3ab9 공식stage23989 exit0 SHA6d369e38650b55d99c0964c51e46d56d35c599e1dc1d7b7aaf85bbd9d11b418a→소유43896공식stop b5d6e1/리스너없음확인후deploy23725 KEEPALIVE PID36828/runtime49eec22d-951a-4f42-854b-8e74ac973ab3. freshf8dee3 DB=Q law211658/rag84248/qreadytrue/qfail0/confige7b08ced/indexe39713ce/lexical15b68153 유지. 정상cached로그인버튼만재인증후실제UI: law/admrul대기각0, 전체대기7866→5159, tiny1350→252, lowSignal105→103, Q정합성0. 비활성후보2707개혼입해소확인이지실제임베딩진행이아님. v2금지/v3미임베딩·미활성·보호doc불변/Q13672·18080·main·output유지. 다음격리v3후보단계/전체parent전환·penalty·최종평가미완료.
+
 - 2026-10-15 13:01 현행집계ACTIVE조건4줄 수정 전체3080 exit0 1654tests f0e0 제외19/집중2PASS/자체검토diff-check0. 아래실행중기록은이종료증거로대체. 다음공식stage·배포후실제UI에서후보2707개혼입해소를확인하며미배포단계에서표시복구완료로단정하지않음. 후보v2/v3/ACTIVE원문·Q·READY·최종verifier·dataset불변/OpenAI0/최종품질평가미실행.
 
 - 2026-10-15 13:00 실제pipeline집계가내보낸SQL의ACTIVE범위계약 회귀RED92023 exit1/1FAIL→현행law/admrul backlog·tiny·lowSignalTiny·pipeline집계4곳에ACTIVE조건만추가/후보데이터변경없음. 집중77990 exit0 2PASS(기존Q정합성범위회귀포함)/자체검토diff-check0. DB fixture실행증거가아닌emitted SQL계약회귀임을구분. 전체3080 실행중/미커밋·미배포/중복실행금지. v2금지/v3미임베딩·미활성/실제품질평가미실행.
