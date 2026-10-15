@@ -56,4 +56,18 @@ CLI 감사 `fc6db1`은 최초 runtime metadata 검증에서 중단됐다. 직접
 - `9d3084`: 현재 검색가능 law96740/admrul114918/official_doc84248 각각 현재 model/store/hash 일치 INDEXED embedding 누락0. 이 결과는 UI의 전체 대기5159나 source parent 계약을 임의 완료 처리하지 않는다.
 - 범위 리뷰: 한 SELECT의 ACTIVE 조건 한 줄과 DB 경계 query contract 회귀만 변경. 기존 use/target/model/store/hash/INDEXED 조건 유지, 공식문서·pipeline 전체 집계·판정/답변/데이터셋/authority 불변. 이 변경은 RAG 답변 행동 변경이 아니므로 별도 Answer 평가를 실행하지 않았다. 전체1003 gate는 미실행이다. 배포는 아직 별도 단계다.
 
+## 배포와 운영 화면 확인
+
+- 제품 `a2868eb8` pushed. 공식stage39103 exit0/JAR `a235c2132da495a9e2e40dabe208caf472440c2bd39281ff3bb265f201bcbd0e`.
+- 호스트status와PID소유 확인 후 공식stop3546d2는8080 PID3984만 종료. 리스너없음 확인 후 공식deploy12322 KEEPALIVE/PID31684/runtime `021d9795-d691-44db-9129-a998764c55d5`.
+- fresh smoke `f832c3`: law DB=Q211658/rag DB=Q84248/qreadytrue/qfail0. config/index/lexical은 앞선 감사와 동일. Q13672/18080/main/output 불변.
+- 정상 로그인 버튼만으로 재로그인한 실제 관리자 화면에서 `Qdrant 정합성 0 / 법령0,행정규칙0,공식문서0` 확인. pipeline 전체 INDEXED295947 등 원래 raw 현황은 변경하지 않음. 새 집계0을 전체 품질 완료로 간주하지 않는다.
+- 백업 자격 설정 존재 여부만 확인한 `5c9920`: PANDORA_DB_PASSWORD 미설정. 값 읽기·추측·추출·대량 DB backup 또는 재색인은 수행하지 않았다. 해당 선행조건은 여전히 필요하다.
+
+## 기존 짧은 청크 감사의 읽기 전용 실행
+
+- `c8cc2d`/`9236a7`: residual-tiny252개 분류. meaningful71, ambiguous/manual98, navigation51, image32. 자동 추천이며 실제 제외/수동검토 완료가 아니다.
+- `1741be`/`17609e`: 기존 RAG short audit5269개(현재 INDEXED 범위) 분류. keep4243/manual761/suppress-or-downrank61/merge-or-downrank201/context-only3. applyRequested/dbApplyCompleted/vectorCleanupCompleted는 모두false.
+- 두 스크립트의 조회 범위는 서로 다르고, 기존 legacy 쿼리의 short 전체10428과 동일한 검색가능 집합이라고 단정하지 않는다. 원문·quality status·embedding·Qpoint를 수정하지 않았다. 자동 분류를 최종 사람 검토로 위장하거나 권고만으로 청크를 제외하지 않는다.
+
 penalty 실제 PASS와 후속 release ladder는 여전히 미완료다.

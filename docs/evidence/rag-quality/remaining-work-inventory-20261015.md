@@ -30,6 +30,8 @@
 | 검색·의미검증 authority 승격 | 보류 | 모든 해당 shadow/독립 선택/후속 필수 gate 통과 후 승인된 별도 commit. 현재 training SELECTED만으로 승격 금지 |
 | active searchable embedding backlog·DB/Q 정합성 | 현재 상태 읽기전용 확인 | `whole-rag-integrity-20261015.md`: ACTIVE embedding 누락0, 법률/행정규칙 전수감사의41건은전부RETIRED v1. 최종artifact의 동일성 유지 여부는 마지막fence에서 확인 |
 | lexical 전체 coverage·parent identity | 미완료 | READY lexical에서doc18109v2 52/doc2808v2 99 누락. 기존DB crash·백업/안정성선행조건 해소 전 대량재색인 재시도 금지. parent_key 공백은 원문과index동일하므로 별도명시소유계약으로 검토 |
+| 짧은 청크 감사·검토 | 읽기전용 자동 감사 실행, 검토 미완료 | 법령/규칙252 중manual98, INDEXED RAG5269 중manual761 등 자동후보. 실제 source context로 검토해야 하며 자동추천을 바로 제외·삭제로 적용하지 않음 |
+| 관리자 parity 지표 | 수정·검증·배포 완료 | 제품a2868eb8/전체1648 f0e0 제외19/실제UI Qdelta0. 활성범위 분모만 수정했고 raw 전체현황은보존 |
 | 최종 배포·rollback·인계 | 미완료 | gate 통과 제품의 공식 8080 smoke, flag/version/revision/JAR 기록, 최종 인계. 18080/main/output 불변 |
 
 ## 실행 규칙
