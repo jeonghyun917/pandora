@@ -82,6 +82,14 @@ final class EvidenceNoiseClassifier {
 		if (chunk == null) {
 			return false;
 		}
+		String raw = chunk.chunkText();
+		if (raw != null && !raw.isEmpty()) {
+			long controls = raw.chars().filter(c -> Character.isISOControl(c)
+				&& c != '\n' && c != '\r' && c != '\t' && c != '\f').count();
+			if (controls >= 3 && controls * 10 >= raw.length()) {
+				return true;
+			}
+		}
 		if (isLawRevisionMarkerOnlyChunk(chunk) && !isRevisionHistoryQuestion(normalizedQuestion)) {
 			return true;
 		}

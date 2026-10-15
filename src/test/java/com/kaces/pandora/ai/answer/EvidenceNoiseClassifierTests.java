@@ -8,6 +8,20 @@ import org.junit.jupiter.api.Test;
 class EvidenceNoiseClassifierTests {
 
 	@Test
+	void suppressesControlCharacterCorruptionWithoutSuppressingReadableWhitespace() {
+		String statement = "개인정보처리자는 개인정보 처리방침을 공개하여야 한다.";
+		assertThat(EvidenceNoiseClassifier.shouldSuppressAsEvidence(
+			chunk("official_doc", "\u0001\u0002\u0004\u0005".repeat(12) + statement), "개인정보 처리방침 공개 의무"))
+			.isTrue();
+		assertThat(EvidenceNoiseClassifier.shouldSuppressAsEvidence(
+			chunk("official_doc", "\n\r\t\f".repeat(12) + statement), "개인정보 처리방침 공개 의무"))
+			.isFalse();
+		assertThat(EvidenceNoiseClassifier.shouldSuppressAsEvidence(
+			chunk("official_doc", statement + "\u0004"), "개인정보 처리방침 공개 의무"))
+			.isFalse();
+	}
+
+	@Test
 	void suppressesImageOnlyInstructionChunks() {
 		LawSemanticChunkRow chunk = chunk("official_doc", "<img src=\"guide.png\" alt=\"\">");
 
