@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-15 12:09 v3전체저장계약 READ ONLY53153c exit0: doc2041/v3 1355개 parent빈0/parent_path빈0/schema2아님0/REVIEW·REJECT0/동일parent childOrder중복0/0시작연속순서위반0/기존embedding0. 코드읽기74cd4e·6fe9fc·7d501b: 후보임베딩은quality필터없이전체를별도candidate collection에저장하고, activation검증도전체expected count에맞는INDEXED를요구한다. 따라서CONTEXT_ONLY144개를임의빼서1211개만임베딩하면현행완전성계약불일치이며이단계에서그런변경·호출없음. CONTEXT_ONLY는reranker감점이며검색직접근거차단과동일하지않으므로다음direct-ground선택소비경계의기존가드·테스트를확인한다. v2금지유지/v3미임베딩·미활성/ACTIVE/Q/READY불변/실제품질평가미실행.
+
 - 2026-10-15 12:01 정상로그인버튼만재인증(입력읽기/추출없음)→doc2041 새UI preview1355/손실0 확인→수정계획새비활성v3를1회생성: CANDIDATE1355/previewApprovedtrue/손실0/IDs11295608–11296962. READ ONLY7bcfe4 실제저장 v1ACTIVE167/v2CANDIDATE1352/v3CANDIDATE1355, v3부칙교차unit parent충돌0/CONTEXT_ONLY144/PASS1211. 최초읽기3d40f4는존재하지않는테이블명으로exit1, mapper실제테이블확인후수정조회이며후보생성재시도없음. v2진단후보유지·임베딩금지, v3도아직임베딩·활성화없음/OpenAI0/ACTIVE/Q/READY불변. 다음v3전체소유경계및임베딩대상quality필터계약확인후다음단계; 전체parent전환·penalty·최종평가미완료.
 
 - 2026-10-15 11:49 실제doc2041 원문을공식datasource설정의정상클라이언트 READ ONLY로읽어수정제품75f48386 parser→planner독립진단 ca1d46 exit0: 전체1355(기존충돌후보1352), 부칙child18/parent17/원문unit와parent_path불일치0/교차unit parent충돌0/설명되지않은손실0. 진단도구는stdin원문만사용/DB쓰기0/OpenAI0, 기존거부helper재사용없음. 이는실제원문새계획검증이며저장후보·검색·Answer PASS증거가아님. 기존v2진단후보임베딩·활성화·재생성금지유지. 다음정상UI 새preview와새비활성version의저장경계검증을분리진행; ACTIVE/Q/READY불변/전체parent전환·penalty·최종평가미완료.
