@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-15 11:44 제품75f48386 pushed/전체4313 exit0 1652f0e0 제외19→공식stage51250 exit0 SHA939578b4c234c7644e1c6b1a9745d2e0672bbb7289c57efe4818eed2c4b973a6. status8b0648/Java소유확인→공식stop0a587f PID56612→리스너없음확인후deploy29824 KEEPALIVE PID36092/runtime864c6ca1-f5c6-4202-a342-bebd555aa455. fresh9d1799 DB=Q law211658/rag84248/qreadytrue/qfail0/confige7b08ced/indexe39713ce/lexical15b68153 유지. 부칙parent보존수정배포완료이나실제원문새계획parent검증은다음작업. 기존doc2041v2는충돌진단후보로보존/임베딩·활성화·재생성금지. Q13672/18080/main/output불변, 실제penalty·전체parent전환·최종평가미완료.
+
 - 2026-10-15 11:41 부칙 동일조문번호 일반fixture RED55076 exit1/1FAIL: 서로다른부칙단위[3]/[8]가실제1청크로합쳐지고parent_path index탈락. 알려진부칙단위경로를조문/별표와같이정규화시보존하는5줄최소수정→집중85917 exit0 62PASS/손실0·본문분리·parent_key중복없음·childOrder각0 확인. 전체4313 exit0 1652 tests f0e0 제외19/diff-check0/자체검토완료. doc2041 v2는진단후보로유지/임베딩·활성화·재생성없음. 제품은미배포, ACTIVE/Q/READY/최종verifier/dataset불변. 다음공식stage·배포후원문계획parent경계검증. 전체parent전환·penalty실제PASS·후속최종평가미완료.
 
 - 2026-10-15 11:26 doc2041 기존version READ ONLY837e48은v1ACTIVE167만확인→정상로그인UI 승인preview에서비활성v2후보1회생성/1352/previewApprovedtrue/손실0/IDs11294256–11295607. 후보만생성하며embedding/activation미실행. READ ONLY6ca0f2: v1ACTIVE167유지,v2CANDIDATE=structure-heading CONTEXT_ONLY144/articlePASS754/paragraphPASS439/textPASS15,parent/parent_path빈0. 단26d602에서3개parent_key가서로다른부칙source_path를합치는실제충돌확인(5단위→6child,4단위→4child,2단위→2child). canonicalParentSourcePath 재적용시말단부칙단위index가탈락하는경계를다음일반fixture RED로고정한다. **doc2041 v2 임베딩·활성화·재생성금지, 진단후보유지**. 기존ACTIVE/Q/READY변경없음, 보호doc18109/2808미변경. 전체parent전환·penalty·최종평가미완료.
