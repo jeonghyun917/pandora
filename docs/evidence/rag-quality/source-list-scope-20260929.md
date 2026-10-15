@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-15 13:40 독립tiny수동검토첫5청크/4문서 READ ONLY6a812e·원문parser→planner39dad7 exit0/OpenAI0: doc5792의2832250·2832251은같은원문path의가격변동지수주어와값1.0161을분리한쌍. 현행원문계획은1청크로정확연결/손실0/assets4이므로숫자청크단독제외금지·향후안전재청킹후보로분류(실제변경없음). doc6047/2841256은`다음과같이…(갑구)`에서끝나고원문계획1/assets0이므로후속기재예시완전성미확인, 수동보류. doc6124/2842692는실제폐지선언한문장/계획1/손실0이므로길이만으로삭제금지, 개정·폐지이력용보존검토; DB FUTURE표시는현행효력증명아님. doc6246/2849888은구가족관계규칙한문장/계획1/손실0이나DB FUTURE만으로현행적용단정금지·효력/이력검토보류. 총manual98중5개원문검토를수행했으나98전체해결이나품질적용완료로집계하지않음. 진단console한글출력깨짐은counts/경로동일성판단과DB원문6a812e를구분하며원문손실로오인하지않음. DB/Q/ACTIVE/READY/제품불변/추가후보생성·임베딩·승격없음.
+
 - 2026-10-15 13:32 rollback전제읽기4021e6의main activationStatus=ACTIVE count0은point손실아님: 알려진10500748 payload c76d31에서doc2041/version1존재·activationStatus필드누락확인, 정확doc/version count366a9b는167. 구형payload호환과DB ACTIVE를구분/임의metadata복구없음. 원래계획은RAG behavior승격전focused/full품질gate를요구하므로DB/staging수량통과만으로v3활성화하지않음. 현행SNS+penalty→Difficult12→holdout57→full1003 선행품질계약유지. 공식wave스크립트존재확인/실행없음. 다음독립short-chunk 원문검토및penalty새직접원문증명으로진행하며동일후보임베딩·종료평가재실행금지.
 
 - 2026-10-15 13:29 격리v3검증 READ ONLY2905fa: expected1355/stored1355/indexed_current(hash일치)1355/previewApproved1/손실0/blockingQuality0, v2는CANDIDATE1352/embedding없음유지. 전체Qpayload 3a8965 1355개/고유ID1355/문서2041·버전3·CANDIDATE·law·원문경로소유불일치0. LawChunkVersionVerification.databaseGatesPass의모든DB조건및staging ID존재경계를충족하나이를검색품질/최종release gate로대체하지않음. 격리collection에는quality/parent필드가없고원문소유경로만있어해당정보소비는DB row계약으로구분. main활성화·READY재빌드없음. 다음승격전원문보존·검색품질검증계약을확정하고기존ACTIVE167의rollback가능성을확인; 전체parent전환·penalty·최종평가미완료.
