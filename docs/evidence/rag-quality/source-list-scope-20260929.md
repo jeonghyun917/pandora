@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-15 10:26 전체새READY coverage f3b16e(공식설정/정상MariaDB READ ONLY/statement20초제한/exit0): admrul114918/law96740/official_doc84248 합295906 각각lexical누락0·본문hash불일치0. law/admrul parent불일치도0이나 source_parent_empty law96641/admrul114866는여전하여명시parent소유계약미완료. 원문과동일한빈값을명시소유증명으로대체하지않음. 새READY6d3f27f9/lexical15b68153의전체coverage검증이며추가빌드·재임베딩·DB쓰기·OpenAI0. 다음빈parent의원문구조/소유단위 계약 진단과별개penalty증명, 최종평가미진입유지.
+
 - 2026-10-15 10:16 실제개별coverage0cfb0a: 공식datasource 설정의정상해석·비밀값출력없이 정상MariaDB클라이언트 READ ONLY transaction(자동보안검토승인)으로새READY6d3f27f9 확인. doc2808 law ACTIVE99/lexical누락0/hash불일치0/parent불일치0; doc18109 admrul ACTIVE52/누락0/hash0/parent0. 기존하드코딩helper는사용·수정·재시도하지않음. 과거누락151 해소는이범위에서확인했으나 빈parent의명시소유계약·penalty·최종품질평가는별개미완료. 문서쓰기불가라고추정한이전artifact문구는정상apply_patch성공으로정정/권한우회없음.
 
 - 2026-10-15 09:56 정상로그인 UI의기존단일lexical빌드 완료응답: version6d3f27f9-b276-4ed4-95fd-70b1e419ab60/contentFingerprint15b6815309c3184ee707c3b151ca3b8775d884ce4a9a538e0e18a2903552c660/active295906/term41924787. 10:06 호스트de328f 동일runtime8c053ce1/JAR73f05577·indexe39713ce 유지, 새lexical15b68153 반영/lawDB=Q211658/ragDB=Q84248/qreadytrue/qfail0 복구확인. aggregate295906 일치가 개별누락151·parent계약 검증을대체하지않음. 원래helper credential fallback 거부후재시도없음. 상세허용artifact `C:/Users/kaces/.codex/visualizations/2026/07/15/019f631f-ef8f-7e21-b324-86164e1416a5/lexical-build-20261015-0956-evidence.md`. 실제penalty/releasegate미완료/추가빌드·평가·재시작없음.

@@ -29,7 +29,7 @@
 | candidate-present 직접근거 선택률 ≥80% 및 과거 two85 계약 | 직접근거 선택률 최신 증거 미확인; oracle 집합 대조 완료 | readonly76ec32에서 현재 frozen1003의 answerVerificationRequired는89개, NO_GROUNDS31개다. 과거85와 현재89를 동일 집합으로 간주하지 않는다. 최신 full1003의89개 oracle gate를 확인하며 과거 two85 재실행으로 대체하지 않는다. 추가 반복실행이 필요한지 manifest 계약을 먼저 확인 |
 | 검색·의미검증 authority 승격 | 보류 | 모든 해당 shadow/독립 선택/후속 필수 gate 통과 후 승인된 별도 commit. 현재 training SELECTED만으로 승격 금지 |
 | active searchable embedding backlog·DB/Q 정합성 | 현재 상태 읽기전용 확인 | `whole-rag-integrity-20261015.md`: ACTIVE embedding 누락0, 법률/행정규칙 전수감사의41건은전부RETIRED v1. 최종artifact의 동일성 유지 여부는 마지막fence에서 확인 |
-| lexical 전체 coverage·parent identity | 새빌드완료/기존누락151해소 확인, 명시parent계약 미완료 | 새READY6d3f27f9 active295906/term41924787, revision15b68153. 호스트de328f DB/Q211658+84248 일치. 승인된정상공식설정 MariaDB READ ONLY 0cfb0a: doc2808 ACTIVE99/doc18109 ACTIVE52 각각누락0/hash0/parent0. 하드코딩helper거부는유지하고사용안함. 빈parent_key가원문과index동일하다는것은명시소유증명이아니므로별도계약검토필요. 추가빌드금지 |
+| lexical 전체 coverage·parent identity | 전체coverage 검증완료, 명시parent계약 미완료 | 새READY6d3f27f9 active295906/term41924787, revision15b68153. 호스트de328f DB/Q211658+84248 일치. READ ONLY f3b16e: law96740/admrul114918/official_doc84248 각각전체누락0/hash0. 개별151도0cfb0a로검증. law96641/admrul114866의빈source_parent는index와동일하지만명시소유증명아니므로별도계약검토필요. 하드코딩helper사용안함/추가빌드금지 |
 | 짧은 청크 감사·검토 | 읽기전용 자동 감사 실행, 검토 미완료 | 법령/규칙252 중manual98, INDEXED RAG5269 중manual761 등 자동후보. 실제 source context로 검토해야 하며 자동추천을 바로 제외·삭제로 적용하지 않음 |
 | 관리자 parity 지표 | 수정·검증·배포 완료 | 제품a2868eb8/전체1648 f0e0 제외19/실제UI Qdelta0. 활성범위 분모만 수정했고 raw 전체현황은보존 |
 | 최종 배포·rollback·인계 | 미완료 | gate 통과 제품의 공식 8080 smoke, flag/version/revision/JAR 기록, 최종 인계. 18080/main/output 불변 |
