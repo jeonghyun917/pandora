@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-15 12:39 제품4be3b179(품질제외재도입차단/전체1653f0e0 제외19) 공식stage31812 exit0 SHAfb70bbe538dead09f7c9cb69118d59bc3769b1f0f20a3f9b79f612877258464b. status800c20/Java소유확인후공식stop9e60fa PID36092→8080리스너없음확인→deploy36522 KEEPALIVE PID43896/runtimeb46f9635-68e3-4bb3-bf86-fca12bb899a0. fresh8abb91 DB=Q law211658/rag84248/qreadytrue/qfail0/confige7b08ced/indexe39713ce/lexical15b68153 유지. 기존runtime864c6ca1은폐기. Q13672/18080/main/output불변, 후보v2금지/v3미임베딩·미활성. 다음승인된v3후보임베딩전원격준비조건확인과격리후보검증; 실제penalty·후속최종평가·전체parent전환미완료.
+
 - 2026-10-15 12:30 품질제외재도입최소수정 전체65187 exit0 1653tests f0e0 제외19/집중103PASS/자체diff검토·diff-check0. TDD의CONTEXT_ONLY·REJECT×후보/기존선택목록4경계와기존PASS회귀보존. 아래실행중표시는이종료증거로대체. 제품미배포/다음공식stage·배포건강확인, v3후보미임베딩·미활성, 실제SNS·penalty후속평가아님.
 
 - 2026-10-15 12:29 품질제외재도입 일반회귀 RED82278 exit1/1FAIL(CONTEXT_ONLY가직접근거로재선택)→DirectEvidenceSelectionPolicy 입력정규화에기존RagChunkQualityStatus.searchable()공통계약재사용, 후보와이미선택된입력모두제외. 집중18298 exit0 103PASS; 독립8f3f62 PASS보존1/CONTEXT_ONLY0/REJECT0 확인. 최종verifier/semantic조건·강도·주체·scope가드변경없음. 전체65187 실행중(중복금지)/미커밋·미배포. doc2041v2금지/v3미임베딩·미활성유지/ACTIVE·Q·READY불변/실제품질평가미실행.
