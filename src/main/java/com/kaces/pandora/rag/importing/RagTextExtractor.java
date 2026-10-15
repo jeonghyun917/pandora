@@ -172,17 +172,36 @@ public class RagTextExtractor {
 				}
 			}
 			List<String> lines = new ArrayList<>();
+			List<String> headers = List.of();
 			for (Node[] row : grid) {
 				List<String> values = new ArrayList<>();
 				Node previous = null;
+				boolean anyHeader = false, allHeaders = true;
 				for (Node cell : row) {
 					if (cell == null) { return null; }
+					boolean header = "1".equals(((Element) cell).getAttribute("header"));
+					anyHeader |= header;
+					allHeaders &= header;
 					if (cell != previous) {
 						StringBuilder text = new StringBuilder();
 						appendText(cell, text);
 						values.add(text.toString().replaceAll("\\s+", " ").trim());
 					}
 					previous = cell;
+				}
+				// A merged section row or partial header cannot own later columns.
+				if (values.size() != columns || anyHeader) {
+					headers = List.of();
+				}
+				if (allHeaders && columns > 1 && values.size() == columns
+					&& values.stream().allMatch(value -> !value.isBlank() && !value.contains(":") && !value.contains("|") && !value.contains("："))
+					&& values.stream().map(value -> value.replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT))
+						.distinct().count() == columns) {
+					headers = List.copyOf(values);
+				} else if (!headers.isEmpty()) {
+					for (int col = 0; col < columns; col++) {
+						values.set(col, headers.get(col) + ": " + values.get(col));
+					}
 				}
 				lines.add(String.join(" | ", values));
 			}

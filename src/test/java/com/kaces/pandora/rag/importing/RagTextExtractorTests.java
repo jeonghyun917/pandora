@@ -70,6 +70,63 @@ class RagTextExtractorTests {
     }
 
     @Test
+    void carriesOnlyExplicitColumnHeadersIntoTheirOwnDataRows() throws Exception {
+        Path file=temp.resolve("owned-headers.hwpx");
+        String xml="<section><tbl colCnt='2'><tr>"
+            +cell(0,0,1,1,"기관").replace("<tc>","<tc header='1'>")
+            +cell(0,1,1,1,"일정").replace("<tc>","<tc header='1'>")
+            +"</tr><tr>"+cell(1,0,1,1,"가람")+cell(1,1,1,1,"3월")
+            +"</tr><tr>"+cell(2,0,1,2,"다른 구역")
+            +"</tr><tr>"+cell(3,0,1,1,"누리")+cell(3,1,1,1,"5월")+"</tr></tbl>"
+            +"<tbl colCnt='2'><tr>"+cell(0,0,1,1,"기관")+cell(0,1,1,1,"일정")
+            +"</tr><tr>"+cell(1,0,1,1,"새봄")+cell(1,1,1,1,"6월")+"</tr></tbl></section>";
+        try(var zip=new ZipOutputStream(Files.newOutputStream(file))){entry(zip,"Contents/section0.xml",xml);}
+        var document=new RagTextExtractor().extract(file);
+        assertThat(document.text()).isEqualTo("기관 | 일정\n기관: 가람 | 일정: 3월\n다른 구역\n누리 | 5월\n기관 | 일정\n새봄 | 6월");
+        var chunks=new com.kaces.pandora.rag.chunk.RagChunker().chunkV4(1L,document,null,"계획");
+        assertThat(chunks).anySatisfy(c->assertThat(c.chunkText()).contains("기관: 가람 | 일정: 3월"));
+        var source=chunks.stream().filter(c->c.chunkText().contains("기관: 가람 | 일정: 3월")).findFirst().orElseThrow();
+        var ground=new com.kaces.pandora.ai.answer.LawAiAnswerGround(1,1L,1L,"official_doc","계획","","","20260101","CURRENT",
+            source.chunkNo(),source.chunkTitle(),source.pageNo(),source.chunkText(),source.sourcePath(),null,1.0);
+        var matcher=new com.kaces.pandora.ai.answer.ClaimEvidenceMatcher();
+        assertThat(matcher.match("기관: 가람 | 일정: 3월",java.util.List.of(ground)).status())
+            .isEqualTo(com.kaces.pandora.ai.answer.ClaimEvidenceMatcher.Status.SUPPORTED);
+        assertThat(matcher.match("기관: 누리 | 일정: 3월",java.util.List.of(ground)).status())
+            .isNotEqualTo(com.kaces.pandora.ai.answer.ClaimEvidenceMatcher.Status.SUPPORTED);
+    }
+
+    @Test
+    void clearsHeaderOwnershipForPartialDuplicateAndMergedHeaders() throws Exception {
+        for(String headerRow : new String[]{
+            cell(1,0,1,1,"이름").replace("<tc>","<tc header='1'>")+cell(1,1,1,1,"값"),
+            (cell(1,0,1,1,"이름")+cell(1,1,1,1,"이름")).replace("<tc>","<tc header='1'>"),
+            (cell(1,0,1,1,"이름")+cell(1,1,1,1,"이 름")).replace("<tc>","<tc header='1'>"),
+            (cell(1,0,1,1,"")+cell(1,1,1,1,"값")).replace("<tc>","<tc header='1'>"),
+            cell(1,0,1,2,"구역").replace("<tc>","<tc header='1'>")}) {
+            Path file=temp.resolve("ambiguous-headers.hwpx");
+            String xml="<section><tbl colCnt='2'><tr>"
+                +(cell(0,0,1,1,"기관")+cell(0,1,1,1,"일정")).replace("<tc>","<tc header='1'>")
+                +"</tr><tr>"+headerRow+"</tr><tr>"+cell(2,0,1,1,"가람")+cell(2,1,1,1,"3월")+"</tr></tbl></section>";
+            try(var zip=new ZipOutputStream(Files.newOutputStream(file))){entry(zip,"Contents/section0.xml",xml);}
+            assertThat(new RagTextExtractor().extract(file).text()).endsWith("가람 | 3월").doesNotContain("기관: 가람","일정: 3월","이름: 가람");
+        }
+    }
+
+    @Test
+    void preservesColumnLabelsForDeclaredVerticalSpansAndResetsOnNewHeaders() throws Exception {
+        Path file=temp.resolve("header-spans.hwpx");
+        String xml="<section><tbl colCnt='2'><tr>"
+            +(cell(0,0,1,1,"기관")+cell(0,1,1,1,"일정")).replace("<tc>","<tc header='1'>")
+            +"</tr><tr>"+cell(1,0,1,1,"가람")+cell(1,1,2,1,"연중")
+            +"</tr><tr>"+cell(2,0,1,1,"누리")
+            +"</tr><tr>"+(cell(3,0,1,1,"시설")+cell(3,1,1,1,"수량")).replace("<tc>","<tc header='1'>")
+            +"</tr><tr>"+cell(4,0,1,1,"본관")+cell(4,1,1,1,"2개")+"</tr></tbl><t>다만 변경될 수 있음</t></section>";
+        try(var zip=new ZipOutputStream(Files.newOutputStream(file))){entry(zip,"Contents/section0.xml",xml);}
+        assertThat(new RagTextExtractor().extract(file).text()).isEqualTo(
+            "기관 | 일정\n기관: 가람 | 일정: 연중\n기관: 누리 | 일정: 연중\n시설 | 수량\n시설: 본관 | 수량: 2개\n다만 변경될 수 있음");
+    }
+
+    @Test
     void preservesNestedTableBoundariesRegardlessOfNamespacePrefix() throws Exception {
         for (String prefix : new String[]{"hp", "alt"}) {
             Path file = temp.resolve("nested-"+prefix+".hwpx");
