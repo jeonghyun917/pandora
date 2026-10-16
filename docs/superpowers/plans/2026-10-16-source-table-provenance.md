@@ -53,10 +53,10 @@ Contract:
 - Extraction now supplies exact row offsets. If normalization changes the rendered page, its structural proof is dropped until an exact transformation exists; never recover positions by searching repeated text.
 
 - [ ] Test the2111-character row, repeated row text, punctuation/whitespace, row spanning multiple chunks and adjacent unrelated tables. Assert both no lost source identity and no false complete-row status.
-- [ ] Implement offset-carrying chunk segments; do not relocate using first/last substring occurrence. Keep ordinary text chunking and max length unchanged.
-- [ ] Add nullable persistence and mapper round-trip tests in the fenced isolated MariaDB instance, including pre-existing null rows.
-- [ ] Extend rollback tests so provenance and chunks commit/rollback together. Preserve old Q points until commit and delete only attempted new IDs on confirmed rollback.
-- [ ] Review migration/data-safety separately before any live schema/data mutation. No automatic corpus reimport or bulk activation follows code deployment.
+- [x] Implement offset-carrying chunk segments; do not relocate using first/last substring occurrence. Keep ordinary text chunking and max length unchanged.
+- [x] Add nullable persistence and mapper round-trip tests in the fenced isolated MariaDB instance, including pre-existing null rows.
+- [x] Extend rollback tests so provenance and chunks commit/rollback together. Preserve old Q points until commit and delete only attempted new IDs on confirmed rollback.
+- [x] Review migration/data-safety separately before any live schema/data mutation. No automatic corpus reimport or bulk activation follows code deployment.
 
 ## Task3: Source-linked proof consumer and guarded evaluation
 
@@ -70,4 +70,4 @@ Files: `LawSemanticChunkRow.java`, retrieval mapper projections, `EvidenceAtom`/
 
 ## Current execution point
 
-Task1 and Task2's exact-row-offset precondition are verified and deployed in product63930430 (see ledger/evidence). Next is offset-carrying chunk segmentation and preservation through RagChunkQualityGate/import rebinding, before nullable persistence. Task2 live migration and Task3 authority remain unimplemented. Use fresh runtime evidence before external evaluation; this plan is not identity proof. The section-order fix and previous transaction tests must not be rerun solely to create activity.
+Task2 bounded implementation is verified and deployed in product87e2ef8a (see ledger/evidence). Task3 starts with conservative source-row/header validation and retrieval propagation. Full semantic consumption and qualified external gates remain unfinished. Use fresh runtime evidence before external evaluation; this plan is not identity proof. Do not rerun already-passing unchanged-SHA gates solely to create activity.

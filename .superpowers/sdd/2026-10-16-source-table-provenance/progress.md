@@ -1,5 +1,11 @@
 # SDD ledger — plan: docs/superpowers/plans/2026-10-16-source-table-provenance.md
 
+- Task2 product87e2ef8a committed/pushed. Exact row/window provenance survives quality assignment, import rebind and nullable dedicated storage. V2/V3 stay unchanged. Original binary SHA256 rechecked after extraction; changed source fails before writes.
+- RED evidence: chunk null proof21342/ab0a37, persistence93655/619bd1, file hash77751/72ae61. Review found heading-context loss and text-only dedup loss; both reproduced88883/9109a6 then fixed. Context-only heading events do not enter row-owned text; canonical validated source identity only controls dedup retention. Final bounded review Critical/Important0.
+- Full54725/e64824 exit0; fresh XML3b902b:1687 tests/f0/e0/skipped19 with isolated DB env enabled, including all five transaction paths. Source-change mutation attempt27589 was a test fixture compilation failure, NOT a behavior RED; corrected fixture passes. No false RED claim.
+- Stage19851/b9fcbf exit0; official status9adfd7 then stop/deploy17090/5e56e7 KEEPALIVE PID71996/runtime3edef706-ae99-4ee7-b1f7-4aab44bb0e21/JAR8ace3b38391684aedbe6889e35b336585ac63957d9d38cb2ff113625d7318859. Freshc2e805 DB=Q law211658/rag84248, qreadytrue/qfail0/confige7b08ced/indexe39713ce/lexical15b68153 and content fingerprints unchanged. Optional actuator/health is404 (not configured); runtime API and Q ready succeed. Additive nullable column only, no corpus backfill/activation. Isolated DB23306 fenced shutdown9f68ba; listener0, datadir preserved. Q28324 and18080 unchanged.
+- Task2 complete in its bounded contract. Task3 remains: retrieval projection/file hash/version propagation, source-row validator and literal cell binding, guarded semantic consumption, actual-source diagnosis, then only a qualified fresh penalty checkpoint. No penalty PASS/Difficult12/holdout57/full1003 claimed.
+
 - BASE: eeeaab03. Task1 in progress; no runtime/schema/corpus change.
 - Pre-flight Task1→Task2: immutable SourceTableRow cells and original XML paths required; text stays unchanged. Task2 must carry exact ranges rather than locate duplicate text by substring.
 - Pre-flight Task2→Task3: nullable schemaVersion1 proof must pass source/document/version/hash/coverage validation. No legacy fallback creates proof.
