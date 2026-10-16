@@ -87,10 +87,11 @@ public class RagTextExtractor {
 				try (InputStream input = zipFile.getInputStream(entry)) {
 					var document = factory.newDocumentBuilder().parse(input);
 					StringBuilder builder = new StringBuilder();
-					appendText(document.getDocumentElement(), builder);
+					List<SourceTableRow> tableRows = new ArrayList<>();
+					appendText(document.getDocumentElement(), builder, tableRows, entry.getName());
 					String text = normalize(builder.toString());
 					if (!text.isBlank()) {
-						pages.add(new ExtractedPage(pageNo++, text));
+						pages.add(new ExtractedPage(pageNo++, text, tableRows));
 					}
 				} catch (Exception exception) {
 					throw new IllegalStateException("HWPX text extraction failed: " + entry.getName(), exception);
@@ -116,11 +117,15 @@ public class RagTextExtractor {
 
 	// 메소드 설명: appendText 처리 흐름을 수행합니다.
 	private void appendText(Node node, StringBuilder builder) {
+		appendText(node, builder, null, null);
+	}
+
+	private void appendText(Node node, StringBuilder builder, List<SourceTableRow> tableRows, String sourcePart) {
 		if (node == null) {
 			return;
 		}
 		if ("tbl".equals(localName(node))) {
-			String table = tableText(node);
+			String table = tableText(node, tableRows, sourcePart);
 			if (table != null) {
 				if (builder.length() > 0) { builder.append('\n'); }
 				builder.append(table);
@@ -138,13 +143,13 @@ public class RagTextExtractor {
 			return;
 		}
 		for (Node child = node.getFirstChild(); child != null; child = child.getNextSibling()) {
-			appendText(child, builder);
+			appendText(child, builder, tableRows, sourcePart);
 		}
 	}
 
 	// Preserve only relations explicitly owned by XML cell addresses and spans.
 	// Malformed or nested tables retain the existing raw-text fallback.
-	private String tableText(Node table) {
+	private String tableText(Node table, List<SourceTableRow> tableRows, String sourcePart) {
 		try {
 			int columns = Integer.parseInt(((Element) table).getAttribute("colCnt"));
 			List<Node> rows = children(table, "tr");
@@ -175,6 +180,8 @@ public class RagTextExtractor {
 			}
 			List<String> lines = new ArrayList<>();
 			List<String> headers = List.of();
+			List<Node> headerCells = List.of();
+			List<SourceTableRow> pendingRows = new ArrayList<>();
 			for (int rowIndex = 0; rowIndex < grid.length; rowIndex++) {
 				Node[] row = grid[rowIndex];
 				List<String> values = new ArrayList<>();
@@ -195,6 +202,7 @@ public class RagTextExtractor {
 				// Ambiguous new headings must also end the previous header's ownership.
 				if (values.size() != columns || anyHeader || numberLabel) {
 					headers = List.of();
+					headerCells = List.of();
 				}
 				boolean numberedHeader = !anyHeader && numberLabel && values.size() == columns && columns > 1
 					&& values.stream().allMatch(value -> value.length() <= 40 && !value.matches(".*[0-9].*"))
@@ -207,17 +215,53 @@ public class RagTextExtractor {
 					&& values.stream().map(value -> value.replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT))
 						.distinct().count() == columns) {
 					headers = List.copyOf(values);
+					headerCells = List.of(row.clone());
 				} else if (!headers.isEmpty()) {
 					for (int col = 0; col < columns; col++) {
 						values.set(col, headers.get(col) + ": " + values.get(col));
 					}
 				}
-				lines.add(String.join(" | ", values));
+				String rendered = String.join(" | ", values);
+				lines.add(rendered);
+				if (tableRows != null && !hasTableAncestor(table)) {
+					List<SourceTableRow.Cell> cells = new ArrayList<>();
+					java.util.Set<Node> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+					for (int col = 0; col < columns; col++) {
+						Node cell = row[col];
+						if (!seen.add(cell)) { continue; }
+						Element address = (Element) children(cell, "cellAddr").get(0);
+						Element span = (Element) children(cell, "cellSpan").get(0);
+						// Header rows describe source cells; they do not own themselves as data.
+						Node header = headerCells.isEmpty() || headerCells.contains(cell) ? null : headerCells.get(col);
+						cells.add(new SourceTableRow.Cell(Integer.parseInt(address.getAttribute("rowAddr")),
+							Integer.parseInt(address.getAttribute("colAddr")), Integer.parseInt(span.getAttribute("rowSpan")),
+							Integer.parseInt(span.getAttribute("colSpan")), cellText(cell),
+							header == null ? null : xmlPath(header), header == null ? null : cellText(header)));
+					}
+					pendingRows.add(new SourceTableRow(sourcePart, xmlPath(table), rowIndex, rendered, cells));
+				}
 			}
+			if (tableRows != null) { tableRows.addAll(pendingRows); }
 			return String.join("\n", lines);
 		} catch (NumberFormatException exception) {
 			return null;
 		}
+	}
+
+	private boolean hasTableAncestor(Node node) {
+		for (Node parent = node.getParentNode(); parent != null; parent = parent.getParentNode()) {
+			if ("tbl".equals(localName(parent))) { return true; }
+		}
+		return false;
+	}
+
+	private String xmlPath(Node node) {
+		if (node == null || node.getNodeType() != Node.ELEMENT_NODE) { return ""; }
+		int position = 1;
+		for (Node sibling = node.getPreviousSibling(); sibling != null; sibling = sibling.getPreviousSibling()) {
+			if (sibling.getNodeType() == Node.ELEMENT_NODE && localName(sibling).equals(localName(node))) { position++; }
+		}
+		return xmlPath(node.getParentNode()) + "/" + localName(node) + "[" + position + "]";
 	}
 
 	private String cellText(Node cell) {

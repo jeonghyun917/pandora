@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-16 구조적표소유 Task1 실제구현: 새SourceTableRow/Cell과ExtractedPage.tableRows(기존2인자생성자호환), 검증된XML grid에서원문part/table경로/행/셀좌표/span/header경로·문자열만수집. 최초API부재34373/e79430 뒤빈collector assertion RED52517/2641ec(4기대0실제)→구현→집중87619/b46910·확장58582/f13741 exit0. 원문텍스트불변/모호한header해제/수직span원좌표/중첩·오류표구조증명없음/문서말미단서미소유 확인. 전체81640/9ac6da exit0, freshdec98e1676 f0e0 제외20. 실제원본읽기3b493f:1page/2tables/16rows/66headerBoundCells/rowPathUnique true/renderedRowsPresent true/말미단서보존true·행소유false. 불변list추가assertions6609진행중. 아직청크범위/DB저장/의미판정미연결·미배포이며전체해결로집계금지. 정확다음은builder소유정확offset과cleaner변환시fail-closed:substring중복검색으로위치추정금지.
+
 - 2026-10-16 제품12b1faea commit/push d5f36a→공식stage7978 exit0/35d2ef→승인호스트status/소유7ad93f→공식stop b234f1/리스너없음→공식deploy65411 KEEPALIVE PID71456/runtime240b2043-a4be-4708-9b61-c1341509811d/JAR9655a482c08e32b03bc6a9e7af9d4fbc82d8810e16df367728bdf2139c2712ac. fresh0b08a6 DB=Q law211658/rag84248/qreadytrue/qfail0/readyz200/confige7b08ced/indexe39713ce/lexical15b68153/양DB내용fingerprint불변. 작업트리clean확인. 실제코퍼스reimport/penalty/최종gate실행없음, Qdrant28324/18080/main불변. 다음구조소유계약의저장경계f4d0c7/77b5a7/31acd4: RagDocumentChunkRow·mapper insert·EvidenceAtom·IndexedAtom 모두table/row/cell identity부재; source_path는VARCHAR1000 위치필드이며의미메타데이터를몰래직렬화해우회저장하지않음. 새필드는원문좌표·hash와청크범위의명시연결로설계하고기존문장guard를그대로유지해야함.
 
 - section숫자정렬 최종전체99368/a6c0cc exit0, fresh8a75f5 XML1675 f0e0 제외20. 추가제외1은종료된전용DB env없는 RagImportTransactionTests이며 기존5경로검증을재실행/대체하지않음. diff-check0. 실제penalty/최종gate 미실행, 이부분수정을전체RAG품질완료로집계금지.

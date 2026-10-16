@@ -1,6 +1,7 @@
 package com.kaces.pandora.rag.importing;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -12,6 +13,32 @@ import org.junit.jupiter.api.io.TempDir;
 
 class RagTextExtractorTests {
     @TempDir Path temp;
+
+    @Test
+    void retainsSourceCellOwnershipWithoutMergingIdenticalTables() throws Exception {
+        Path file=temp.resolve("owned-tables.hwpx");
+        String table="<tbl colCnt='2'><tr>"
+            +(cell(0,0,1,1,"기관")+cell(0,1,1,1,"일정")).replace("<tc>","<tc header='1'>")
+            +"</tr><tr>"+cell(1,0,1,1,"가람기관")+cell(1,1,1,1,"7월")+"</tr></tbl>";
+        try(var zip=new ZipOutputStream(Files.newOutputStream(file))) {
+            entry(zip,"Contents/section0.xml","<section>"+table+table+"</section>");
+        }
+        var rows=new RagTextExtractor().extract(file).pages().get(0).tableRows();
+        assertThat(rows).hasSize(4);
+        assertThat(rows.get(1).sourcePart()).isEqualTo("Contents/section0.xml");
+        assertThat(rows.get(1).tablePath()).isNotEqualTo(rows.get(3).tablePath());
+        assertThat(rows.get(1).rowIndex()).isEqualTo(1);
+        assertThat(rows.get(1).renderedText()).isEqualTo("기관: 가람기관 | 일정: 7월");
+        var value=rows.get(1).cells().get(1);
+        assertThat(value.sourceRow()).isEqualTo(1);
+        assertThat(value.sourceColumn()).isEqualTo(1);
+        assertThat(value.text()).isEqualTo("7월");
+        assertThat(value.headerText()).isEqualTo("일정");
+        assertThat(value.headerPath()).contains(rows.get(1).tablePath());
+        assertThat(rows.get(3).cells().get(1).headerPath()).isNotEqualTo(value.headerPath());
+        assertThatThrownBy(() -> rows.clear()).isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> rows.get(1).cells().clear()).isInstanceOf(UnsupportedOperationException.class);
+    }
 
     @Test
     void ordersHwpxSectionsByTheirNumericSourcePosition() throws Exception {
@@ -160,7 +187,10 @@ class RagTextExtractorTests {
                 +(cell(0,0,1,1,"기관")+cell(0,1,1,1,"일정")).replace("<tc>","<tc header='1'>")
                 +"</tr><tr>"+headerRow+"</tr><tr>"+cell(2,0,1,1,"가람")+cell(2,1,1,1,"3월")+"</tr></tbl></section>";
             try(var zip=new ZipOutputStream(Files.newOutputStream(file))){entry(zip,"Contents/section0.xml",xml);}
-            assertThat(new RagTextExtractor().extract(file).text()).endsWith("가람 | 3월").doesNotContain("기관: 가람","일정: 3월","이름: 가람");
+            var extracted=new RagTextExtractor().extract(file);
+            assertThat(extracted.text()).endsWith("가람 | 3월").doesNotContain("기관: 가람","일정: 3월","이름: 가람");
+            assertThat(extracted.pages().get(0).tableRows().get(2).cells())
+                .allSatisfy(value -> assertThat(value.headerPath()).isNull());
         }
     }
 
@@ -174,8 +204,15 @@ class RagTextExtractorTests {
             +"</tr><tr>"+(cell(3,0,1,1,"시설")+cell(3,1,1,1,"수량")).replace("<tc>","<tc header='1'>")
             +"</tr><tr>"+cell(4,0,1,1,"본관")+cell(4,1,1,1,"2개")+"</tr></tbl><t>다만 변경될 수 있음</t></section>";
         try(var zip=new ZipOutputStream(Files.newOutputStream(file))){entry(zip,"Contents/section0.xml",xml);}
-        assertThat(new RagTextExtractor().extract(file).text()).isEqualTo(
+        var extracted=new RagTextExtractor().extract(file);
+        assertThat(extracted.text()).isEqualTo(
             "기관 | 일정\n기관: 가람 | 일정: 연중\n기관: 누리 | 일정: 연중\n시설 | 수량\n시설: 본관 | 수량: 2개\n다만 변경될 수 있음");
+        var rows=extracted.pages().get(0).tableRows();
+        assertThat(rows.get(1).cells().get(1).sourceRow()).isEqualTo(1);
+        assertThat(rows.get(1).cells().get(1).rowSpan()).isEqualTo(2);
+        assertThat(rows.get(2).cells().get(1)).isEqualTo(rows.get(1).cells().get(1));
+        assertThat(rows.get(4).cells().get(1).headerText()).isEqualTo("수량");
+        assertThat(rows).noneSatisfy(row -> assertThat(row.renderedText()).contains("변경될 수 있음"));
     }
 
     @Test
@@ -187,7 +224,9 @@ class RagTextExtractorTests {
                 +"<cellAddr rowAddr='0' colAddr='0'/><cellSpan rowSpan='1' colSpan='1'/>"
                 +"<t>BEFORE</t>"+nested+"<t>AFTER</t></tc></tr></tbl></section>";
             try(var zip=new ZipOutputStream(Files.newOutputStream(file))){entry(zip,"Contents/section0.xml",xml);}
-            assertThat(new RagTextExtractor().extract(file).text()).isEqualTo("BEFORE\nINNER\nAFTER");
+            var extracted=new RagTextExtractor().extract(file);
+            assertThat(extracted.text()).isEqualTo("BEFORE\nINNER\nAFTER");
+            assertThat(extracted.pages()).allSatisfy(page -> assertThat(page.tableRows()).isEmpty());
         }
     }
 
@@ -198,7 +237,9 @@ class RagTextExtractorTests {
             String xml="<section><tbl colCnt='2'><tr>"+cell(0,0,1,span,"원문조건")
                 +cell(0,0,1,1,"금액50원")+"</tr></tbl></section>";
             try(var zip=new ZipOutputStream(Files.newOutputStream(file))){entry(zip,"Contents/section0.xml",xml);}
-            assertThat(new RagTextExtractor().extract(file).text()).isEqualTo("원문조건\n금액50원");
+            var extracted=new RagTextExtractor().extract(file);
+            assertThat(extracted.text()).isEqualTo("원문조건\n금액50원");
+            assertThat(extracted.pages()).allSatisfy(page -> assertThat(page.tableRows()).isEmpty());
         }
     }
 }
