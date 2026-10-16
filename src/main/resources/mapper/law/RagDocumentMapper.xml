@@ -5,6 +5,25 @@
 
 <mapper namespace="com.kaces.pandora.rag.persistence.RagDocumentMapper">
 
+  <select id="findSourceProofChunksByIds" resultType="com.kaces.pandora.rag.document.RagSourceProofRow">
+    SELECT c.chunk_id AS chunkId, c.document_id AS documentId, c.chunk_version AS chunkVersion,
+      c.page_no AS pageNo, c.chunk_text AS chunkText, doc.file_hash AS sourceFileHash,
+      c.source_provenance AS sourceProvenance
+    FROM rag_document_chunks c JOIN rag_documents doc ON doc.document_id=c.document_id
+    WHERE doc.use_yn='Y' AND c.use_yn='Y'
+      AND c.quality_status IN ('PASS','REVIEW','CONTEXT_ONLY')
+      AND <include refid="latestActiveChunkVersionFilter"/>
+      AND
+      <choose>
+        <when test="chunkIds != null and chunkIds.size() > 0 and chunkIds.size() &lt;= 64">
+          c.chunk_id IN <foreach collection="chunkIds" item="chunkId" open="(" separator="," close=")">#{chunkId}</foreach>
+        </when>
+        <otherwise>1=0</otherwise>
+      </choose>
+    ORDER BY c.chunk_id
+    LIMIT 64
+  </select>
+
   <insert id="insertImportJob">
     <selectKey keyProperty="job.importJobId" resultType="long" order="AFTER">
       SELECT LAST_INSERT_ID()

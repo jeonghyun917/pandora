@@ -73,6 +73,14 @@ class RagImportTransactionTests {
             long documentId=jdbc.queryForObject("SELECT document_id FROM rag_documents WHERE file_hash=?",Long.class,hash);
             jdbc.update("INSERT INTO rag_document_chunks(document_id,chunk_version,chunk_text,embedding_text,content_hash,index_status) VALUES(?,4,'OLD BASIS','OLD BASIS',?,'INDEXED')",documentId,"a".repeat(64));
             long oldId=jdbc.queryForObject("SELECT chunk_id FROM rag_document_chunks WHERE document_id=?",Long.class,documentId);
+            assertThat(mapper.findSourceProofChunksByIds(List.of(oldId))).singleElement().satisfies(proof->{
+                assertThat(proof.chunkId()).isEqualTo(oldId);
+                assertThat(proof.sourceFileHash()).isEqualTo(hash);
+                assertThat(proof.sourceProvenance()).isNull();
+            });
+            assertThat(mapper.findSourceProofChunksByIds(List.of())).isEmpty();
+            assertThat(mapper.findSourceProofChunksByIds(null)).isEmpty();
+            assertThat(mapper.findSourceProofChunksByIds(java.util.Collections.nCopies(65,oldId))).isEmpty();
             assertThat(jdbc.queryForObject("SELECT source_provenance FROM rag_document_chunks WHERE chunk_id=?",String.class,oldId)).isNull();
             mapper.upsertEmbeddingStatus(oldId,"fixture","fixture",String.valueOf(oldId),"a".repeat(64),"INDEXED",null);
             if(failure.equals("finalize"))jdbc.execute("CREATE TRIGGER reject_import_finalize BEFORE UPDATE ON rag_documents FOR EACH ROW BEGIN IF NEW.import_status='INDEXED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected-finalize'; END IF; END");
@@ -112,6 +120,13 @@ class RagImportTransactionTests {
                 assertThat(proof.get("sourceFileHash").asText()).isEqualTo(hash);
                 assertThat(proof.get("rowHash").asText()).isEqualTo(com.kaces.pandora.common.text.LawHashUtils.sha256(body));
                 assertThat(proof.get("completeRow").asBoolean()).isTrue();
+                assertThat(mapper.findSourceProofChunksByIds(List.of(oldId))).isEmpty();
+                assertThat(mapper.findSourceProofChunksByIds(List.of(activeId))).singleElement().satisfies(row->{
+                    assertThat(row.chunkVersion()).isEqualTo(4);
+                    assertThat(row.sourceProvenance()).isEqualTo(stored);
+                    assertThat(row.sourceFileHash()).isEqualTo(hash);
+                    assertThat(row.chunkText()).isEqualTo(body);
+                });
                 assertThat(jdbc.queryForObject("SELECT import_status FROM rag_documents WHERE document_id=?",String.class,documentId)).isEqualTo("INDEXED");
                 continue;
             }

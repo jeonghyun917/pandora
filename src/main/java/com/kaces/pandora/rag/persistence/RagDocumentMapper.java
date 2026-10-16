@@ -17,6 +17,7 @@ import org.apache.ibatis.annotations.Param;
 
 @Mapper
 public interface RagDocumentMapper {
+	List<com.kaces.pandora.rag.document.RagSourceProofRow> findSourceProofChunksByIds(@Param("chunkIds") List<Long> chunkIds);
 	void insertImportJob(
 		@Param("job") RagImportJobKey job,
 		@Param("path") String path,
