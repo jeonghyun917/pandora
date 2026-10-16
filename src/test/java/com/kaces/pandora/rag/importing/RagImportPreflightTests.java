@@ -28,7 +28,7 @@ class RagImportPreflightTests {
         when(mapper.findDocumentIdByHash(anyString())).thenReturn(42L);
         when(mapper.findChunkIdsByDocumentId(42L)).thenReturn(List.of());
         var service=new RagImportService(mapper,new RagTextExtractor(),new RagChunker(),new RagChunkQualityGate(),
-            index,null,null,null,null);
+            index,null,null,null,null,transactions());
         service.importFile(file,"official_doc",false,false);
         var rows=org.mockito.ArgumentCaptor.forClass(com.kaces.pandora.rag.document.RagDocumentChunkRow.class);
         verify(mapper,atLeastOnce()).insertChunk(rows.capture());
@@ -51,7 +51,7 @@ class RagImportPreflightTests {
             .when(mapper).insertImportJob(any(),anyString(),any());
         when(mapper.findActiveChunkIdsByFilePathsAndVersion(anyList(),eq(4))).thenReturn(List.of(17L));
         var service=new RagImportService(mapper,new RagTextExtractor(),new RagChunker(),new RagChunkQualityGate(),
-            index,null,qdrant,null,null);
+            index,null,qdrant,null,null,transactions());
         var result=service.importFolder("official_doc",temp.toString(),false,true);
         assertThat(result.failedCount()).isEqualTo(1);
         verify(mapper,never()).deactivateChunksByFilePathsAndVersion(anyList(),anyInt());
@@ -86,7 +86,7 @@ class RagImportPreflightTests {
             when(mapper.findSemanticIndexChunksByDocumentId(42L,4)).thenReturn(List.of(row));
             when(embedding.embed(anyList())).thenReturn(List.of(List.of(0.0)));
             var service=new RagImportService(mapper,new RagTextExtractor(),new RagChunker(),new RagChunkQualityGate(),
-                index,embedding,qdrant,properties,null);
+                index,embedding,qdrant,properties,null,transactions());
             var result=service.importFolder("official_doc",folder.toString(),indexNow,true);
             assertThat(result.failedCount()).isZero();
             assertThat(result.indexedCount()).isEqualTo(indexNow?1:0);
@@ -112,11 +112,17 @@ class RagImportPreflightTests {
         when(mapper.findDocumentIdByHash(anyString())).thenReturn(42L);
         when(mapper.findChunkIdsByDocumentId(42L)).thenReturn(List.of(17L));
         var service=new RagImportService(mapper,new RagTextExtractor(),new RagChunker(),new RagChunkQualityGate(),
-            index,null,null,null,null);
+            index,null,null,null,null,transactions());
         assertThatThrownBy(()->service.importFile(file,"official_doc",false,true))
             .isInstanceOf(IllegalStateException.class).hasMessageContaining("quality gate rejected");
         verify(mapper).findDocumentByHash(anyString());
         verifyNoMoreInteractions(mapper);
         verifyNoInteractions(index);
+    }
+
+    private static org.springframework.transaction.PlatformTransactionManager transactions() {
+        var manager=mock(org.springframework.transaction.PlatformTransactionManager.class);
+        when(manager.getTransaction(any())).thenReturn(new org.springframework.transaction.support.SimpleTransactionStatus());
+        return manager;
     }
 }

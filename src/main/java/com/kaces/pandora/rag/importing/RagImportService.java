@@ -31,9 +31,11 @@ import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
@@ -54,6 +56,7 @@ public class RagImportService {
 	private final QdrantClient qdrantClient;
 	private final LawAiProperties properties;
 	private final ObjectMapper objectMapper;
+	private final TransactionTemplate importTransaction;
 
 	public RagImportService(
 		RagDocumentMapper mapper,
@@ -64,7 +67,8 @@ public class RagImportService {
 		OpenAiEmbeddingClient embeddingClient,
 		QdrantClient qdrantClient,
 		LawAiProperties properties,
-		ObjectMapper objectMapper
+		ObjectMapper objectMapper,
+		PlatformTransactionManager transactionManager
 	) {
 		this.mapper = mapper;
 		this.textExtractor = textExtractor;
@@ -75,6 +79,8 @@ public class RagImportService {
 		this.qdrantClient = qdrantClient;
 		this.properties = properties;
 		this.objectMapper = objectMapper;
+		this.importTransaction = new TransactionTemplate(transactionManager);
+		this.importTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 	}
 
 	// 메소드 설명: importFolder 처리 흐름을 수행합니다.
@@ -173,19 +179,16 @@ public class RagImportService {
 		return new RagImportResponse(jobId, status, importPath, requestedType, documents.size(), imported, skipped, failed, indexed, lastError);
 	}
 
-	@Transactional
 	// 메소드 설명: importFile 처리 흐름을 수행합니다.
 	protected ImportOutcome importFile(Path file, String requestedType) throws IOException {
 		return importFile(file, requestedType, true);
 	}
 
-	@Transactional
 	// 메소드 설명: importFile 처리 흐름을 수행합니다.
 	protected ImportOutcome importFile(Path file, String requestedType, boolean indexNow) throws IOException {
 		return importFile(file, requestedType, indexNow, false);
 	}
 
-	@Transactional
 	protected ImportOutcome importFile(Path file, String requestedType, boolean indexNow, boolean force) throws IOException {
 		String fileHash = sha256(file);
 		RagDocumentRow existing = mapper.findDocumentByHash(fileHash);
@@ -219,6 +222,9 @@ public class RagImportService {
 			);
 		}
 
+		String mimeType = Files.probeContentType(file);
+		int importTrustLevel = trustLevel;
+		return importTransaction.execute(transaction -> {
 		mapper.upsertDocument(
 			documentType,
 			title,
@@ -227,12 +233,12 @@ public class RagImportService {
 			meta.documentTopic(),
 			meta.publishedDate(),
 			meta.version(),
-			trustLevel,
+			importTrustLevel,
 			file.getFileName().toString(),
 			file.toAbsolutePath().toString(),
 			fileHash,
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-			Files.probeContentType(file),
+			mimeType,
 			meta.sourceUrl(),
 			"IMPORTED",
 			null
@@ -272,17 +278,18 @@ public class RagImportService {
 			meta.documentTopic(),
 			meta.publishedDate(),
 			meta.version(),
-			trustLevel,
+			importTrustLevel,
 			file.getFileName().toString(),
 			file.toAbsolutePath().toString(),
 			fileHash,
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-			Files.probeContentType(file),
+			mimeType,
 			meta.sourceUrl(),
 			"INDEXED",
 			null
 		);
 		return new ImportOutcome(false, indexed);
+		});
 	}
 
 	private void deleteOldQdrantPointsAfterCommit(List<Long> oldChunkIds) {
@@ -315,6 +322,17 @@ public class RagImportService {
 			List<LawSemanticChunkRow> batch = chunks.subList(start, end);
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 			List<List<Double>> vectors = embeddingClient.embed(batch.stream().map(LawSemanticChunkRow::embeddingInput).toList());
+			if (TransactionSynchronizationManager.isSynchronizationActive()) {
+				List<Long> stagedIds = batch.stream().map(LawSemanticChunkRow::chunkId).toList();
+				TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+					@Override
+					public void afterCompletion(int status) {
+						if (status == STATUS_ROLLED_BACK) {
+							qdrantClient.deleteRagPointsBestEffort(stagedIds);
+						}
+					}
+				});
+			}
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 			qdrantClient.upsertRag(batch, vectors);
 			for (LawSemanticChunkRow chunk : batch) {
