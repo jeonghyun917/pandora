@@ -21,14 +21,21 @@ public class SemanticEvidenceMatcher {
 		"^(적용\\s+대상\\s+사업|대상\\s+사업)(?:입니다|이다)$"
 	);
 	private final KoreanEvidenceAtomParser parser;
+	private final com.kaces.pandora.rag.chunk.RagSourceTableEvidenceService tableEvidence;
 
 	public SemanticEvidenceMatcher() {
 		this(new KoreanEvidenceAtomParser());
 	}
 
-	@Autowired
 	public SemanticEvidenceMatcher(KoreanEvidenceAtomParser parser) {
+		this(parser, null);
+	}
+
+	@Autowired
+	public SemanticEvidenceMatcher(KoreanEvidenceAtomParser parser,
+		com.kaces.pandora.rag.chunk.RagSourceTableEvidenceService tableEvidence) {
 		this.parser = parser;
+		this.tableEvidence = tableEvidence;
 	}
 
 	public EvidenceIndex index(List<LawAiAnswerGround> grounds) {
@@ -64,7 +71,29 @@ public class SemanticEvidenceMatcher {
 				}
 			}
 		}
-		return new EvidenceIndex(atoms);
+		return new EvidenceIndex(atoms, sourceTableBindings(grounds));
+	}
+
+	private List<com.kaces.pandora.rag.chunk.SourceTableBindings.Binding> sourceTableBindings(List<LawAiAnswerGround> grounds) {
+		if (tableEvidence == null || grounds == null) { return List.of(); }
+		Set<Long> ids = new LinkedHashSet<>();
+		Set<Long> documents = new LinkedHashSet<>();
+		for (var ground : grounds) {
+			if (ground == null || !("official_doc".equals(ground.target()) || "internal_doc".equals(ground.target()))) { continue; }
+			if (ground.chunkId() <= 0 || ground.documentId() <= 0) { continue; }
+			documents.add(ground.documentId());
+			ids.add(ground.chunkId());
+			if (ground.contextChunkIds() != null) {
+				ground.contextChunkIds().stream().filter(id -> id != null && id > 0).forEach(ids::add);
+			}
+			if (ids.size() > 64) { return List.of(); }
+		}
+		if (ids.isEmpty()) { return List.of(); }
+		try {
+			// Metadata only: no atoms, roles, grounds or support decisions are synthesized here.
+			return tableEvidence.fromSelectedChunks(List.copyOf(ids)).stream()
+				.filter(binding -> binding != null && documents.contains(binding.documentId())).toList();
+		} catch (RuntimeException unavailable) { return List.of(); }
 	}
 
 	public SemanticMatch match(EvidenceAtom claim, EvidenceIndex evidenceIndex) {
@@ -333,9 +362,12 @@ public class SemanticEvidenceMatcher {
 			.replace("상용소프트웨어포함", "상용sw포함");
 	}
 
-	public record EvidenceIndex(List<IndexedAtom> atoms) {
+	public record EvidenceIndex(List<IndexedAtom> atoms,
+		List<com.kaces.pandora.rag.chunk.SourceTableBindings.Binding> tableBindings) {
+		public EvidenceIndex(List<IndexedAtom> atoms) { this(atoms, List.of()); }
 		public EvidenceIndex {
 			atoms = atoms == null ? List.of() : List.copyOf(atoms);
+			tableBindings = tableBindings == null ? List.of() : List.copyOf(tableBindings);
 		}
 
 		public static EvidenceIndex of(EvidenceAtom... atoms) {
