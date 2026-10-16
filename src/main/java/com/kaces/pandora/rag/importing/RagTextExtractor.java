@@ -90,6 +90,8 @@ public class RagTextExtractor {
 					List<SourceTableRow> tableRows = new ArrayList<>();
 					appendText(document.getDocumentElement(), builder, tableRows, entry.getName());
 					String text = normalize(builder.toString());
+					// Until cleanup carries an exact offset transform, changed text has no structural proof.
+					if (!text.equals(builder.toString())) { tableRows.clear(); }
 					if (!text.isBlank()) {
 						pages.add(new ExtractedPage(pageNo++, text, tableRows));
 					}
@@ -125,10 +127,19 @@ public class RagTextExtractor {
 			return;
 		}
 		if ("tbl".equals(localName(node))) {
+			int firstRow = tableRows == null ? 0 : tableRows.size();
 			String table = tableText(node, tableRows, sourcePart);
 			if (table != null) {
 				if (builder.length() > 0) { builder.append('\n'); }
+				int tableStart = builder.length();
 				builder.append(table);
+				if (tableRows != null) {
+					for (int i = firstRow; i < tableRows.size(); i++) {
+						SourceTableRow row = tableRows.get(i);
+						tableRows.set(i, new SourceTableRow(row.sourcePart(), row.tablePath(), row.rowIndex(),
+							row.renderedText(), row.cells(), tableStart + row.textStart(), tableStart + row.textEnd()));
+					}
+				}
 				return;
 			}
 		}
@@ -182,6 +193,7 @@ public class RagTextExtractor {
 			List<String> headers = List.of();
 			List<Node> headerCells = List.of();
 			List<SourceTableRow> pendingRows = new ArrayList<>();
+			int rowTextStart = 0;
 			for (int rowIndex = 0; rowIndex < grid.length; rowIndex++) {
 				Node[] row = grid[rowIndex];
 				List<String> values = new ArrayList<>();
@@ -238,8 +250,10 @@ public class RagTextExtractor {
 							Integer.parseInt(span.getAttribute("colSpan")), cellText(cell),
 							header == null ? null : xmlPath(header), header == null ? null : cellText(header)));
 					}
-					pendingRows.add(new SourceTableRow(sourcePart, xmlPath(table), rowIndex, rendered, cells));
+					pendingRows.add(new SourceTableRow(sourcePart, xmlPath(table), rowIndex, rendered, cells,
+						rowTextStart, rowTextStart + rendered.length()));
 				}
+				rowTextStart += rendered.length() + 1;
 			}
 			if (tableRows != null) { tableRows.addAll(pendingRows); }
 			return String.join("\n", lines);

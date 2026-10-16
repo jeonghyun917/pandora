@@ -10,3 +10,6 @@
 - Ruling: Task2 must extend row metadata with exact rendered offsets while extraction still owns the builder. If cleanup changes text and no exact transform is available, discard that page's structural proof rather than relocate it by substring. Cost: conservative loss of new proof, never guessed ownership.
 - Task1 verification: full81640/9ac6da exit0, XML1676 f0e0 skipped20/dec98e. Final immutable-collection assertions6609/111dd0 exit0. Actual source3b493f:2tables16rows66boundcells/unique paths/text preserved/caveat unowned. No answer-quality PASS inferred.
 - Task1: complete pending commit identity. Task2 next: exact offsets, then null-compatible persistence; no live migration yet.
+- Task1 commit/push1baae4ed/31d0a7. Still not deployed; no semantic authority change.
+- Task2 range precondition RED95395/3d7cc4:2 failures, errors0 (unset offset and stale proof after cleanup). Added exact per-table builder offsets translated at append; any cleanup difference drops structural proof. Focused78190 in progress. Task2 persistence/association remains unimplemented.
+- Task2 range precondition verified:78190/c2c4f8 focused exit0; full28992/4b2db2 exit0, fresh8804211678 f0e0 skipped20. Actual sourceaa171e exactPageRanges true,16rows retained. Task2 is NOT complete; next is offset-carrying chunk segments, not substring-based relocation.

@@ -15,6 +15,36 @@ class RagTextExtractorTests {
     @TempDir Path temp;
 
     @Test
+    void carriesExactOffsetsForRepeatedRowsAfterEarlierBodyText() throws Exception {
+        Path file=temp.resolve("row-offsets.hwpx");
+        String table="<tbl colCnt='2'><tr>"+cell(0,0,1,1,"기관")+cell(0,1,1,1,"일정")
+            +"</tr><tr>"+cell(1,0,1,1,"가람")+cell(1,1,1,1,"7월")+"</tr></tbl>";
+        try(var zip=new ZipOutputStream(Files.newOutputStream(file))) {
+            entry(zip,"Contents/section0.xml","<section><t>앞선 본문</t>"+table+table+"</section>");
+        }
+        var page=new RagTextExtractor().extract(file).pages().get(0);
+        assertThat(page.tableRows()).hasSize(4);
+        int lastEnd=0;
+        for(var row:page.tableRows()) {
+            assertThat(row.textStart()).isGreaterThanOrEqualTo(lastEnd);
+            assertThat(page.text().substring(row.textStart(),row.textEnd())).isEqualTo(row.renderedText());
+            lastEnd=row.textEnd();
+        }
+    }
+
+    @Test
+    void discardsStructuralProofWhenCleanupChangesSourceOffsets() throws Exception {
+        Path file=temp.resolve("cleaned-offsets.hwpx");
+        String table="<tbl colCnt='2'><tr>"+cell(0,0,1,1,"기관")+cell(0,1,1,1,"일정")+"</tr></tbl>";
+        try(var zip=new ZipOutputStream(Files.newOutputStream(file))) {
+            entry(zip,"Contents/section0.xml","<section><t>HWPHYPERLINK_TYPE_HWP</t>"+table+"</section>");
+        }
+        var page=new RagTextExtractor().extract(file).pages().get(0);
+        assertThat(page.text()).doesNotContain("HWPHYPERLINK").contains("기관 | 일정");
+        assertThat(page.tableRows()).isEmpty();
+    }
+
+    @Test
     void retainsSourceCellOwnershipWithoutMergingIdenticalTables() throws Exception {
         Path file=temp.resolve("owned-tables.hwpx");
         String table="<tbl colCnt='2'><tr>"
