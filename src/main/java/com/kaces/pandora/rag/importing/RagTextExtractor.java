@@ -78,7 +78,9 @@ public class RagTextExtractor {
 			var entries = zipFile.stream()
 				.filter(entry -> !entry.isDirectory())
 				.filter(entry -> entry.getName().matches("Contents/section\\d+\\.xml"))
-				.sorted(java.util.Comparator.comparing(java.util.zip.ZipEntry::getName))
+				.sorted(java.util.Comparator.comparing((java.util.zip.ZipEntry entry) ->
+					new java.math.BigInteger(entry.getName().substring("Contents/section".length(), entry.getName().length() - 4)))
+					.thenComparing(java.util.zip.ZipEntry::getName))
 				.toList();
 			int pageNo = 1;
 			for (var entry : entries) {

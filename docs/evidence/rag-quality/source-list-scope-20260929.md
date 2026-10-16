@@ -1,5 +1,11 @@
 # 원문 번호 목록 범위 보존
 
+- section숫자정렬 최종전체99368/a6c0cc exit0, fresh8a75f5 XML1675 f0e0 제외20. 추가제외1은종료된전용DB env없는 RagImportTransactionTests이며 기존5경로검증을재실행/대체하지않음. diff-check0. 실제penalty/최종gate 미실행, 이부분수정을전체RAG품질완료로집계금지.
+
+- 2026-10-16 section 원문순서 최소수정: 문자열정렬이section0→10→2로바꾸는합성회귀79323/f8736f에서1FAIL/0ERROR 재현. 숫자suffix BigInteger정렬+이름tie-break만변경하여overflow없는0→2→10 보존; 집중99147/52c405 exit0. 자체검토diff-check0/f1bf87. 실제감사계획HWPX content.hpf/spine40f8b5는section0 하나라 이수정을해당문서의자연어소유해결로집계하지않음. 전체99368진행중. systematic-debugging/TDD 적용, DB/Q/원문/최종verifier변경없음.
+
+- 2026-10-16 추가 구조경계 재현252012: 폐기용 TableRowBoundaryProbe가 production RagChunker.chunkV4에 합성 단일표행2111자를 전달(DB/API0). 출력2청크: 첫1699자는기관true/일정false/단서false, 둘째569자는기관false/일정true/단서true. 실제코퍼스실패로집계하지않음. 열라벨문자열만으로는행전체관계가청크간보존되지않으므로 table/row/cell ID와원문hash를소유계약에포함하고 부분청크만으로관계승격금지. 단서를복제해범위를추정하거나MAX_CHARS를무작정늘리는방식으로해결하지않음. 제품/DB/Q/평가변경없음.
+
 - 2026-10-16 제품8639c473 commit/push d834e7→공식stage97526 exit0(0e7ee9)→status/소유0d8ff6→공식stop bd3a21/8080리스너없음→공식deploy3092 KEEPALIVE PID51832/runtimeba7cb07a-270a-4679-9360-7f61cb6c4d5a/JAR2470178451252ca013a924f011cf29a6bb09ba71626aeca5a536c5e58df87a7d. fresh2dd8c7 DB=Q law211658/rag84248/qreadytrue/qfail0/readyz200/confige7b08ced/indexe39713ce/lexical15b68153, 양DB내용fingerprint불변. 격리DB는 port/datadir/PID39720 fencing후 정상shutdown1294f0/23306리스너0, datadir보존. 최초edff88은PowerShell native인수호스트127해석오류라쓰기/종료없이중단했고명시긴옵션으로만정정. Qdrant28324/18080/공유main불변.
 
 - 다음 의미경계 읽기확인274dc6/252d74/197857/0d23e6: 현재 ExtractedPage는 pageNo+text, 의미chunk에는 구조화table/cell provenance 필드없음. LABELED_SUBJECT_ROLE는 콜론 앞라벨을subject로 읽고 파이프값을기관subject로자동승격하지 않음. 따라서 추출된 `대상기관: 값 | 감사일정: 값` 자체 보존과 자연어 `기관의 감사일정` 관계증명은 구분해야 한다. 파이프/콜론만으로 전역subject를추정하는 guard완화는 하지 않음. 문서말미변경가능단서의표별소유·원질문의일반사업범위는 여전히직접증명미확보. 정확재개점: 원문 table/row/cell/header의검증가능provenance를기존저장·검색·근거atom경로로전달하는 최소계약을확정하고, 다른행/다른표/병합/조건삭제 반례와함께구현할것. 기존DB에없는정보를metadata나근접문장으로대체금지. 실제corpus수정/penalty재실행/최종gate승격없음.

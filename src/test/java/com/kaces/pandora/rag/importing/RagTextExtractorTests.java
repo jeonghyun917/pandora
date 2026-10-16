@@ -14,6 +14,20 @@ class RagTextExtractorTests {
     @TempDir Path temp;
 
     @Test
+    void ordersHwpxSectionsByTheirNumericSourcePosition() throws Exception {
+        Path file=temp.resolve("section-order.hwpx");
+        try(var zip=new ZipOutputStream(Files.newOutputStream(file))) {
+            entry(zip,"Contents/section10.xml","<section><t>열한번째 원문 표</t></section>");
+            entry(zip,"Contents/section2.xml","<section><t>세번째 원문 표</t></section>");
+            entry(zip,"Contents/section0.xml","<section><t>첫번째 원문 표</t></section>");
+        }
+        assertThat(new RagTextExtractor().extract(file).pages()).containsExactly(
+            new ExtractedPage(1,"첫번째 원문 표"),
+            new ExtractedPage(2,"세번째 원문 표"),
+            new ExtractedPage(3,"열한번째 원문 표"));
+    }
+
+    @Test
     void extractsBodySectionsWithoutTurningHeaderMetadataIntoAPage() throws Exception {
         Path file = temp.resolve("document.hwpx");
         try (var zip = new ZipOutputStream(Files.newOutputStream(file))) {
