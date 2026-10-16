@@ -1,5 +1,9 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-16 제품8639c473 commit/push d834e7→공식stage97526 exit0(0e7ee9)→status/소유0d8ff6→공식stop bd3a21/8080리스너없음→공식deploy3092 KEEPALIVE PID51832/runtimeba7cb07a-270a-4679-9360-7f61cb6c4d5a/JAR2470178451252ca013a924f011cf29a6bb09ba71626aeca5a536c5e58df87a7d. fresh2dd8c7 DB=Q law211658/rag84248/qreadytrue/qfail0/readyz200/confige7b08ced/indexe39713ce/lexical15b68153, 양DB내용fingerprint불변. 격리DB는 port/datadir/PID39720 fencing후 정상shutdown1294f0/23306리스너0, datadir보존. 최초edff88은PowerShell native인수호스트127해석오류라쓰기/종료없이중단했고명시긴옵션으로만정정. Qdrant28324/18080/공유main불변.
+
+- 다음 의미경계 읽기확인274dc6/252d74/197857/0d23e6: 현재 ExtractedPage는 pageNo+text, 의미chunk에는 구조화table/cell provenance 필드없음. LABELED_SUBJECT_ROLE는 콜론 앞라벨을subject로 읽고 파이프값을기관subject로자동승격하지 않음. 따라서 추출된 `대상기관: 값 | 감사일정: 값` 자체 보존과 자연어 `기관의 감사일정` 관계증명은 구분해야 한다. 파이프/콜론만으로 전역subject를추정하는 guard완화는 하지 않음. 문서말미변경가능단서의표별소유·원질문의일반사업범위는 여전히직접증명미확보. 정확재개점: 원문 table/row/cell/header의검증가능provenance를기존저장·검색·근거atom경로로전달하는 최소계약을확정하고, 다른행/다른표/병합/조건삭제 반례와함께구현할것. 기존DB에없는정보를metadata나근접문장으로대체금지. 실제corpus수정/penalty재실행/최종gate승격없음.
+
 - 파일별 트랜잭션 수정 최종전체2783 exit0(e010c1), fresh surefire XML3f0c53:1674 tests/failures0/errors0/skipped19(격리DB env 활성). Spring 전체컨텍스트 기동 포함. diff-check0. 전용DB의5경로 검증을 포함한 코드검증이며 실제코퍼스교체/실제penalty PASS가 아님.
 
 - 2026-10-16 연속 작업 네번째 제품b46b10ea: 우선파일 실제색인 성공후 동일duplicateKey 대체문서만 정리. 전체13702 exit0/1670 f0e0 제외19, 독립review Critical/Important0. commit/push→stage6238 exit0→공식deploy68727 KEEPALIVE PID39072/runtimecf6854e7-5b39-4eba-853f-c436eb85cbe3/JAR6f21dc863a9958f86b1e0c666f3fc385f6d2133e77bbae8bf9cca61e4e086892. fresh ef0132 DB=Q211658+84248/qreadytrue/qfail0/confige7b08ced/indexe39713ce/lexical15b68153. 이전 아래의 전체검증진행중 문구는 이 증거로 대체됨.
