@@ -19,6 +19,50 @@ class RagImportPreflightTests {
     @TempDir Path temp;
 
     @Test
+    void rejectsAnOriginalFileChangedDuringExtractionBeforeAnyMutation() throws Exception {
+        Path file=temp.resolve("changing.txt");Files.writeString(file,"원래 파일");
+        var extractor=mock(RagTextExtractor.class);
+        when(extractor.extract(file)).thenAnswer(call->{
+            Files.writeString(file,"변경된 파일");
+            return new ExtractedDocument(List.of(new ExtractedPage(1,"기관은 원본 자료를 검토하고 변경 이력을 보존하여야 한다. ".repeat(20))));
+        });
+        var mapper=mock(RagDocumentMapper.class);
+        when(mapper.findDocumentIdByHash(anyString())).thenReturn(42L);
+        when(mapper.findChunkIdsByDocumentId(42L)).thenReturn(List.of());
+        var service=new RagImportService(mapper,extractor,new RagChunker(),new RagChunkQualityGate(),
+            mock(RagChunkSearchIndexService.class),null,null,null,null,transactions());
+        assertThatThrownBy(()->service.importFile(file,"official_doc",false,false))
+            .isInstanceOf(IllegalStateException.class).hasMessageContaining("changed during extraction");
+        verify(mapper,never()).deactivateChunksByDocumentIdAndVersion(org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.anyInt());
+        verify(mapper,never()).insertChunk(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void rebindsTableProvenanceWithTheActualOriginalFileHash() throws Exception {
+        Path file=temp.resolve("source.hwpx");
+        String body="기관은 원본 자료를 검토하고 처리 결과를 기록하여야 한다. 변경 이력을 보존하고 원본과 대조하여 확인하여야 한다. ".repeat(8).trim();
+        try(var zip=new java.util.zip.ZipOutputStream(Files.newOutputStream(file))) {
+            zip.putNextEntry(new java.util.zip.ZipEntry("Contents/section0.xml"));
+            zip.write(("<section><tbl colCnt='1'><tr><tc><cellAddr rowAddr='0' colAddr='0'/><cellSpan rowSpan='1' colSpan='1'/><t>"+body+"</t></tc></tr></tbl></section>")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zip.closeEntry();
+        }
+        Files.writeString(temp.resolve("source.meta.json"),"{\"title\":\"자료 가이드\"}");
+        var mapper=mock(RagDocumentMapper.class);
+        when(mapper.findDocumentIdByHash(anyString())).thenReturn(42L);
+        when(mapper.findChunkIdsByDocumentId(42L)).thenReturn(List.of());
+        var service=new RagImportService(mapper,new RagTextExtractor(),new RagChunker(),new RagChunkQualityGate(),
+            mock(RagChunkSearchIndexService.class),null,null,null,new tools.jackson.databind.ObjectMapper(),transactions());
+        service.importFile(file,"official_doc",false,false);
+        var rows=org.mockito.ArgumentCaptor.forClass(com.kaces.pandora.rag.document.RagDocumentChunkRow.class);
+        verify(mapper,atLeastOnce()).insertChunk(rows.capture());
+        var proof=new tools.jackson.databind.ObjectMapper().readTree(rows.getValue().sourceProvenance());
+        String hash=java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
+        assertThat(proof.get("sourceFileHash").asText()).isEqualTo(hash);
+        assertThat(rows.getValue().documentId()).isEqualTo(42);
+    }
+
+    @Test
     void acceptedNewDocumentRebindsDraftChunksToTheAllocatedDocumentId() throws Exception {
         Path file=temp.resolve("accepted.txt");
         Files.writeString(file,"자료 처리 가이드\n\n"+

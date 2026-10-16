@@ -202,6 +202,9 @@ public class RagImportService {
 		RagDocumentMeta meta = readMeta(file);
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		ExtractedDocument extracted = textExtractor.extract(file);
+		if (!fileHash.equals(sha256(file))) {
+			throw new IllegalStateException("Original source changed during extraction: " + file.getFileName());
+		}
 		if (extracted.text().isBlank()) {
 			throw new IllegalStateException("No text was extracted from " + file.getFileName());
 		}
@@ -214,7 +217,7 @@ public class RagImportService {
 			trustLevel = defaultTrustLevel(documentType);
 		}
 		// Validate a read-only draft before touching the current searchable version.
-		List<RagDocumentChunkRow> rawChunks = chunker.chunkV4(0L, extracted, meta.sourceUrl(), title);
+		List<RagDocumentChunkRow> rawChunks = chunker.chunkV4(0L, extracted, meta.sourceUrl(), title, fileHash);
 		RagChunkQualityGate.Result qualityResult = chunkQualityGate.evaluate(title, rawChunks);
 		if (qualityResult.searchableCount() == 0) {
 			throw new IllegalStateException(
@@ -261,7 +264,7 @@ public class RagImportService {
 				chunk.parentSectionTitle(), chunk.chunkTitle(), chunk.sectionType(),
 				chunk.chunkText(), chunk.embeddingText(), chunk.pageNo(), chunk.sourcePath(),
 				chunk.sourceUrl(), chunk.sortOrder(), chunk.contentHash(),
-				chunk.qualityStatus(), chunk.qualityReason()
+				chunk.qualityStatus(), chunk.qualityReason(), chunk.sourceProvenance()
 			));
 		}
 		searchIndexService.rebuildDocument(documentId, ACTIVE_CHUNK_VERSION);

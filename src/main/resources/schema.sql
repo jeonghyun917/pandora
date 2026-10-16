@@ -263,6 +263,7 @@ CREATE TABLE IF NOT EXISTS rag_document_chunks (
     source_url VARCHAR(4000) NULL COMMENT 'source url',
     sort_order INT NOT NULL DEFAULT 0 COMMENT 'display order',
     content_hash CHAR(64) NOT NULL COMMENT 'chunk content hash',
+	source_provenance LONGTEXT NULL COMMENT 'source-owned table ranges, schema versioned JSON',
 	quality_status VARCHAR(20) NOT NULL DEFAULT 'PASS' COMMENT 'PASS, REVIEW, CONTEXT_ONLY, REJECT',
 	quality_reason VARCHAR(100) NULL COMMENT 'chunk quality decision reason',
     index_status VARCHAR(30) NOT NULL DEFAULT 'PENDING' COMMENT 'index status',
@@ -298,6 +299,9 @@ ALTER TABLE rag_document_chunks
 
 ALTER TABLE rag_document_chunks
 	ADD COLUMN IF NOT EXISTS quality_reason VARCHAR(100) NULL COMMENT 'chunk quality decision reason';
+
+ALTER TABLE rag_document_chunks
+	ADD COLUMN IF NOT EXISTS source_provenance LONGTEXT NULL COMMENT 'source-owned table ranges, schema versioned JSON';
 
 CREATE INDEX IF NOT EXISTS idx_rag_document_chunks_version
     ON rag_document_chunks (document_id, chunk_version, use_yn, sort_order);

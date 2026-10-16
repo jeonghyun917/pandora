@@ -14,6 +14,80 @@ class RagChunkerTests {
 	private final RagChunker chunker = new RagChunker();
 
 	@Test
+	void retainsHeadingContextOutsideRowOwnedText() {
+		String body="기관은 원본 자료를 검토하고 처리 결과를 기록하여야 한다. ".repeat(10).trim();
+		String prefix="적용 대상\n\n";
+		var row=new com.kaces.pandora.rag.importing.SourceTableRow("Contents/section0.xml","/tbl[1]",0,body,List.of(),prefix.length(),prefix.length()+body.length());
+		var chunks=chunker.chunkV4(1,new ExtractedDocument(List.of(new ExtractedPage(1,prefix+body,List.of(row)))),null,"계획");
+		assertThat(chunks).hasSize(1);
+		assertThat(chunks.get(0).parentSectionTitle()).isEqualTo("적용 대상");
+		assertThat(chunks.get(0).chunkText()).isEqualTo(body);
+	}
+
+	@Test
+	void qualityGateRetainsDistinctSourceRowsButRejectsExactRepeat() {
+		String body="기관은 원본 자료를 검토하고 처리 결과를 기록하여야 한다. ".repeat(10).trim();
+		var a=new com.kaces.pandora.rag.importing.SourceTableRow("Contents/section0.xml","/tbl[1]",0,body,List.of(),0,body.length());
+		var b=new com.kaces.pandora.rag.importing.SourceTableRow("Contents/section0.xml","/tbl[2]",0,body,List.of(),body.length()+1,body.length()*2+1);
+		var chunks=chunker.chunkV4(1,new ExtractedDocument(List.of(new ExtractedPage(1,body+"\n"+body,List.of(a,b)))),null,"계획","a".repeat(64));
+		var input=new java.util.ArrayList<>(chunks); input.add(chunks.get(0));
+		var result=new RagChunkQualityGate().evaluate("계획",input);
+		assertThat(result.retainedChunks()).hasSize(2);
+	}
+
+	@Test
+	void qualityGateRetainsRepeatedWindowsAndRejectsForgedIdentity() {
+		String body="원문 자료를 검토하고 결과를 기록하여야 한다. ".repeat(200).trim();
+		var row=new com.kaces.pandora.rag.importing.SourceTableRow("Contents/section0.xml","/tbl[1]",0,body,List.of(),0,body.length());
+		var chunks=chunker.chunkV4(1,new ExtractedDocument(List.of(new ExtractedPage(1,body,List.of(row)))),null,"계획","a".repeat(64));
+		assertThat(new RagChunkQualityGate().evaluate("계획",chunks).retainedChunks()).hasSize(chunks.size());
+		var c=chunks.get(0);
+		String invalid=c.sourceProvenance().replace("\"rowHash\":\"","\"rowHash\":\"stale");
+		var forged=new RagDocumentChunkRow(c.chunkId(),c.documentId(),c.chunkVersion(),c.chunkNo(),c.parentSectionTitle(),c.chunkTitle(),c.sectionType(),c.chunkText(),c.embeddingText(),c.pageNo(),c.sourcePath(),c.sourceUrl(),c.sortOrder(),c.contentHash(),c.qualityStatus(),c.qualityReason(),invalid);
+		assertThat(new RagChunkQualityGate().evaluate("계획",List.of(forged,forged)).retainedChunks()).hasSize(1);
+	}
+
+	@Test
+	void doesNotEnableTableProvenanceOnLegacyChunkVersions() {
+		String text="기관: 가람 | 일정: 7월";
+		var row=new com.kaces.pandora.rag.importing.SourceTableRow("Contents/section0.xml","/tbl[1]",0,text,List.of(),0,text.length());
+		var document=new ExtractedDocument(List.of(new ExtractedPage(1,text,List.of(row))));
+		assertThat(chunker.chunkV3(1,document,null,"계획")).allSatisfy(c->assertThat(c.sourceProvenance()).isNull());
+	}
+
+	@Test
+	void distinguishesRepeatedRowIdentitiesAndRejectsStaleRanges() {
+		String rowText="기관: 가람 | 일정: 7월";
+		var a=new com.kaces.pandora.rag.importing.SourceTableRow("Contents/section0.xml","/tbl[1]",0,rowText,List.of(),0,rowText.length());
+		var b=new com.kaces.pandora.rag.importing.SourceTableRow("Contents/section0.xml","/tbl[2]",0,rowText,List.of(),rowText.length()+1,rowText.length()*2+1);
+		var document=new ExtractedDocument(List.of(new ExtractedPage(1,rowText+"\n"+rowText,List.of(a,b))));
+		var chunks=chunker.chunkV4(1,document,null,"계획");
+		assertThat(chunks).hasSize(2);
+		assertThat(chunks.get(0).sourceProvenance()).isNotEqualTo(chunks.get(1).sourceProvenance());
+		var stale=new ExtractedDocument(List.of(new ExtractedPage(1,"다른 원문",List.of(a))));
+		assertThat(chunker.chunkV4(1,stale,null,"계획")).allSatisfy(c->assertThat(c.sourceProvenance()).isNull());
+	}
+
+	@Test
+	void retainsTableIdentityAndPartialRangesAcrossLongRowWindows() {
+		String text="기관: 가람 | 설명: "+"원문 설명 ".repeat(350)+" | 단서: 변경될 수 있음";
+		var row=new com.kaces.pandora.rag.importing.SourceTableRow("Contents/section0.xml","/section[1]/tbl[1]",1,text,
+			List.of(new com.kaces.pandora.rag.importing.SourceTableRow.Cell(1,0,1,1,"가람","/section[1]/tbl[1]/tr[1]/tc[1]","기관")),0,text.length());
+		var chunks=chunker.chunkV4(1,new ExtractedDocument(List.of(new ExtractedPage(1,text,List.of(row)))),null,"계획");
+		assertThat(chunks).hasSizeGreaterThan(1);
+		assertThat(chunks).allSatisfy(chunk -> {
+			assertThat(chunk.sourceProvenance()).isNotNull();
+			var proof=new tools.jackson.databind.ObjectMapper().readTree(chunk.sourceProvenance());
+			int start=proof.get("fragmentStart").asInt(),end=proof.get("fragmentEnd").asInt();
+			assertThat(chunk.chunkText()).isEqualTo(text.substring(start,end));
+			assertThat(end-start).isLessThanOrEqualTo(1700);
+			assertThat(proof.get("completeRow").asBoolean()).isFalse();
+			assertThat(proof.get("row").get("tablePath").asText()).isEqualTo(row.tablePath());
+		});
+		assertThat(chunks.get(0).chunkText()).doesNotContain("변경될 수 있음");
+	}
+
+	@Test
 	// 메소드 설명: skipsTableOfContentsPage 처리 흐름을 수행합니다.
 	void skipsTableOfContentsPage() {
 		ExtractedDocument document = new ExtractedDocument(List.of(

@@ -11,6 +11,17 @@ class RagChunkQualityGateTests {
 	private final RagChunkQualityGate gate = new RagChunkQualityGate();
 
 	@Test
+	void preservesSourceProvenanceWhileAssigningQuality() {
+		var base=chunk(1,"적용 대상","대상기관이 추진하는 모든 정보화사업은 사전협의 대상에 해당합니다.");
+		var source=new RagDocumentChunkRow(base.chunkId(),base.documentId(),base.chunkVersion(),base.chunkNo(),
+			base.parentSectionTitle(),base.chunkTitle(),base.sectionType(),base.chunkText(),base.embeddingText(),
+			base.pageNo(),base.sourcePath(),base.sourceUrl(),base.sortOrder(),base.contentHash(),"PASS",null,"source-owned-fixture");
+		var result=gate.evaluate("정보화사업 사전협의 안내서",List.of(source));
+		assertThat(result.retainedChunks()).hasSize(1);
+		assertThat(result.retainedChunks().get(0).sourceProvenance()).isEqualTo("source-owned-fixture");
+	}
+
+	@Test
 	void keepsSubstantiveEvidenceSearchable() {
 		RagChunkQualityGate.Result result = gate.evaluate(
 			"정보화사업 사전협의 안내서",

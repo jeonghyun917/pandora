@@ -76,6 +76,8 @@ public class RagChunkQualityGate {
 		}
 
 		String bodyKey = compact(visible);
+		String sourceIdentity = TableSourceSegments.duplicateIdentity(chunk);
+		if (sourceIdentity != null) { bodyKey = "source:" + sourceIdentity; }
 		if (!bodyKey.isBlank() && !seenBodies.add(bodyKey)) {
 			return new Decision(RagChunkQualityStatus.REJECT, "DUPLICATE_TEXT");
 		}
@@ -181,7 +183,8 @@ public class RagChunkQualityGate {
 			chunk.sortOrder(),
 			chunk.contentHash(),
 			decision.status().name(),
-			decision.reason()
+			decision.reason(),
+			chunk.sourceProvenance()
 		);
 	}
 

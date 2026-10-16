@@ -58,16 +58,22 @@ class RagImportTransactionTests {
             jdbc.update("DELETE FROM rag_document_chunks");
             jdbc.update("DELETE FROM rag_documents");
             jdbc.update("DELETE FROM rag_import_jobs");
-            Path file=temp.resolve(failure+".txt");
-            Files.writeString(file,"자료 처리 가이드\n\n"+
-                "기관은 원본 자료를 검토하고 처리 결과를 기록하여야 한다. 담당자는 변경 이력을 보존하고 원본과 대조하여 확인하여야 한다. ".repeat(8));
+            Path file=temp.resolve(failure+".hwpx");
+            String body="기관은 원본 자료를 검토하고 처리 결과를 기록하여야 한다. 담당자는 변경 이력을 보존하고 원본과 대조하여 확인하여야 한다. ".repeat(8).trim();
+            try(var zip=new java.util.zip.ZipOutputStream(Files.newOutputStream(file))) {
+                zip.putNextEntry(new java.util.zip.ZipEntry("Contents/section0.xml"));
+                zip.write(("<section><tbl colCnt='1'><tr><tc><cellAddr rowAddr='0' colAddr='0'/><cellSpan rowSpan='1' colSpan='1'/><t>"+body+"</t></tc></tr></tbl></section>")
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                zip.closeEntry();
+            }
             Files.writeString(temp.resolve(failure+".meta.json"),"{\"title\":\"자료 처리 가이드\",\"documentType\":\"official_doc\"}");
-            String hash=com.kaces.pandora.common.text.LawHashUtils.sha256(Files.readString(file));
+            String hash=java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
             jdbc.update("INSERT INTO rag_documents(document_type,title,file_name,file_path,file_hash,import_status) VALUES('official_doc','old title',?,?,?,'INDEXED')",
                 file.getFileName().toString(),file.toString(),hash);
             long documentId=jdbc.queryForObject("SELECT document_id FROM rag_documents WHERE file_hash=?",Long.class,hash);
             jdbc.update("INSERT INTO rag_document_chunks(document_id,chunk_version,chunk_text,embedding_text,content_hash,index_status) VALUES(?,4,'OLD BASIS','OLD BASIS',?,'INDEXED')",documentId,"a".repeat(64));
             long oldId=jdbc.queryForObject("SELECT chunk_id FROM rag_document_chunks WHERE document_id=?",Long.class,documentId);
+            assertThat(jdbc.queryForObject("SELECT source_provenance FROM rag_document_chunks WHERE chunk_id=?",String.class,oldId)).isNull();
             mapper.upsertEmbeddingStatus(oldId,"fixture","fixture",String.valueOf(oldId),"a".repeat(64),"INDEXED",null);
             if(failure.equals("finalize"))jdbc.execute("CREATE TRIGGER reject_import_finalize BEFORE UPDATE ON rag_documents FOR EACH ROW BEGIN IF NEW.import_status='INDEXED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected-finalize'; END IF; END");
             var points=new HashSet<Long>();points.add(oldId);
@@ -100,6 +106,12 @@ class RagImportTransactionTests {
                 long activeId=jdbc.queryForObject("SELECT chunk_id FROM rag_document_chunks WHERE document_id=? AND use_yn='Y'",Long.class,documentId);
                 assertThat(jdbc.queryForObject("SELECT status FROM rag_chunk_embeddings WHERE chunk_id=?",String.class,activeId)).isEqualTo("INDEXED");
                 assertThat(points).containsExactly(activeId);
+                String stored=jdbc.queryForObject("SELECT source_provenance FROM rag_document_chunks WHERE chunk_id=?",String.class,activeId);
+                assertThat(stored).isNotNull();
+                var proof=new tools.jackson.databind.ObjectMapper().readTree(stored);
+                assertThat(proof.get("sourceFileHash").asText()).isEqualTo(hash);
+                assertThat(proof.get("rowHash").asText()).isEqualTo(com.kaces.pandora.common.text.LawHashUtils.sha256(body));
+                assertThat(proof.get("completeRow").asBoolean()).isTrue();
                 assertThat(jdbc.queryForObject("SELECT import_status FROM rag_documents WHERE document_id=?",String.class,documentId)).isEqualTo("INDEXED");
                 continue;
             }
@@ -111,6 +123,7 @@ class RagImportTransactionTests {
             assertThat(jdbc.queryForObject("SELECT title FROM rag_documents WHERE document_id=?",String.class,documentId)).as(failure).isEqualTo("old title");
             assertThat(jdbc.queryForObject("SELECT import_status FROM rag_documents WHERE document_id=?",String.class,documentId)).as(failure).isEqualTo("INDEXED");
             assertThat(points).as(failure).containsExactly(oldId);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM rag_document_chunks WHERE source_provenance IS NOT NULL",Integer.class)).as(failure).isZero();
         }
     }
 }

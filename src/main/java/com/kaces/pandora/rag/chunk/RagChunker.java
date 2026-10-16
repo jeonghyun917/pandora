@@ -75,6 +75,14 @@ public class RagChunker {
 		return chunkVersioned(documentId, document, sourceUrl, documentTitle, V4_CHUNK_VERSION);
 	}
 
+	public List<RagDocumentChunkRow> chunkV4(long documentId, ExtractedDocument document,
+		String sourceUrl, String documentTitle, String sourceFileHash) {
+		if (sourceFileHash == null || !sourceFileHash.matches("[0-9a-fA-F]{64}")) {
+			throw new IllegalArgumentException("Original source SHA-256 is required");
+		}
+		return chunkVersioned(documentId, document, sourceUrl, documentTitle, V4_CHUNK_VERSION, sourceFileHash);
+	}
+
 	private List<RagDocumentChunkRow> chunkVersioned(
 		long documentId,
 		ExtractedDocument document,
@@ -82,11 +90,25 @@ public class RagChunker {
 		String documentTitle,
 		int chunkVersion
 	) {
+		return chunkVersioned(documentId, document, sourceUrl, documentTitle, chunkVersion, null);
+	}
+
+	private List<RagDocumentChunkRow> chunkVersioned(long documentId, ExtractedDocument document,
+		String sourceUrl, String documentTitle, int chunkVersion, String sourceFileHash) {
 		List<RagDocumentChunkRow> chunks = new ArrayList<>();
 		int[] sortOrder = {0};
 		String[] parentSection = {""};
 		for (ExtractedPage page : document.pages()) {
-			for (String text : splitPage(page.text())) {
+			var segments = chunkVersion == V4_CHUNK_VERSION
+				? TableSourceSegments.split(page, this::splitPage, MAX_CHARS, LONG_BLOCK_OVERLAP_CHARS, sourceFileHash)
+				: splitPage(page.text()).stream().map(text -> new TableSourceSegments.Segment(text, null)).toList();
+			for (var segment : segments) {
+				if (segment.precedingContext() != null) {
+					segment.precedingContext().lines().map(String::trim).filter(this::isHeadingLine)
+						.forEach(heading -> parentSection[0] = heading);
+					continue;
+				}
+				String text = segment.text();
 				String title = inferTitle(text, page.pageNo(), sortOrder[0] + 1);
 				if (RagTextNoiseFilter.isTableOfContents(title, text)) {
 					continue;
@@ -126,7 +148,7 @@ public class RagChunker {
 					sourcePath,
 					sourceUrl,
 					sortOrder[0]++,
-					LawHashUtils.sha256(embeddingText)
+					LawHashUtils.sha256(embeddingText), "PASS", null, segment.provenance()
 				));
 			}
 		}

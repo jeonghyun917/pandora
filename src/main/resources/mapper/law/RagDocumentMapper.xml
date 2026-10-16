@@ -381,13 +381,13 @@
     INSERT INTO rag_document_chunks (
       document_id, chunk_version, chunk_no, parent_section_title, chunk_title,
       section_type, chunk_text, embedding_text, page_no,
-      source_path, source_url, sort_order, content_hash, quality_status, quality_reason, index_status
+      source_path, source_url, sort_order, content_hash, quality_status, quality_reason, source_provenance, index_status
     )
     VALUES (
       #{chunk.documentId}, #{chunk.chunkVersion}, #{chunk.chunkNo}, #{chunk.parentSectionTitle}, #{chunk.chunkTitle},
       #{chunk.sectionType}, #{chunk.chunkText}, #{chunk.embeddingText}, #{chunk.pageNo},
       #{chunk.sourcePath}, #{chunk.sourceUrl}, #{chunk.sortOrder}, #{chunk.contentHash},
-      #{chunk.qualityStatus}, #{chunk.qualityReason}, 'PENDING'
+      #{chunk.qualityStatus}, #{chunk.qualityReason}, #{chunk.sourceProvenance}, 'PENDING'
     )
   </insert>
 
