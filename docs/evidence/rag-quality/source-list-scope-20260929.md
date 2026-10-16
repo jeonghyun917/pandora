@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-16 제품12b1faea commit/push d5f36a→공식stage7978 exit0/35d2ef→승인호스트status/소유7ad93f→공식stop b234f1/리스너없음→공식deploy65411 KEEPALIVE PID71456/runtime240b2043-a4be-4708-9b61-c1341509811d/JAR9655a482c08e32b03bc6a9e7af9d4fbc82d8810e16df367728bdf2139c2712ac. fresh0b08a6 DB=Q law211658/rag84248/qreadytrue/qfail0/readyz200/confige7b08ced/indexe39713ce/lexical15b68153/양DB내용fingerprint불변. 작업트리clean확인. 실제코퍼스reimport/penalty/최종gate실행없음, Qdrant28324/18080/main불변. 다음구조소유계약의저장경계f4d0c7/77b5a7/31acd4: RagDocumentChunkRow·mapper insert·EvidenceAtom·IndexedAtom 모두table/row/cell identity부재; source_path는VARCHAR1000 위치필드이며의미메타데이터를몰래직렬화해우회저장하지않음. 새필드는원문좌표·hash와청크범위의명시연결로설계하고기존문장guard를그대로유지해야함.
+
 - section숫자정렬 최종전체99368/a6c0cc exit0, fresh8a75f5 XML1675 f0e0 제외20. 추가제외1은종료된전용DB env없는 RagImportTransactionTests이며 기존5경로검증을재실행/대체하지않음. diff-check0. 실제penalty/최종gate 미실행, 이부분수정을전체RAG품질완료로집계금지.
 
 - 2026-10-16 section 원문순서 최소수정: 문자열정렬이section0→10→2로바꾸는합성회귀79323/f8736f에서1FAIL/0ERROR 재현. 숫자suffix BigInteger정렬+이름tie-break만변경하여overflow없는0→2→10 보존; 집중99147/52c405 exit0. 자체검토diff-check0/f1bf87. 실제감사계획HWPX content.hpf/spine40f8b5는section0 하나라 이수정을해당문서의자연어소유해결로집계하지않음. 전체99368진행중. systematic-debugging/TDD 적용, DB/Q/원문/최종verifier변경없음.
