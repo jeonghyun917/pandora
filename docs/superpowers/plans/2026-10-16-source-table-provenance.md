@@ -33,7 +33,7 @@
 Files: `rag/importing/ExtractedPage.java`, new `rag/importing/SourceTableRow.java`, `rag/importing/RagTextExtractor.java`, `RagTextExtractorTests.java` (under existing Java roots).
 
 Interfaces:
-- `SourceTableRow(String sourcePart, String tablePath, int rowIndex, String renderedText, List<Cell> cells)`.
+- `SourceTableRow(String sourcePart, String tablePath, int rowIndex, String renderedText, List<Cell> cells, int textStart, int textEnd)`; offsets are page-text UTF-16 indices, end-exclusive. The five-argument compatibility constructor supplies -1/-1 and is not valid range proof.
 - Nested `Cell(int sourceRow, int sourceColumn, int rowSpan, int columnSpan, String text, String headerPath, String headerText)`; absent header is null, not an inferred label.
 - `ExtractedPage(Integer pageNo,String text,List<SourceTableRow> tableRows)` with existing two-argument constructor delegating to an empty immutable list.
 
@@ -50,6 +50,7 @@ Contract:
 - JSON schemaVersion1, original file SHA256, sourcePart/tablePath/rowIndex, cell coordinates/header paths, rendered-row hash, and exact covered text ranges.
 - Dedicated nullable `source_provenance LONGTEXT`; never insert JSON into source_path. Legacy null defaults to no new proof.
 - A split row records partial coverage. A consumer may join only matching source-file hash, document/version, table path and row identity, with verified coverage of every required cell and owned condition. Text overlap is not identity.
+- Extraction now supplies exact row offsets. If normalization changes the rendered page, its structural proof is dropped until an exact transformation exists; never recover positions by searching repeated text.
 
 - [ ] Test the2111-character row, repeated row text, punctuation/whitespace, row spanning multiple chunks and adjacent unrelated tables. Assert both no lost source identity and no false complete-row status.
 - [ ] Implement offset-carrying chunk segments; do not relocate using first/last substring occurrence. Keep ordinary text chunking and max length unchanged.
@@ -69,4 +70,4 @@ Files: `LawSemanticChunkRow.java`, retrieval mapper projections, `EvidenceAtom`/
 
 ## Current execution point
 
-Task1 is verified (see its ledger and latest evidence). Task2 is next; extend row metadata with exact builder-owned offsets before associating chunks. Task2 live migration and Task3 authority are not implicitly completed by this plan. Existing deployed product remains12b1faea until an explicit new deployment. The section-order fix and previous transaction tests must not be rerun solely to create activity.
+Task1 and Task2's exact-row-offset precondition are verified and deployed in product63930430 (see ledger/evidence). Next is offset-carrying chunk segmentation and preservation through RagChunkQualityGate/import rebinding, before nullable persistence. Task2 live migration and Task3 authority remain unimplemented. Use fresh runtime evidence before external evaluation; this plan is not identity proof. The section-order fix and previous transaction tests must not be rerun solely to create activity.
