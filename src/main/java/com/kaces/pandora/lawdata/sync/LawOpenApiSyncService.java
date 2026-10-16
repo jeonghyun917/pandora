@@ -192,6 +192,10 @@ public class LawOpenApiSyncService {
 		return activationSaga.activate(documentId, candidateVersion);
 	}
 
+	public CandidateChunkReadiness candidateReadiness(long documentId, int candidateVersion) {
+		return documentWriter.candidateReadiness(documentId, candidateVersion);
+	}
+
 	@Transactional
 	public ChunkActivationResult rollbackToVersion(long documentId, int retiredVersion) {
 		return documentWriter.rollbackToVersion(documentId, retiredVersion);

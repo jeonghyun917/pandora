@@ -2,6 +2,7 @@ package com.kaces.pandora.lawdata.sync;
 
 import java.util.List;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -75,6 +76,11 @@ public class LawSyncController {
 		@RequestParam int candidateVersion
 	) {
 		return lawOpenApiSyncService.activateCandidate(documentId, candidateVersion);
+	}
+
+	@GetMapping("/chunks/candidate-status")
+	public CandidateChunkReadiness candidateStatus(@RequestParam long documentId, @RequestParam int candidateVersion) {
+		return lawOpenApiSyncService.candidateReadiness(documentId, candidateVersion);
 	}
 
 	@PostMapping("/chunks/rollback-version")

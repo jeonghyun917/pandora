@@ -52,7 +52,7 @@ Contract:
 - A split row records partial coverage. A consumer may join only matching source-file hash, document/version, table path and row identity, with verified coverage of every required cell and owned condition. Text overlap is not identity.
 - Extraction now supplies exact row offsets. If normalization changes the rendered page, its structural proof is dropped until an exact transformation exists; never recover positions by searching repeated text.
 
-- [ ] Test the2111-character row, repeated row text, punctuation/whitespace, row spanning multiple chunks and adjacent unrelated tables. Assert both no lost source identity and no false complete-row status.
+- [x] Test the2111-character row, repeated row text, punctuation/whitespace, row spanning multiple chunks and adjacent unrelated tables. Assert both no lost source identity and no false complete-row status.
 - [x] Implement offset-carrying chunk segments; do not relocate using first/last substring occurrence. Keep ordinary text chunking and max length unchanged.
 - [x] Add nullable persistence and mapper round-trip tests in the fenced isolated MariaDB instance, including pre-existing null rows.
 - [x] Extend rollback tests so provenance and chunks commit/rollback together. Preserve old Q points until commit and delete only attempted new IDs on confirmed rollback.
@@ -62,12 +62,12 @@ Contract:
 
 Files: `LawSemanticChunkRow.java`, retrieval mapper projections, `EvidenceAtom`/indexed evidence boundary, and a small dedicated source-table binding validator. Existing final guards remain authoritative.
 
-- [ ] Test stale file/hash/version, wrong table/row, changed date, removed condition, alternate institution, missing cell coverage, delimiter-containing cell text, and malformed provenance. All must remain insufficient.
-- [ ] Validate and expose literal `(header source cell,value source cell)` facts with their provenance. Do not assign an institution subject or a natural-language predicate merely from a label string.
+- [x] Test stale file/hash/version, wrong table/row, changed date, removed condition, alternate institution, missing cell coverage, delimiter-containing cell text, and malformed provenance. All must remain insufficient.
+- [x] Validate and expose literal `(header source cell,value source cell)` facts with their provenance. Do not assign an institution subject or a natural-language predicate merely from a label string.
 - [ ] Establish any supported natural-language relation with generalized source-owned semantics and positive/negative fixtures before enabling it. Keep unsupported or ambiguous mappings insufficient; do not add question/case-ID rules.
 - [ ] Verify actual source consumers separately from synthetic tests. Re-check live runtime/quota/network/DB-Q identity before external evaluation or document-specific repair.
 - [ ] Only after direct question scope and condition support is established: create one new penalty checkpoint; on actual PASS proceed Difficult12→holdout57→full1003 and all release-blocking gates, then approved final promotion/deployment/health/handoff.
 
 ## Current execution point
 
-Task2 bounded implementation is verified and deployed in product87e2ef8a (see ledger/evidence). Task3 starts with conservative source-row/header validation and retrieval propagation. Full semantic consumption and qualified external gates remain unfinished. Use fresh runtime evidence before external evaluation; this plan is not identity proof. Do not rerun already-passing unchanged-SHA gates solely to create activity.
+Task2 bounded implementation is verified and deployed in product87e2ef8a (see ledger/evidence). Task3 literal source-row/header validation and selected-ID retrieval propagation are deployed in f2e29230. Full semantic consumption and qualified external gates remain unfinished. Independent candidate diagnostics must distinguish ACTIVE preview counts from CANDIDATE/RETIRED and point existence from semantic release authorization. Use fresh runtime evidence before external evaluation; this plan is not identity proof. Do not rerun already-passing unchanged-SHA gates solely to create activity.

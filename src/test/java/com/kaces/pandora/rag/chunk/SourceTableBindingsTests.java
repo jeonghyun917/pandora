@@ -27,10 +27,17 @@ class SourceTableBindingsTests {
         var inputs=chunks.stream().map(c->new SourceTableBindings.Input(c.documentId(),c.chunkVersion(),c.pageNo(),c.chunkText(),hash,c.sourceProvenance())).toList();
         var bindings=validator.validate(file,inputs);
         assertThat(bindings).hasSize(2);
+        assertThat(bindings).allSatisfy(b->{
+            assertThat(b.sourceFileHash()).isEqualTo(hash);
+            assertThat(b.chunkVersion()).isEqualTo(4);
+            assertThat(b.pageNo()).isEqualTo(chunks.get(1).pageNo());
+            assertThat(b.rowText()).isEqualTo(data);
+        });
         assertThat(bindings).anySatisfy(b->{assertThat(b.headerText()).isEqualTo("일정");assertThat(b.valueText()).isEqualTo("7월");});
         assertThat(validator.validate(file,List.of(inputs.get(1)))).isEmpty(); // Missing header proof.
         var datum=inputs.get(1);
         assertThat(validator.validate(file,List.of(inputs.get(0),new SourceTableBindings.Input(42,4,1,data.replace("7월","8월"),hash,datum.provenance())))).isEmpty();
+        assertThat(validator.validate(file,List.of(inputs.get(0),new SourceTableBindings.Input(42,4,1,data.replace("가람","나래"),hash,datum.provenance())))).isEmpty();
         assertThat(validator.validate(file,List.of(inputs.get(0),new SourceTableBindings.Input(42,4,1,data,"b".repeat(64),datum.provenance())))).isEmpty();
         assertThat(validator.validate(file,List.of(inputs.get(0),new SourceTableBindings.Input(42,3,1,data,hash,datum.provenance())))).isEmpty();
         assertThat(validator.validate(file,List.of(inputs.get(0),new SourceTableBindings.Input(43,4,1,data,hash,datum.provenance())))).isEmpty();
@@ -38,6 +45,7 @@ class SourceTableBindingsTests {
         assertThat(validator.validate(file,List.of(new SourceTableBindings.Input(42,4,1,data,hash,"malformed")))).isEmpty();
         for(String changed:List.of(datum.provenance().replace("\"schemaVersion\":1","\"schemaVersion\":2"),
             datum.provenance().replace("\"completeRow\":true","\"completeRow\":false"),
+            datum.provenance().replace("\"rowIndex\":1","\"rowIndex\":2"),
             datum.provenance().replace("/tr[1]/tc[2]","/tr[2]/tc[2]"),
             datum.provenance().replace("\"text\":\"7월\"","\"text\":\"8월\""))) {
             var result=validator.validate(file,List.of(inputs.get(0),new SourceTableBindings.Input(42,4,1,data,hash,changed)));

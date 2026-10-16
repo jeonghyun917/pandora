@@ -27,6 +27,30 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 class LawDocumentWriterTests {
 	@Test
+	void candidateReadinessIsReadOnlyAndDoesNotTreatZeroPendingAsComplete() {
+		var mapper=mock(LawChunkMapper.class);var qdrant=mock(QdrantClient.class);
+		when(mapper.findChunkVersionStatus(42L,3)).thenReturn("CANDIDATE");
+		when(mapper.findChunkVersionVerification(42L,3,testProperties().openai().embeddingModel(),testProperties().qdrant().collection()))
+			.thenReturn(new LawChunkVersionVerification(2,2,0,0,true,0));
+		when(mapper.findChunkIdsByDocumentIdAndVersion(42L,3)).thenReturn(List.of(101L,102L));
+		var writer=new LawDocumentWriter(mock(LawDocumentMapper.class),mock(LawDetailMapper.class),mapper,
+			mock(LawAssetMapper.class),mock(LawJsonWriter.class),qdrant,mock(LawVersionStatusService.class),testProperties());
+		var result=writer.candidateReadiness(42L,3);
+		assertThat(result.versionStatus()).isEqualTo("CANDIDATE");
+		assertThat(result.stagingPointsPresent()).isFalse();
+		assertThat(result.activationAuthorized()).isFalse();
+		assertThat(result.verification().indexedCurrentCount()).isZero();
+		org.mockito.Mockito.verifyNoInteractions(qdrant);
+		verify(mapper,never()).updateChunkVersionStatus(org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.anyInt(),org.mockito.ArgumentMatchers.anyString());
+		when(mapper.findChunkVersionVerification(42L,3,testProperties().openai().embeddingModel(),testProperties().qdrant().collection()))
+			.thenReturn(new LawChunkVersionVerification(2,2,2,0,true,0));
+		when(qdrant.findExistingLawCandidatePointIds(List.of(101L,102L))).thenReturn(java.util.Set.of(101L,102L));
+		assertThat(writer.candidateReadiness(42L,3).stagingPointsPresent()).isTrue();
+		assertThat(writer.candidateReadiness(42L,3).activationAuthorized()).isFalse();
+		assertThat(org.mockito.Mockito.mockingDetails(mapper).getInvocations()).allSatisfy(call->
+			assertThat(call.getMethod().getName()).startsWith("find"));
+	}
+	@Test
 	void rollbackRejectsInFlightActivationBeforeDatabaseChanges() {
 		for (String phase : List.of("QDRANT_ACTIVATING", "RECOVERY_REQUIRED", "DB_ACTIVE_CLEANUP_PENDING")) {
 			LawChunkMapper mapper = mock(LawChunkMapper.class);

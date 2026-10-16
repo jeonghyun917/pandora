@@ -12,7 +12,7 @@ import tools.jackson.databind.ObjectMapper;
 public final class SourceTableBindings {
     public record Input(long documentId,int chunkVersion,Integer pageNo,String text,String sourceFileHash,String provenance) { }
     public record Binding(long documentId,String sourcePart,String tablePath,int rowIndex,int sourceColumn,
-        String headerPath,String headerText,String valueText) { }
+        String headerPath,String headerText,String valueText,String sourceFileHash,int chunkVersion,Integer pageNo,String rowText) { }
     private static final ObjectMapper JSON=new ObjectMapper();
     private record Key(long documentId,int version,Integer page,String hash,String part,String table,int row) { }
     private record Verified(Input input,SourceTableRow row,int start,int end) { }
@@ -78,7 +78,8 @@ public final class SourceTableBindings {
                             && source.headerPath()==null && source.headerText()==null
                             && source.text().equals(cell.headerText())) {
                             result.add(new Binding(value.input().documentId(),row.sourcePart(),row.tablePath(),row.rowIndex(),
-                                cell.sourceColumn(),path,source.text(),cell.text()));
+                                cell.sourceColumn(),path,source.text(),cell.text(),value.input().sourceFileHash(),
+                                value.input().chunkVersion(),value.input().pageNo(),row.renderedText()));
                         }
                     }
                 }

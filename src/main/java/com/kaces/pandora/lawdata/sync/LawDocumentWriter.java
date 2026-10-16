@@ -225,6 +225,25 @@ public class LawDocumentWriter {
 		return ChunkActivationResult.blocked(documentId, candidateVersion, "Activation must use the durable activation saga.");
 	}
 
+	@Transactional(readOnly = true)
+	public CandidateChunkReadiness candidateReadiness(long documentId, int candidateVersion) {
+		if (documentId <= 0 || candidateVersion <= 0) {
+			throw new IllegalArgumentException("Positive document and candidate version are required.");
+		}
+		String status = lawChunkMapper.findChunkVersionStatus(documentId, candidateVersion);
+		var verification = lawChunkMapper.findChunkVersionVerification(documentId, candidateVersion,
+			properties.openai().embeddingModel(), properties.qdrant().collection());
+		List<Long> ids = lawChunkMapper.findChunkIdsByDocumentIdAndVersion(documentId, candidateVersion);
+		boolean stagingComplete = false;
+		if ("CANDIDATE".equals(status) && verification != null && verification.databaseGatesPass()
+			&& ids != null && ids.size() == verification.expectedChunkCount() && ids.size() <= 10000) {
+			stagingComplete = candidatePointsArePresent(ids);
+		}
+		return new CandidateChunkReadiness(documentId, candidateVersion, status == null ? "NOT_FOUND" : status,
+			ids == null ? 0 : ids.size(), verification, stagingComplete,
+			lawChunkMapper.findActiveChunkVersion(documentId), false);
+	}
+
 	@Transactional
 	public ChunkActivationResult rollbackToVersion(long documentId, int retiredVersion) {
 		if (!TransactionSynchronizationManager.isSynchronizationActive()) {

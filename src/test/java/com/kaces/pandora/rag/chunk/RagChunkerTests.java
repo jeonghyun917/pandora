@@ -70,7 +70,9 @@ class RagChunkerTests {
 
 	@Test
 	void retainsTableIdentityAndPartialRangesAcrossLongRowWindows() {
-		String text="기관: 가람 | 설명: "+"원문 설명 ".repeat(350)+" | 단서: 변경될 수 있음";
+		String prefix="기관: 가람 | 설명: ", suffix=" | 단서: 변경될 수 있음";
+		String text=prefix+"가".repeat(2111-prefix.length()-suffix.length())+suffix;
+		assertThat(text).hasSize(2111);
 		var row=new com.kaces.pandora.rag.importing.SourceTableRow("Contents/section0.xml","/section[1]/tbl[1]",1,text,
 			List.of(new com.kaces.pandora.rag.importing.SourceTableRow.Cell(1,0,1,1,"가람","/section[1]/tbl[1]/tr[1]/tc[1]","기관")),0,text.length());
 		var chunks=chunker.chunkV4(1,new ExtractedDocument(List.of(new ExtractedPage(1,text,List.of(row)))),null,"계획");

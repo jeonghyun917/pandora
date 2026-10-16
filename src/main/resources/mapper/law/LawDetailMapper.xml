@@ -60,6 +60,7 @@
         FROM law_api_document_chunks c
         WHERE c.document_id = d.document_id
           AND c.use_yn = 'Y'
+          AND c.activation_status = 'ACTIVE'
       ) AS currentChunkCount,
       (
         SELECT COUNT(*)
@@ -67,6 +68,7 @@
         WHERE c.document_id = d.document_id
           AND c.use_yn = 'Y'
           AND CHAR_LENGTH(c.chunk_text) &lt; 80
+          AND c.activation_status = 'ACTIVE'
       ) AS currentTinyChunkCount
     FROM law_api_document_details d
     JOIN law_api_documents doc ON doc.document_id = d.document_id
@@ -91,6 +93,7 @@
         FROM law_api_document_chunks c
         WHERE c.document_id = d.document_id
           AND c.use_yn = 'Y'
+          AND c.activation_status = 'ACTIVE'
       ) AS currentChunkCount,
       (
         SELECT COUNT(*)
@@ -98,6 +101,7 @@
         WHERE c.document_id = d.document_id
           AND c.use_yn = 'Y'
           AND CHAR_LENGTH(c.chunk_text) &lt; 80
+          AND c.activation_status = 'ACTIVE'
       ) AS currentTinyChunkCount
     FROM law_api_document_details d
     JOIN law_api_documents doc ON doc.document_id = d.document_id
