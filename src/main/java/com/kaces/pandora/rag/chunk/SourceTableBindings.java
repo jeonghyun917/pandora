@@ -12,7 +12,14 @@ import tools.jackson.databind.ObjectMapper;
 public final class SourceTableBindings {
     public record Input(long documentId,int chunkVersion,Integer pageNo,String text,String sourceFileHash,String provenance) { }
     public record Binding(long documentId,String sourcePart,String tablePath,int rowIndex,int sourceColumn,
-        String headerPath,String headerText,String valueText,String sourceFileHash,int chunkVersion,Integer pageNo,String rowText) { }
+        String headerPath,String headerText,String valueText,String sourceFileHash,int chunkVersion,Integer pageNo,String rowText,
+        List<SourceTableRow.Cell> rowCells) {
+        public Binding { rowCells=rowCells==null?List.of():List.copyOf(rowCells); }
+        public Binding(long documentId,String sourcePart,String tablePath,int rowIndex,int sourceColumn,
+            String headerPath,String headerText,String valueText,String sourceFileHash,int chunkVersion,Integer pageNo,String rowText) {
+            this(documentId,sourcePart,tablePath,rowIndex,sourceColumn,headerPath,headerText,valueText,sourceFileHash,chunkVersion,pageNo,rowText,List.of());
+        }
+    }
     private static final ObjectMapper JSON=new ObjectMapper();
     private record Key(long documentId,int version,Integer page,String hash,String part,String table,int row) { }
     private record Verified(Input input,SourceTableRow row,int start,int end) { }
@@ -64,6 +71,13 @@ public final class SourceTableBindings {
         var result=new ArrayList<Binding>();
         for(Verified value:rows.values()) {
             SourceTableRow row=value.row();
+            if(row.cells().size()==1 && row.cells().get(0).headerPath()==null && row.cells().get(0).headerText()==null) {
+                var cell=row.cells().get(0);
+                result.add(new Binding(value.input().documentId(),row.sourcePart(),row.tablePath(),row.rowIndex(),
+                    cell.sourceColumn(),null,null,cell.text(),value.input().sourceFileHash(),value.input().chunkVersion(),
+                    value.input().pageNo(),row.renderedText(),row.cells()));
+                continue;
+            }
             for(var cell:row.cells()) {
                 if(cell.headerPath()==null || cell.headerText()==null) { continue; }
                 // Require the separately covered, same-source header cell, not a label in metadata.
@@ -79,7 +93,7 @@ public final class SourceTableBindings {
                             && source.text().equals(cell.headerText())) {
                             result.add(new Binding(value.input().documentId(),row.sourcePart(),row.tablePath(),row.rowIndex(),
                                 cell.sourceColumn(),path,source.text(),cell.text(),value.input().sourceFileHash(),
-                                value.input().chunkVersion(),value.input().pageNo(),row.renderedText()));
+                                value.input().chunkVersion(),value.input().pageNo(),row.renderedText(),row.cells()));
                         }
                     }
                 }

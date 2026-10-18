@@ -40,6 +40,9 @@ public class SemanticEvidenceMatcher {
 
 	public EvidenceIndex index(List<LawAiAnswerGround> grounds) {
 		List<IndexedAtom> atoms = new ArrayList<>();
+		List<com.kaces.pandora.rag.chunk.SourceTableBindings.Binding> bindings = new ArrayList<>();
+		boolean sourceReadAllowed = tableEvidence != null && !selectedTableIds(grounds).isEmpty();
+		var sourceCache = new java.util.HashMap<List<Long>, List<com.kaces.pandora.rag.chunk.SourceTableBindings.Binding>>();
 		ClaimEvidenceAtomizer atomizer = new ClaimEvidenceAtomizer();
 		for (LawAiAnswerGround ground : grounds == null ? List.<LawAiAnswerGround>of() : grounds) {
 			List<String> evidenceTexts = List.of(value(ground.matchedChildText()), value(ground.snippet()),
@@ -70,30 +73,67 @@ public class SemanticEvidenceMatcher {
 					}
 				}
 			}
+			if (sourceReadAllowed) {
+				var ids = selectedTableIds(List.of(ground));
+				if (!ids.isEmpty()) {
+					var verified = sourceCache.computeIfAbsent(ids, this::readTableBindings);
+					for (var binding : verified) {
+						if (binding.documentId() != ground.documentId()) { continue; }
+						bindings.add(binding);
+						EvidenceAtom original = completeSentenceCell(binding, evidenceTexts);
+						if (original != null) { atoms.add(new IndexedAtom(ground.number(), original.sourceText(), original, false, false)); }
+					}
+				}
+			}
 		}
-		return new EvidenceIndex(atoms, sourceTableBindings(grounds));
+		return new EvidenceIndex(atoms, bindings.stream().distinct().toList());
 	}
 
-	private List<com.kaces.pandora.rag.chunk.SourceTableBindings.Binding> sourceTableBindings(List<LawAiAnswerGround> grounds) {
-		if (tableEvidence == null || grounds == null) { return List.of(); }
+	private List<Long> selectedTableIds(List<LawAiAnswerGround> grounds) {
+		if (grounds == null) { return List.of(); }
 		Set<Long> ids = new LinkedHashSet<>();
-		Set<Long> documents = new LinkedHashSet<>();
 		for (var ground : grounds) {
 			if (ground == null || !("official_doc".equals(ground.target()) || "internal_doc".equals(ground.target()))) { continue; }
 			if (ground.chunkId() <= 0 || ground.documentId() <= 0) { continue; }
-			documents.add(ground.documentId());
 			ids.add(ground.chunkId());
 			if (ground.contextChunkIds() != null) {
 				ground.contextChunkIds().stream().filter(id -> id != null && id > 0).forEach(ids::add);
 			}
 			if (ids.size() > 64) { return List.of(); }
 		}
-		if (ids.isEmpty()) { return List.of(); }
+		return List.copyOf(ids);
+	}
+
+	private List<com.kaces.pandora.rag.chunk.SourceTableBindings.Binding> readTableBindings(List<Long> ids) {
 		try {
-			// Metadata only: no atoms, roles, grounds or support decisions are synthesized here.
-			return tableEvidence.fromSelectedChunks(List.copyOf(ids)).stream()
-				.filter(binding -> binding != null && documents.contains(binding.documentId())).toList();
+			return tableEvidence.fromSelectedChunks(ids).stream().filter(java.util.Objects::nonNull).toList();
 		} catch (RuntimeException unavailable) { return List.of(); }
+	}
+
+	private EvidenceAtom completeSentenceCell(com.kaces.pandora.rag.chunk.SourceTableBindings.Binding binding,
+		List<String> context) {
+		// Only an original complete sentence is consumed. Labels never supply semantic roles.
+		if (binding.chunkVersion() != 4 || binding.rowCells().size() != 1) { return null; }
+		var cell = binding.rowCells().get(0);
+		if (cell.sourceRow() != binding.rowIndex() || cell.sourceColumn() != binding.sourceColumn()
+			|| cell.rowSpan() != 1 || cell.columnSpan() != 1
+			|| !java.util.Objects.equals(cell.headerPath(), binding.headerPath())
+			|| !java.util.Objects.equals(cell.headerText(), binding.headerText())
+			|| !java.util.Objects.equals(cell.text(), binding.valueText())) { return null; }
+		EvidenceAtom atom = parser.parse(cell.text());
+		if (ClaimEvidenceAtomizer.hasUnownedInlineAnnotation(cell.text(), false)) { return null; }
+		if (atom.parseStatus() != EvidenceAtom.ParseStatus.COMPLETE || atom.subjects().isEmpty() || atom.actions().isEmpty()) { return null; }
+		for (String text : context) {
+			var atomizer = new ClaimEvidenceAtomizer();
+			if (ClaimEvidenceAtomizer.hasUnownedInlineAnnotation(text, false)
+				|| !atomizer.unownedAnnotatedItems(text).isEmpty()
+				|| atomizer.sourceFragments(text).stream().anyMatch(ClaimEvidenceAtomizer.SourceFragment::literalOnly)) { return null; }
+			EvidenceAtom restriction = parser.parse(text);
+			if (restriction.parseStatus() == EvidenceAtom.ParseStatus.AMBIGUOUS
+				|| !atom.conditions().containsAll(restriction.conditions())
+				|| !atom.exceptions().containsAll(restriction.exceptions())) { return null; }
+		}
+		return atom;
 	}
 
 	public SemanticMatch match(EvidenceAtom claim, EvidenceIndex evidenceIndex) {

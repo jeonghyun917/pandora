@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { fetchAdminOperations, fetchAdminPipelines, runMinistryCollection, previewDocumentRebuild, createDocumentCandidate, indexDocumentCandidate, resumeCandidateIndex, activateDocumentCandidate, rebuildLexicalIndex, recoverAbandonedLexicalIndex } from '../api/lawApi';
 import { LandingConstellation } from './LandingPage';
+import { SourceProofPanel } from './SourceProofPanel';
 
 const agencyOptions = [
   { value: 'ALL', label: 'All sources' },
@@ -377,6 +378,7 @@ export function AdminPage({ onBack }) {
       </nav>
 
       <section className="admin-dashboard">
+        {adminSection === 'operations' && <SourceProofPanel />}
         <section className="admin-panel admin-panel-wide" aria-label="키워드 색인 갱신">
           <h2>키워드 색인 갱신</h2>
           <p>현재 활성 검색 청크의 로컬 키워드 색인을 새 버전으로 갱신합니다. 원문 재청킹·임베딩·OpenAI 전송은 하지 않습니다.</p>

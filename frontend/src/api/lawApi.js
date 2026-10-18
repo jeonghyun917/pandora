@@ -24,6 +24,40 @@ export async function recoverAbandonedLexicalIndex(version) {
   return readJsonResponse(response);
 }
 
+export function canApplySourceProof(preview) {
+  return preview?.status === 'ELIGIBLE'
+    && Number.isSafeInteger(preview.documentId) && preview.documentId > 0
+    && typeof preview.token === 'string' && /^[0-9a-f]{64}$/i.test(preview.token)
+    && Number.isSafeInteger(preview.eligibleChunks) && preview.eligibleChunks > 0;
+}
+
+export async function previewSourceProof(documentId, fileHash) {
+  const id = String(documentId ?? '').trim();
+  const hash = String(fileHash ?? '').trim().toLowerCase();
+  if (Boolean(id) === Boolean(hash) || (id && (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id))))
+      || (hash && !/^[0-9a-f]{64}$/.test(hash))) {
+    throw new Error('단일 문서 ID 또는 원본 파일 SHA-256 중 하나만 입력하세요.');
+  }
+  const params = new URLSearchParams(id ? { documentId: id } : { fileHash: hash });
+  const response = await fetch(`/api/law-data/rag-source-proof/preview?${params}`, {
+    method: 'GET', credentials: 'same-origin',
+  });
+  if (response.status === 401) throw new Error('관리자 로그인이 필요합니다.');
+  if (!response.ok) throw new Error('원문 표 메타데이터 미리보기에 실패했습니다. 입력과 서버 상태를 확인하세요.');
+  return readJsonResponse(response);
+}
+
+export async function applySourceProof(preview) {
+  if (!canApplySourceProof(preview)) throw new Error('적용 가능한 새 서버 미리보기가 필요합니다.');
+  const response = await fetch('/api/law-data/rag-source-proof/apply', {
+    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ documentId: preview.documentId, expectedPlanToken: preview.token }),
+  });
+  if (response.status === 401) throw new Error('관리자 로그인이 필요합니다.');
+  if (!response.ok) throw new Error('메타데이터 적용이 거부됐습니다. 자동 재시도하지 않습니다. 새 미리보기를 확인하세요.');
+  return readJsonResponse(response);
+}
+
 export async function previewDocumentRebuild(target, documentId) {
   const id = String(documentId ?? '').trim();
   if (!['law', 'admrul'].includes(target) || !/^[1-9]\d*$/.test(id)) {

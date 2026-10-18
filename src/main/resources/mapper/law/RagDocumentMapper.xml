@@ -5,6 +5,48 @@
 
 <mapper namespace="com.kaces.pandora.rag.persistence.RagDocumentMapper">
 
+  <select id="findSourceProofDocument" resultType="com.kaces.pandora.rag.document.RagDocumentRow">
+    SELECT document_id AS documentId, document_type AS documentType, title, source_org AS sourceOrg,
+      document_category AS documentCategory, document_topic AS documentTopic, published_date AS publishedDate,
+      version, trust_level AS trustLevel, file_name AS fileName, file_path AS filePath, object_key AS objectKey,
+      file_hash AS fileHash, mime_type AS mimeType, source_url AS sourceUrl, import_status AS importStatus
+    FROM rag_documents WHERE document_id=#{documentId} AND use_yn='Y'
+    <if test="lock">FOR UPDATE</if>
+  </select>
+
+  <select id="findActiveChunksForSourceProof" resultType="com.kaces.pandora.rag.document.RagDocumentChunkRow">
+    SELECT chunk_id AS chunkId, document_id AS documentId, chunk_version AS chunkVersion, chunk_no AS chunkNo,
+      parent_section_title AS parentSectionTitle, chunk_title AS chunkTitle, section_type AS sectionType,
+      chunk_text AS chunkText, embedding_text AS embeddingText, page_no AS pageNo, source_path AS sourcePath,
+      source_url AS sourceUrl, sort_order AS sortOrder, content_hash AS contentHash,
+      quality_status AS qualityStatus, quality_reason AS qualityReason, source_provenance AS sourceProvenance
+    FROM rag_document_chunks WHERE document_id=#{documentId} AND use_yn='Y'
+    ORDER BY chunk_id LIMIT 10001
+    <if test="lock">FOR UPDATE</if>
+  </select>
+
+  <update id="backfillSourceProofIfUnchanged">
+    UPDATE rag_document_chunks c JOIN rag_documents d ON d.document_id=c.document_id
+    SET c.source_provenance=#{proof}, c.updated_at=c.updated_at
+    WHERE c.chunk_id=#{expected.chunkId} AND c.document_id=#{expected.documentId}
+      AND c.chunk_version=#{expected.chunkVersion} AND c.chunk_version=4
+      AND c.use_yn='Y' AND d.use_yn='Y' AND BINARY d.file_hash=BINARY #{fileHash}
+      AND c.source_provenance IS NULL
+      AND (BINARY c.chunk_no &lt;=&gt; BINARY #{expected.chunkNo})
+      AND (BINARY c.parent_section_title &lt;=&gt; BINARY #{expected.parentSectionTitle})
+      AND (BINARY c.chunk_title &lt;=&gt; BINARY #{expected.chunkTitle})
+      AND (BINARY c.section_type &lt;=&gt; BINARY #{expected.sectionType})
+      AND (BINARY c.chunk_text &lt;=&gt; BINARY #{expected.chunkText})
+      AND (BINARY c.embedding_text &lt;=&gt; BINARY #{expected.embeddingText})
+      AND (c.page_no &lt;=&gt; #{expected.pageNo})
+      AND (BINARY c.source_path &lt;=&gt; BINARY #{expected.sourcePath})
+      AND (BINARY c.source_url &lt;=&gt; BINARY #{expected.sourceUrl})
+      AND c.sort_order=#{expected.sortOrder}
+      AND BINARY c.content_hash=BINARY #{expected.contentHash}
+      AND BINARY c.quality_status=BINARY #{expected.qualityStatus}
+      AND (BINARY c.quality_reason &lt;=&gt; BINARY #{expected.qualityReason})
+  </update>
+
   <select id="findSourceProofChunksByIds" resultType="com.kaces.pandora.rag.document.RagSourceProofRow">
     SELECT c.chunk_id AS chunkId, c.document_id AS documentId, c.chunk_version AS chunkVersion,
       c.page_no AS pageNo, c.chunk_text AS chunkText, doc.file_hash AS sourceFileHash,
