@@ -8,6 +8,13 @@ import org.junit.jupiter.api.Test;
 
 class KoreanEvidenceAtomParserTests {
 	@Test
+	void conditionInAnotherSentenceDoesNotTriggerLiteralPartitionSearch() {
+		org.junit.jupiter.api.Assertions.assertTimeout(java.time.Duration.ofMillis(500), () -> {
+			var atom = new KoreanEvidenceAtomParser().parse("자료".repeat(300) + ". 기관이 자료를 제출하면 결과를 통보한다.");
+			assertThat(atom.conditions()).contains("자료제출");
+		});
+	}
+	@Test
 	void longUnbrokenLiteralWithoutConditionEndingDoesNotTriggerPartitionSearch() {
 		org.junit.jupiter.api.Assertions.assertTimeout(java.time.Duration.ofMillis(500), () -> {
 			var atom = new KoreanEvidenceAtomParser().parse("자료".repeat(300));
