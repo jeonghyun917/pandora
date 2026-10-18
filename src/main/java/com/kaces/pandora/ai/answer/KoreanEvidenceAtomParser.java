@@ -44,6 +44,9 @@ public class KoreanEvidenceAtomParser {
 		"([\\p{IsHangul}A-Za-z0-9]{2,}?)(?:은|는|이|가|을|를)?\\s*"
 			+ "([\\p{IsHangul}A-Za-z0-9]{2,}?)(?:한\\s*경우|된\\s*경우|하면|되면|받으면|있으면|없으면)"
 	);
+	private static final Pattern TWO_TERM_CONDITION_ENDING = Pattern.compile(
+		"한\\s*경우|된\\s*경우|하면|되면|받으면|있으면|없으면"
+	);
 	private static final Pattern POST_CONDITION = Pattern.compile(
 		"([\\p{IsHangul}A-Za-z0-9]{2,}?)(?:을|를)?(?:한|한\\s*)?\\s*후"
 	);
@@ -136,9 +139,13 @@ public class KoreanEvidenceAtomParser {
 		Set<String> actions = matches(predicateSource, ACTION, 1);
 		actions.addAll(matches(predicateSource, DUTY_ACTION, 1));
 		Set<String> conditions = new LinkedHashSet<>();
-		Matcher conditionMatcher = TWO_TERM_CONDITION.matcher(source);
-		while (conditionMatcher.find()) {
-			conditions.add(canonical(conditionMatcher.group(1) + conditionMatcher.group(2)));
+		// A mandatory ending must exist before trying ambiguous token partitions.
+		// This is only a necessary-condition filter; positive parsing stays unchanged.
+		if (TWO_TERM_CONDITION_ENDING.matcher(source).find()) {
+			Matcher conditionMatcher = TWO_TERM_CONDITION.matcher(source);
+			while (conditionMatcher.find()) {
+				conditions.add(canonical(conditionMatcher.group(1) + conditionMatcher.group(2)));
+			}
 		}
 		conditions.addAll(matches(source, POST_CONDITION, 1));
 		conditions.addAll(matches(source, COMPLETION_TIME_CONDITION, 1));

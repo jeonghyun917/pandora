@@ -8,6 +8,14 @@ import org.junit.jupiter.api.Test;
 
 class KoreanEvidenceAtomParserTests {
 	@Test
+	void longUnbrokenLiteralWithoutConditionEndingDoesNotTriggerPartitionSearch() {
+		org.junit.jupiter.api.Assertions.assertTimeout(java.time.Duration.ofMillis(500), () -> {
+			var atom = new KoreanEvidenceAtomParser().parse("자료".repeat(300));
+			assertThat(atom.conditions()).isEmpty();
+			assertThat(atom.parseStatus()).isNotEqualTo(EvidenceAtom.ParseStatus.COMPLETE);
+		});
+	}
+	@Test
 	void leadingPastCaseCannotCrossAnEarlierExistenceCondition() {
 		var atom = new KoreanEvidenceAtomParser().parse(
 			"미준수 사항이 있을 경우 기관은 검토의견을 발주기관에 전달 (온라인 의견등록이 가능한 경우 온라인으로 전달).");
