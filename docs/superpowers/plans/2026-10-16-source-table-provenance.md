@@ -64,7 +64,7 @@ Files: `LawSemanticChunkRow.java`, retrieval mapper projections, `EvidenceAtom`/
 
 - [x] Test stale file/hash/version, wrong table/row, changed date, removed condition, alternate institution, missing cell coverage, delimiter-containing cell text, and malformed provenance. All must remain insufficient.
 - [x] Validate and expose literal `(header source cell,value source cell)` facts with their provenance. Do not assign an institution subject or a natural-language predicate merely from a label string.
-- [ ] Establish any supported natural-language relation with generalized source-owned semantics and positive/negative fixtures before enabling it. Keep unsupported or ambiguous mappings insufficient; do not add question/case-ID rules.
+- [x] Bounded first consumer: original complete natural-language proposition in one typed source cell, full source coverage/hash verified, per-ground ownership and all context restrictions retained. No header-derived roles, multi-cell relationship inference or membership promotion. Positive/negative and actual original fixtures pass in67c1a409; broader table relations remain insufficient.
 - [ ] Verify actual source consumers separately from synthetic tests. Re-check live runtime/quota/network/DB-Q identity before external evaluation or document-specific repair.
 - [ ] Only after direct question scope and condition support is established: create one new penalty checkpoint; on actual PASS proceed Difficult12→holdout57→full1003 and all release-blocking gates, then approved final promotion/deployment/health/handoff.
 
