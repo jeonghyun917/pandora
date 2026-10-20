@@ -142,29 +142,11 @@ public class SemanticLexicalIndexService {
 		int termRows = 0;
 		for (int start = 0; start < documents.size(); start += WRITE_BATCH_SIZE) {
 			int end = Math.min(start + WRITE_BATCH_SIZE, documents.size());
-			List<SemanticLexicalMapper.ChunkRow> chunks = new ArrayList<>(end - start);
-			List<SemanticLexicalMapper.TermRow> terms = new ArrayList<>();
-			for (LexicalChunkDocument document : documents.subList(start, end)) {
-				int weightedLength = 0;
-				for (Field field : fields) {
-					Map<String, Integer> frequencies = tokenizer.tokenize(field.reader().read(document));
-					for (Map.Entry<String, Integer> frequency : frequencies.entrySet()) {
-						terms.add(new SemanticLexicalMapper.TermRow(
-							document.target(), document.chunkId(), frequency.getKey(), field.kind(),
-							frequency.getValue(), field.weight()
-						));
-						weightedLength += frequency.getValue() * field.weight();
-					}
-				}
-				totalWeightedLength += weightedLength;
-				chunks.add(new SemanticLexicalMapper.ChunkRow(
-					document.target(), document.chunkId(), document.documentId(), document.parentKey(),
-					document.contentHash(), weightedLength
-				));
-			}
-			mapper.insertChunks(indexVersion, chunks);
-			writeBatches(terms, batch -> mapper.insertTerms(indexVersion, batch));
-			termRows += terms.size();
+			PreparedBatch prepared = prepareBatch(documents.subList(start, end));
+			totalWeightedLength += prepared.weightedLength();
+			mapper.insertChunks(indexVersion, prepared.chunks());
+			writeBatches(prepared.terms(), batch -> mapper.insertTerms(indexVersion, batch));
+			termRows += prepared.terms().size();
 		}
 		mapper.populateTermStats(indexVersion);
 
@@ -181,6 +163,64 @@ public class SemanticLexicalIndexService {
 			averageWeightedLength
 		);
 	}
+
+	/** Bounded full readback; no ordinary READY revision or baseline asset is changed. */
+	public String verifyRecovery(String generationId, List<LexicalChunkDocument> documents) {
+		if (generationId == null || !generationId.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+			throw new IllegalArgumentException("A canonical generation is required.");
+		}
+		List<LexicalChunkDocument> snapshot = List.copyOf(documents);
+		if (snapshot.isEmpty() || snapshot.stream().map(row -> row.target() + ":" + row.chunkId()).distinct().count() != snapshot.size()) {
+			throw new IllegalArgumentException("A nonempty snapshot with unique identities is required.");
+		}
+		String version = "recovery_" + generationId;
+		String fingerprint = recoveryFingerprint(snapshot);
+		var before = mapper.findRecoveryState(version);
+		if (before == null || !fingerprint.equals(before.contentFingerprint()) || !tokenizer.version().equals(before.tokenizerVersion())
+				|| before.activeChunkCount() != snapshot.size()) throw new IllegalStateException("Recovery lexical state mismatch.");
+		long termCount = 0, weightedLength = 0;
+		for (int start = 0; start < snapshot.size(); start += WRITE_BATCH_SIZE) {
+			var batch = snapshot.subList(start, Math.min(start + WRITE_BATCH_SIZE, snapshot.size()));
+			var expected = prepareBatch(batch);
+			var chunks = mapper.findRecoveryChunks(version, batch);
+			var terms = mapper.findRecoveryTerms(version, batch);
+			if (chunks == null || terms == null || chunks.size() != expected.chunks().size() || terms.size() != expected.terms().size()
+					|| !new java.util.HashSet<>(chunks).equals(new java.util.HashSet<>(expected.chunks()))
+					|| !new java.util.HashSet<>(terms).equals(new java.util.HashSet<>(expected.terms()))) {
+				throw new IllegalStateException("Recovery lexical rows differ from prepared corpus.");
+			}
+			termCount += expected.terms().size(); weightedLength += expected.weightedLength();
+		}
+		var counts = mapper.recoveryCounts(version);
+		if (counts == null || counts.chunkCount() != snapshot.size() || counts.termCount() != termCount || counts.statisticMismatches() != 0
+				|| Double.compare(before.averageWeightedLength(), (double) weightedLength / snapshot.size()) != 0
+				|| !before.equals(mapper.findRecoveryState(version))) {
+			throw new IllegalStateException("Recovery lexical parity or statistics changed.");
+		}
+		return fingerprint;
+	}
+
+	private PreparedBatch prepareBatch(List<LexicalChunkDocument> documents) {
+		var chunks = new ArrayList<SemanticLexicalMapper.ChunkRow>(documents.size());
+		var terms = new ArrayList<SemanticLexicalMapper.TermRow>();
+		long total = 0;
+		for (var document : documents) {
+			int length = 0;
+			for (var field : fields) {
+				for (var frequency : tokenizer.tokenize(field.reader().read(document)).entrySet()) {
+					terms.add(new SemanticLexicalMapper.TermRow(document.target(), document.chunkId(), frequency.getKey(),
+						field.kind(), frequency.getValue(), field.weight()));
+					length += frequency.getValue() * field.weight();
+				}
+			}
+			total += length;
+			chunks.add(new SemanticLexicalMapper.ChunkRow(document.target(), document.chunkId(), document.documentId(),
+				document.parentKey(), document.contentHash(), length));
+		}
+		return new PreparedBatch(chunks, terms, total);
+	}
+
+	private record PreparedBatch(List<SemanticLexicalMapper.ChunkRow> chunks, List<SemanticLexicalMapper.TermRow> terms, long weightedLength) { }
 
 	private void publish(
 		String indexVersion,

@@ -12,6 +12,12 @@ public interface SemanticLexicalMapper {
 
 	String findReadyRevision();
 
+	IndexStateRow findRecoveryState(@Param("indexVersion") String indexVersion);
+	List<ChunkRow> findRecoveryChunks(@Param("indexVersion") String indexVersion, @Param("documents") List<LexicalChunkDocument> documents);
+	List<TermRow> findRecoveryTerms(@Param("indexVersion") String indexVersion, @Param("documents") List<LexicalChunkDocument> documents);
+	RecoveryCounts recoveryCounts(@Param("indexVersion") String indexVersion);
+	record RecoveryCounts(long chunkCount, long termCount, long statisticMismatches) { }
+
 	List<TermStatisticRow> findTermStatistics(
 		@Param("revision") String revision,
 		@Param("terms") List<String> terms

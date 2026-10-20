@@ -5,6 +5,42 @@
 
 <mapper namespace="com.kaces.pandora.semantic.lexical.SemanticLexicalMapper">
 
+  <select id="findRecoveryState" resultType="com.kaces.pandora.semantic.lexical.SemanticLexicalMapper$IndexStateRow" timeout="5">
+    SELECT index_version AS indexVersion, tokenizer_version AS tokenizerVersion,
+      active_chunk_count AS activeChunkCount, average_weighted_length AS averageWeightedLength,
+      content_fingerprint AS contentFingerprint, status, completed_at AS completedAt
+    FROM semantic_lexical_index_state WHERE index_version = #{indexVersion} AND status = 'RECOVERY_READY'
+  </select>
+  <select id="findRecoveryChunks" resultType="com.kaces.pandora.semantic.lexical.SemanticLexicalMapper$ChunkRow" timeout="30">
+    SELECT target, chunk_id AS chunkId, document_id AS documentId, parent_key AS parentKey,
+      content_hash AS contentHash, weighted_length AS weightedLength
+    FROM semantic_lexical_chunks WHERE index_version = #{indexVersion} AND build_status = 'READY' AND
+    <foreach collection="documents" item="doc" open="(" separator=" OR " close=")">
+      (target = #{doc.target} AND chunk_id = #{doc.chunkId})
+    </foreach>
+  </select>
+  <select id="findRecoveryTerms" resultType="com.kaces.pandora.semantic.lexical.SemanticLexicalMapper$TermRow" timeout="30">
+    SELECT target, chunk_id AS chunkId, term, field_kind AS fieldKind,
+      term_frequency AS termFrequency, field_weight AS fieldWeight
+    FROM semantic_lexical_terms WHERE index_version = #{indexVersion} AND
+    <foreach collection="documents" item="doc" open="(" separator=" OR " close=")">
+      (target = #{doc.target} AND chunk_id = #{doc.chunkId})
+    </foreach>
+  </select>
+  <select id="recoveryCounts" resultType="com.kaces.pandora.semantic.lexical.SemanticLexicalMapper$RecoveryCounts" timeout="60">
+    SELECT
+      (SELECT COUNT(*) FROM semantic_lexical_chunks WHERE index_version = #{indexVersion}) AS chunkCount,
+      (SELECT COUNT(*) FROM semantic_lexical_terms WHERE index_version = #{indexVersion}) AS termCount,
+      ((SELECT COUNT(*) FROM semantic_lexical_term_stats s LEFT JOIN
+        (SELECT term, COUNT(DISTINCT CONCAT(target, ':', chunk_id)) AS frequency
+         FROM semantic_lexical_terms WHERE index_version = #{indexVersion} GROUP BY term) actual
+         ON actual.term = s.term
+        WHERE s.index_version = #{indexVersion} AND (actual.frequency IS NULL OR s.document_frequency != actual.frequency))
+       + (SELECT COUNT(DISTINCT t.term) FROM semantic_lexical_terms t LEFT JOIN semantic_lexical_term_stats s
+          ON s.index_version = t.index_version AND s.term = t.term
+          WHERE t.index_version = #{indexVersion} AND s.term IS NULL)) AS statisticMismatches
+  </select>
+
   <select id="findActiveSearchableChunks"
           resultType="com.kaces.pandora.semantic.lexical.LexicalChunkDocument"
           timeout="30">

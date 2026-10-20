@@ -44,6 +44,20 @@ class RagRecoveryDatabaseTests {
             assertThat(jdbc.queryForObject("SELECT status FROM semantic_lexical_index_state WHERE index_version=?", String.class, lexicalVersion)).isEqualTo("RECOVERY_READY");
             assertThat(lexical.findReadyRevision()).isEqualTo(beforeRevision);
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM semantic_lexical_terms WHERE index_version=?", Integer.class, lexicalVersion)).isPositive();
+            var snapshot = List.of(new com.kaces.pandora.semantic.lexical.LexicalChunkDocument("official_doc", 123, 456,
+                "parent", "a".repeat(64), "제목", "부모", "조문", "원본 보존"));
+            assertThat(lexicalService.verifyRecovery(lexicalGeneration, snapshot)).isEqualTo(result.contentFingerprint());
+            jdbc.update("UPDATE semantic_lexical_terms SET term_frequency=term_frequency+1 WHERE index_version=? LIMIT 1", lexicalVersion);
+            assertThatThrownBy(() -> lexicalService.verifyRecovery(lexicalGeneration, snapshot)).isInstanceOf(IllegalStateException.class);
+            jdbc.update("UPDATE semantic_lexical_terms SET term_frequency=1 WHERE index_version=?", lexicalVersion);
+            assertThat(lexicalService.verifyRecovery(lexicalGeneration, snapshot)).isEqualTo(result.contentFingerprint());
+            jdbc.update("UPDATE semantic_lexical_term_stats SET document_frequency=2 WHERE index_version=? LIMIT 1", lexicalVersion);
+            assertThatThrownBy(() -> lexicalService.verifyRecovery(lexicalGeneration, snapshot)).isInstanceOf(IllegalStateException.class);
+            jdbc.update("UPDATE semantic_lexical_term_stats SET document_frequency=1 WHERE index_version=?", lexicalVersion);
+            jdbc.update("INSERT INTO semantic_lexical_chunks(index_version,target,chunk_id,document_id,parent_key,content_hash,weighted_length,build_status) VALUES(?,'official_doc',124,456,'parent',?,1,'READY')", lexicalVersion, "a".repeat(64));
+            assertThatThrownBy(() -> lexicalService.verifyRecovery(lexicalGeneration, snapshot)).isInstanceOf(IllegalStateException.class);
+            jdbc.update("DELETE FROM semantic_lexical_chunks WHERE index_version=? AND chunk_id=124", lexicalVersion);
+            assertThat(lexicalService.verifyRecovery(lexicalGeneration, snapshot)).isEqualTo(result.contentFingerprint());
             assertThatThrownBy(() -> jdbc.update("UPDATE semantic_lexical_index_state SET status='UNSAFE' WHERE index_version=?", lexicalVersion)).isInstanceOf(RuntimeException.class);
         } finally {
             jdbc.update("DELETE FROM semantic_lexical_index_state WHERE index_version=?", lexicalVersion);
