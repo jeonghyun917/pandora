@@ -453,6 +453,25 @@ CREATE TABLE IF NOT EXISTS rag_recovery_pointers (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 ALTER TABLE rag_recovery_generations ADD COLUMN IF NOT EXISTS validation_evidence LONGTEXT NULL;
+CREATE TABLE IF NOT EXISTS rag_recovery_baselines (
+    document_id BIGINT NOT NULL,
+    generation_id CHAR(36) NOT NULL,
+    PRIMARY KEY (document_id),
+    UNIQUE KEY uk_recovery_baseline_generation (generation_id),
+    CONSTRAINT fk_recovery_baseline_generation FOREIGN KEY (generation_id) REFERENCES rag_recovery_generations(generation_id),
+    CONSTRAINT fk_recovery_baseline_document FOREIGN KEY (document_id) REFERENCES rag_documents(document_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS rag_recovery_routing_epoch (
+    singleton_id TINYINT NOT NULL,
+    revision BIGINT NOT NULL DEFAULT 0,
+    lexical_generation CHAR(36) NULL,
+    lexical_fingerprint CHAR(64) NULL,
+    PRIMARY KEY (singleton_id),
+    CONSTRAINT chk_recovery_epoch_singleton CHECK (singleton_id=1),
+    CONSTRAINT chk_recovery_epoch_revision CHECK (revision>=0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+INSERT IGNORE INTO rag_recovery_routing_epoch(singleton_id,revision) VALUES(1,0);
 ALTER TABLE rag_recovery_generations ADD COLUMN IF NOT EXISTS validated_at DATETIME NULL;
 
 CREATE TABLE IF NOT EXISTS rag_recovery_members (

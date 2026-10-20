@@ -100,4 +100,21 @@
   <select id="verifiedEmbeddingCount" resultType="int">
     SELECT COUNT(*) FROM rag_recovery_embedding_receipts WHERE generation_id=#{generationId} AND write_status='VERIFIED'
   </select>
+  <select id="findRoutingEpoch" resultType="com.kaces.pandora.rag.recovery.RecoveryRoutingEpoch">
+    SELECT revision,lexical_generation AS lexicalGeneration,lexical_fingerprint AS lexicalFingerprint
+    FROM rag_recovery_routing_epoch WHERE singleton_id=1
+  </select>
+  <select id="listRoutingPointers" resultType="com.kaces.pandora.rag.recovery.RecoverySnapshot">
+    SELECT document_id AS documentId,revision,active_generation AS activeGeneration,source_hash AS sourceHash,baseline_hash AS baselineHash
+    FROM rag_recovery_pointers ORDER BY document_id LIMIT 10001
+  </select>
+  <select id="listActiveBaselines" resultType="string">
+    SELECT b.generation_id FROM rag_recovery_baselines b JOIN rag_recovery_pointers p
+      ON p.document_id=b.document_id AND p.active_generation=b.generation_id ORDER BY b.document_id LIMIT 10001
+  </select>
+  <insert id="insertBaseline">
+    INSERT INTO rag_recovery_baselines(document_id,generation_id)
+    SELECT document_id,generation_id FROM rag_recovery_generations WHERE generation_id=#{generationId}
+      AND document_id=#{documentId} AND state='ACTIVE'
+  </insert>
 </mapper>

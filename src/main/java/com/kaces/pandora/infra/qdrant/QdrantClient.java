@@ -569,7 +569,7 @@ public class QdrantClient {
             points.add(Map.of("id",ragPointId(chunk.chunkId()),"vector",List.copyOf(vector),"payload",Map.of(
                     "chunkId",chunk.chunkId(),"documentId",chunk.documentId(),"chunkVersion",4,
                     "target","official_doc","activationStatus","CANDIDATE","generationId",generationId,
-                    "contentHash",chunk.contentHash(),"embeddingModel",embeddingModel,"manifest",manifest)));
+                    "contentHash",chunk.contentHash(),"embeddingModel",embeddingModel,"manifest",manifest,"qualityStatus",chunk.qualityStatus())));
         }
         if(documents.size()!=1)throw new IllegalArgumentException("A recovery generation owns exactly one document");
         return List.copyOf(points);
@@ -615,7 +615,7 @@ public class QdrantClient {
             for(var key:List.of("chunkId","documentId","chunkVersion")) {
                 if(strictPositivePointId(payload.get(key))!=((Number)expectedPayload.get(key)).longValue())throw new IllegalStateException("Recovery numeric identity mismatch");
             }
-            for(var key:List.of("target","activationStatus","generationId","contentHash","embeddingModel","manifest")) {
+            for(var key:List.of("target","activationStatus","generationId","contentHash","embeddingModel","manifest","qualityStatus")) {
                 if(!expectedPayload.get(key).equals(payload.get(key)))throw new IllegalStateException("Recovery point payload mismatch");
             }
             var wanted=(List<?>)want.get("vector");
@@ -874,6 +874,68 @@ public class QdrantClient {
 			.sorted(Comparator.comparing(QdrantSearchHit::score).reversed())
 			.limit(safeMaxTotalLimit)
 			.toList();
+	}
+
+	public List<QdrantSearchHit> searchBalanced(List<Double> vector,List<String> targets,int perTargetLimit,int maxTotalLimit,
+			com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
+		if(routing==null)throw new IllegalArgumentException("Captured recovery routing required");
+		if(routing.replacedDocumentIds().isEmpty())return searchBalanced(vector,targets,perTargetLimit,maxTotalLimit);
+		var normalized=targets==null?List.<String>of():targets.stream().filter(t->t!=null && !t.isBlank()).distinct().toList();
+		int per=Math.max(1,perTargetLimit),total=Math.max(per,maxTotalLimit);
+		if(normalized.isEmpty())return searchBalanced(vector,targets,perTargetLimit,maxTotalLimit);
+		var hits=new ArrayList<QdrantSearchHit>();
+		try {
+			for(String target:normalized) {
+				int limit=normalized.size()==1?total:per;
+				if(!isRagTarget(target)) { hits.addAll(searchSingleTarget(vector,target,limit)); continue; }
+				var excluded=List.of(Map.of("key","activationStatus","match",Map.of("any",List.of("CANDIDATE","RETIRED"))),
+					Map.of("key","documentId","match",Map.of("any",routing.replacedDocumentIds().stream().sorted().toList())));
+				var filter=Map.of("must",List.of(Map.of("key","target","match",Map.of("value",target))),"must_not",excluded);
+				hits.addAll(searchRecoveryRoute(vector,target,limit,ragCollection(),filter,routing,null,null));
+				// This recovery workflow accepts official_doc only; other RAG types retain their baseline route.
+				if(!"official_doc".equals(target))continue;
+				for(var entry:new java.util.TreeMap<>(routing.documents()).entrySet()) {
+					if(!routing.replacedDocumentIds().contains(entry.getKey()))continue;
+					var asset=routing.assets().get(entry.getValue().activeGeneration());
+					if(!ragRecoveryCollection(asset.generationId()).equals(asset.vectorCollection()))throw new IllegalStateException("Recovery namespace mismatch");
+					var must=List.of(Map.of("key","target","match",Map.of("value",target)),
+						Map.of("key","documentId","match",Map.of("value",entry.getKey())),
+						Map.of("key","generationId","match",Map.of("value",asset.generationId())),
+						Map.of("key","manifest","match",Map.of("value",asset.manifest())),
+						Map.of("key","qualityStatus","match",Map.of("any",List.of("PASS","REVIEW"))));
+					hits.addAll(searchRecoveryRoute(vector,target,limit,asset.vectorCollection(),Map.of("must",must),routing,entry.getKey(),asset));
+				}
+			}
+		} catch(RuntimeException unavailable) {
+			searchFailureCount.incrementAndGet();
+			throw new IllegalStateException("Active recovery search unavailable",unavailable);
+		}
+		return hits.stream().collect(java.util.stream.Collectors.toMap(h->h.target()+":"+h.chunkId(),h->h,
+			(a,b)->a.score()>=b.score()?a:b)).values().stream().sorted(Comparator.comparingDouble(QdrantSearchHit::score).reversed()
+			.thenComparing(QdrantSearchHit::target).thenComparingLong(QdrantSearchHit::chunkId)).limit(total).toList();
+	}
+
+	private List<QdrantSearchHit> searchRecoveryRoute(List<Double> vector,String target,int limit,String collection,Map<String,?> filter,
+			com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing,Long documentId,com.kaces.pandora.rag.recovery.RecoveryAssets assets) {
+		var response=qdrantPostForMapOnce("/collections/{collection}/points/search",collection,Map.of("vector",vector,"limit",limit,
+			"with_payload",List.of("target","chunkId","documentId","generationId","manifest","qualityStatus","activationStatus"),"with_vector",false,"filter",filter));
+		var hits=new ArrayList<QdrantSearchHit>();
+		for(var item:(List<?>)response.get("result")) {
+			var payload=(Map<?,?>)((Map<?,?>)item).get("payload");
+			long foundDocument=strictPositivePointId(payload.get("documentId"));
+			var hit=toHit(item);
+			if(!target.equals(hit.target()) || !Double.isFinite(hit.score()) || hit.chunkId()<=0)throw new IllegalStateException("Malformed recovery search hit");
+			if(assets==null) {
+				if(routing.replacedDocumentIds().contains(foundDocument) || Set.of("CANDIDATE","RETIRED").contains(String.valueOf(payload.get("activationStatus")))) {
+					throw new IllegalStateException("Baseline search ignored recovery exclusion");
+				}
+			} else if(foundDocument!=documentId || !assets.generationId().equals(payload.get("generationId"))
+					|| !assets.manifest().equals(payload.get("manifest")) || !Set.of("PASS","REVIEW").contains(String.valueOf(payload.get("qualityStatus")))) {
+				throw new IllegalStateException("Recovery search crossed generation boundary");
+			}
+			hits.add(hit);
+		}
+		return hits;
 	}
 
 	private List<QdrantSearchHit> searchTargetsInParallel(List<Double> vector, List<String> targets, int limit) {

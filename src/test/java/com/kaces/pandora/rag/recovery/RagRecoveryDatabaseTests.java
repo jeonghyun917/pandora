@@ -165,6 +165,20 @@ class RagRecoveryDatabaseTests {
                     assertThat(writtenBatches.getAllValues().get(1)).hasSize(1);
                     doThrow(new IllegalStateException("missing candidate collection")).when(q).verifyRagRecoveryCollection(anyString(), anyString(), anyString(), anyList(), anyList());
                     assertThatThrownBy(() -> indexService.verify(assets)).isInstanceOf(IllegalStateException.class);
+                    var router = new RagRecoveryRoutingService(recovery, lexical, new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds));
+                    var beforeRouting = router.capture();
+                    assertThat(beforeRouting.replacedDocumentIds()).isEmpty();
+                    assertThat(beforeRouting.baselineGenerations()).contains(recovery.findPointer(id,false).activeGeneration());
+                    jdbc.update("UPDATE rag_recovery_generations SET state='RETIRED' WHERE generation_id=?", recovery.findPointer(id,false).activeGeneration());
+                    jdbc.update("UPDATE rag_recovery_generations SET state='ACTIVE' WHERE generation_id=?", next.id());
+                    jdbc.update("UPDATE rag_recovery_pointers SET revision=1,active_generation=? WHERE document_id=?",next.id(),id);
+                    jdbc.update("UPDATE rag_recovery_routing_epoch SET revision=1,lexical_generation=?,lexical_fingerprint=? WHERE singleton_id=1",next.id(),assets.lexicalFingerprint());
+                    var afterRouting=router.capture();
+                    assertThat(afterRouting.replacedDocumentIds()).contains(id);
+                    assertThat(afterRouting.cacheIdentity()).isNotEqualTo(beforeRouting.cacheIdentity());
+                    assertThat(beforeRouting.documents().get(id).revision()).isZero();
+                    jdbc.update("DELETE FROM rag_recovery_assets WHERE generation_id=?",next.id());
+                    assertThatThrownBy(router::capture).isInstanceOf(IllegalStateException.class);
                     assertThat(validation.validate(created.id()).passed()).isTrue();
                     jdbc.update("UPDATE rag_document_chunks SET chunk_text='변조된 원문' WHERE chunk_id=?",candidateIds.get(0));
                     assertThat(validation.validate(created.id()).passed()).isFalse();
@@ -174,6 +188,8 @@ class RagRecoveryDatabaseTests {
                 assertThat(jdbc.queryForList("SELECT * FROM rag_chunk_embeddings WHERE chunk_id=?",oldId)).isEqualTo(embeds);
             } finally {
                 jdbc.execute("DROP TRIGGER IF EXISTS "+trigger);
+                jdbc.update("UPDATE rag_recovery_routing_epoch SET revision=0,lexical_generation=NULL,lexical_fingerprint=NULL WHERE singleton_id=1");
+                jdbc.update("DELETE FROM rag_recovery_baselines WHERE document_id=?",id);
                 jdbc.update("DELETE FROM semantic_lexical_index_state WHERE index_version IN (SELECT CONCAT('recovery_',generation_id) FROM rag_recovery_generations WHERE document_id=?)",id);
                 jdbc.update("DELETE FROM rag_recovery_pointers WHERE document_id=?",id);
                 jdbc.update("DELETE a FROM rag_recovery_assets a JOIN rag_recovery_generations g ON g.generation_id=a.generation_id WHERE g.document_id=?", id);

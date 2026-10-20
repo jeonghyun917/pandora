@@ -30,6 +30,34 @@ import tools.jackson.databind.ObjectMapper;
 
 class QdrantClientTests {
 
+    @Test void generationSnapshotFiltersBaselineBeforeTopKAndFailsForMissingActiveAssets() throws Exception {
+        String generation="c87a26f6-cc34-4303-bdc2-929657369db3";
+        String collection="rag_recovery_"+generation.replace("-", "");
+        var bodies=new java.util.concurrent.ConcurrentHashMap<String,String>();
+        var missing=new java.util.concurrent.atomic.AtomicBoolean();
+        server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/collections",exchange->{
+            String path=exchange.getRequestURI().getPath();
+            bodies.put(path,new String(exchange.getRequestBody().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8));
+            if(path.contains(collection)) {
+                if(missing.get()){respond(exchange,404,"{}");return;}
+                respond(exchange,200,"{\"result\":[{\"id\":300,\"score\":0.7,\"payload\":{\"target\":\"official_doc\",\"chunkId\":300,\"documentId\":42,\"generationId\":\""+generation+"\",\"manifest\":\""+"b".repeat(64)+"\",\"qualityStatus\":\"PASS\"}}]}");
+            } else {
+                assertThat(bodies.get(path)).contains("\"documentId\"","42","must_not");
+                respond(exchange,200,"{\"result\":[{\"id\":11,\"score\":0.6,\"payload\":{\"target\":\"official_doc\",\"chunkId\":11,\"documentId\":77}}]}");
+            }
+        });server.start();client=client();
+        var routing=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(1,
+            java.util.Map.of(42L,new com.kaces.pandora.rag.recovery.RecoverySnapshot(42,1,generation,"a".repeat(64),"b".repeat(64))),
+            java.util.Map.of(generation,new com.kaces.pandora.rag.recovery.RecoveryAssets(generation,"b".repeat(64),collection,"c".repeat(64),"d".repeat(64),2)),java.util.Set.of(),"d".repeat(64));
+        assertThat(client.searchBalanced(java.util.Collections.nCopies(1536,.1),java.util.List.of("official_doc"),1,2,routing))
+            .extracting(com.kaces.pandora.semantic.search.QdrantSearchHit::chunkId).containsExactly(300L,11L);
+        assertThat(bodies.get("/collections/"+collection+"/points/search")).contains("generationId","manifest","qualityStatus");
+        missing.set(true);
+        assertThatThrownBy(()->client.searchBalanced(java.util.Collections.nCopies(1536,.1),java.util.List.of("official_doc"),1,2,routing))
+            .isInstanceOf(IllegalStateException.class);
+    }
+
     @Test void recoveryInspectionReportsOnlyConfirmedMissingPointsWithoutWriting() throws Exception {
         var requests = new java.util.ArrayList<String>();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -54,7 +82,7 @@ class QdrantClientTests {
                 respond(exchange, 200, "{\"result\":{\"count\":" + (mode.get() == 1 || mode.get() == 2 && observed > 1 ? 2 : 1) + "}}");
             } else if (path.endsWith("/points")) {
                 var payload = java.util.Map.of("chunkId",200,"documentId",42,"chunkVersion",4,"target","official_doc","activationStatus","CANDIDATE",
-                    "generationId","c87a26f6-cc34-4303-bdc2-929657369db3","contentHash","a".repeat(64),"embeddingModel","text-embedding-3-small","manifest","b".repeat(64));
+                    "generationId","c87a26f6-cc34-4303-bdc2-929657369db3","contentHash","a".repeat(64),"embeddingModel","text-embedding-3-small","manifest","b".repeat(64),"qualityStatus","PASS");
                 respond(exchange,200,new ObjectMapper().writeValueAsString(java.util.Map.of("result",java.util.List.of(java.util.Map.of("id",9000000000000200L,"payload",payload,"vector",vector)))));
             } else respond(exchange, 200, collectionWithQueue("green", 1536, 1, 0, 1, 1));
         }); server.start(); client = client();
@@ -79,7 +107,7 @@ class QdrantClientTests {
         var row=new com.kaces.pandora.rag.document.RagDocumentChunkRow(200,42,4,"page 1",null,"계획","body","기관은 자료를 보존한다.",null,1,"$.pages[1]",null,0,"a".repeat(64),"PASS",null,null);
         client.upsertRagRecovery(generation,"text-embedding-3-small","b".repeat(64),java.util.List.of(row),java.util.List.of(java.util.Collections.nCopies(1536,0.1)));
         assertThat(paths).allMatch(p->p.startsWith("/collections/rag_recovery_c87a26f6cc344303bdc2929657369db3"));
-        assertThat(body.get()).contains("\"chunkId\":200","\"documentId\":42","\"activationStatus\":\"CANDIDATE\"","\"contentHash\":\""+"a".repeat(64),"\"manifest\":\""+"b".repeat(64));
+        assertThat(body.get()).contains("\"chunkId\":200","\"documentId\":42","\"activationStatus\":\"CANDIDATE\"","\"qualityStatus\":\"PASS\"","\"contentHash\":\""+"a".repeat(64),"\"manifest\":\""+"b".repeat(64));
     }
     @Test void malformedRecoveryNamespaceAndVectorsAreRejectedBeforeAnyHttpRequest() throws Exception {
         var requests=new AtomicInteger();server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
@@ -105,7 +133,7 @@ class QdrantClientTests {
             if(mode.get()==2){respond(exchange,200,"{\"result\":[]}");return;}
             var observed=new java.util.ArrayList<>(vector);if(mode.get()==3){observed.set(0,0.0);observed.set(1,1.0);}
             var payload=java.util.Map.of("chunkId",200,"documentId",42,"chunkVersion",4,"target","official_doc","activationStatus","CANDIDATE",
-                    "generationId","c87a26f6-cc34-4303-bdc2-929657369db3","contentHash","a".repeat(64),"embeddingModel","text-embedding-3-small","manifest",(mode.get()==1?"c":"b").repeat(64));
+                    "generationId","c87a26f6-cc34-4303-bdc2-929657369db3","contentHash","a".repeat(64),"embeddingModel","text-embedding-3-small","manifest",(mode.get()==1?"c":"b").repeat(64),"qualityStatus","PASS");
             respond(exchange,200,new ObjectMapper().writeValueAsString(java.util.Map.of("result",java.util.List.of(java.util.Map.of("id",9000000000000200L,"payload",payload,"vector",observed)))));
         });server.start();client=client();
         assertThat(client.verifyRagRecoveryPoints("c87a26f6-cc34-4303-bdc2-929657369db3","text-embedding-3-small","b".repeat(64),java.util.List.of(recoveryRow()),java.util.List.of(vector))).matches("[0-9a-f]{64}");

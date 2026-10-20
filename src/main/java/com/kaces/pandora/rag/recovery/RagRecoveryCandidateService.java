@@ -43,6 +43,7 @@ public class RagRecoveryCandidateService {
                 String baselineId=UUID.randomUUID().toString();
                 recovery.insertGeneration(new RecoveryGeneration(baselineId,documentId,preview.sourceHash(),productSha,
                         preview.baselineHash(),preview.baselineHash(),hash(List.of("baseline",documentId,preview.baselineHash())),"ACTIVE"));
+                if(recovery.insertBaseline(documentId,baselineId)!=1)throw new IllegalStateException("Baseline designation conflict");
                 for(var chunk:plan.baseline())addMember(baselineId,chunk.chunkId());
                 recovery.insertPointer(new RecoverySnapshot(documentId,0,baselineId,preview.sourceHash(),preview.baselineHash()));
             } else if(!pointer.sourceHash().equals(preview.sourceHash()) || !pointer.baselineHash().equals(preview.baselineHash()) || pointer.revision()!=0) {

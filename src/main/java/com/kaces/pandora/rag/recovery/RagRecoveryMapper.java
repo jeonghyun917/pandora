@@ -6,6 +6,10 @@ import org.apache.ibatis.annotations.*;
 
 @Mapper
 public interface RagRecoveryMapper {
+    RecoveryRoutingEpoch findRoutingEpoch();
+    List<RecoverySnapshot> listRoutingPointers();
+    List<String> listActiveBaselines();
+    int insertBaseline(@Param("documentId") long documentId,@Param("generationId") String generationId);
     RecoveryAssets findAssets(@Param("generationId") String generationId);
     int insertAssets(@Param("assets") RecoveryAssets assets);
     int markIndexReady(@Param("expected") RecoveryGeneration expected);
