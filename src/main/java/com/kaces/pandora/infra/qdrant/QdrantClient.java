@@ -578,13 +578,33 @@ public class QdrantClient {
     /** Readback receipt only. Whole-collection count/readiness is a separate required gate. */
     public String verifyRagRecoveryPoints(String generationId,String embeddingModel,String manifest,
             List<com.kaces.pandora.rag.document.RagDocumentChunkRow> chunks,List<List<Double>> vectors) {
+        var result=inspectRagRecoveryPoints(generationId,embeddingModel,manifest,chunks,vectors);
+        if(!result.missingChunkIds().isEmpty())throw new IllegalStateException("Recovery point count mismatch");
+        return result.fingerprint();
+    }
+
+    public record RecoveryPointInspection(String fingerprint,Set<Long> missingChunkIds) {
+        public RecoveryPointInspection { missingChunkIds=Set.copyOf(missingChunkIds); }
+    }
+
+    /** Read only: a missing collection is accepted only after a separate collection GET confirms 404. */
+    public RecoveryPointInspection inspectRagRecoveryPoints(String generationId,String embeddingModel,String manifest,
+            List<com.kaces.pandora.rag.document.RagDocumentChunkRow> chunks,List<List<Double>> vectors) {
         String collection=ragRecoveryCollection(generationId);
         var expected=recoveryPoints(generationId,embeddingModel,manifest,chunks,vectors);
         var byId=new LinkedHashMap<Long,Map<String,Object>>();
         for(var point:expected)byId.put((Long)point.get("id"),point);
-        Map<?,?> response=restClient.post().uri("/collections/{collection}/points",collection)
+        Map<?,?> response;
+        try { response=restClient.post().uri("/collections/{collection}/points",collection)
                 .body(Map.of("ids",List.copyOf(byId.keySet()),"with_payload",true,"with_vector",true)).retrieve().body(Map.class);
-        if(response==null || !(response.get("result") instanceof List<?> actual) || actual.size()!=expected.size())throw new IllegalStateException("Recovery point count mismatch");
+        } catch(org.springframework.web.client.HttpClientErrorException.NotFound missing) {
+            try { restClient.get().uri("/collections/{collection}",collection).retrieve().toBodilessEntity(); }
+            catch(org.springframework.web.client.HttpClientErrorException.NotFound confirmed) {
+                return new RecoveryPointInspection(null,chunks.stream().map(com.kaces.pandora.rag.document.RagDocumentChunkRow::chunkId).collect(java.util.stream.Collectors.toSet()));
+            }
+            throw new IllegalStateException("Recovery point lookup unavailable",missing);
+        }
+        if(response==null || !(response.get("result") instanceof List<?> actual) || actual.size()>expected.size())throw new IllegalStateException("Recovery point count mismatch");
         var canonical=new java.util.TreeMap<Long,Object>();
         for(Object item:actual) {
             if(!(item instanceof Map<?,?> point) || !(point.get("payload") instanceof Map<?,?> payload)
@@ -618,7 +638,9 @@ public class QdrantClient {
             expectedPayload.forEach((key,value)->boundPayload.put(key.toString(),value));
             canonical.put(id,List.of(boundPayload,bits));
         }
-        return com.kaces.pandora.common.text.LawHashUtils.sha256(objectMapper.writeValueAsString(canonical));
+        var missing=new LinkedHashSet<Long>();
+        for(var point:byId.entrySet())if(!canonical.containsKey(point.getKey()))missing.add(((Number)((Map<?,?>)point.getValue().get("payload")).get("chunkId")).longValue());
+        return new RecoveryPointInspection(com.kaces.pandora.common.text.LawHashUtils.sha256(objectMapper.writeValueAsString(canonical)),missing);
     }
 
     /** Full namespace parity. This is a readback receipt, not a distributed transaction. */

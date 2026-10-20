@@ -24,6 +24,7 @@ class RagRecoveryDatabaseTests {
         assertThat(expected.getFileName().toString()).startsWith("pandora-import-tx-test-");
         assertThat(Path.of(jdbc.queryForObject("SELECT @@datadir",String.class)).toRealPath()).isEqualTo(expected);
         new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(new org.springframework.core.io.ClassPathResource("schema.sql")).execute(ds);
+        jdbc.update("DELETE FROM semantic_lexical_index_state WHERE status='RECOVERY_READY' AND LEFT(index_version,9)='recovery_'");
         jdbc.execute("ALTER TABLE semantic_lexical_index_state DROP CONSTRAINT chk_semantic_lexical_state_status, ADD CONSTRAINT chk_semantic_lexical_state_status CHECK (status IN ('BUILDING','READY','FAILED'))");
         new com.kaces.pandora.semantic.lexical.SemanticLexicalSchemaMaintenance(jdbc).run(null);
         var lexicalFactory = new org.mybatis.spring.SqlSessionFactoryBean();
@@ -103,8 +104,69 @@ class RagRecoveryDatabaseTests {
                             new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds),"b".repeat(40));
                     assertThat(validation.validate(created.id()).passed()).isTrue();
                     assertThat(recovery.findGeneration(created.id(),false).state()).isEqualTo("VALIDATED");
+                    var receiptService = new RagRecoveryReceiptService(documents, recovery,
+                        new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds),
+                        new com.kaces.pandora.semantic.config.LawAiProperties(null,
+                            new com.kaces.pandora.semantic.config.LawAiProperties.Qdrant("http://127.0.0.1:1", "unused-law", "unused-rag", 3), null, null));
+                    var candidateIds = jdbc.queryForList("SELECT chunk_id FROM rag_document_chunks WHERE document_id=? AND use_yn='N' ORDER BY chunk_id", Long.class, id);
+                    var vectors = Map.of(candidateIds.get(0), List.of(1.0, 0.0, 0.0), candidateIds.get(1), List.of(0.0, 1.0, 0.0));
+                    String receiptTrigger = "reject_receipt_" + id;
+                    jdbc.execute("CREATE TRIGGER " + receiptTrigger + " BEFORE INSERT ON rag_recovery_embedding_receipts FOR EACH ROW BEGIN IF NEW.chunk_id=" + candidateIds.get(1) + " THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected-receipt-failure'; END IF; END");
+                    try {
+                        assertThatThrownBy(() -> receiptService.save(created.id(), vectors)).isInstanceOf(RuntimeException.class);
+                        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM rag_recovery_embedding_receipts WHERE generation_id=?", Integer.class, created.id())).isZero();
+                    } finally { jdbc.execute("DROP TRIGGER IF EXISTS " + receiptTrigger); }
+                    receiptService.save(created.id(), vectors);
+                    receiptService.save(created.id(), vectors);
+                    assertThat(receiptService.load(created.id())).isEqualTo(vectors);
+                    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM rag_recovery_embedding_receipts WHERE generation_id=?", Integer.class, created.id())).isEqualTo(2);
+                    assertThatThrownBy(() -> receiptService.save(created.id(), Map.of(candidateIds.get(0), List.of(0.0, 0.0, 1.0), candidateIds.get(1), List.of(0.0, 1.0, 0.0))))
+                        .isInstanceOf(IllegalStateException.class);
+                    assertThatThrownBy(() -> receiptService.save(created.id(), Map.of(oldId, List.of(1.0, 0.0, 0.0))))
+                        .isInstanceOf(IllegalArgumentException.class);
+                    assertThatThrownBy(() -> receiptService.save(created.id(), Map.of(candidateIds.get(0), List.of(0.0, 0.0, 0.0), candidateIds.get(1), List.of(0.0, 1.0, 0.0))))
+                        .isInstanceOf(IllegalArgumentException.class);
+                    jdbc.update("UPDATE rag_recovery_embedding_receipts SET vector_json='[0.0,0.0,1.0]' WHERE generation_id=? AND chunk_id=?", created.id(), candidateIds.get(0));
+                    assertThatThrownBy(() -> receiptService.load(created.id())).isInstanceOf(IllegalStateException.class);
+                    var nextPreview = service.preview(id, "c".repeat(40));
+                    var next = service.create(id, nextPreview.previewHash(), "c".repeat(40));
+                    var nextValidation = new RagRecoveryValidationService(documents, recovery, original,
+                        new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds), "c".repeat(40));
+                    assertThat(nextValidation.validate(next.id()).passed()).isTrue();
+                    var embeddingClient = mock(com.kaces.pandora.infra.openai.OpenAiEmbeddingClient.class);
+                    when(embeddingClient.embed(anyList())).thenReturn(List.of(List.of(1.0,0.0,0.0), List.of(0.0,1.0,0.0)));
+                    var q = mock(com.kaces.pandora.infra.qdrant.QdrantClient.class);
+                    var nextIds = recovery.findCandidateChunks(next.id()).stream().map(RagDocumentChunkRow::chunkId).collect(java.util.stream.Collectors.toSet());
+                    when(q.ragRecoveryCollection(next.id())).thenReturn("rag_recovery_" + next.id().replace("-", ""));
+                    when(q.inspectRagRecoveryPoints(anyString(), anyString(), anyString(), anyList(), anyList()))
+                        .thenReturn(new com.kaces.pandora.infra.qdrant.QdrantClient.RecoveryPointInspection(null, nextIds));
+                    when(q.verifyRagRecoveryCollection(anyString(), anyString(), anyString(), anyList(), anyList())).thenReturn("d".repeat(64));
+                    var indexService = new RagRecoveryIndexService(documents, recovery, service, receiptService, embeddingClient, q,
+                        lexical, new com.kaces.pandora.semantic.lexical.SemanticLexicalIndexService(lexical, new com.kaces.pandora.semantic.lexical.KoreanLexicalTokenizer()),
+                        new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds),
+                        new com.kaces.pandora.semantic.config.LawAiProperties(null,
+                            new com.kaces.pandora.semantic.config.LawAiProperties.Qdrant("http://127.0.0.1:1", "unused-law", "unused-rag", 3), null, null), "c".repeat(40));
+                    doThrow(new IllegalStateException("lost write response")).doNothing().when(q)
+                        .upsertRagRecovery(anyString(), anyString(), anyString(), anyList(), anyList());
+                    assertThatThrownBy(() -> indexService.prepare(next.id())).isInstanceOf(IllegalStateException.class);
+                    assertThat(recovery.findGeneration(next.id(),false).state()).isEqualTo("VALIDATED");
+                    assertThat(recovery.verifiedEmbeddingCount(next.id())).isZero();
+                    when(q.inspectRagRecoveryPoints(anyString(), anyString(), anyString(), anyList(), anyList()))
+                        .thenReturn(new com.kaces.pandora.infra.qdrant.QdrantClient.RecoveryPointInspection(null, Set.of(nextIds.iterator().next())));
+                    var assets = indexService.prepare(next.id());
+                    assertThat(assets.chunkCount()).isEqualTo(2);
+                    assertThat(recovery.findGeneration(next.id(),false).state()).isEqualTo("INDEX_READY");
+                    assertThat(indexService.prepare(next.id())).isEqualTo(assets);
+                    verify(embeddingClient, times(1)).embed(anyList());
+                    @SuppressWarnings("unchecked")
+                    var writtenBatches = org.mockito.ArgumentCaptor.forClass((Class<List<RagDocumentChunkRow>>)(Class<?>)List.class);
+                    verify(q,times(2)).upsertRagRecovery(anyString(),anyString(),anyString(),writtenBatches.capture(),anyList());
+                    assertThat(writtenBatches.getAllValues().get(0)).hasSize(2);
+                    assertThat(writtenBatches.getAllValues().get(1)).hasSize(1);
+                    doThrow(new IllegalStateException("missing candidate collection")).when(q).verifyRagRecoveryCollection(anyString(), anyString(), anyString(), anyList(), anyList());
+                    assertThatThrownBy(() -> indexService.verify(assets)).isInstanceOf(IllegalStateException.class);
                     assertThat(validation.validate(created.id()).passed()).isTrue();
-                    jdbc.update("UPDATE rag_document_chunks SET chunk_text='변조된 원문' WHERE document_id=? AND use_yn='N' LIMIT 1",id);
+                    jdbc.update("UPDATE rag_document_chunks SET chunk_text='변조된 원문' WHERE chunk_id=?",candidateIds.get(0));
                     assertThat(validation.validate(created.id()).passed()).isFalse();
                     assertThat(recovery.findGeneration(created.id(),false).state()).isEqualTo("FAILED");
                 }
@@ -112,7 +174,10 @@ class RagRecoveryDatabaseTests {
                 assertThat(jdbc.queryForList("SELECT * FROM rag_chunk_embeddings WHERE chunk_id=?",oldId)).isEqualTo(embeds);
             } finally {
                 jdbc.execute("DROP TRIGGER IF EXISTS "+trigger);
+                jdbc.update("DELETE FROM semantic_lexical_index_state WHERE index_version IN (SELECT CONCAT('recovery_',generation_id) FROM rag_recovery_generations WHERE document_id=?)",id);
                 jdbc.update("DELETE FROM rag_recovery_pointers WHERE document_id=?",id);
+                jdbc.update("DELETE a FROM rag_recovery_assets a JOIN rag_recovery_generations g ON g.generation_id=a.generation_id WHERE g.document_id=?", id);
+                jdbc.update("DELETE r FROM rag_recovery_embedding_receipts r JOIN rag_recovery_generations g ON g.generation_id=r.generation_id WHERE g.document_id=?", id);
                 jdbc.update("DELETE m FROM rag_recovery_members m JOIN rag_recovery_generations g ON g.generation_id=m.generation_id WHERE g.document_id=?",id);
                 jdbc.update("DELETE FROM rag_recovery_generations WHERE document_id=?",id);
                 jdbc.update("DELETE FROM rag_documents WHERE document_id=?",id);

@@ -30,6 +30,19 @@ import tools.jackson.databind.ObjectMapper;
 
 class QdrantClientTests {
 
+    @Test void recoveryInspectionReportsOnlyConfirmedMissingPointsWithoutWriting() throws Exception {
+        var requests = new java.util.ArrayList<String>();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/collections", exchange -> {
+            requests.add(exchange.getRequestMethod());
+            respond(exchange, 200, "{\"result\":[]}");
+        }); server.start(); client = client();
+        var result = client.inspectRagRecoveryPoints("c87a26f6-cc34-4303-bdc2-929657369db3", "text-embedding-3-small", "b".repeat(64),
+            java.util.List.of(recoveryRow()), java.util.List.of(java.util.Collections.nCopies(1536, 0.1)));
+        assertThat(result.missingChunkIds()).containsExactly(200L);
+        assertThat(requests).containsExactly("POST");
+    }
+
     @Test void wholeRecoveryCollectionRejectsExtraPointsAndMutationDuringReadback() throws Exception {
         var mode = new AtomicInteger(); var counts = new AtomicInteger();
         var vector = new java.util.ArrayList<Double>(java.util.Collections.nCopies(1536, 0.0)); vector.set(0, 1.0);

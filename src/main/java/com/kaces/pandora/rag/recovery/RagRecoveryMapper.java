@@ -6,6 +6,15 @@ import org.apache.ibatis.annotations.*;
 
 @Mapper
 public interface RagRecoveryMapper {
+    RecoveryAssets findAssets(@Param("generationId") String generationId);
+    int insertAssets(@Param("assets") RecoveryAssets assets);
+    int markIndexReady(@Param("expected") RecoveryGeneration expected);
+    int changedPointerCount();
+    int markEmbeddingUncertain(@Param("generationId") String generationId,@Param("chunkIds") List<Long> chunkIds);
+    int markEmbeddingsVerified(@Param("generationId") String generationId);
+    int verifiedEmbeddingCount(@Param("generationId") String generationId);
+    List<RecoveryEmbeddingReceipt> findEmbeddingReceipts(@Param("generationId") String generationId);
+    int insertEmbeddingReceipt(@Param("receipt") RecoveryEmbeddingReceipt receipt);
     List<Map<String,Object>> baselineStorageSnapshot(@Param("documentId") long documentId);
     List<Map<String,Object>> embeddingSnapshot(@Param("documentId") long documentId);
     List<Map<String,Object>> keywordSnapshot(@Param("documentId") long documentId);

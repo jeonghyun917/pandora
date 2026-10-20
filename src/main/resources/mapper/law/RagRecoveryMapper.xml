@@ -66,4 +66,38 @@
       AND source_hash=#{expected.sourceHash} AND product_sha=#{expected.productSha}
       AND manifest=#{expected.manifest} AND baseline_hash=#{expected.baselineHash} AND preview_hash=#{expected.previewHash}
   </update>
+  <select id="findEmbeddingReceipts" resultType="com.kaces.pandora.rag.recovery.RecoveryEmbeddingReceipt">
+    SELECT generation_id AS generationId,chunk_id AS chunkId,manifest,embedding_model AS embeddingModel,
+      vector_json AS vectorJson,receipt_hash AS receiptHash
+    FROM rag_recovery_embedding_receipts WHERE generation_id=#{generationId} ORDER BY chunk_id FOR UPDATE
+  </select>
+  <insert id="insertEmbeddingReceipt">
+    INSERT INTO rag_recovery_embedding_receipts(generation_id,chunk_id,manifest,embedding_model,vector_json,receipt_hash)
+    VALUES(#{receipt.generationId},#{receipt.chunkId},#{receipt.manifest},#{receipt.embeddingModel},#{receipt.vectorJson},#{receipt.receiptHash})
+  </insert>
+  <select id="findAssets" resultType="com.kaces.pandora.rag.recovery.RecoveryAssets">
+    SELECT generation_id AS generationId,manifest,vector_collection AS vectorCollection,vector_fingerprint AS vectorFingerprint,
+      lexical_fingerprint AS lexicalFingerprint,chunk_count AS chunkCount FROM rag_recovery_assets WHERE generation_id=#{generationId}
+  </select>
+  <insert id="insertAssets">
+    INSERT INTO rag_recovery_assets(generation_id,manifest,vector_collection,vector_fingerprint,lexical_fingerprint,chunk_count)
+    VALUES(#{assets.generationId},#{assets.manifest},#{assets.vectorCollection},#{assets.vectorFingerprint},#{assets.lexicalFingerprint},#{assets.chunkCount})
+  </insert>
+  <update id="markIndexReady">
+    UPDATE rag_recovery_generations SET state='INDEX_READY'
+    WHERE generation_id=#{expected.id} AND document_id=#{expected.documentId} AND state='VALIDATED'
+      AND source_hash=#{expected.sourceHash} AND product_sha=#{expected.productSha} AND manifest=#{expected.manifest}
+      AND baseline_hash=#{expected.baselineHash} AND preview_hash=#{expected.previewHash}
+  </update>
+  <select id="changedPointerCount" resultType="int">SELECT COUNT(*) FROM rag_recovery_pointers WHERE revision!=0</select>
+  <update id="markEmbeddingUncertain">
+    UPDATE rag_recovery_embedding_receipts SET write_status='UNCERTAIN' WHERE generation_id=#{generationId}
+      AND chunk_id IN <foreach collection="chunkIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+  </update>
+  <update id="markEmbeddingsVerified">
+    UPDATE rag_recovery_embedding_receipts SET write_status='VERIFIED' WHERE generation_id=#{generationId}
+  </update>
+  <select id="verifiedEmbeddingCount" resultType="int">
+    SELECT COUNT(*) FROM rag_recovery_embedding_receipts WHERE generation_id=#{generationId} AND write_status='VERIFIED'
+  </select>
 </mapper>

@@ -37,7 +37,7 @@ public final class RagRecoverySourceValidator {
     private static RecoveryValidation result(RecoveryGeneration g,List<String> failures) {
         return new RecoveryValidation(g.id(),g.manifest(),g.sourceHash(),g.productSha(),failures.isEmpty(),failures);
     }
-    private static RagDocumentChunkRow unassigned(RagDocumentChunkRow c) {
+    static RagDocumentChunkRow unassigned(RagDocumentChunkRow c) {
         return new RagDocumentChunkRow(0,c.documentId(),c.chunkVersion(),c.chunkNo(),c.parentSectionTitle(),c.chunkTitle(),c.sectionType(),c.chunkText(),c.embeddingText(),c.pageNo(),c.sourcePath(),c.sourceUrl(),c.sortOrder(),c.contentHash(),c.qualityStatus(),c.qualityReason(),c.sourceProvenance());
     }
     private static String sha(Path original)throws java.io.IOException {

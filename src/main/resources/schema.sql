@@ -464,6 +464,35 @@ CREATE TABLE IF NOT EXISTS rag_recovery_members (
     CONSTRAINT fk_rag_recovery_member_chunk FOREIGN KEY (chunk_id) REFERENCES rag_document_chunks(chunk_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS rag_recovery_embedding_receipts (
+    generation_id CHAR(36) NOT NULL,
+    chunk_id BIGINT NOT NULL,
+    manifest CHAR(64) NOT NULL,
+    embedding_model VARCHAR(100) NOT NULL,
+    vector_json MEDIUMTEXT NOT NULL,
+    receipt_hash CHAR(64) NOT NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (generation_id,chunk_id),
+    CONSTRAINT fk_recovery_receipt_member FOREIGN KEY (generation_id,chunk_id)
+        REFERENCES rag_recovery_members(generation_id,chunk_id),
+    CONSTRAINT chk_recovery_vector_json CHECK (JSON_VALID(vector_json))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE rag_recovery_embedding_receipts ADD COLUMN IF NOT EXISTS write_status VARCHAR(16) NOT NULL DEFAULT 'PREPARED';
+
+CREATE TABLE IF NOT EXISTS rag_recovery_assets (
+    generation_id CHAR(36) NOT NULL,
+    manifest CHAR(64) NOT NULL,
+    vector_collection VARCHAR(64) NOT NULL,
+    vector_fingerprint CHAR(64) NOT NULL,
+    lexical_fingerprint CHAR(64) NOT NULL,
+    chunk_count INT NOT NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (generation_id),
+    CONSTRAINT fk_recovery_assets_generation FOREIGN KEY (generation_id) REFERENCES rag_recovery_generations(generation_id),
+    CONSTRAINT chk_recovery_assets_count CHECK (chunk_count BETWEEN 1 AND 10000)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS rag_import_jobs (
     import_job_id BIGINT NOT NULL AUTO_INCREMENT COMMENT 'RAG import job id',
     import_path VARCHAR(1000) NOT NULL COMMENT 'folder or file path',
