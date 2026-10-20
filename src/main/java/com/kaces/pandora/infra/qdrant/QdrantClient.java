@@ -533,6 +533,104 @@ public class QdrantClient {
 		upsert(chunks, vectors, true, ragCollection());
 	}
 
+    /** Quarantined generation writes: never insert candidate scores into a shared search collection. */
+    public void upsertRagRecovery(String generationId,String embeddingModel,String manifest,
+            List<com.kaces.pandora.rag.document.RagDocumentChunkRow> chunks,List<List<Double>> vectors) {
+        String collection=ragRecoveryCollection(generationId);
+        var points=recoveryPoints(generationId,embeddingModel,manifest,chunks,vectors);
+        ensureCollection(collection);
+        restClient.put().uri("/collections/{collection}/points?wait=true",collection)
+                .body(Map.of("points",points)).retrieve().toBodilessEntity();
+    }
+
+    private List<Map<String,Object>> recoveryPoints(String generationId,String embeddingModel,String manifest,
+            List<com.kaces.pandora.rag.document.RagDocumentChunkRow> chunks,List<List<Double>> vectors) {
+        ragRecoveryCollection(generationId);
+        if(embeddingModel==null || !embeddingModel.equals(properties.openai().embeddingModel())
+                || manifest==null || !manifest.matches("[0-9a-f]{64}") || chunks==null || vectors==null
+                || chunks.isEmpty() || chunks.size()>128 || chunks.size()!=vectors.size()) {
+            throw new IllegalArgumentException("Bounded generation/model/manifest/vector identity required");
+        }
+        var ids=new LinkedHashSet<Long>();var documents=new LinkedHashSet<Long>();
+        var points=new ArrayList<Map<String,Object>>();
+        for(int n=0;n<chunks.size();n++) {
+            var chunk=chunks.get(n);var vector=vectors.get(n);
+            if(chunk==null || chunk.chunkId()<=0 || chunk.chunkId()>Long.MAX_VALUE-RAG_POINT_ID_OFFSET
+                    || chunk.documentId()<=0 || chunk.chunkVersion()!=4 || !ids.add(chunk.chunkId())
+                    || chunk.contentHash()==null || !chunk.contentHash().matches("[0-9a-f]{64}")
+                    || !Set.of("PASS","REVIEW","CONTEXT_ONLY").contains(chunk.qualityStatus())
+                    || vector==null || vector.size()!=properties.qdrant().vectorSize()
+                    || vector.stream().anyMatch(v->v==null || !Double.isFinite(v) || !Float.isFinite(v.floatValue()))) {
+                throw new IllegalArgumentException("Invalid candidate point or vector");
+            }
+            double norm=vector.stream().mapToDouble(v->v*v).sum();
+            if(norm<=0 || !Float.isFinite((float)norm))throw new IllegalArgumentException("Recovery vector must have finite nonzero float32 norm");
+            documents.add(chunk.documentId());
+            points.add(Map.of("id",ragPointId(chunk.chunkId()),"vector",List.copyOf(vector),"payload",Map.of(
+                    "chunkId",chunk.chunkId(),"documentId",chunk.documentId(),"chunkVersion",4,
+                    "target","official_doc","activationStatus","CANDIDATE","generationId",generationId,
+                    "contentHash",chunk.contentHash(),"embeddingModel",embeddingModel,"manifest",manifest)));
+        }
+        if(documents.size()!=1)throw new IllegalArgumentException("A recovery generation owns exactly one document");
+        return List.copyOf(points);
+    }
+
+    /** Readback receipt only. Whole-collection count/readiness is a separate required gate. */
+    public String verifyRagRecoveryPoints(String generationId,String embeddingModel,String manifest,
+            List<com.kaces.pandora.rag.document.RagDocumentChunkRow> chunks,List<List<Double>> vectors) {
+        String collection=ragRecoveryCollection(generationId);
+        var expected=recoveryPoints(generationId,embeddingModel,manifest,chunks,vectors);
+        var byId=new LinkedHashMap<Long,Map<String,Object>>();
+        for(var point:expected)byId.put((Long)point.get("id"),point);
+        Map<?,?> response=restClient.post().uri("/collections/{collection}/points",collection)
+                .body(Map.of("ids",List.copyOf(byId.keySet()),"with_payload",true,"with_vector",true)).retrieve().body(Map.class);
+        if(response==null || !(response.get("result") instanceof List<?> actual) || actual.size()!=expected.size())throw new IllegalStateException("Recovery point count mismatch");
+        var canonical=new java.util.TreeMap<Long,Object>();
+        for(Object item:actual) {
+            if(!(item instanceof Map<?,?> point) || !(point.get("payload") instanceof Map<?,?> payload)
+                    || !(point.get("vector") instanceof List<?> observed))throw new IllegalStateException("Malformed recovery point");
+            long id=strictPositivePointId(point.get("id"));var want=byId.get(id);
+            if(want==null || canonical.containsKey(id))throw new IllegalStateException("Unexpected or duplicate recovery point");
+            var expectedPayload=(Map<?,?>)want.get("payload");
+            for(var key:List.of("chunkId","documentId","chunkVersion")) {
+                if(strictPositivePointId(payload.get(key))!=((Number)expectedPayload.get(key)).longValue())throw new IllegalStateException("Recovery numeric identity mismatch");
+            }
+            for(var key:List.of("target","activationStatus","generationId","contentHash","embeddingModel","manifest")) {
+                if(!expectedPayload.get(key).equals(payload.get(key)))throw new IllegalStateException("Recovery point payload mismatch");
+            }
+            var wanted=(List<?>)want.get("vector");
+            if(observed.size()!=wanted.size())throw new IllegalStateException("Recovery vector dimension mismatch");
+            double actualNorm=0,wantedNorm=0;
+            for(int n=0;n<observed.size();n++) {
+                if(!(observed.get(n) instanceof Number v) || !Double.isFinite(v.doubleValue()) || !Float.isFinite(v.floatValue()))throw new IllegalStateException("Malformed recovery vector");
+                actualNorm+=v.doubleValue()*v.doubleValue();double w=((Number)wanted.get(n)).doubleValue();wantedNorm+=w*w;
+            }
+            if(actualNorm<=0 || wantedNorm<=0)throw new IllegalStateException("Zero recovery vector");
+            actualNorm=Math.sqrt(actualNorm);wantedNorm=Math.sqrt(wantedNorm);double error=0;
+            var bits=new ArrayList<Integer>(observed.size());
+            for(int n=0;n<observed.size();n++) {
+                var v=(Number)observed.get(n);double delta=v.doubleValue()/actualNorm-((Number)wanted.get(n)).doubleValue()/wantedNorm;
+                error+=delta*delta;bits.add(Float.floatToIntBits(v.floatValue()));
+            }
+            // Qdrant Cosine storage normalizes to float32. This checks that transform, not answer support.
+            if(error>1e-10)throw new IllegalStateException("Recovery vector differs from prepared embedding");
+            var boundPayload=new java.util.TreeMap<String,Object>();
+            expectedPayload.forEach((key,value)->boundPayload.put(key.toString(),value));
+            canonical.put(id,List.of(boundPayload,bits));
+        }
+        return com.kaces.pandora.common.text.LawHashUtils.sha256(objectMapper.writeValueAsString(canonical));
+    }
+
+    public String ragRecoveryCollection(String generationId) {
+        if(generationId==null || !generationId.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+            throw new IllegalArgumentException("Recovery generation UUID required");
+        }
+        String collection="rag_recovery_"+generationId.replace("-","");
+        if(collection.equals(properties.qdrant().collection()) || collection.equals(ragCollection())
+                || collection.equals(lawCandidateCollection()))throw new IllegalArgumentException("Recovery collection collides with shared collection");
+        return collection;
+    }
+
 	// 메소드 설명: upsert 처리 흐름을 수행합니다.
 	private void upsert(List<LawSemanticChunkRow> chunks, List<List<Double>> vectors, boolean stringPointId) {
 		upsert(chunks, vectors, stringPointId, properties.qdrant().collection(), "ACTIVE");

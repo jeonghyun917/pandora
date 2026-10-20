@@ -30,6 +30,55 @@ import tools.jackson.databind.ObjectMapper;
 
 class QdrantClientTests {
 
+    @Test void recoveryVectorsAreWrittenOnlyToAnIsolatedGenerationCollection() throws Exception {
+        var paths=new java.util.concurrent.CopyOnWriteArrayList<String>();var body=new AtomicReference<String>();
+        server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/collections",exchange->{
+            paths.add(exchange.getRequestURI().getPath());
+            String text=new String(exchange.getRequestBody().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
+            if(exchange.getRequestURI().getPath().endsWith("/points"))body.set(text);
+            respond(exchange,200,"{\"result\":{\"status\":\"completed\"}}");
+        });server.start();client=client();
+        String generation="c87a26f6-cc34-4303-bdc2-929657369db3";
+        var row=new com.kaces.pandora.rag.document.RagDocumentChunkRow(200,42,4,"page 1",null,"계획","body","기관은 자료를 보존한다.",null,1,"$.pages[1]",null,0,"a".repeat(64),"PASS",null,null);
+        client.upsertRagRecovery(generation,"text-embedding-3-small","b".repeat(64),java.util.List.of(row),java.util.List.of(java.util.Collections.nCopies(1536,0.1)));
+        assertThat(paths).allMatch(p->p.startsWith("/collections/rag_recovery_c87a26f6cc344303bdc2929657369db3"));
+        assertThat(body.get()).contains("\"chunkId\":200","\"documentId\":42","\"activationStatus\":\"CANDIDATE\"","\"contentHash\":\""+"a".repeat(64),"\"manifest\":\""+"b".repeat(64));
+    }
+    @Test void malformedRecoveryNamespaceAndVectorsAreRejectedBeforeAnyHttpRequest() throws Exception {
+        var requests=new AtomicInteger();server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/collections",exchange->{requests.incrementAndGet();respond(exchange,200,"{}");});server.start();client=client();
+        var row=new com.kaces.pandora.rag.document.RagDocumentChunkRow(200,42,4,"page 1",null,"계획","body","원본",null,1,"source",null,0,"a".repeat(64),"PASS",null,null);
+        assertThatThrownBy(()->client.upsertRagRecovery("../rag","text-embedding-3-small","b".repeat(64),java.util.List.of(row),java.util.List.of(java.util.List.of(0.1)))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(()->client.upsertRagRecovery("c87a26f6-cc34-4303-bdc2-929657369db3","text-embedding-3-small","b".repeat(64),java.util.List.of(row),java.util.List.of(java.util.List.of(0.1)))).isInstanceOf(IllegalArgumentException.class);
+        assertThat(requests).hasValue(0);
+    }
+    @Test void zeroRecoveryVectorCannotBeWritten() throws Exception {
+        var requests=new AtomicInteger();server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/collections",exchange->{requests.incrementAndGet();respond(exchange,200,"{}");});server.start();client=client();
+        assertThatThrownBy(()->client.upsertRagRecovery("c87a26f6-cc34-4303-bdc2-929657369db3","text-embedding-3-small","b".repeat(64),
+                java.util.List.of(recoveryRow()),java.util.List.of(java.util.Collections.nCopies(1536,0.0)))).isInstanceOf(IllegalArgumentException.class);
+        assertThat(requests).hasValue(0);
+    }
+    @Test void recoveryPointReadbackRejectsWrongManifestMissingPointAndChangedVector() throws Exception {
+        var mode=new AtomicInteger();var vector=new java.util.ArrayList<Double>(java.util.Collections.nCopies(1536,0.0));vector.set(0,1.0);
+        server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/collections",exchange->{
+            assertThat(exchange.getRequestURI().getPath()).isEqualTo("/collections/rag_recovery_c87a26f6cc344303bdc2929657369db3/points");
+            assertThat(exchange.getRequestMethod()).isEqualTo("POST");
+            if(mode.get()==2){respond(exchange,200,"{\"result\":[]}");return;}
+            var observed=new java.util.ArrayList<>(vector);if(mode.get()==3){observed.set(0,0.0);observed.set(1,1.0);}
+            var payload=java.util.Map.of("chunkId",200,"documentId",42,"chunkVersion",4,"target","official_doc","activationStatus","CANDIDATE",
+                    "generationId","c87a26f6-cc34-4303-bdc2-929657369db3","contentHash","a".repeat(64),"embeddingModel","text-embedding-3-small","manifest",(mode.get()==1?"c":"b").repeat(64));
+            respond(exchange,200,new ObjectMapper().writeValueAsString(java.util.Map.of("result",java.util.List.of(java.util.Map.of("id",9000000000000200L,"payload",payload,"vector",observed)))));
+        });server.start();client=client();
+        assertThat(client.verifyRagRecoveryPoints("c87a26f6-cc34-4303-bdc2-929657369db3","text-embedding-3-small","b".repeat(64),java.util.List.of(recoveryRow()),java.util.List.of(vector))).matches("[0-9a-f]{64}");
+        for(int bad=1;bad<=3;bad++){mode.set(bad);assertThatThrownBy(()->client.verifyRagRecoveryPoints("c87a26f6-cc34-4303-bdc2-929657369db3","text-embedding-3-small","b".repeat(64),java.util.List.of(recoveryRow()),java.util.List.of(vector))).isInstanceOf(IllegalStateException.class);}
+    }
+    private static com.kaces.pandora.rag.document.RagDocumentChunkRow recoveryRow() {
+        return new com.kaces.pandora.rag.document.RagDocumentChunkRow(200,42,4,"page 1",null,"계획","body","원본",null,1,"source",null,0,"a".repeat(64),"PASS",null,null);
+    }
+
 	private HttpServer server;
 	private QdrantClient client;
 	private AtomicInteger searchBodyAttempts;
