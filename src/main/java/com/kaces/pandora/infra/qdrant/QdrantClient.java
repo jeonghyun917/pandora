@@ -621,6 +621,43 @@ public class QdrantClient {
         return com.kaces.pandora.common.text.LawHashUtils.sha256(objectMapper.writeValueAsString(canonical));
     }
 
+    /** Full namespace parity. This is a readback receipt, not a distributed transaction. */
+    public String verifyRagRecoveryCollection(String generationId,String embeddingModel,String manifest,
+            List<com.kaces.pandora.rag.document.RagDocumentChunkRow> chunks,List<List<Double>> vectors) {
+        String collection=ragRecoveryCollection(generationId);
+        if(chunks==null || vectors==null || chunks.isEmpty() || chunks.size()>10000 || chunks.size()!=vectors.size()) {
+            throw new IllegalArgumentException("Bounded complete recovery assets required");
+        }
+        var rows=List.copyOf(chunks);
+        var copiedVectors=vectors.stream().map(List::copyOf).toList();
+        var ids=new java.util.HashSet<Long>();var documents=new java.util.HashSet<Long>();
+        // Validate every batch and cross-batch identity before making any request.
+        for(int start=0;start<rows.size();start+=128) {
+            int end=Math.min(start+128,rows.size());
+            recoveryPoints(generationId,embeddingModel,manifest,rows.subList(start,end),copiedVectors.subList(start,end));
+            for(var row:rows.subList(start,end)) {
+                if(!ids.add(row.chunkId()))throw new IllegalArgumentException("Duplicate recovery point");
+                documents.add(row.documentId());
+            }
+        }
+        if(documents.size()!=1)throw new IllegalArgumentException("Recovery document mismatch");
+        var before=indexSnapshot(collection).orElseThrow(()->new IllegalStateException("Recovery collection unavailable"));
+        if(!before.isStable() || before.exactPointCount()!=rows.size())throw new IllegalStateException("Recovery collection parity mismatch");
+        var order=java.util.stream.IntStream.range(0,rows.size()).boxed()
+                .sorted(java.util.Comparator.comparingLong(n->rows.get(n).chunkId())).toList();
+        var receipts=new ArrayList<String>();
+        for(int start=0;start<order.size();start+=128) {
+            var batch=order.subList(start,Math.min(start+128,order.size()));
+            receipts.add(verifyRagRecoveryPoints(generationId,embeddingModel,manifest,
+                    batch.stream().map(rows::get).toList(),batch.stream().map(copiedVectors::get).toList()));
+        }
+        var after=indexSnapshot(collection).orElseThrow(()->new IllegalStateException("Recovery collection disappeared"));
+        if(!after.isStable() || after.exactPointCount()!=rows.size() || before.vectorSize()!=after.vectorSize()
+                || !before.distance().equals(after.distance()))throw new IllegalStateException("Recovery collection changed during verification");
+        return com.kaces.pandora.common.text.LawHashUtils.sha256(objectMapper.writeValueAsString(
+                List.of(generationId,embeddingModel,manifest,rows.size(),before.vectorSize(),before.distance(),receipts)));
+    }
+
     public String ragRecoveryCollection(String generationId) {
         if(generationId==null || !generationId.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
             throw new IllegalArgumentException("Recovery generation UUID required");

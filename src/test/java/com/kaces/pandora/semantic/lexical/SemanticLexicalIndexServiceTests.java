@@ -19,6 +19,52 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 
 class SemanticLexicalIndexServiceTests {
+	@Test
+	void recoveryFingerprintBindsActualBodyAndFieldWeights() {
+		SemanticLexicalMapper mapper = mock(SemanticLexicalMapper.class);
+		when(mapper.markRecoveryIndexReady(any(), any(), any(Integer.class), any(Double.class))).thenReturn(1);
+		var service = new SemanticLexicalIndexService(mapper, new KoreanLexicalTokenizer());
+		var first = service.rebuildRecovery("6dca282f-56c2-477e-b1b1-66d35d5e9d56", List.of(document("law", 1, "법", "조", "원문")));
+		var changed = service.rebuildRecovery("6dca282f-56c2-477e-b1b1-66d35d5e9d57", List.of(document("law", 1, "법", "조", "변조")));
+		assertThat(changed.contentFingerprint()).isNotEqualTo(first.contentFingerprint());
+		var weighted = new SemanticLexicalIndexService(mapper, new KoreanLexicalTokenizer(), () -> "unused",
+			new LawAiLexicalProperties(1.2, .75, 9, 6, 7, 1, 24, 100));
+		assertThat(weighted.rebuildRecovery("6dca282f-56c2-477e-b1b1-66d35d5e9d58", List.of(document("law", 1, "법", "조", "원문"))).contentFingerprint())
+			.isNotEqualTo(first.contentFingerprint());
+	}
+
+	@Test
+	void recoveryBuildNeverPublishesAsOrdinaryReady() {
+		SemanticLexicalMapper mapper = mock(SemanticLexicalMapper.class);
+		when(mapper.markRecoveryIndexReady(any(), any(), any(Integer.class), any(Double.class))).thenReturn(1);
+		SemanticLexicalIndexService service = new SemanticLexicalIndexService(mapper, new KoreanLexicalTokenizer());
+		String generation = "6dca282f-56c2-477e-b1b1-66d35d5e9d56";
+		var result = service.rebuildRecovery(generation, List.of(document("law", 1, "법", "조", "본문")));
+		assertThat(result.indexVersion()).isEqualTo("recovery_" + generation);
+		assertThat(result.activeChunkCount()).isEqualTo(1);
+		verify(mapper, never()).findActiveSearchableChunks();
+		verify(mapper, never()).markIndexReady(any(), any(), any(Integer.class), any(Double.class));
+		verify(mapper).markRecoveryIndexReady(eq(result.indexVersion()), eq(result.contentFingerprint()), eq(1), eq(result.averageWeightedLength()));
+	}
+
+	@Test
+	void recoveryRejectsDuplicateIdentityBeforeWriting() {
+		SemanticLexicalMapper mapper = mock(SemanticLexicalMapper.class);
+		SemanticLexicalIndexService service = new SemanticLexicalIndexService(mapper, new KoreanLexicalTokenizer());
+		var row = document("law", 1, "법", "조", "본문");
+		assertThatThrownBy(() -> service.rebuildRecovery("6dca282f-56c2-477e-b1b1-66d35d5e9d56", List.of(row, row)))
+			.isInstanceOf(IllegalArgumentException.class);
+		org.mockito.Mockito.verifyNoInteractions(mapper);
+	}
+
+	@Test
+	void failedRecoveryPublicationIsNotReportedReady() {
+		SemanticLexicalMapper mapper = mock(SemanticLexicalMapper.class);
+		SemanticLexicalIndexService service = new SemanticLexicalIndexService(mapper, new KoreanLexicalTokenizer());
+		assertThatThrownBy(() -> service.rebuildRecovery("6dca282f-56c2-477e-b1b1-66d35d5e9d56", List.of(document("law", 1, "법", "조", "본문"))))
+			.isInstanceOf(IllegalStateException.class);
+		verify(mapper).markIndexFailed("recovery_6dca282f-56c2-477e-b1b1-66d35d5e9d56");
+	}
 
 	@Test
 	void abandonedRecoveryOnlyChangesOneBuildingVersion() {

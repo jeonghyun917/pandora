@@ -24,6 +24,30 @@ class RagRecoveryDatabaseTests {
         assertThat(expected.getFileName().toString()).startsWith("pandora-import-tx-test-");
         assertThat(Path.of(jdbc.queryForObject("SELECT @@datadir",String.class)).toRealPath()).isEqualTo(expected);
         new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(new org.springframework.core.io.ClassPathResource("schema.sql")).execute(ds);
+        jdbc.execute("ALTER TABLE semantic_lexical_index_state DROP CONSTRAINT chk_semantic_lexical_state_status, ADD CONSTRAINT chk_semantic_lexical_state_status CHECK (status IN ('BUILDING','READY','FAILED'))");
+        new com.kaces.pandora.semantic.lexical.SemanticLexicalSchemaMaintenance(jdbc).run(null);
+        var lexicalFactory = new org.mybatis.spring.SqlSessionFactoryBean();
+        lexicalFactory.setDataSource(ds);
+        lexicalFactory.setMapperLocations(new org.springframework.core.io.ClassPathResource("mapper/law/SemanticLexicalMapper.xml"));
+        var lexical = new org.mybatis.spring.SqlSessionTemplate(lexicalFactory.getObject())
+            .getMapper(com.kaces.pandora.semantic.lexical.SemanticLexicalMapper.class);
+        String beforeRevision = lexical.findReadyRevision();
+        String lexicalGeneration = UUID.randomUUID().toString();
+        String lexicalVersion = "recovery_" + lexicalGeneration;
+        try {
+            var lexicalService = new com.kaces.pandora.semantic.lexical.SemanticLexicalIndexService(lexical,
+                new com.kaces.pandora.semantic.lexical.KoreanLexicalTokenizer());
+            var result = lexicalService.rebuildRecovery(lexicalGeneration, List.of(
+                new com.kaces.pandora.semantic.lexical.LexicalChunkDocument("official_doc", 123, 456,
+                    "parent", "a".repeat(64), "제목", "부모", "조문", "원본 보존")));
+            assertThat(result.activeChunkCount()).isEqualTo(1);
+            assertThat(jdbc.queryForObject("SELECT status FROM semantic_lexical_index_state WHERE index_version=?", String.class, lexicalVersion)).isEqualTo("RECOVERY_READY");
+            assertThat(lexical.findReadyRevision()).isEqualTo(beforeRevision);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM semantic_lexical_terms WHERE index_version=?", Integer.class, lexicalVersion)).isPositive();
+            assertThatThrownBy(() -> jdbc.update("UPDATE semantic_lexical_index_state SET status='UNSAFE' WHERE index_version=?", lexicalVersion)).isInstanceOf(RuntimeException.class);
+        } finally {
+            jdbc.update("DELETE FROM semantic_lexical_index_state WHERE index_version=?", lexicalVersion);
+        }
         var factory=new org.mybatis.spring.SqlSessionFactoryBean();factory.setDataSource(ds);
         factory.setMapperLocations(new org.springframework.core.io.ClassPathResource("mapper/law/RagDocumentMapper.xml"),new org.springframework.core.io.ClassPathResource("mapper/law/RagRecoveryMapper.xml"));
         var session=new org.mybatis.spring.SqlSessionTemplate(factory.getObject());

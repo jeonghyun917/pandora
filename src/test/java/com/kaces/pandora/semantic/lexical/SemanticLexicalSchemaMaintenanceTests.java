@@ -15,8 +15,24 @@ import org.springframework.jdbc.core.JdbcTemplate;
 class SemanticLexicalSchemaMaintenanceTests {
 
 	@Test
+	void upgradesOldStatusConstraintInOneAlterWithoutDroppingProtection() {
+		JdbcTemplate jdbc = mock(JdbcTemplate.class);
+		when(jdbc.queryForObject(org.mockito.ArgumentMatchers.anyString(), eq(String.class)))
+			.thenReturn("status in ('BUILDING','READY','FAILED')");
+		when(jdbc.queryForObject(org.mockito.ArgumentMatchers.anyString(), eq(String.class), org.mockito.ArgumentMatchers.anyString()))
+			.thenReturn("utf8mb4_bin");
+		new SemanticLexicalSchemaMaintenance(jdbc).run(null);
+		ArgumentCaptor<String> statements = ArgumentCaptor.forClass(String.class);
+		verify(jdbc, org.mockito.Mockito.atLeastOnce()).execute(statements.capture());
+		assertThat(statements.getAllValues().stream().filter(sql -> sql.startsWith("ALTER TABLE")).toList())
+			.singleElement().asString().contains("DROP CONSTRAINT chk_semantic_lexical_state_status, ADD CONSTRAINT", "'RECOVERY_READY'", "'FAILED'");
+	}
+
+	@Test
 	void keepsTermIdentityBinaryForBothNewAndExistingTables() throws Exception {
 		JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+		when(jdbcTemplate.queryForObject(org.mockito.ArgumentMatchers.anyString(), eq(String.class)))
+			.thenReturn("status in ('BUILDING','READY','FAILED','RECOVERY_READY')");
 		when(jdbcTemplate.queryForObject(org.mockito.ArgumentMatchers.anyString(),
 			eq(String.class), org.mockito.ArgumentMatchers.anyString()))
 			.thenReturn("utf8mb4_unicode_ci");
@@ -42,6 +58,8 @@ class SemanticLexicalSchemaMaintenanceTests {
 	@Test
 	void doesNotAlterLargeTermTablesAgainWhenBinaryIdentityIsAlreadyInstalled() throws Exception {
 		JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+		when(jdbcTemplate.queryForObject(org.mockito.ArgumentMatchers.anyString(), eq(String.class)))
+			.thenReturn("status in ('BUILDING','READY','FAILED','RECOVERY_READY')");
 		when(jdbcTemplate.queryForObject(org.mockito.ArgumentMatchers.anyString(),
 			eq(String.class), org.mockito.ArgumentMatchers.anyString()))
 			.thenReturn("utf8mb4_bin");

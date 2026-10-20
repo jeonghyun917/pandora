@@ -601,7 +601,7 @@ CREATE TABLE IF NOT EXISTS semantic_lexical_index_state (
     created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     PRIMARY KEY (index_version),
     KEY idx_semantic_lexical_state_ready (status, completed_at),
-    CONSTRAINT chk_semantic_lexical_state_status CHECK (status IN ('BUILDING', 'READY', 'FAILED'))
+    CONSTRAINT chk_semantic_lexical_state_status CHECK (status IN ('BUILDING', 'READY', 'FAILED', 'RECOVERY_READY'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS semantic_lexical_chunks (

@@ -30,6 +30,29 @@ import tools.jackson.databind.ObjectMapper;
 
 class QdrantClientTests {
 
+    @Test void wholeRecoveryCollectionRejectsExtraPointsAndMutationDuringReadback() throws Exception {
+        var mode = new AtomicInteger(); var counts = new AtomicInteger();
+        var vector = new java.util.ArrayList<Double>(java.util.Collections.nCopies(1536, 0.0)); vector.set(0, 1.0);
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/collections", exchange -> {
+            String path = exchange.getRequestURI().getPath();
+            if (path.endsWith("/points/count")) {
+                int observed = counts.incrementAndGet();
+                respond(exchange, 200, "{\"result\":{\"count\":" + (mode.get() == 1 || mode.get() == 2 && observed > 1 ? 2 : 1) + "}}");
+            } else if (path.endsWith("/points")) {
+                var payload = java.util.Map.of("chunkId",200,"documentId",42,"chunkVersion",4,"target","official_doc","activationStatus","CANDIDATE",
+                    "generationId","c87a26f6-cc34-4303-bdc2-929657369db3","contentHash","a".repeat(64),"embeddingModel","text-embedding-3-small","manifest","b".repeat(64));
+                respond(exchange,200,new ObjectMapper().writeValueAsString(java.util.Map.of("result",java.util.List.of(java.util.Map.of("id",9000000000000200L,"payload",payload,"vector",vector)))));
+            } else respond(exchange, 200, collectionWithQueue("green", 1536, 1, 0, 1, 1));
+        }); server.start(); client = client();
+        assertThat(client.verifyRagRecoveryCollection("c87a26f6-cc34-4303-bdc2-929657369db3", "text-embedding-3-small", "b".repeat(64), java.util.List.of(recoveryRow()), java.util.List.of(vector))).matches("[0-9a-f]{64}");
+        for (int bad : new int[]{1, 2}) {
+            mode.set(bad); counts.set(0);
+            assertThatThrownBy(() -> client.verifyRagRecoveryCollection("c87a26f6-cc34-4303-bdc2-929657369db3", "text-embedding-3-small", "b".repeat(64), java.util.List.of(recoveryRow()), java.util.List.of(vector)))
+                .isInstanceOf(IllegalStateException.class);
+        }
+    }
+
     @Test void recoveryVectorsAreWrittenOnlyToAnIsolatedGenerationCollection() throws Exception {
         var paths=new java.util.concurrent.CopyOnWriteArrayList<String>();var body=new AtomicReference<String>();
         server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);

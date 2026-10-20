@@ -20,11 +20,29 @@ public class SemanticLexicalSchemaMaintenance implements ApplicationRunner {
 	@Override
 	public void run(ApplicationArguments args) {
 		jdbcTemplate.execute(indexStateTable());
+		ensureRecoveryStatus();
 		jdbcTemplate.execute(chunkTable());
 		jdbcTemplate.execute(termTable());
 		jdbcTemplate.execute(termStatsTable());
 		ensureBinaryTermIdentity("semantic_lexical_terms");
 		ensureBinaryTermIdentity("semantic_lexical_term_stats");
+	}
+
+	private void ensureRecoveryStatus() {
+		String clause = jdbcTemplate.queryForObject("""
+			SELECT CHECK_CLAUSE FROM information_schema.CHECK_CONSTRAINTS
+			WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = 'semantic_lexical_index_state'
+			  AND CONSTRAINT_NAME = 'chk_semantic_lexical_state_status'
+			""", String.class);
+		if (clause == null) {
+			throw new IllegalStateException("Lexical state constraint is unavailable.");
+		}
+		if (!clause.contains("'RECOVERY_READY'")) {
+			// One DDL statement: never leave the state table without its CHECK.
+			jdbcTemplate.execute("ALTER TABLE semantic_lexical_index_state "
+				+ "DROP CONSTRAINT chk_semantic_lexical_state_status, ADD CONSTRAINT "
+				+ "chk_semantic_lexical_state_status CHECK (status IN ('BUILDING','READY','FAILED','RECOVERY_READY'))");
+		}
 	}
 
 	private void ensureBinaryTermIdentity(String tableName) {
@@ -53,7 +71,7 @@ public class SemanticLexicalSchemaMaintenance implements ApplicationRunner {
 				created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
 				PRIMARY KEY (index_version),
 				KEY idx_semantic_lexical_state_ready (status, completed_at),
-				CONSTRAINT chk_semantic_lexical_state_status CHECK (status IN ('BUILDING','READY','FAILED'))
+				CONSTRAINT chk_semantic_lexical_state_status CHECK (status IN ('BUILDING','READY','FAILED','RECOVERY_READY'))
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 			""";
 	}

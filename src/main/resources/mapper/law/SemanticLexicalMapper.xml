@@ -185,6 +185,15 @@
     WHERE index_version = #{indexVersion} AND status = 'BUILDING'
   </update>
 
+  <update id="markRecoveryIndexReady">
+    UPDATE semantic_lexical_index_state
+    SET content_fingerprint = #{contentFingerprint}, active_chunk_count = #{activeChunkCount},
+        average_weighted_length = #{averageWeightedLength}, status = 'RECOVERY_READY',
+        completed_at = CURRENT_TIMESTAMP(6)
+    WHERE index_version = #{indexVersion} AND status = 'BUILDING'
+      AND LEFT(index_version, 9) = 'recovery_'
+  </update>
+
 	<update id="markIndexFailed">
 		UPDATE semantic_lexical_index_state
 		SET status = 'FAILED', completed_at = CURRENT_TIMESTAMP(6)

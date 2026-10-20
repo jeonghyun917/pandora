@@ -100,6 +100,22 @@ public class SemanticLexicalIndexService {
 		if (documents == null) {
 			documents = List.of();
 		}
+		return rebuild(indexVersion, documents, false);
+	}
+
+	/** Builds a full corpus snapshot without making it the ordinary READY revision. */
+	public BuildResult rebuildRecovery(String generationId, List<LexicalChunkDocument> documents) {
+		if (generationId == null || !generationId.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+			throw new IllegalArgumentException("A canonical generation is required.");
+		}
+		List<LexicalChunkDocument> snapshot = List.copyOf(documents);
+		if (snapshot.isEmpty() || snapshot.stream().map(row -> row.target() + ":" + row.chunkId()).distinct().count() != snapshot.size()) {
+			throw new IllegalArgumentException("A nonempty snapshot with unique identities is required.");
+		}
+		return rebuild("recovery_" + generationId, snapshot, true);
+	}
+
+	private BuildResult rebuild(String indexVersion, List<LexicalChunkDocument> documents, boolean recovery) {
 		mapper.insertIndexState(new SemanticLexicalMapper.IndexStateRow(
 			indexVersion,
 			tokenizer.version(),
@@ -110,7 +126,7 @@ public class SemanticLexicalIndexService {
 			null
 		));
 		try {
-			return build(indexVersion, documents);
+			return build(indexVersion, documents, recovery);
 		} catch (RuntimeException exception) {
 			try {
 				mapper.markIndexFailed(indexVersion);
@@ -121,7 +137,7 @@ public class SemanticLexicalIndexService {
 		}
 	}
 
-	private BuildResult build(String indexVersion, List<LexicalChunkDocument> documents) {
+	private BuildResult build(String indexVersion, List<LexicalChunkDocument> documents, boolean recovery) {
 		long totalWeightedLength = 0;
 		int termRows = 0;
 		for (int start = 0; start < documents.size(); start += WRITE_BATCH_SIZE) {
@@ -155,8 +171,8 @@ public class SemanticLexicalIndexService {
 		double averageWeightedLength = documents.isEmpty()
 			? 0.0
 			: (double) totalWeightedLength / documents.size();
-		String fingerprint = contentFingerprint(documents);
-		publish(indexVersion, fingerprint, documents.size(), averageWeightedLength);
+		String fingerprint = recovery ? recoveryFingerprint(documents) : contentFingerprint(documents);
+		publish(indexVersion, fingerprint, documents.size(), averageWeightedLength, recovery);
 		return new BuildResult(
 			indexVersion,
 			fingerprint,
@@ -170,11 +186,18 @@ public class SemanticLexicalIndexService {
 		String indexVersion,
 		String fingerprint,
 		int activeChunkCount,
-		double averageWeightedLength
+		double averageWeightedLength,
+		boolean recovery
 	) {
 		Runnable publication = () -> {
 			mapper.markChunksReady(indexVersion);
-			mapper.markIndexReady(indexVersion, fingerprint, activeChunkCount, averageWeightedLength);
+			if (recovery) {
+				if (mapper.markRecoveryIndexReady(indexVersion, fingerprint, activeChunkCount, averageWeightedLength) != 1) {
+					throw new IllegalStateException("Recovery lexical publication failed.");
+				}
+			} else {
+				mapper.markIndexReady(indexVersion, fingerprint, activeChunkCount, averageWeightedLength);
+			}
 		};
 		if (transactionTemplate == null) {
 			publication.run();
@@ -208,6 +231,16 @@ public class SemanticLexicalIndexService {
 		} catch (NoSuchAlgorithmException exception) {
 			throw new IllegalStateException("SHA-256 is unavailable", exception);
 		}
+	}
+
+	private String recoveryFingerprint(List<LexicalChunkDocument> documents) {
+		var canonical = new ArrayList<Object>();
+		canonical.add(tokenizer.version());
+		canonical.add(fields.stream().map(field -> List.of(field.kind(), field.weight())).toList());
+		canonical.add(documents.stream().sorted(Comparator.comparing(LexicalChunkDocument::target)
+			.thenComparingLong(LexicalChunkDocument::chunkId)).toList());
+		return com.kaces.pandora.common.text.LawHashUtils.sha256(
+			new tools.jackson.databind.ObjectMapper().writeValueAsString(canonical));
 	}
 
 	private String nullToEmpty(String value) {

@@ -48,6 +48,13 @@ public interface SemanticLexicalMapper {
 
 	int markIndexFailed(@Param("indexVersion") String indexVersion);
 
+	int markRecoveryIndexReady(
+		@Param("indexVersion") String indexVersion,
+		@Param("contentFingerprint") String contentFingerprint,
+		@Param("activeChunkCount") int activeChunkCount,
+		@Param("averageWeightedLength") double averageWeightedLength
+	);
+
 	record IndexStateRow(
 		String indexVersion,
 		String tokenizerVersion,
