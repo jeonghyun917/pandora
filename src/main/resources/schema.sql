@@ -423,6 +423,44 @@ CREATE TABLE IF NOT EXISTS rag_chunk_embeddings (
     )
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS rag_recovery_generations (
+    generation_id CHAR(36) NOT NULL,
+    document_id BIGINT NOT NULL,
+    source_hash CHAR(64) NOT NULL,
+    product_sha CHAR(40) NOT NULL,
+    baseline_hash CHAR(64) NOT NULL,
+    manifest CHAR(64) NOT NULL,
+    preview_hash CHAR(64) NOT NULL,
+    state VARCHAR(20) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (generation_id),
+    UNIQUE KEY uk_rag_recovery_preview (document_id, preview_hash),
+    KEY idx_rag_recovery_document (document_id, state),
+    CONSTRAINT fk_rag_recovery_document FOREIGN KEY (document_id) REFERENCES rag_documents(document_id),
+    CONSTRAINT chk_rag_recovery_state CHECK (state IN ('PENDING','VALIDATED','INDEX_READY','ACTIVE','RETIRED','FAILED','STALE'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS rag_recovery_pointers (
+    document_id BIGINT NOT NULL,
+    revision BIGINT NOT NULL DEFAULT 0,
+    active_generation CHAR(36) NOT NULL,
+    source_hash CHAR(64) NOT NULL,
+    baseline_hash CHAR(64) NOT NULL,
+    PRIMARY KEY (document_id),
+    CONSTRAINT fk_rag_recovery_pointer_document FOREIGN KEY (document_id) REFERENCES rag_documents(document_id),
+    CONSTRAINT fk_rag_recovery_pointer_generation FOREIGN KEY (active_generation) REFERENCES rag_recovery_generations(generation_id),
+    CONSTRAINT chk_rag_recovery_revision CHECK (revision >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS rag_recovery_members (
+    generation_id CHAR(36) NOT NULL,
+    chunk_id BIGINT NOT NULL,
+    PRIMARY KEY (generation_id, chunk_id),
+    UNIQUE KEY uk_rag_recovery_chunk_generation (chunk_id),
+    CONSTRAINT fk_rag_recovery_member_generation FOREIGN KEY (generation_id) REFERENCES rag_recovery_generations(generation_id),
+    CONSTRAINT fk_rag_recovery_member_chunk FOREIGN KEY (chunk_id) REFERENCES rag_document_chunks(chunk_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS rag_import_jobs (
     import_job_id BIGINT NOT NULL AUTO_INCREMENT COMMENT 'RAG import job id',
     import_path VARCHAR(1000) NOT NULL COMMENT 'folder or file path',

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.kaces.pandora.rag.recovery.RagRecoveryMapper">
+  <select id="baselineStorageSnapshot" resultType="map">
+    SELECT * FROM rag_document_chunks WHERE document_id=#{documentId} AND use_yn='Y' ORDER BY chunk_id LIMIT 10001 FOR UPDATE
+  </select>
+  <select id="embeddingSnapshot" resultType="map">
+    SELECT e.* FROM rag_chunk_embeddings e JOIN rag_document_chunks c ON c.chunk_id=e.chunk_id
+    WHERE c.document_id=#{documentId} AND c.use_yn='Y' ORDER BY e.chunk_id,e.embedding_model,e.vector_store LIMIT 100001 FOR UPDATE
+  </select>
+  <select id="keywordSnapshot" resultType="map">
+    SELECT s.* FROM rag_chunk_search_index_state s JOIN rag_document_chunks c ON c.chunk_id=s.chunk_id
+    WHERE c.document_id=#{documentId} AND c.use_yn='Y' ORDER BY s.chunk_id LIMIT 10001 FOR UPDATE
+  </select>
+  <sql id="generationColumns">generation_id AS id,document_id AS documentId,source_hash AS sourceHash,product_sha AS productSha,
+    baseline_hash AS baselineHash,manifest,preview_hash AS previewHash,state</sql>
+  <select id="keywordTermSnapshot" resultType="map">
+    SELECT s.* FROM rag_chunk_search_terms s JOIN rag_document_chunks c ON c.chunk_id=s.chunk_id
+    WHERE c.document_id=#{documentId} AND c.use_yn='Y' ORDER BY s.chunk_id,s.term LIMIT 100001 FOR UPDATE
+  </select>
+  <select id="findByPreviewHash" resultType="com.kaces.pandora.rag.recovery.RecoveryGeneration">
+    SELECT <include refid="generationColumns"/> FROM rag_recovery_generations WHERE document_id=#{documentId} AND preview_hash=#{previewHash}
+  </select>
+  <select id="findPointer" resultType="com.kaces.pandora.rag.recovery.RecoverySnapshot">
+    SELECT document_id AS documentId,revision,active_generation AS activeGeneration,source_hash AS sourceHash,baseline_hash AS baselineHash
+    FROM rag_recovery_pointers WHERE document_id=#{documentId}<if test="lock"> FOR UPDATE</if>
+  </select>
+  <insert id="insertGeneration">
+    INSERT INTO rag_recovery_generations(generation_id,document_id,source_hash,product_sha,baseline_hash,manifest,preview_hash,state)
+    VALUES(#{generation.id},#{generation.documentId},#{generation.sourceHash},#{generation.productSha},#{generation.baselineHash},#{generation.manifest},#{generation.previewHash},#{generation.state})
+  </insert>
+  <insert id="insertPointer">
+    INSERT INTO rag_recovery_pointers(document_id,revision,active_generation,source_hash,baseline_hash)
+    VALUES(#{snapshot.documentId},#{snapshot.revision},#{snapshot.activeGeneration},#{snapshot.sourceHash},#{snapshot.baselineHash})
+  </insert>
+  <insert id="insertMembership">
+    INSERT INTO rag_recovery_members(generation_id,chunk_id)
+    SELECT g.generation_id,c.chunk_id FROM rag_recovery_generations g JOIN rag_document_chunks c ON c.document_id=g.document_id
+    WHERE g.generation_id=#{generationId} AND c.chunk_id=#{chunkId}
+  </insert>
+  <insert id="insertInactiveChunk">
+    INSERT INTO rag_document_chunks(document_id,chunk_version,chunk_no,parent_section_title,chunk_title,section_type,
+      chunk_text,embedding_text,page_no,source_path,source_url,sort_order,content_hash,quality_status,quality_reason,source_provenance,index_status,use_yn)
+    VALUES(#{chunk.documentId},#{chunk.chunkVersion},#{chunk.chunkNo},#{chunk.parentSectionTitle},#{chunk.chunkTitle},#{chunk.sectionType},
+      #{chunk.chunkText},#{chunk.embeddingText},#{chunk.pageNo},#{chunk.sourcePath},#{chunk.sourceUrl},#{chunk.sortOrder},#{chunk.contentHash},
+      #{chunk.qualityStatus},#{chunk.qualityReason},#{chunk.sourceProvenance},'RECOVERY_PENDING','N')
+  </insert>
+  <select id="lastChunkId" resultType="long">SELECT LAST_INSERT_ID()</select>
+</mapper>
