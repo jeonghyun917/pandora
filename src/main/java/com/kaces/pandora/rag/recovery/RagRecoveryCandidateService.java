@@ -30,6 +30,7 @@ public class RagRecoveryCandidateService {
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
     public Preview preview(long documentId,String productSha) { return plan(documentId,productSha,false).preview(); }
+    Preview lockedPreview(long documentId,String productSha) { return plan(documentId,productSha,true).preview(); }
     public RecoveryGeneration create(long documentId,String expectedPreviewHash,String productSha) {
         if(expectedPreviewHash==null || !expectedPreviewHash.matches("[0-9a-f]{64}"))throw new IllegalArgumentException("Exact preview required");
         return transaction.execute(status->{

@@ -17,4 +17,7 @@ public interface RagRecoveryMapper {
     int insertMembership(@Param("generationId") String generationId,@Param("chunkId") long chunkId);
     void insertInactiveChunk(@Param("chunk") RagDocumentChunkRow chunk);
     long lastChunkId();
+    RecoveryGeneration findGeneration(@Param("generationId") String generationId,@Param("lock") boolean lock);
+    List<RagDocumentChunkRow> findCandidateChunks(@Param("generationId") String generationId);
+    int saveValidation(@Param("expected") RecoveryGeneration expected,@Param("state") String state,@Param("evidence") String evidence);
 }

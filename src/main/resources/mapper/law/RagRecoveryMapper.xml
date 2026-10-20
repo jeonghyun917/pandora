@@ -46,4 +46,24 @@
       #{chunk.qualityStatus},#{chunk.qualityReason},#{chunk.sourceProvenance},'RECOVERY_PENDING','N')
   </insert>
   <select id="lastChunkId" resultType="long">SELECT LAST_INSERT_ID()</select>
+  <select id="findGeneration" resultType="com.kaces.pandora.rag.recovery.RecoveryGeneration">
+    SELECT <include refid="generationColumns"/> FROM rag_recovery_generations WHERE generation_id=#{generationId}
+    <if test="lock"> FOR UPDATE</if>
+  </select>
+  <select id="findCandidateChunks" resultType="com.kaces.pandora.rag.document.RagDocumentChunkRow">
+    SELECT c.chunk_id AS chunkId,c.document_id AS documentId,c.chunk_version AS chunkVersion,c.chunk_no AS chunkNo,
+      c.parent_section_title AS parentSectionTitle,c.chunk_title AS chunkTitle,c.section_type AS sectionType,
+      c.chunk_text AS chunkText,c.embedding_text AS embeddingText,c.page_no AS pageNo,c.source_path AS sourcePath,
+      c.source_url AS sourceUrl,c.sort_order AS sortOrder,c.content_hash AS contentHash,c.quality_status AS qualityStatus,
+      c.quality_reason AS qualityReason,c.source_provenance AS sourceProvenance
+    FROM rag_recovery_members m JOIN rag_document_chunks c ON c.chunk_id=m.chunk_id
+      JOIN rag_recovery_generations g ON g.generation_id=m.generation_id AND g.document_id=c.document_id
+    WHERE m.generation_id=#{generationId} AND c.use_yn='N' ORDER BY c.sort_order,c.chunk_id LIMIT 10001 FOR UPDATE
+  </select>
+  <update id="saveValidation">
+    UPDATE rag_recovery_generations SET state=#{state},validation_evidence=#{evidence},validated_at=NOW()
+    WHERE generation_id=#{expected.id} AND document_id=#{expected.documentId} AND state=#{expected.state}
+      AND source_hash=#{expected.sourceHash} AND product_sha=#{expected.productSha}
+      AND manifest=#{expected.manifest} AND baseline_hash=#{expected.baselineHash} AND preview_hash=#{expected.previewHash}
+  </update>
 </mapper>

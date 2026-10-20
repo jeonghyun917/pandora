@@ -61,6 +61,14 @@ class RagRecoveryDatabaseTests {
                     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM rag_document_chunks WHERE document_id=? AND use_yn='N'",Integer.class,id)).isEqualTo(2);
                     assertThat(documents.findSemanticChunksByIds(jdbc.queryForList("SELECT chunk_id FROM rag_document_chunks WHERE document_id=? AND use_yn='N'",Long.class,id))).isEmpty();
                     assertThat(recovery.findPointer(id,false).revision()).isZero();
+                    var validation=new RagRecoveryValidationService(documents,recovery,original,
+                            new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds),"b".repeat(40));
+                    assertThat(validation.validate(created.id()).passed()).isTrue();
+                    assertThat(recovery.findGeneration(created.id(),false).state()).isEqualTo("VALIDATED");
+                    assertThat(validation.validate(created.id()).passed()).isTrue();
+                    jdbc.update("UPDATE rag_document_chunks SET chunk_text='변조된 원문' WHERE document_id=? AND use_yn='N' LIMIT 1",id);
+                    assertThat(validation.validate(created.id()).passed()).isFalse();
+                    assertThat(recovery.findGeneration(created.id(),false).state()).isEqualTo("FAILED");
                 }
                 assertThat(jdbc.queryForList("SELECT * FROM rag_document_chunks WHERE document_id=? AND use_yn='Y' ORDER BY chunk_id",id)).isEqualTo(before);
                 assertThat(jdbc.queryForList("SELECT * FROM rag_chunk_embeddings WHERE chunk_id=?",oldId)).isEqualTo(embeds);

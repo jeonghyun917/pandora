@@ -452,6 +452,9 @@ CREATE TABLE IF NOT EXISTS rag_recovery_pointers (
     CONSTRAINT chk_rag_recovery_revision CHECK (revision >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+ALTER TABLE rag_recovery_generations ADD COLUMN IF NOT EXISTS validation_evidence LONGTEXT NULL;
+ALTER TABLE rag_recovery_generations ADD COLUMN IF NOT EXISTS validated_at DATETIME NULL;
+
 CREATE TABLE IF NOT EXISTS rag_recovery_members (
     generation_id CHAR(36) NOT NULL,
     chunk_id BIGINT NOT NULL,
