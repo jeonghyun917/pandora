@@ -604,7 +604,36 @@
     COALESCE(c.quality_status, 'PASS') != 'REJECT'
   </sql>
 
+  <!-- Membership is bound to the captured generation, not its mutable ACTIVE/RETIRED state. -->
+  <sql id="capturedChunkVisibility">
+    <choose>
+      <when test="routing != null and !routing.documents.isEmpty()">
+        (
+          (c.document_id NOT IN
+            <foreach collection="routing.documents" index="documentId" item="pointer" open="(" separator="," close=")">#{documentId}</foreach>
+            AND c.use_yn='Y' AND <include refid="latestActiveChunkVersionFilter"/>)
+          OR
+          <foreach collection="routing.documents" index="documentId" item="pointer" open="(" separator=" OR " close=")">
+            (c.document_id=#{documentId} AND EXISTS (
+              SELECT 1 FROM rag_recovery_members captured_member
+              WHERE captured_member.generation_id=#{pointer.activeGeneration}
+                AND captured_member.chunk_id=c.chunk_id
+            ))
+          </foreach>
+        )
+      </when>
+      <otherwise>c.use_yn='Y' AND <include refid="latestActiveChunkVersionFilter"/></otherwise>
+    </choose>
+  </sql>
+
   <select id="findSemanticChunksByIds" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    <bind name="routing" value="null"/>
+    <include refid="semanticChunksByIdsQuery"/>
+  </select>
+  <select id="findSemanticChunksByIdsRouted" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    <include refid="semanticChunksByIdsQuery"/>
+  </select>
+  <sql id="semanticChunksByIdsQuery">
     SELECT
       c.chunk_id AS chunkId,
       c.document_id AS documentId,
@@ -641,12 +670,18 @@
       #{chunkId}
     </foreach>
       AND doc.use_yn = 'Y'
-      AND c.use_yn = 'Y'
       AND <include refid="searchableChunkQualityFilter"/>
-      AND <include refid="latestActiveChunkVersionFilter"/>
-  </select>
+      AND <include refid="capturedChunkVisibility"/>
+  </sql>
 
   <select id="findSemanticChunksByDocumentId" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    <bind name="routing" value="null"/>
+    <include refid="semanticChunksByDocumentQuery"/>
+  </select>
+  <select id="findSemanticChunksByDocumentIdRouted" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    <include refid="semanticChunksByDocumentQuery"/>
+  </select>
+  <sql id="semanticChunksByDocumentQuery">
     SELECT
       c.chunk_id AS chunkId,
       c.document_id AS documentId,
@@ -677,13 +712,19 @@
     JOIN rag_documents doc ON doc.document_id = c.document_id
     WHERE c.document_id = #{documentId}
       AND doc.use_yn = 'Y'
-      AND c.use_yn = 'Y'
       AND <include refid="contextChunkQualityFilter"/>
-      AND <include refid="latestActiveChunkVersionFilter"/>
+      AND <include refid="capturedChunkVisibility"/>
     ORDER BY c.sort_order
-  </select>
+  </sql>
 
   <select id="findSemanticContextChunks" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="2">
+    <bind name="routing" value="null"/>
+    <include refid="semanticContextChunksQuery"/>
+  </select>
+  <select id="findSemanticContextChunksRouted" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="2">
+    <include refid="semanticContextChunksQuery"/>
+  </select>
+  <sql id="semanticContextChunksQuery">
     SELECT
       c.chunk_id AS chunkId,
       c.document_id AS documentId,
@@ -717,12 +758,11 @@
     JOIN rag_documents doc ON doc.document_id = c.document_id
     WHERE c.document_id = #{documentId}
       AND doc.use_yn = 'Y'
-      AND c.use_yn = 'Y'
       AND <include refid="contextChunkQualityFilter"/>
-      AND <include refid="latestActiveChunkVersionFilter"/>
+      AND <include refid="capturedChunkVisibility"/>
       AND c.sort_order BETWEEN GREATEST(0, #{sortOrder} - #{window}) AND (#{sortOrder} + #{window})
     ORDER BY c.sort_order
-  </select>
+  </sql>
 
   <select id="findSemanticIndexChunksByDocumentId" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
     SELECT

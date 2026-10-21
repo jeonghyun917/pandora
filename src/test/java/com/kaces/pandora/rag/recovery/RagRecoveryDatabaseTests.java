@@ -177,6 +177,22 @@ class RagRecoveryDatabaseTests {
                     assertThat(afterRouting.replacedDocumentIds()).contains(id);
                     assertThat(afterRouting.cacheIdentity()).isNotEqualTo(beforeRouting.cacheIdentity());
                     assertThat(beforeRouting.documents().get(id).revision()).isZero();
+                    var allIds = jdbc.queryForList("SELECT chunk_id FROM rag_document_chunks WHERE document_id=? ORDER BY chunk_id", Long.class, id);
+                    assertThat(documents.findSemanticChunksByIdsRouted(allIds, beforeRouting)).extracting(row -> row.chunkId())
+                        .containsExactlyInAnyOrderElementsOf(oldIds);
+                    var activeIds = recovery.findCandidateChunks(next.id()).stream().map(RagDocumentChunkRow::chunkId).toList();
+                    assertThat(documents.findSemanticChunksByIdsRouted(allIds, afterRouting)).extracting(row -> row.chunkId())
+                        .containsExactlyInAnyOrderElementsOf(activeIds);
+                    assertThat(documents.findSemanticChunksByIdsRouted(activeIds, beforeRouting)).isEmpty();
+                    assertThat(documents.findSemanticChunksByIdsRouted(oldIds, afterRouting)).isEmpty();
+                    assertThat(documents.findSemanticChunksByDocumentIdRouted(id, beforeRouting)).extracting(row -> row.chunkId())
+                        .containsExactlyInAnyOrderElementsOf(oldIds);
+                    assertThat(documents.findSemanticChunksByDocumentIdRouted(id, afterRouting)).extracting(row -> row.chunkId())
+                        .containsExactlyInAnyOrderElementsOf(activeIds);
+                    assertThat(documents.findSemanticContextChunksRouted(id, 0, 100, beforeRouting)).extracting(row -> row.chunkId())
+                        .containsExactlyInAnyOrderElementsOf(oldIds);
+                    assertThat(documents.findSemanticContextChunksRouted(id, 0, 100, afterRouting)).extracting(row -> row.chunkId())
+                        .containsExactlyInAnyOrderElementsOf(activeIds);
                     jdbc.update("DELETE FROM rag_recovery_assets WHERE generation_id=?",next.id());
                     assertThatThrownBy(router::capture).isInstanceOf(IllegalStateException.class);
                     assertThat(validation.validate(created.id()).passed()).isTrue();

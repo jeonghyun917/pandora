@@ -160,6 +160,11 @@ public interface RagDocumentMapper {
 	);
 
 	List<LawSemanticChunkRow> findSemanticChunksByDocumentId(@Param("documentId") long documentId);
+	List<LawSemanticChunkRow> findSemanticChunksByDocumentIdRouted(@Param("documentId") long documentId,
+		@Param("routing") com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing);
+	List<LawSemanticChunkRow> findSemanticContextChunksRouted(@Param("documentId") long documentId,
+		@Param("sortOrder") int sortOrder, @Param("window") int window,
+		@Param("routing") com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing);
 
 	List<LawSemanticChunkRow> findSemanticContextChunks(
 		@Param("documentId") long documentId,
@@ -181,6 +186,8 @@ public interface RagDocumentMapper {
 	);
 
 	List<LawSemanticChunkRow> findSemanticChunksByIds(@Param("chunkIds") List<Long> chunkIds);
+	List<LawSemanticChunkRow> findSemanticChunksByIdsRouted(@Param("chunkIds") List<Long> chunkIds,
+		@Param("routing") com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing);
 
 	List<LawSemanticChunkRow> findSemanticChunksByText(
 		@Param("documentTypes") List<String> documentTypes,

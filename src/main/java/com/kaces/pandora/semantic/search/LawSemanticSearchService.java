@@ -7,6 +7,7 @@ import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import com.kaces.pandora.rag.common.HwpxTextCleaner;
 import com.kaces.pandora.rag.persistence.RagDocumentMapper;
+import com.kaces.pandora.rag.recovery.RagRecoveryRoutingService;
 import com.kaces.pandora.lawdata.search.LawSearchQuery;
 import java.util.HashMap;
 import java.util.List;
@@ -20,17 +21,20 @@ public class LawSemanticSearchService {
 	private final RagDocumentMapper ragDocumentMapper;
 	private final OpenAiEmbeddingClient embeddingClient;
 	private final QdrantClient qdrantClient;
+	private final RagRecoveryRoutingService recoveryRouting;
 
 	public LawSemanticSearchService(
 		LawChunkMapper lawChunkMapper,
 		RagDocumentMapper ragDocumentMapper,
 		OpenAiEmbeddingClient embeddingClient,
-		QdrantClient qdrantClient
+		QdrantClient qdrantClient,
+		RagRecoveryRoutingService recoveryRouting
 	) {
 		this.lawChunkMapper = lawChunkMapper;
 		this.ragDocumentMapper = ragDocumentMapper;
 		this.embeddingClient = embeddingClient;
 		this.qdrantClient = qdrantClient;
+		this.recoveryRouting = recoveryRouting;
 	}
 
 	// 메소드 설명: search 처리 흐름을 수행합니다.
@@ -40,6 +44,7 @@ public class LawSemanticSearchService {
 
 	// 메소드 설명: search 처리 흐름을 수행합니다.
 	public Map<String, LawSemanticSearchResponse> search(String target, String query, int limit, boolean includeFuture) {
+		var routing = recoveryRouting.capture();
 		LawSearchQuery normalized = LawSearchQuery.normalize(target, query, 1, Math.max(1, Math.min(limit, 50)), false, includeFuture);
 		if (normalized.searchAll()) {
 			return Map.of("SemanticSearch", new LawSemanticSearchResponse("00", "EMPTY_QUERY", normalized.target(), normalized.query(), 0, List.of()));
@@ -48,7 +53,10 @@ public class LawSemanticSearchService {
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		List<Double> queryVector = embeddingClient.embed(List.of(normalized.query())).get(0);
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		List<QdrantSearchHit> hits = qdrantClient.search(queryVector, searchTargets(normalized.target()), normalized.display());
+		List<String> targets = searchTargets(normalized.target());
+		List<QdrantSearchHit> hits = routing.replacedDocumentIds().isEmpty()
+			? qdrantClient.search(queryVector, targets, normalized.display())
+			: qdrantClient.searchBalanced(queryVector, targets, normalized.display(), normalized.display(), routing);
 		if (hits.isEmpty()) {
 			return Map.of("SemanticSearch", new LawSemanticSearchResponse("00", "QDRANT", normalized.target(), normalized.query(), 0, List.of()));
 		}
@@ -68,7 +76,7 @@ public class LawSemanticSearchService {
 		List<Long> ragChunkIds = hits.stream().filter(hit -> isRagTarget(hit.target())).map(QdrantSearchHit::chunkId).distinct().toList();
 		if (!ragChunkIds.isEmpty()) {
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-			for (LawSemanticChunkRow chunk : ragDocumentMapper.findSemanticChunksByIds(ragChunkIds)) {
+			for (LawSemanticChunkRow chunk : ragDocumentMapper.findSemanticChunksByIdsRouted(ragChunkIds, routing)) {
 				chunkById.put(scoreKey(chunk.target(), chunk.chunkId()), chunk);
 			}
 		}
