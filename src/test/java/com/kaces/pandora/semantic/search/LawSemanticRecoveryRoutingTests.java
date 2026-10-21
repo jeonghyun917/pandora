@@ -20,7 +20,7 @@ class LawSemanticRecoveryRoutingTests {
         var snapshot=new RecoveryRoutingSnapshot(1,
             Map.of(45L,new RecoverySnapshot(45,1,generation,"a".repeat(64),"b".repeat(64))),
             Map.of(generation,new RecoveryAssets(generation,"c".repeat(64),"rag_recovery_00000000000000000000000000000001",
-                "d".repeat(64),"e".repeat(64),1)),Set.of(),"e".repeat(64));
+                "d".repeat(64),"e".repeat(64),1)),Set.of(),"e".repeat(64),"recovery_"+generation);
         when(router.capture()).thenReturn(snapshot);
         when(embedding.embed(List.of("원문 보존"))).thenReturn(List.of(List.of(1.0)));
         when(q.searchBalanced(List.of(1.0),List.of("official_doc"),5,5,snapshot))

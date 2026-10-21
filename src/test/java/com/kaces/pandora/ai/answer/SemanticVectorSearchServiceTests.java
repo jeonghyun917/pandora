@@ -20,7 +20,7 @@ class SemanticVectorSearchServiceTests {
 	void routedParallelSearchKeepsCapturedGenerationAndPropagatesUnavailableAssets() {
 		var client = mock(QdrantClient.class);
 		var routed = new SemanticVectorSearchService(client);
-		var snapshot = new RecoveryRoutingSnapshot(0, Map.of(), Map.of(), Set.of(), null);
+		var snapshot = new RecoveryRoutingSnapshot(0, Map.of(), Map.of(), Set.of(), null, null);
 		var targets = List.of("official_doc");
 		when(client.searchBalanced(List.of(1.0), targets, 2, 4, snapshot))
 			.thenReturn(List.of(new QdrantSearchHit("official_doc", 101, .7)));

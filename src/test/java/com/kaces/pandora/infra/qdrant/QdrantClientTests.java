@@ -49,7 +49,7 @@ class QdrantClientTests {
         });server.start();client=client();
         var routing=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(1,
             java.util.Map.of(42L,new com.kaces.pandora.rag.recovery.RecoverySnapshot(42,1,generation,"a".repeat(64),"b".repeat(64))),
-            java.util.Map.of(generation,new com.kaces.pandora.rag.recovery.RecoveryAssets(generation,"b".repeat(64),collection,"c".repeat(64),"d".repeat(64),2)),java.util.Set.of(),"d".repeat(64));
+            java.util.Map.of(generation,new com.kaces.pandora.rag.recovery.RecoveryAssets(generation,"b".repeat(64),collection,"c".repeat(64),"d".repeat(64),2)),java.util.Set.of(),"d".repeat(64),"recovery_"+generation);
         assertThat(client.searchBalanced(java.util.Collections.nCopies(1536,.1),java.util.List.of("official_doc"),1,2,routing))
             .extracting(com.kaces.pandora.semantic.search.QdrantSearchHit::chunkId).containsExactly(300L,11L);
         assertThat(bodies.get("/collections/"+collection+"/points/search")).contains("generationId","manifest","qualityStatus");

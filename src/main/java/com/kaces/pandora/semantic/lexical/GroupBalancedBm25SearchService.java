@@ -56,6 +56,17 @@ public class GroupBalancedBm25SearchService {
 	}
 
 	public Result search(QuestionSearchPlan plan, List<String> targets, int limit) {
+		return searchInternal(plan,targets,limit,null);
+	}
+
+	public Result search(QuestionSearchPlan plan,List<String> targets,int limit,
+		com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
+		if(routing==null)throw new IllegalArgumentException("Captured routing required");
+		return searchInternal(plan,targets,limit,routing);
+	}
+
+	private Result searchInternal(QuestionSearchPlan plan,List<String> targets,int limit,
+		com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
 		if (!properties.shadowEnabled()) {
 			return result(Status.DISABLED, List.of(), List.of(), Map.of(), List.of(), 0, 0, 0);
 		}
@@ -89,16 +100,17 @@ public class GroupBalancedBm25SearchService {
 		Map<String, Integer> hitCounts = new LinkedHashMap<>();
 		try {
 			for (QuestionSearchPlan.LexicalVariant variant : variants) {
-				List<LexicalSearchHit> hits = bm25SearchService.searchStrict(
+				List<LexicalSearchHit> hits = routing==null ? bm25SearchService.searchStrict(
 					variant.query(),
 					variant.plannedKeywords(),
 					targets,
 					limit
-				);
+				) : bm25SearchService.search(variant.query(),variant.plannedKeywords(),targets,limit,routing);
 				variantHits.add(new LexicalVariantFusion.VariantHits(variant.id(), hits));
 				hitCounts.put(variant.id(), hits == null ? 0 : hits.size());
 			}
 		} catch (RuntimeException exception) {
+			if(routing!=null)throw exception;
 			log.warn("Group-balanced BM25 shadow failed closed. failureType={}", exception.getClass().getSimpleName());
 			return result(
 				Status.FAILED,

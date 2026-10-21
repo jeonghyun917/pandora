@@ -58,7 +58,8 @@ public class RagRecoveryRoutingService {
                     assets.put(generation.id(),receipt);
                 }
             }
-            return new RecoveryRoutingSnapshot(epoch.revision(),documents,assets,baselineIds,lexicalRevision);
+            return new RecoveryRoutingSnapshot(epoch.revision(),documents,assets,baselineIds,lexicalRevision,
+                epoch.revision()==0 ? null : "recovery_"+epoch.lexicalGeneration());
         }); } catch(RuntimeException unavailable) {
             throw new IllegalStateException("Recovery routing unavailable",unavailable);
         }

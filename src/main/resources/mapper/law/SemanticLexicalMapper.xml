@@ -94,31 +94,49 @@
     LIMIT 1
   </select>
 
+  <sql id="selectedLexicalVersion">
+      SELECT index_version FROM semantic_lexical_index_state
+      WHERE
+      <choose>
+        <when test="indexVersion != null">status = 'RECOVERY_READY' AND content_fingerprint = #{revision} AND index_version = #{indexVersion}</when>
+        <otherwise>status = 'READY' AND content_fingerprint = #{revision}</otherwise>
+      </choose>
+      ORDER BY completed_at DESC, index_version DESC LIMIT 1
+  </sql>
+  <select id="findRecoveryTermStatistics" resultType="com.kaces.pandora.semantic.lexical.SemanticLexicalMapper$TermStatisticRow" timeout="1">
+    <include refid="termStatisticsQuery"/>
+  </select>
   <select id="findTermStatistics"
           resultType="com.kaces.pandora.semantic.lexical.SemanticLexicalMapper$TermStatisticRow"
           timeout="1">
+    <bind name="indexVersion" value="null"/>
+    <include refid="termStatisticsQuery"/>
+  </select>
+  <sql id="termStatisticsQuery">
     SELECT
       stats.term AS term,
       stats.document_frequency AS documentFrequency
     FROM semantic_lexical_term_stats stats
     WHERE stats.index_version = (
-      SELECT index_version
-      FROM semantic_lexical_index_state
-      WHERE status = 'READY'
-        AND content_fingerprint = #{revision}
-      ORDER BY completed_at DESC, index_version DESC
-      LIMIT 1
+      <include refid="selectedLexicalVersion"/>
     )
       AND stats.term IN
       <foreach collection="terms" item="term" open="(" separator="," close=")">
         #{term}
       </foreach>
     ORDER BY stats.document_frequency, stats.term
-  </select>
+  </sql>
 
+  <select id="findRecoveryBm25TermMatches" resultType="com.kaces.pandora.semantic.lexical.SemanticLexicalMapper$Bm25TermMatchRow" timeout="2">
+    <include refid="bm25TermMatchesQuery"/>
+  </select>
   <select id="findBm25TermMatches"
           resultType="com.kaces.pandora.semantic.lexical.SemanticLexicalMapper$Bm25TermMatchRow"
           timeout="2">
+    <bind name="indexVersion" value="null"/>
+    <include refid="bm25TermMatchesQuery"/>
+  </select>
+  <sql id="bm25TermMatchesQuery">
     SELECT
       t.target AS target,
       t.chunk_id AS chunkId,
@@ -140,12 +158,7 @@
     STRAIGHT_JOIN semantic_lexical_index_state state
       ON state.index_version = t.index_version
     WHERE t.index_version = (
-      SELECT index_version
-      FROM semantic_lexical_index_state
-      WHERE status = 'READY'
-        AND content_fingerprint = #{revision}
-      ORDER BY completed_at DESC, index_version DESC
-      LIMIT 1
+      <include refid="selectedLexicalVersion"/>
     )
       AND c.build_status = 'READY'
       AND t.term IN
@@ -162,7 +175,7 @@
       t.target, t.chunk_id, c.document_id, t.term, stats.document_frequency,
       state.active_chunk_count, state.average_weighted_length, c.weighted_length
     ORDER BY t.target, t.chunk_id, t.term
-  </select>
+  </sql>
 
   <insert id="insertIndexState">
     INSERT INTO semantic_lexical_index_state (

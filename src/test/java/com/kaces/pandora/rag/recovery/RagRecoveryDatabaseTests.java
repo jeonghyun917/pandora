@@ -48,6 +48,11 @@ class RagRecoveryDatabaseTests {
             var snapshot = List.of(new com.kaces.pandora.semantic.lexical.LexicalChunkDocument("official_doc", 123, 456,
                 "parent", "a".repeat(64), "제목", "부모", "조문", "원본 보존"));
             assertThat(lexicalService.verifyRecovery(lexicalGeneration, snapshot)).isEqualTo(result.contentFingerprint());
+            assertThat(lexical.findRecoveryTermStatistics(lexicalVersion,result.contentFingerprint(),List.of("원본")))
+                .extracting(row -> row.term()).contains("원본");
+            assertThat(lexical.findRecoveryBm25TermMatches(lexicalVersion,result.contentFingerprint(),List.of("원본"),List.of("official_doc")))
+                .extracting(row -> row.chunkId()).containsOnly(123L);
+            assertThat(lexical.findRecoveryBm25TermMatches(lexicalVersion,"f".repeat(64),List.of("원본"),List.of("official_doc"))).isEmpty();
             jdbc.update("UPDATE semantic_lexical_terms SET term_frequency=term_frequency+1 WHERE index_version=? LIMIT 1", lexicalVersion);
             assertThatThrownBy(() -> lexicalService.verifyRecovery(lexicalGeneration, snapshot)).isInstanceOf(IllegalStateException.class);
             jdbc.update("UPDATE semantic_lexical_terms SET term_frequency=1 WHERE index_version=?", lexicalVersion);

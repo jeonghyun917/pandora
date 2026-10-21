@@ -62,22 +62,44 @@ public class KoreanBm25SearchService {
 		List<String> targets,
 		int limit
 	) {
-		long started = System.nanoTime();
 		String foundRevision = mapper.findReadyRevision();
 		String revision = foundRevision == null || foundRevision.isBlank() ? null : foundRevision;
+		return searchRevision(query, plannedKeywords, targets, limit, revision, null);
+	}
+
+	public List<LexicalSearchHit> search(String query,List<String> plannedKeywords,List<String> targets,int limit,
+		com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
+		if(routing==null)throw new IllegalArgumentException("Captured routing required");
+		String namespace=routing.lexicalNamespace(), revision=routing.lexicalRevision();
+		verifyNamespace(namespace,revision);
+		var result=searchRevision(query,plannedKeywords,targets,limit,revision,namespace);
+		verifyNamespace(namespace,revision);
+		return result;
+	}
+
+	private void verifyNamespace(String namespace,String revision) {
+		if(namespace==null)return;
+		var state=mapper.findRecoveryState(namespace);
+		if(state==null || !namespace.equals(state.indexVersion()) || !revision.equals(state.contentFingerprint())
+			|| !"RECOVERY_READY".equals(state.status()))throw new IllegalStateException("Active recovery lexical assets unavailable");
+	}
+
+	private List<LexicalSearchHit> searchRevision(String query,List<String> plannedKeywords,List<String> targets,int limit,
+		String revision,String namespace) {
+		long started = System.nanoTime();
 		List<String> terms = queryTerms(query, plannedKeywords);
 		if (revision == null || terms.isEmpty()) {
 			return List.of();
 		}
-		List<String> postingTerms = selectPostingTerms(revision, terms);
+		List<String> postingTerms = selectPostingTerms(revision, terms, namespace);
 		if (postingTerms.isEmpty()) {
 			return List.of();
 		}
-		List<SemanticLexicalMapper.Bm25TermMatchRow> rows = mapper.findBm25TermMatches(
+		List<SemanticLexicalMapper.Bm25TermMatchRow> rows = namespace==null ? mapper.findBm25TermMatches(
 			revision,
 			postingTerms,
 			normalizedTargets(targets)
-		);
+		) : mapper.findRecoveryBm25TermMatches(namespace,revision,postingTerms,normalizedTargets(targets));
 		List<LexicalSearchHit> results = rank(rows, boundedLimit(limit));
 		log.info(
 			"Korean BM25 shadow completed. revision={} termCount={} postingTermCount={} resultCount={} elapsedMs={}",
@@ -86,8 +108,9 @@ public class KoreanBm25SearchService {
 		return results;
 	}
 
-	private List<String> selectPostingTerms(String revision, List<String> terms) {
-		List<SemanticLexicalMapper.TermStatisticRow> statistics = mapper.findTermStatistics(revision, terms);
+	private List<String> selectPostingTerms(String revision, List<String> terms, String namespace) {
+		List<SemanticLexicalMapper.TermStatisticRow> statistics = namespace==null ? mapper.findTermStatistics(revision, terms)
+			: mapper.findRecoveryTermStatistics(namespace,revision,terms);
 		if (statistics == null || statistics.isEmpty()) {
 			return List.of();
 		}

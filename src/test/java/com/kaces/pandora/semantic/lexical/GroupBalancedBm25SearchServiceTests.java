@@ -16,6 +16,20 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class GroupBalancedBm25SearchServiceTests {
+	@Test void routedVariantsKeepSnapshotAndDoNotHideAssetFailures() {
+		var bm25=mock(KoreanBm25SearchService.class);
+		var snapshot=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(0,java.util.Map.of(),java.util.Map.of(),java.util.Set.of(),null,null);
+		when(bm25.search(anyString(),anyList(),eq(List.of("official_doc")),eq(20),eq(snapshot)))
+			.thenReturn(List.of(new LexicalSearchHit("official_doc",123,45,1,1,List.of("원문"))));
+		var service=service(bm25,new LawAiLexicalVariantProperties(true,false,4,60.0));
+		var plan=QuestionSearchPlan.from("공공기관 원문 보존 의무는?");
+		assertThat(service.search(plan,List.of("official_doc"),20,snapshot).fusedHits())
+			.extracting(LexicalVariantFusion.Hit::chunkId).containsExactly(123L);
+		when(bm25.search(anyString(),anyList(),eq(List.of("official_doc")),eq(20),eq(snapshot)))
+			.thenThrow(new IllegalStateException("active lexical assets unavailable"));
+		org.assertj.core.api.Assertions.assertThatThrownBy(()->service.search(plan,List.of("official_doc"),20,snapshot))
+			.isInstanceOf(IllegalStateException.class);
+	}
 
 	@Test
 	void disabledShadowDoesNotExecuteBm25Search() {

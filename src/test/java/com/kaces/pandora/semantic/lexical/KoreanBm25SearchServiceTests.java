@@ -17,6 +17,23 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class KoreanBm25SearchServiceTests {
+	@Test void capturedNamespaceUsesOnlyItsPostingsAndReportsDisappearance() {
+		var mapper=mock(SemanticLexicalMapper.class);
+		String namespace="recovery_00000000-0000-0000-0000-000000000001", revision="e".repeat(64);
+		var routing=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(1,java.util.Map.of(),java.util.Map.of(),java.util.Set.of(),revision,namespace);
+		var state=new SemanticLexicalMapper.IndexStateRow(namespace,"test",1,10,revision,"RECOVERY_READY",null);
+		when(mapper.findRecoveryState(namespace)).thenReturn(state);
+		when(mapper.findRecoveryTermStatistics(eq(namespace),eq(revision),anyList()))
+			.thenReturn(List.of(new SemanticLexicalMapper.TermStatisticRow("검사",1)));
+		when(mapper.findRecoveryBm25TermMatches(eq(namespace),eq(revision),anyList(),eq(List.of("official_doc"))))
+			.thenReturn(List.of(match("official_doc",123,45,"검사",3,1,10,10,10)));
+		assertThat(service(mapper).search("검사",List.of(),List.of("official_doc"),5,routing))
+			.extracting(LexicalSearchHit::chunkId).containsExactly(123L);
+		verify(mapper,never()).findReadyRevision();
+		when(mapper.findRecoveryState(namespace)).thenReturn(null);
+		assertThatThrownBy(()->service(mapper).search("검사",List.of(),List.of("official_doc"),5,routing))
+			.isInstanceOf(IllegalStateException.class);
+	}
 
 	@Test
 	void ranksTheDirectProvisionAboveTitleOnlyAndCommonNoiseMatches() {

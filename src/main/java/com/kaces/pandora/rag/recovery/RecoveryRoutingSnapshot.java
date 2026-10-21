@@ -6,11 +6,14 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Captured once by the server and passed explicitly to every retrieval path. */
 public record RecoveryRoutingSnapshot(long revision, Map<Long,RecoverySnapshot> documents,
-        Map<String,RecoveryAssets> assets, Set<String> baselineGenerations, String lexicalRevision) {
+        Map<String,RecoveryAssets> assets, Set<String> baselineGenerations, String lexicalRevision, String lexicalNamespace) {
     public RecoveryRoutingSnapshot {
         documents=Map.copyOf(documents); assets=Map.copyOf(assets); baselineGenerations=Set.copyOf(baselineGenerations);
         if(revision<0 || documents.size()>10000 || (lexicalRevision!=null && !lexicalRevision.matches("[0-9a-f]{64}"))) {
             throw new IllegalArgumentException("Bounded routing revision required");
+        }
+        if(lexicalNamespace!=null && (lexicalRevision==null || !lexicalNamespace.matches("recovery_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))) {
+            throw new IllegalArgumentException("Bound lexical namespace required");
         }
         var active=new HashSet<String>();
         for(var entry:documents.entrySet()) {
@@ -29,7 +32,7 @@ public record RecoveryRoutingSnapshot(long revision, Map<Long,RecoverySnapshot> 
                     || receipt.manifest()==null || !receipt.manifest().matches("[0-9a-f]{64}")
                     || receipt.vectorFingerprint()==null || !receipt.vectorFingerprint().matches("[0-9a-f]{64}")
                     || receipt.lexicalFingerprint()==null || !receipt.lexicalFingerprint().matches("[0-9a-f]{64}")
-                    || receipt.chunkCount()<=0 || receipt.chunkCount()>10000 || lexicalRevision==null) {
+                    || receipt.chunkCount()<=0 || receipt.chunkCount()>10000 || lexicalRevision==null || lexicalNamespace==null) {
                 throw new IllegalStateException("Active recovery assets unavailable");
             }
         }
@@ -42,6 +45,6 @@ public record RecoveryRoutingSnapshot(long revision, Map<Long,RecoverySnapshot> 
     }
     public String cacheIdentity() {
         return LawHashUtils.sha256(new ObjectMapper().writeValueAsString(Arrays.asList(revision,new TreeMap<>(documents),
-            new TreeMap<>(assets),new TreeSet<>(baselineGenerations),lexicalRevision)));
+            new TreeMap<>(assets),new TreeSet<>(baselineGenerations),lexicalRevision,lexicalNamespace)));
     }
 }
