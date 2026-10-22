@@ -99,7 +99,34 @@ class RagRecoveryDatabaseTests {
                     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM rag_document_chunks WHERE document_id=? AND use_yn='N'",Integer.class,id)).isZero();
                     assertThat(recovery.findPointer(id,false)).isNull();
                 } else {
-                    var created=service.create(id,preview.previewHash(),"b".repeat(40));
+                    var writeGuard=new RagRecoveryWriteGuard(recovery,new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds));
+                    var entered=new java.util.concurrent.CountDownLatch(1);
+                    var release=new java.util.concurrent.CountDownLatch(1);
+                    var pool=java.util.concurrent.Executors.newFixedThreadPool(2);
+                    RecoveryGeneration created;
+                    try {
+                        var writer=pool.submit(()->writeGuard.mutateDocuments(List.of(id),()->{
+                            entered.countDown();
+                            try { if(!release.await(5,java.util.concurrent.TimeUnit.SECONDS))throw new IllegalStateException("writer test timeout"); }
+                            catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}
+                            return null;
+                        }));
+                        assertThat(entered.await(3,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                        var creator=pool.submit(()->service.create(id,preview.previewHash(),"b".repeat(40)));
+                        assertThatThrownBy(()->creator.get(250,java.util.concurrent.TimeUnit.MILLISECONDS))
+                            .isInstanceOf(java.util.concurrent.TimeoutException.class);
+                        release.countDown();writer.get(5,java.util.concurrent.TimeUnit.SECONDS);
+                        created=creator.get(10,java.util.concurrent.TimeUnit.SECONDS);
+                    } finally { release.countDown();pool.shutdownNow(); }
+                    var wrote=new java.util.concurrent.atomic.AtomicBoolean();
+                    assertThatThrownBy(()->writeGuard.mutateDocuments(List.of(id),()->{wrote.set(true);return null;}))
+                        .isInstanceOf(IllegalStateException.class);
+                    assertThatThrownBy(()->writeGuard.mutateChunk(oldId,()->wrote.set(true))).isInstanceOf(IllegalStateException.class);
+                    var guardTx=new org.springframework.transaction.support.TransactionTemplate(new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds));
+                    assertThatThrownBy(()->guardTx.executeWithoutResult(s->writeGuard.assertMutableHash(hash))).isInstanceOf(IllegalStateException.class);
+                    assertThatThrownBy(()->guardTx.executeWithoutResult(s->writeGuard.assertMutablePaths(List.of(file.toString())))).isInstanceOf(IllegalStateException.class);
+                    assertThat(wrote).isFalse();
+                    assertThatThrownBy(()->writeGuard.assertMutableDocument(id)).isInstanceOf(IllegalStateException.class);
                     assertThat(created.state()).isEqualTo("PENDING");
                     assertThat(service.create(id,preview.previewHash(),"b".repeat(40))).isEqualTo(created);
                     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM rag_document_chunks WHERE document_id=? AND use_yn='N'",Integer.class,id)).isEqualTo(2);

@@ -6,6 +6,11 @@ import org.apache.ibatis.annotations.*;
 
 @Mapper
 public interface RagRecoveryMapper {
+    Long lockDocument(@Param("documentId") long documentId);
+    Long lockDocumentByHash(@Param("hash") String hash);
+    List<Long> lockDocumentsByPaths(@Param("paths") List<String> paths);
+    Long findChunkDocument(@Param("chunkId") long chunkId);
+    Long lockChunkDocument(@Param("chunkId") long chunkId);
     RecoveryRoutingEpoch findRoutingEpoch();
     List<RecoverySnapshot> listRoutingPointers();
     List<String> listActiveBaselines();

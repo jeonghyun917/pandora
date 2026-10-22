@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.kaces.pandora.rag.recovery.RagRecoveryMapper">
+  <select id="lockDocument" resultType="long">SELECT document_id FROM rag_documents WHERE document_id=#{documentId} FOR UPDATE</select>
+  <select id="lockDocumentByHash" resultType="long">SELECT document_id FROM rag_documents WHERE file_hash=#{hash} FOR UPDATE</select>
+  <select id="lockDocumentsByPaths" resultType="long">
+    SELECT document_id FROM rag_documents WHERE file_path IN
+    <foreach collection="paths" item="path" open="(" separator="," close=")">#{path}</foreach>
+    ORDER BY document_id LIMIT 10001 FOR UPDATE
+  </select>
+  <select id="findChunkDocument" resultType="long">SELECT document_id FROM rag_document_chunks WHERE chunk_id=#{chunkId}</select>
+  <select id="lockChunkDocument" resultType="long">SELECT document_id FROM rag_document_chunks WHERE chunk_id=#{chunkId} FOR UPDATE</select>
   <select id="baselineStorageSnapshot" resultType="map">
     SELECT * FROM rag_document_chunks WHERE document_id=#{documentId} AND use_yn='Y' ORDER BY chunk_id LIMIT 10001 FOR UPDATE
   </select>

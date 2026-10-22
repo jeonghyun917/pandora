@@ -24,6 +24,11 @@ public class RagSourceProofBackfillService {
     private final RagChunker chunker;
     private final RagChunkQualityGate quality;
     private final TransactionTemplate transaction;
+    private com.kaces.pandora.rag.recovery.RagRecoveryWriteGuard recoveryWriteGuard;
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureRecoveryWriteGuard(com.kaces.pandora.rag.recovery.RagRecoveryWriteGuard guard) {
+        recoveryWriteGuard=Objects.requireNonNull(guard);
+    }
     public RagSourceProofBackfillService(RagDocumentMapper mapper, RagOriginalDocumentStore originals,
         RagTextExtractor extractor, RagChunker chunker, RagChunkQualityGate quality,
         PlatformTransactionManager transactions) {
@@ -44,6 +49,7 @@ public class RagSourceProofBackfillService {
     public Applied apply(long documentId, String token) {
         if(documentId<=0 || token==null || !token.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("Valid plan token required");
         return transaction.execute(status->{
+            if(recoveryWriteGuard!=null)recoveryWriteGuard.assertMutableDocument(documentId);
             Plan plan=plan(documentId,true);
             if(plan.preview().token()==null || !token.equals(plan.preview().token())) throw new IllegalStateException("Source proof plan changed or unavailable");
             int updated=0;

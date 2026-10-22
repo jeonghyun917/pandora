@@ -25,6 +25,17 @@ class RagSourceProofBackfillServiceTests {
     RagDocumentRow document;
     List<RagDocumentChunkRow> stored;
 
+    @Test void managedDocumentCannotRewritePreservedProof() {
+        when(tx.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
+        var guard=mock(com.kaces.pandora.rag.recovery.RagRecoveryWriteGuard.class);
+        doThrow(new IllegalStateException("managed")).when(guard).assertMutableDocument(42L);
+        var service=service();
+        service.configureRecoveryWriteGuard(guard);
+        assertThatThrownBy(()->service.apply(42,"a".repeat(64)))
+            .isInstanceOf(IllegalStateException.class).hasMessage("managed");
+        verifyNoInteractions(mapper,originals);
+    }
+
     @Test void previewProvesRealOriginalWithoutWriting() throws Exception {
         fixture();
         var result = service().preview(42L, null);

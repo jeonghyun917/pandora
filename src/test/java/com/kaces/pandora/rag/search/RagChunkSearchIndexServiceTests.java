@@ -13,6 +13,29 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class RagChunkSearchIndexServiceTests {
+	@Test
+	void backfillRejectsManagedDocumentBeforeDeletingTermsOrChangingReadiness() {
+		var mapper = mock(RagDocumentMapper.class);
+		var guard = mock(com.kaces.pandora.rag.recovery.RagRecoveryWriteGuard.class);
+		when(mapper.findChunkSearchTermBackfillCandidates(100)).thenReturn(List.of(chunk(7,1765,"hash")));
+		doThrow(new IllegalStateException("managed")).when(guard).assertMutableDocument(1765L);
+		var service = new RagChunkSearchIndexService(mapper, mock(RagChunkSearchTermExtractor.class));
+		service.configureRecoveryWriteGuard(guard);
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.backfill(100)).hasMessage("managed");
+		verify(mapper).findChunkSearchTermBackfillCandidates(100);
+		org.mockito.Mockito.verifyNoMoreInteractions(mapper);
+	}
+	@Test
+	void managedDocumentIsRejectedBeforeAnyKeywordMutation() {
+		var mapper = mock(RagDocumentMapper.class);
+		var guard = mock(com.kaces.pandora.rag.recovery.RagRecoveryWriteGuard.class);
+		doThrow(new IllegalStateException("managed")).when(guard).assertMutableDocument(1765L);
+		var service = new RagChunkSearchIndexService(mapper, mock(RagChunkSearchTermExtractor.class));
+		service.configureRecoveryWriteGuard(guard);
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.rebuildDocument(1765L, 1))
+			.isInstanceOf(IllegalStateException.class).hasMessage("managed");
+		org.mockito.Mockito.verifyNoInteractions(mapper);
+	}
 
 	@Test
 	void marksEvenZeroTermChunksCompleteSoBackfillCanAdvance() {

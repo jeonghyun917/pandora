@@ -49,6 +49,12 @@ public class LawSemanticBatchJobService {
 	private final QdrantClient qdrantClient;
 	private final ObjectMapper objectMapper;
 	private final TransactionTemplate transactionTemplate;
+	private com.kaces.pandora.rag.recovery.RagRecoveryWriteGuard recoveryWriteGuard;
+
+	@org.springframework.beans.factory.annotation.Autowired
+	void configureRecoveryWriteGuard(com.kaces.pandora.rag.recovery.RagRecoveryWriteGuard guard) {
+		recoveryWriteGuard = java.util.Objects.requireNonNull(guard);
+	}
 	// 메소드 설명: idle 처리 흐름을 수행합니다.
 	private volatile LawSemanticBatchSchedulerStatus schedulerStatus = LawSemanticBatchSchedulerStatus.idle();
 
@@ -843,7 +849,14 @@ public class LawSemanticBatchJobService {
 				.map(chunk -> vectorsByChunkId.get(chunk.chunkId()))
 				.toList();
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-			qdrantClient.upsertRag(orderedChunks, vectors);
+			if (recoveryWriteGuard == null) {
+				qdrantClient.upsertRag(orderedChunks, vectors);
+			} else {
+				recoveryWriteGuard.mutateDocuments(orderedChunks.stream().map(LawSemanticChunkRow::documentId).distinct().sorted().toList(), () -> {
+					qdrantClient.upsertRag(orderedChunks, vectors);
+					return null;
+				});
+			}
 			return;
 		}
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
@@ -862,7 +875,12 @@ public class LawSemanticBatchJobService {
 	) {
 		if (isRagTarget(target)) {
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-			ragDocumentMapper.upsertEmbeddingStatus(chunkId, model, vectorStore, vectorPointId, contentHash, status, errorMessage);
+			if (recoveryWriteGuard == null) {
+				ragDocumentMapper.upsertEmbeddingStatus(chunkId, model, vectorStore, vectorPointId, contentHash, status, errorMessage);
+			} else {
+				recoveryWriteGuard.mutateChunk(chunkId, () -> ragDocumentMapper.upsertEmbeddingStatus(
+					chunkId, model, vectorStore, vectorPointId, contentHash, status, errorMessage));
+			}
 			return;
 		}
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.

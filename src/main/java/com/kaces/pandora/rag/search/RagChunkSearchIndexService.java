@@ -15,6 +15,12 @@ public class RagChunkSearchIndexService {
 
 	private final RagDocumentMapper mapper;
 	private final RagChunkSearchTermExtractor extractor;
+	private com.kaces.pandora.rag.recovery.RagRecoveryWriteGuard recoveryWriteGuard;
+
+	@org.springframework.beans.factory.annotation.Autowired
+	void configureRecoveryWriteGuard(com.kaces.pandora.rag.recovery.RagRecoveryWriteGuard guard) {
+		this.recoveryWriteGuard = java.util.Objects.requireNonNull(guard);
+	}
 
 	public RagChunkSearchIndexService(RagDocumentMapper mapper, RagChunkSearchTermExtractor extractor) {
 		this.mapper = mapper;
@@ -23,6 +29,7 @@ public class RagChunkSearchIndexService {
 
 	@Transactional
 	public int rebuildDocument(long documentId, int chunkVersion) {
+		if (recoveryWriteGuard != null) recoveryWriteGuard.assertMutableDocument(documentId);
 		mapper.markChunkSearchIndexBuilding();
 		List<LawSemanticChunkRow> chunks = mapper.findSemanticIndexChunksByDocumentId(documentId, chunkVersion);
 		mapper.deleteChunkSearchTermsByDocumentId(documentId);
@@ -34,9 +41,13 @@ public class RagChunkSearchIndexService {
 
 	@Transactional
 	public BackfillResult backfill(int requestedLimit) {
-		mapper.markChunkSearchIndexBuilding();
 		int limit = Math.max(1, Math.min(requestedLimit, MAX_BACKFILL_CHUNKS));
 		List<LawSemanticChunkRow> chunks = mapper.findChunkSearchTermBackfillCandidates(limit);
+		if (recoveryWriteGuard != null) {
+			for (Long id : chunks.stream().map(LawSemanticChunkRow::documentId).distinct().sorted().toList())
+				recoveryWriteGuard.assertMutableDocument(id);
+		}
+		mapper.markChunkSearchIndexBuilding();
 		List<Long> chunkIds = chunks.stream().map(LawSemanticChunkRow::chunkId).toList();
 		if (!chunkIds.isEmpty()) {
 			mapper.deleteChunkSearchTermsByChunkIds(chunkIds);

@@ -57,6 +57,12 @@ public class RagImportService {
 	private final LawAiProperties properties;
 	private final ObjectMapper objectMapper;
 	private final TransactionTemplate importTransaction;
+	private com.kaces.pandora.rag.recovery.RagRecoveryWriteGuard recoveryWriteGuard;
+
+	@org.springframework.beans.factory.annotation.Autowired
+	void configureRecoveryWriteGuard(com.kaces.pandora.rag.recovery.RagRecoveryWriteGuard guard) {
+		recoveryWriteGuard = java.util.Objects.requireNonNull(guard);
+	}
 
 	public RagImportService(
 		RagDocumentMapper mapper,
@@ -228,6 +234,7 @@ public class RagImportService {
 		String mimeType = Files.probeContentType(file);
 		int importTrustLevel = trustLevel;
 		return importTransaction.execute(transaction -> {
+		if (recoveryWriteGuard != null) recoveryWriteGuard.assertMutableHash(fileHash);
 		mapper.upsertDocument(
 			documentType,
 			title,
@@ -406,11 +413,14 @@ public class RagImportService {
 		if (unpreferredPaths.isEmpty()) {
 			return;
 		}
-		List<Long> oldChunkIds = mapper.findActiveChunkIdsByFilePathsAndVersion(unpreferredPaths, ACTIVE_CHUNK_VERSION);
-		markEmbeddingsSuperseded(oldChunkIds);
-		mapper.deactivateChunksByFilePathsAndVersion(unpreferredPaths, ACTIVE_CHUNK_VERSION);
-		mapper.deactivateDocumentsByFilePaths(unpreferredPaths);
-		deleteOldQdrantPointsAfterCommit(oldChunkIds);
+		importTransaction.executeWithoutResult(transaction -> {
+			if (recoveryWriteGuard != null) recoveryWriteGuard.assertMutablePaths(unpreferredPaths);
+			List<Long> oldChunkIds = mapper.findActiveChunkIdsByFilePathsAndVersion(unpreferredPaths, ACTIVE_CHUNK_VERSION);
+			markEmbeddingsSuperseded(oldChunkIds);
+			mapper.deactivateChunksByFilePathsAndVersion(unpreferredPaths, ACTIVE_CHUNK_VERSION);
+			mapper.deactivateDocumentsByFilePaths(unpreferredPaths);
+			deleteOldQdrantPointsAfterCommit(oldChunkIds);
+		});
 	}
 
 	private void markEmbeddingsSuperseded(List<Long> chunkIds) {

@@ -18,6 +18,22 @@ import org.junit.jupiter.api.io.TempDir;
 class RagImportPreflightTests {
     @TempDir Path temp;
 
+    @Test void managedSourceCannotBeReimportedBeforeDocumentUpsert() throws Exception {
+        Path file=temp.resolve("managed.txt");
+        Files.writeString(file,"자료 처리 가이드\n\n"+
+            "기관은 원본 자료를 검토하고 처리 결과를 기록하여야 한다. 담당자는 변경 이력을 보존하고 필요한 경우 원본과 대조하여 확인하여야 한다. ".repeat(8));
+        var mapper=mock(RagDocumentMapper.class);
+        var guard=mock(com.kaces.pandora.rag.recovery.RagRecoveryWriteGuard.class);
+        doThrow(new IllegalStateException("managed")).when(guard).assertMutableHash(anyString());
+        var service=new RagImportService(mapper,new RagTextExtractor(),new RagChunker(),new RagChunkQualityGate(),
+            mock(RagChunkSearchIndexService.class),null,null,null,null,transactions());
+        service.configureRecoveryWriteGuard(guard);
+        assertThatThrownBy(()->service.importFile(file,"official_doc",false,true))
+            .isInstanceOf(IllegalStateException.class).hasMessage("managed");
+        verify(mapper).findDocumentByHash(anyString());
+        verifyNoMoreInteractions(mapper);
+    }
+
     @Test
     void rejectsAnOriginalFileChangedDuringExtractionBeforeAnyMutation() throws Exception {
         Path file=temp.resolve("changing.txt");Files.writeString(file,"원래 파일");
