@@ -5,6 +5,7 @@ import com.kaces.pandora.common.text.KoreanQueryNormalizer;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
 import com.kaces.pandora.rag.persistence.RagDocumentMapper;
+import com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot;
 import com.kaces.pandora.semantic.config.LawAiDocumentExpansionProperties;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,6 +45,11 @@ public class DocumentExpansionSearchService {
 		boolean includeFuture,
 		Set<String> existingCandidateKeys
 	) {
+		return search(anchor,targets,includeFuture,existingCandidateKeys,null);
+	}
+
+	public DocumentCandidateExpansion.Result search(DocumentSearchAnchor anchor,List<String> targets,boolean includeFuture,
+		Set<String> existingCandidateKeys,RecoveryRoutingSnapshot routing) {
 		long startedAt = System.nanoTime();
 		DocumentCandidateExpansion.Policy policy = properties.policy();
 		int targetCount = requestedTargets(targets).size();
@@ -59,7 +65,7 @@ public class DocumentExpansionSearchService {
 		List<String> lawTargets = requestedTargets(targets).stream().filter(this::isLawTarget).toList();
 		List<String> ragTargets = requestedTargets(targets).stream().filter(this::isRagTarget).toList();
 		MapperRead<DocumentIdentityCandidate> lawDocuments = readLawDocuments(anchor, lawTargets, includeFuture, policy.maxDocuments() + 1);
-		MapperRead<DocumentIdentityCandidate> ragDocuments = readRagDocuments(anchor, ragTargets, policy.maxDocuments() + 1);
+		MapperRead<DocumentIdentityCandidate> ragDocuments = readRagDocuments(anchor, ragTargets, policy.maxDocuments() + 1, routing);
 		if (lawDocuments.failed() || ragDocuments.failed()) {
 			return logged(dbFallback(), targetCount, 0, startedAt);
 		}
@@ -74,7 +80,7 @@ public class DocumentExpansionSearchService {
 		List<Long> lawDocumentIds = selectedDocumentIds(selection.documents(), true);
 		List<Long> ragDocumentIds = selectedDocumentIds(selection.documents(), false);
 		MapperRead<LawSemanticChunkRow> lawChunks = readLawChunks(anchor, lawDocumentIds, includeFuture, policy);
-		MapperRead<LawSemanticChunkRow> ragChunks = readRagChunks(anchor, ragDocumentIds, policy);
+		MapperRead<LawSemanticChunkRow> ragChunks = readRagChunks(anchor, ragDocumentIds, policy, routing);
 		if (lawChunks.failed() || ragChunks.failed()) {
 			return logged(dbFallback(), targetCount, 0, startedAt);
 		}
@@ -90,6 +96,11 @@ public class DocumentExpansionSearchService {
 		boolean includeFuture,
 		Set<String> existingCandidateKeys
 	) {
+		return searchBm25Seeded(anchor,seeds,includeFuture,existingCandidateKeys,null);
+	}
+
+	public DocumentCandidateExpansion.Result searchBm25Seeded(DocumentSearchAnchor anchor,List<DocumentExpansionSeed> seeds,
+		boolean includeFuture,Set<String> existingCandidateKeys,RecoveryRoutingSnapshot routing) {
 		long startedAt = System.nanoTime();
 		DocumentCandidateExpansion.Policy policy = properties.policy();
 		List<DocumentExpansionSeed> safeSeeds = seeds == null ? List.of() : List.copyOf(seeds);
@@ -127,7 +138,7 @@ public class DocumentExpansionSearchService {
 			anchor, lawDocumentIds, includeFuture, candidatePoolPerDocument, candidatePoolTotal
 		);
 		MapperRead<LawSemanticChunkRow> ragChunks = readRagChunks(
-			anchor, ragDocumentIds, candidatePoolPerDocument, candidatePoolTotal
+			anchor, ragDocumentIds, candidatePoolPerDocument, candidatePoolTotal, routing
 		);
 		if (lawChunks.failed() || ragChunks.failed()) {
 			return logged(bm25TitleDbFallback(), distinctSeedTargets(safeSeeds), safeSeeds.size(), startedAt);
@@ -162,16 +173,17 @@ public class DocumentExpansionSearchService {
 	private MapperRead<DocumentIdentityCandidate> readRagDocuments(
 		DocumentSearchAnchor anchor,
 		List<String> targets,
-		int limit
+		int limit, RecoveryRoutingSnapshot routing
 	) {
 		if (targets.isEmpty()) {
 			return MapperRead.success(List.of());
 		}
 		try {
-			return MapperRead.success(ragDocumentMapper.findDocumentExpansionDocuments(
+			return MapperRead.success(routing == null ? ragDocumentMapper.findDocumentExpansionDocuments(
 				targets, anchor.titleTerms(), anchor.provisionTerms(), limit
-			));
+			) : ragDocumentMapper.findDocumentExpansionDocumentsRouted(targets,anchor.titleTerms(),anchor.provisionTerms(),limit,routing));
 		} catch (RuntimeException exception) {
+			if(routing!=null)throw exception;
 			return MapperRead.failure();
 		}
 	}
@@ -210,26 +222,27 @@ public class DocumentExpansionSearchService {
 	private MapperRead<LawSemanticChunkRow> readRagChunks(
 		DocumentSearchAnchor anchor,
 		List<Long> documentIds,
-		DocumentCandidateExpansion.Policy policy
+		DocumentCandidateExpansion.Policy policy, RecoveryRoutingSnapshot routing
 	) {
-		return readRagChunks(anchor, documentIds, policy.maxChunksPerDocument(), policy.maxTotalChunks());
+		return readRagChunks(anchor, documentIds, policy.maxChunksPerDocument(), policy.maxTotalChunks(), routing);
 	}
 
 	private MapperRead<LawSemanticChunkRow> readRagChunks(
 		DocumentSearchAnchor anchor,
 		List<Long> documentIds,
 		int maxChunksPerDocument,
-		int maxTotalChunks
+		int maxTotalChunks, RecoveryRoutingSnapshot routing
 	) {
 		if (documentIds.isEmpty()) {
 			return MapperRead.success(List.of());
 		}
 		try {
-			return MapperRead.success(ragDocumentMapper.findDocumentExpansionChunks(
+			return MapperRead.success(routing == null ? ragDocumentMapper.findDocumentExpansionChunks(
 				documentIds, anchor.provisionTerms(), anchor.headingTerms(), anchor.evidenceTerms(),
 				maxChunksPerDocument, maxTotalChunks
-			));
+			) : ragDocumentMapper.findDocumentExpansionChunksRouted(documentIds,anchor.provisionTerms(),anchor.headingTerms(),anchor.evidenceTerms(),maxChunksPerDocument,maxTotalChunks,routing));
 		} catch (RuntimeException exception) {
+			if(routing!=null)throw exception;
 			return MapperRead.failure();
 		}
 	}

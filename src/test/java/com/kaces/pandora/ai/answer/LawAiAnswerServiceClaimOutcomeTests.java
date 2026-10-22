@@ -94,7 +94,7 @@ class LawAiAnswerServiceClaimOutcomeTests {
 			answerVerificationService,
 			new ParentContextAssembler(),
 			new EvidenceCandidateDiversifier(),
-			mock(FailureLoggingService.class),
+			new FailureLoggingService(null),
 			null,
 			new LawAiProperties(null, null, null, null)
 		);
@@ -274,6 +274,132 @@ class LawAiAnswerServiceClaimOutcomeTests {
 		assertThat(second.resultMsg()).isEqualTo("OK");
 		assertThat(second.timing().cacheHit()).isTrue();
 		verify(answerClient).answer(anyString(), anyString(), anyInt());
+	}
+
+	@Test
+	void routingIsCapturedBeforeCacheAndRevisionChangeCannotReuseOldAnswer() {
+		var router=mock(com.kaces.pandora.rag.recovery.RagRecoveryRoutingService.class);
+		var before=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(0,Map.of(),Map.of(),java.util.Set.of(),null,null);
+		var after=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(1,Map.of(),Map.of(),java.util.Set.of(),null,null);
+		service.configureRecoveryRouting(router);
+		when(router.capture()).thenReturn(before,before,after);
+		when(answerClient.answer(anyString(),anyString(),anyInt())).thenReturn(GENERATED_ANSWER);
+		when(answerVerificationService.verify(eq(QUESTION),eq(GENERATED_ANSWER),anyList()))
+			.thenReturn(verificationResult(GENERATED_ANSWER,REPAIRED_ANSWER,false));
+		assertThat(service.answer(request()).timing().cacheHit()).isFalse();
+		assertThat(service.answer(request()).timing().cacheHit()).isTrue();
+		assertThat(service.answer(request()).timing().cacheHit()).isFalse();
+		when(router.capture()).thenThrow(new IllegalStateException("routing unavailable"));
+		org.assertj.core.api.Assertions.assertThatThrownBy(()->service.answer(request()))
+			.isInstanceOf(IllegalStateException.class).hasMessage("routing unavailable");
+		verify(router,org.mockito.Mockito.times(4)).capture();
+	}
+
+	@Test
+	void debugUsesCapturedGenerationForVectorAndRagHydration() {
+		var router=mock(com.kaces.pandora.rag.recovery.RagRecoveryRoutingService.class);
+		var row=procedureChunk();
+		String generation="00000000-0000-0000-0000-000000000001";
+		var routing=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(1,
+			Map.of(row.documentId(),new com.kaces.pandora.rag.recovery.RecoverySnapshot(row.documentId(),1,generation,"a".repeat(64),"b".repeat(64))),
+			Map.of(generation,new com.kaces.pandora.rag.recovery.RecoveryAssets(generation,"c".repeat(64),"rag_recovery_00000000000000000000000000000001","d".repeat(64),"e".repeat(64),1)),
+			java.util.Set.of(),"e".repeat(64),"recovery_"+generation);
+		service.configureRecoveryRouting(router);
+		when(router.capture()).thenReturn(routing);
+		when(qdrantClient.searchBalanced(anyList(),anyList(),anyInt(),anyInt(),eq(routing)))
+			.thenReturn(List.of(new QdrantSearchHit("official_doc",row.chunkId(),.95)));
+		when(ragDocumentMapper.findSemanticChunksByIdsRouted(List.of(row.chunkId()),routing)).thenReturn(List.of(row));
+		var debug=service.debug(new LawAiDebugRequest("official_doc",List.of("official_doc"),"과업심의 절차는?",8,true,null));
+		assertThat(debug.vectorHits()).extracting(LawAiDebugResponse.Item::chunkId).containsExactly(row.chunkId());
+		verify(router,times(1)).capture();
+	}
+
+	@Test
+	void streamingCacheCannotCrossCapturedRevision() throws Exception {
+		var router=mock(com.kaces.pandora.rag.recovery.RagRecoveryRoutingService.class);
+		var before=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(0,Map.of(),Map.of(),java.util.Set.of(),null,null);
+		var after=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(1,Map.of(),Map.of(),java.util.Set.of(),null,null);
+		service.configureRecoveryRouting(router);
+		when(router.capture()).thenReturn(before,after);
+		when(answerClient.answer(anyString(),anyString(),anyInt())).thenReturn(GENERATED_ANSWER);
+		when(answerVerificationService.verify(eq(QUESTION),eq(GENERATED_ANSWER),anyList()))
+			.thenReturn(verificationResult(GENERATED_ANSWER,REPAIRED_ANSWER,false));
+		service.answer(request());
+		var emitter=new CapturingEmitter();
+		invokeStream(emitter);
+		assertThat(emitter.data()).filteredOn(LawAiAnswerResponse.class::isInstance).map(LawAiAnswerResponse.class::cast)
+			.isNotEmpty().allSatisfy(response->assertThat(response.timing().cacheHit()).isFalse());
+		verify(router,times(2)).capture();
+	}
+
+	@Test void capturedContextFailureCannotFallBackToLegacyGeneration() throws Exception {
+		var routing=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(0,Map.of(),Map.of(),java.util.Set.of(),null,null);
+		var row=procedureChunk();
+		when(ragDocumentMapper.findSemanticContextChunksRouted(row.documentId(),row.sortOrder(),18,routing))
+			.thenThrow(new IllegalStateException("captured context unavailable"));
+		Method method=LawAiAnswerService.class.getDeclaredMethod("enrichWithParentContextInternal",List.class,String.class,
+			com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot.class);
+		method.setAccessible(true);
+		org.assertj.core.api.Assertions.assertThatThrownBy(()->method.invoke(service,List.of(row),"과업심의",routing))
+			.hasRootCauseInstanceOf(IllegalStateException.class).hasRootCauseMessage("captured context unavailable");
+	}
+
+	@Test void keywordLookupUsesCapturedGenerationInsteadOfBaselineIndex() throws Exception {
+		var routing=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(0,Map.of(),Map.of(),java.util.Set.of(),null,null);
+		when(ragDocumentMapper.findSemanticChunksByText(anyList(),anyList(),anyInt())).thenReturn(List.of(chunk()));
+		when(ragDocumentMapper.findSemanticChunksByTextRouted(List.of("official_doc"),List.of("원본"),8,routing))
+			.thenReturn(List.of(procedureChunk()));
+		Method method=LawAiAnswerService.class.getDeclaredMethod("queryRagLexicalChunks",List.class,List.class,int.class,
+			com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot.class);
+		method.setAccessible(true);
+		@SuppressWarnings("unchecked") var rows=(List<LawSemanticChunkRow>)method.invoke(service,List.of("official_doc"),List.of("원본"),8,routing);
+		assertThat(rows).extracting(LawSemanticChunkRow::chunkId).containsExactly(procedureChunk().chunkId());
+	}
+
+	@Test void asynchronousCapturedBm25FailureIsNotReplacedByEmptyShadowResults() {
+		var router=mock(com.kaces.pandora.rag.recovery.RagRecoveryRoutingService.class);
+		var routing=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(0,Map.of(),Map.of(),java.util.Set.of(),null,null);
+		service.configureRecoveryRouting(router); when(router.capture()).thenReturn(routing);
+		var variants=mock(com.kaces.pandora.semantic.lexical.GroupBalancedBm25SearchService.class);
+		when(variants.search(any(),anyList(),anyInt())).thenReturn(new com.kaces.pandora.semantic.lexical.GroupBalancedBm25SearchService.Result(
+			com.kaces.pandora.semantic.lexical.GroupBalancedBm25SearchService.Status.DISABLED,List.of(),List.of(),Map.of(),List.of(),0,0,0));
+		when(variants.search(any(),anyList(),anyInt(),eq(routing))).thenThrow(new IllegalStateException("captured BM25 unavailable"));
+		service.configureGroupBalancedBm25SearchService(variants);
+		org.assertj.core.api.Assertions.assertThatThrownBy(()->service.debug(new LawAiDebugRequest("law",List.of("law"),QUESTION,8,true,null)))
+			.isInstanceOf(IllegalStateException.class).hasMessage("captured BM25 unavailable");
+	}
+
+	@Test void asynchronousCapturedLexicalFailureIsNotReplacedByVectorOnlyAnswer() {
+		var router=mock(com.kaces.pandora.rag.recovery.RagRecoveryRoutingService.class);
+		var routing=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(0,Map.of(),Map.of(),java.util.Set.of(),null,null);
+		service.configureRecoveryRouting(router); when(router.capture()).thenReturn(routing);
+		when(ragDocumentMapper.findSemanticChunksByDocumentTitleScopedRouted(anyList(),anyList(),anyInt(),eq(routing)))
+			.thenThrow(new IllegalStateException("captured lexical unavailable"));
+		when(ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScopedRouted(anyList(),anyList(),anyList(),anyInt(),eq(routing)))
+			.thenThrow(new IllegalStateException("captured lexical unavailable"));
+		when(ragDocumentMapper.findSemanticChunksByHeadingTextRouted(anyList(),anyList(),anyInt(),eq(routing)))
+			.thenThrow(new IllegalStateException("captured lexical unavailable"));
+		when(ragDocumentMapper.findSemanticChunksByTextRouted(anyList(),anyList(),anyInt(),eq(routing)))
+			.thenThrow(new IllegalStateException("captured lexical unavailable"));
+		org.assertj.core.api.Assertions.assertThatThrownBy(()->service.debug(new LawAiDebugRequest("official_doc",List.of("official_doc"),
+			"정보화사업 법령을 준수하지 않으면 어떤 조치가 있나요?",8,true,null)))
+			.isInstanceOf(IllegalStateException.class).hasMessage("captured lexical unavailable");
+	}
+
+	@Test void asynchronousCapturedExpansionFailureIsNotReplacedByDisabledResult() {
+		var router=mock(com.kaces.pandora.rag.recovery.RagRecoveryRoutingService.class);
+		var routing=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(0,Map.of(),Map.of(),java.util.Set.of(),null,null);
+		service.configureRecoveryRouting(router);when(router.capture()).thenReturn(routing);
+		var expansion=mock(com.kaces.pandora.semantic.retrieval.DocumentExpansionSearchService.class);
+		when(expansion.search(any(),anyList(),anyBoolean(),any())).thenReturn(new com.kaces.pandora.semantic.retrieval.DocumentCandidateExpansion.Result(
+			List.of(),List.of(),com.kaces.pandora.semantic.retrieval.DocumentCandidateExpansion.Status.NO_STRONG_ANCHOR,List.of()));
+		when(expansion.search(any(),anyList(),anyBoolean(),any(),eq(routing)))
+			.thenThrow(new IllegalStateException("captured expansion unavailable"));
+		org.springframework.test.util.ReflectionTestUtils.setField(service,"documentExpansionProperties",
+			new com.kaces.pandora.semantic.config.LawAiDocumentExpansionProperties(true,false,2,5,7,true,100,2,.05));
+		org.springframework.test.util.ReflectionTestUtils.setField(service,"documentExpansionSearchService",expansion);
+		org.assertj.core.api.Assertions.assertThatThrownBy(()->service.debug(new LawAiDebugRequest("law",List.of("law"),QUESTION,8,true,null)))
+			.isInstanceOf(IllegalStateException.class).hasMessage("captured expansion unavailable");
 	}
 
 	@Test

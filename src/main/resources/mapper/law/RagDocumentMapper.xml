@@ -245,14 +245,20 @@
   </select>
 
   <select id="countChunkSearch" resultType="int">
+    <bind name="routing" value="null"/>
+    <include refid="countChunkSearchQuery"/>
+  </select>
+  <select id="countChunkSearchRouted" resultType="int">
+    <include refid="countChunkSearchQuery"/>
+  </select>
+  <sql id="countChunkSearchQuery">
     SELECT COUNT(*)
     FROM rag_document_chunks c
     JOIN rag_documents doc ON doc.document_id = c.document_id
     WHERE doc.document_type = #{documentType}
       AND doc.use_yn = 'Y'
-      AND c.use_yn = 'Y'
+      AND <include refid="capturedChunkVisibility"/>
       AND COALESCE(c.quality_status, 'PASS') != 'REJECT'
-      AND <include refid="latestActiveChunkVersionFilter"/>
       AND (
         c.chunk_text LIKE CONCAT('%', #{query}, '%')
         OR c.chunk_title LIKE CONCAT('%', #{query}, '%')
@@ -262,9 +268,16 @@
         OR doc.title LIKE CONCAT('%', #{query}, '%')
         OR doc.source_org LIKE CONCAT('%', #{query}, '%')
       )
-  </select>
+  </sql>
 
   <select id="searchChunks" resultType="com.kaces.pandora.lawdata.chunk.LawChunkSearchRow">
+    <bind name="routing" value="null"/>
+    <include refid="searchChunksQuery"/>
+  </select>
+  <select id="searchChunksRouted" resultType="com.kaces.pandora.lawdata.chunk.LawChunkSearchRow">
+    <include refid="searchChunksQuery"/>
+  </select>
+  <sql id="searchChunksQuery">
     SELECT
       c.chunk_id AS chunkId,
       c.document_id AS documentId,
@@ -291,9 +304,8 @@
     JOIN rag_documents doc ON doc.document_id = c.document_id
     WHERE doc.document_type = #{documentType}
       AND doc.use_yn = 'Y'
-      AND c.use_yn = 'Y'
+      AND <include refid="capturedChunkVisibility"/>
       AND COALESCE(c.quality_status, 'PASS') != 'REJECT'
-      AND <include refid="latestActiveChunkVersionFilter"/>
       AND (
         c.chunk_text LIKE CONCAT('%', #{query}, '%')
         OR c.chunk_title LIKE CONCAT('%', #{query}, '%')
@@ -315,7 +327,7 @@
       doc.title,
       c.sort_order
     LIMIT #{limit} OFFSET #{offset}
-  </select>
+  </sql>
 
   <select id="findChunkIdsByDocumentId" resultType="long">
     SELECT chunk_id
@@ -881,6 +893,13 @@
   </select>
 
   <select id="findSemanticChunksByLegacyText" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="3">
+    <bind name="routing" value="null"/>
+    <include refid="findSemanticChunksByLegacyTextQuery"/>
+  </select>
+  <select id="findSemanticChunksByLegacyTextCaptured" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="3">
+    <include refid="findSemanticChunksByLegacyTextQuery"/>
+  </select>
+  <sql id="findSemanticChunksByLegacyTextQuery">
     SELECT
       c.chunk_id AS chunkId,
       c.document_id AS documentId,
@@ -905,9 +924,8 @@
     FROM rag_document_chunks c
     JOIN rag_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
-      AND c.use_yn = 'Y'
+      AND <include refid="capturedChunkVisibility"/>
       AND <include refid="searchableChunkQualityFilter"/>
-      AND <include refid="latestActiveChunkVersionFilter"/>
       <if test="documentTypes != null and documentTypes.size() > 0">
         AND doc.document_type IN
         <foreach collection="documentTypes" item="documentType" open="(" separator="," close=")">
@@ -927,9 +945,16 @@
       </if>
     ORDER BY doc.document_type, doc.title, c.sort_order
     LIMIT #{limit}
-  </select>
+  </sql>
 
   <select id="findSemanticChunksByText" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="3">
+    <bind name="routing" value="null"/>
+    <include refid="findSemanticChunksByTextQuery"/>
+  </select>
+  <select id="findSemanticChunksByTextCaptured" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="3">
+    <include refid="findSemanticChunksByTextQuery"/>
+  </select>
+  <sql id="findSemanticChunksByTextQuery">
     WITH matched_terms AS (
       SELECT
         search_term.chunk_id,
@@ -943,13 +968,27 @@
           FROM rag_chunk_search_terms
           WHERE term LIKE CONCAT(#{keyword}, '%')
         </foreach>
+        <if test="routing != null and !routing.replacedDocumentIds.isEmpty()">
+          UNION ALL
+          <foreach collection="keywords" item="keyword" separator=" UNION ALL ">
+            SELECT prepared.chunk_id, prepared.term, SUM(prepared.term_frequency * prepared.field_weight) AS weight,
+              #{keyword} AS query_term
+            FROM semantic_lexical_terms prepared
+            JOIN rag_document_chunks prepared_chunk ON prepared_chunk.chunk_id=prepared.chunk_id
+            WHERE prepared.index_version=#{routing.lexicalNamespace}
+              AND prepared.target IN ('official_doc','internal_doc','reference_doc')
+              AND prepared.term LIKE CONCAT(#{keyword}, '%')
+              AND prepared_chunk.document_id IN
+              <foreach collection="routing.replacedDocumentIds" item="replacedId" open="(" separator="," close=")">#{replacedId}</foreach>
+            GROUP BY prepared.chunk_id, prepared.term
+          </foreach>
+        </if>
       ) search_term
       JOIN rag_document_chunks c ON c.chunk_id = search_term.chunk_id
       JOIN rag_documents doc ON doc.document_id = c.document_id
       WHERE doc.use_yn = 'Y'
-        AND c.use_yn = 'Y'
+        AND <include refid="capturedChunkVisibility"/>
         AND <include refid="searchableChunkQualityFilter"/>
-        AND <include refid="latestActiveChunkVersionFilter"/>
         <if test="documentTypes != null and documentTypes.size() > 0">
           AND doc.document_type IN
           <foreach collection="documentTypes" item="documentType" open="(" separator="," close=")">
@@ -990,9 +1029,8 @@
     JOIN rag_document_chunks c ON c.chunk_id = matched.chunk_id
     JOIN rag_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
-      AND c.use_yn = 'Y'
+      AND <include refid="capturedChunkVisibility"/>
       AND <include refid="searchableChunkQualityFilter"/>
-      AND <include refid="latestActiveChunkVersionFilter"/>
       <if test="documentTypes != null and documentTypes.size() > 0">
         AND doc.document_type IN
         <foreach collection="documentTypes" item="documentType" open="(" separator="," close=")">
@@ -1004,9 +1042,16 @@
       matched.term_score DESC,
       c.sort_order
     LIMIT #{limit}
-  </select>
+  </sql>
 
   <select id="findSemanticChunksByDocumentTitleAndText" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="3">
+    <bind name="routing" value="null"/>
+    <include refid="findSemanticChunksByDocumentTitleAndTextQuery"/>
+  </select>
+  <select id="findSemanticChunksByDocumentTitleAndTextCaptured" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="3">
+    <include refid="findSemanticChunksByDocumentTitleAndTextQuery"/>
+  </select>
+  <sql id="findSemanticChunksByDocumentTitleAndTextQuery">
     SELECT
       c.chunk_id AS chunkId,
       c.document_id AS documentId,
@@ -1036,9 +1081,8 @@
     FROM rag_document_chunks c
     JOIN rag_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
-      AND c.use_yn = 'Y'
+      AND <include refid="capturedChunkVisibility"/>
       AND <include refid="searchableChunkQualityFilter"/>
-      AND <include refid="latestActiveChunkVersionFilter"/>
       <if test="documentTypes != null and documentTypes.size() > 0">
         AND doc.document_type IN
         <foreach collection="documentTypes" item="documentType" open="(" separator="," close=")">
@@ -1080,9 +1124,16 @@
       doc.title,
       c.sort_order
     LIMIT #{limit}
-  </select>
+  </sql>
 
   <select id="findSemanticChunksByDocumentTitleAndTextScoped" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="3">
+    <bind name="routing" value="null"/>
+    <include refid="findSemanticChunksByDocumentTitleAndTextScopedQuery"/>
+  </select>
+  <select id="findSemanticChunksByDocumentTitleAndTextScopedCaptured" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="3">
+    <include refid="findSemanticChunksByDocumentTitleAndTextScopedQuery"/>
+  </select>
+  <sql id="findSemanticChunksByDocumentTitleAndTextScopedQuery">
     WITH matched_docs AS (
       SELECT
         doc.document_id,
@@ -1153,8 +1204,8 @@
     JOIN latest_versions latest ON latest.document_id = doc.document_id
     JOIN rag_document_chunks c
       ON c.document_id = doc.document_id
-      AND c.chunk_version = latest.chunk_version
-    WHERE c.use_yn = 'Y'
+      <if test="routing == null">AND c.chunk_version = latest.chunk_version</if>
+    WHERE <include refid="capturedChunkVisibility"/>
       AND <include refid="searchableChunkQualityFilter"/>
       <if test="textKeywords != null and textKeywords.size() > 0">
         AND (
@@ -1177,9 +1228,16 @@
       doc.title,
       c.sort_order
     LIMIT #{limit}
-  </select>
+  </sql>
 
   <select id="findSemanticChunksByDocumentTitleScoped" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="2">
+    <bind name="routing" value="null"/>
+    <include refid="findSemanticChunksByDocumentTitleScopedQuery"/>
+  </select>
+  <select id="findSemanticChunksByDocumentTitleScopedCaptured" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="2">
+    <include refid="findSemanticChunksByDocumentTitleScopedQuery"/>
+  </select>
+  <sql id="findSemanticChunksByDocumentTitleScopedQuery">
     WITH matched_docs AS (
       SELECT
         doc.document_id,
@@ -1248,14 +1306,21 @@
     JOIN latest_versions latest ON latest.document_id = doc.document_id
     JOIN rag_document_chunks c
       ON c.document_id = doc.document_id
-      AND c.chunk_version = latest.chunk_version
-    WHERE c.use_yn = 'Y'
+      <if test="routing == null">AND c.chunk_version = latest.chunk_version</if>
+    WHERE <include refid="capturedChunkVisibility"/>
       AND <include refid="searchableChunkQualityFilter"/>
     ORDER BY doc.title_score DESC, doc.document_type, doc.title, c.sort_order
     LIMIT #{limit}
-  </select>
+  </sql>
 
   <select id="findSemanticChunksByDocumentTitleWithTextHints" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="2">
+    <bind name="routing" value="null"/>
+    <include refid="findSemanticChunksByDocumentTitleWithTextHintsQuery"/>
+  </select>
+  <select id="findSemanticChunksByDocumentTitleWithTextHintsCaptured" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="2">
+    <include refid="findSemanticChunksByDocumentTitleWithTextHintsQuery"/>
+  </select>
+  <sql id="findSemanticChunksByDocumentTitleWithTextHintsQuery">
     WITH matched_docs AS (
       SELECT
         doc.document_id,
@@ -1322,8 +1387,8 @@
     JOIN latest_versions latest ON latest.document_id = doc.document_id
     JOIN rag_document_chunks c
       ON c.document_id = doc.document_id
-      AND c.chunk_version = latest.chunk_version
-    WHERE c.use_yn = 'Y'
+      <if test="routing == null">AND c.chunk_version = latest.chunk_version</if>
+    WHERE <include refid="capturedChunkVisibility"/>
       AND <include refid="searchableChunkQualityFilter"/>
     ORDER BY
       (
@@ -1338,9 +1403,16 @@
       doc.title,
       c.sort_order
     LIMIT #{limit}
-  </select>
+  </sql>
 
   <select id="findSemanticChunksByHeadingText" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="2">
+    <bind name="routing" value="null"/>
+    <include refid="findSemanticChunksByHeadingTextQuery"/>
+  </select>
+  <select id="findSemanticChunksByHeadingTextCaptured" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow" timeout="2">
+    <include refid="findSemanticChunksByHeadingTextQuery"/>
+  </select>
+  <sql id="findSemanticChunksByHeadingTextQuery">
     SELECT
       c.chunk_id AS chunkId,
       c.document_id AS documentId,
@@ -1370,9 +1442,8 @@
     FROM rag_document_chunks c
     JOIN rag_documents doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
-      AND c.use_yn = 'Y'
+      AND <include refid="capturedChunkVisibility"/>
       AND <include refid="searchableChunkQualityFilter"/>
-      AND <include refid="latestActiveChunkVersionFilter"/>
       <if test="documentTypes != null and documentTypes.size() > 0">
         AND doc.document_type IN
         <foreach collection="documentTypes" item="documentType" open="(" separator="," close=")">
@@ -1419,11 +1490,20 @@
       doc.title,
       c.sort_order
     LIMIT #{limit}
-  </select>
+  </sql>
 
   <select id="findDocumentExpansionDocuments"
           resultType="com.kaces.pandora.semantic.retrieval.DocumentIdentityCandidate"
           timeout="3">
+    <bind name="routing" value="null"/>
+    <include refid="findDocumentExpansionDocumentsQuery"/>
+  </select>
+  <select id="findDocumentExpansionDocumentsCaptured"
+          resultType="com.kaces.pandora.semantic.retrieval.DocumentIdentityCandidate"
+          timeout="3">
+    <include refid="findDocumentExpansionDocumentsQuery"/>
+  </select>
+  <sql id="findDocumentExpansionDocumentsQuery">
     WITH document_matches AS (
       SELECT
         doc.document_id,
@@ -1461,9 +1541,8 @@
       FROM rag_documents doc
       JOIN rag_document_chunks c ON c.document_id = doc.document_id
       WHERE doc.use_yn = 'Y'
-        AND c.use_yn = 'Y'
+        AND <include refid="capturedChunkVisibility"/>
         AND <include refid="searchableChunkQualityFilter"/>
-        AND <include refid="latestActiveChunkVersionFilter"/>
         AND doc.document_type IN
         <foreach collection="targets" item="target" open="(" separator="," close=")">
           #{target}
@@ -1491,11 +1570,20 @@
     )
     ORDER BY exactTitleMatch DESC, matchedTitleTermCount DESC, provisionAnchorMatch DESC, documentId
     LIMIT #{limit}
-  </select>
+  </sql>
 
   <select id="findDocumentExpansionChunks"
           resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow"
           timeout="3">
+    <bind name="routing" value="null"/>
+    <include refid="findDocumentExpansionChunksQuery"/>
+  </select>
+  <select id="findDocumentExpansionChunksCaptured"
+          resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow"
+          timeout="3">
+    <include refid="findDocumentExpansionChunksQuery"/>
+  </select>
+  <sql id="findDocumentExpansionChunksQuery">
     WITH chunk_matches AS (
       SELECT
         c.chunk_id,
@@ -1543,9 +1631,8 @@
       FROM rag_document_chunks c
       JOIN rag_documents doc ON doc.document_id = c.document_id
       WHERE doc.use_yn = 'Y'
-        AND c.use_yn = 'Y'
+        AND <include refid="capturedChunkVisibility"/>
         AND <include refid="searchableChunkQualityFilter"/>
-        AND <include refid="latestActiveChunkVersionFilter"/>
         AND c.document_id IN
         <foreach collection="documentIds" item="documentId" open="(" separator="," close=")">
           #{documentId}
@@ -1595,7 +1682,7 @@
     WHERE ranked.document_rank &lt;= #{perDocumentLimit}
     ORDER BY ranked.match_class, ranked.document_id, ranked.sort_order, ranked.chunk_id
     LIMIT #{limit}
-  </select>
+  </sql>
 
   <select id="findCurrentIndexedSnapshot"
           resultType="com.kaces.pandora.semantic.provenance.IndexContentSnapshot"

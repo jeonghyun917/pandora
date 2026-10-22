@@ -22,6 +22,25 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class DocumentExpansionSearchServiceTests {
+	@Test void capturedStrongAndSeededExpansionKeepGenerationAndPropagateFailure() {
+		var law=mock(LawChunkMapper.class);var rag=mock(RagDocumentMapper.class);
+		var routing=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(0,java.util.Map.of(),java.util.Map.of(),Set.of(),null,null);
+		when(rag.findDocumentExpansionDocumentsRouted(anyList(),anyList(),anyList(),anyInt(),eq(routing)))
+			.thenReturn(List.of(document(20,"official_doc")));
+		when(rag.findDocumentExpansionChunksRouted(eq(List.of(20L)),anyList(),anyList(),anyList(),anyInt(),anyInt(),eq(routing)))
+			.thenReturn(List.of(chunk(200,20,"official_doc")));
+		var service=service(law,rag,properties(true,2,5,7));
+		assertThat(service.search(anchor(),List.of("official_doc"),false,Set.of(),routing).chunks())
+			.extracting(LawSemanticChunkRow::chunkId).containsExactly(200L);
+		assertThat(service.searchBm25Seeded(anchor(),List.of(seed("official_doc",20)),false,Set.of(),routing).chunks())
+			.extracting(LawSemanticChunkRow::chunkId).containsExactly(200L);
+		when(rag.findDocumentExpansionChunksRouted(eq(List.of(20L)),anyList(),anyList(),anyList(),anyInt(),anyInt(),eq(routing)))
+			.thenThrow(new IllegalStateException("captured expansion unavailable"));
+		org.assertj.core.api.Assertions.assertThatThrownBy(()->service.search(anchor(),List.of("official_doc"),false,Set.of(),routing))
+			.isInstanceOf(IllegalStateException.class);
+		org.assertj.core.api.Assertions.assertThatThrownBy(()->service.searchBm25Seeded(anchor(),List.of(seed("official_doc",20)),false,Set.of(),routing))
+			.isInstanceOf(IllegalStateException.class);
+	}
 
 	@Test
 	void seededSearchReadsOnlyExactDocumentIdsWithoutIdentityLookup() {

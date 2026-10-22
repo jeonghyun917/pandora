@@ -18,6 +18,17 @@ import org.springframework.http.ResponseEntity;
 import org.junit.jupiter.api.Test;
 
 class RagDocumentControllerTests {
+	@Test void detailUsesCapturedGenerationInsteadOfLegacyChunks() {
+		var mapper=mock(RagDocumentMapper.class);var store=mock(RagOriginalDocumentStore.class);
+		when(mapper.findDocumentById(7)).thenReturn(document());
+		var routing=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(0,java.util.Map.of(),java.util.Map.of(),java.util.Set.of(),null,null);
+		var router=mock(com.kaces.pandora.rag.recovery.RagRecoveryRoutingService.class);when(router.capture()).thenReturn(routing);
+		when(mapper.findSemanticChunksByDocumentIdRouted(7,routing)).thenReturn(java.util.List.of(
+			new com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow(123,7,"official_doc","7","문서","기관","공식",null,null,"1","보존 의무",
+				"기관은 원본 문서를 보존하여야 한다.",1,null,null,0,"a".repeat(64),null,"body","PASS")));
+		var controller=controller(mapper,store);controller.configureRecoveryRouting(router);
+		assertThat(controller.detail(7).getBody().sections()).extracting(section->section.body()).containsExactly("기관은 원본 문서를 보존하여야 한다.");
+	}
 
 	@Test
 	void encodesKoreanPreviewFilenameAsRfc5987ContentDisposition() {

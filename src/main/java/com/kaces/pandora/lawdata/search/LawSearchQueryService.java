@@ -10,6 +10,11 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class LawSearchQueryService {
+    private com.kaces.pandora.rag.recovery.RagRecoveryRoutingService recoveryRouting;
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureRecoveryRouting(com.kaces.pandora.rag.recovery.RagRecoveryRoutingService routing) {
+        this.recoveryRouting=java.util.Objects.requireNonNull(routing);
+    }
 
 	private final LawDocumentMapper lawDocumentMapper;
 	private final LawChunkMapper lawChunkMapper;
@@ -70,14 +75,16 @@ public class LawSearchQueryService {
 		}
 		if (isRagTarget(query.target())) {
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-			int total = ragDocumentMapper.countChunkSearch(query.target(), query.query());
+            var routing=recoveryRouting==null ? null : recoveryRouting.capture();
+			int total = routing==null ? ragDocumentMapper.countChunkSearch(query.target(), query.query())
+                : ragDocumentMapper.countChunkSearchRouted(query.target(),query.query(),routing);
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-			List<LawChunkSearchRow> rows = ragDocumentMapper.searchChunks(
+			List<LawChunkSearchRow> rows = routing==null ? ragDocumentMapper.searchChunks(
 				query.target(),
 				query.query(),
 				query.display(),
 				query.offset()
-			);
+			) : ragDocumentMapper.searchChunksRouted(query.target(),query.query(),query.display(),query.offset(),routing);
 			return new LawChunkSearchQueryResult(query, total, rows);
 		}
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.

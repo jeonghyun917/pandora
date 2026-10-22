@@ -37,6 +37,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/rag-documents")
 public class RagDocumentController {
+    private com.kaces.pandora.rag.recovery.RagRecoveryRoutingService recoveryRouting;
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureRecoveryRouting(com.kaces.pandora.rag.recovery.RagRecoveryRoutingService routing) {
+        this.recoveryRouting=java.util.Objects.requireNonNull(routing);
+    }
 	private final RagImportService importService;
 	private final RagDocumentMapper mapper;
 	private final RagDocumentPreviewService previewService;
@@ -78,12 +83,14 @@ public class RagDocumentController {
 
 	@GetMapping("/{documentId}/detail")
 	public ResponseEntity<LawDetailResponse> detail(@PathVariable long documentId) {
+        var routing=recoveryRouting==null ? null : recoveryRouting.capture();
 		RagDocumentRow document = mapper.findDocumentById(documentId);
 		if (document == null) {
 			return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
 		}
 
-		List<LawDetailSectionResponse> sections = mapper.findSemanticChunksByDocumentId(documentId).stream()
+		List<LawDetailSectionResponse> sections = (routing==null ? mapper.findSemanticChunksByDocumentId(documentId)
+            : mapper.findSemanticChunksByDocumentIdRouted(documentId,routing)).stream()
 			.map(chunk -> section(chunk))
 			.filter(section -> !RagTextNoiseFilter.isTableOfContents(section.title(), section.body()))
 			.filter(section -> !RagTextNoiseFilter.isMeaninglessSection(section.title(), section.body()))

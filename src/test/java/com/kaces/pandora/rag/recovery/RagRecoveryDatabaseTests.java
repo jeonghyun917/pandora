@@ -190,6 +190,29 @@ class RagRecoveryDatabaseTests {
                         .containsExactlyInAnyOrderElementsOf(activeIds);
                     assertThat(documents.findSemanticChunksByIdsRouted(activeIds, beforeRouting)).isEmpty();
                     assertThat(documents.findSemanticChunksByIdsRouted(oldIds, afterRouting)).isEmpty();
+                    var types=List.of("official_doc"); var titles=List.of("원본 보존"); var terms=List.of("원본","검토");
+                    var titleReads=List.of(
+                        documents.findSemanticChunksByDocumentTitleScopedRouted(types,titles,100,afterRouting),
+                        documents.findSemanticChunksByDocumentTitleAndTextScopedRouted(types,titles,terms,100,afterRouting),
+                        documents.findSemanticChunksByDocumentTitleAndTextRouted(types,titles,terms,100,afterRouting),
+                        documents.findSemanticChunksByDocumentTitleWithTextHintsRouted(types,titles,terms,100,afterRouting),
+                        documents.findSemanticChunksByHeadingTextRouted(types,List.of(),100,afterRouting),
+                        documents.findSemanticChunksByLegacyTextRouted(types,terms,100,afterRouting),
+                        documents.findSemanticChunksByTextRouted(types,List.of("원본"),100,afterRouting));
+                    for(var rows:titleReads) assertThat(rows.stream().filter(row->row.documentId()==id).map(row->row.chunkId()).toList())
+                        .containsExactlyInAnyOrderElementsOf(activeIds);
+                    assertThat(documents.findDocumentExpansionDocumentsRouted(types,titles,List.of(),100,afterRouting))
+                        .extracting(row->row.documentId()).contains(id);
+                    assertThat(documents.findDocumentExpansionChunksRouted(List.of(id),List.of(),List.of(),List.of(),100,100,afterRouting))
+                        .extracting(row->row.chunkId()).containsExactlyInAnyOrderElementsOf(activeIds);
+                    assertThat(documents.findDocumentExpansionChunksRouted(List.of(id),List.of(),List.of(),List.of(),100,100,beforeRouting))
+                        .extracting(row->row.chunkId()).containsExactlyInAnyOrderElementsOf(oldIds);
+                    assertThat(documents.countChunkSearchRouted("official_doc","원본 보존",afterRouting)).isEqualTo(activeIds.size());
+                    assertThat(documents.searchChunksRouted("official_doc","원본 보존",100,0,afterRouting))
+                        .extracting(row->row.chunkId()).containsExactlyInAnyOrderElementsOf(activeIds);
+                    assertThat(documents.countChunkSearchRouted("official_doc","원본 보존",beforeRouting)).isEqualTo(oldIds.size());
+                    assertThat(documents.findSemanticChunksByDocumentTitleScopedRouted(types,titles,100,beforeRouting).stream()
+                        .filter(row->row.documentId()==id).map(row->row.chunkId()).toList()).containsExactlyInAnyOrderElementsOf(oldIds);
                     assertThat(documents.findSemanticChunksByDocumentIdRouted(id, beforeRouting)).extracting(row -> row.chunkId())
                         .containsExactlyInAnyOrderElementsOf(oldIds);
                     assertThat(documents.findSemanticChunksByDocumentIdRouted(id, afterRouting)).extracting(row -> row.chunkId())

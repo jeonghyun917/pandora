@@ -17,6 +17,10 @@ import org.apache.ibatis.annotations.Param;
 
 @Mapper
 public interface RagDocumentMapper {
+    int countChunkSearchRouted(@Param("documentType") String documentType,@Param("query") String query,
+        @Param("routing") com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing);
+    List<LawChunkSearchRow> searchChunksRouted(@Param("documentType") String documentType,@Param("query") String query,
+        @Param("limit") int limit,@Param("offset") int offset,@Param("routing") com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing);
     RagDocumentRow findSourceProofDocument(@Param("documentId") long documentId, @Param("lock") boolean lock);
     List<RagDocumentChunkRow> findActiveChunksForSourceProof(@Param("documentId") long documentId, @Param("lock") boolean lock);
     int backfillSourceProofIfUnchanged(@Param("expected") RagDocumentChunkRow expected, @Param("fileHash") String fileHash, @Param("proof") String proof);
@@ -194,12 +198,28 @@ public interface RagDocumentMapper {
 		@Param("keywords") List<String> keywords,
 		@Param("limit") int limit
 	);
+	default List<LawSemanticChunkRow> findSemanticChunksByTextRouted(@Param("documentTypes") List<String> documentTypes,
+		@Param("keywords") List<String> keywords,
+		@Param("limit") int limit, com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
+		return routing == null ? findSemanticChunksByText(documentTypes, keywords, limit) : findSemanticChunksByTextCaptured(documentTypes, keywords, limit, routing);
+	}
+	List<LawSemanticChunkRow> findSemanticChunksByTextCaptured(@Param("documentTypes") List<String> documentTypes,
+		@Param("keywords") List<String> keywords,
+		@Param("limit") int limit, @Param("routing") com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing);
 
 	List<LawSemanticChunkRow> findSemanticChunksByLegacyText(
 		@Param("documentTypes") List<String> documentTypes,
 		@Param("keywords") List<String> keywords,
 		@Param("limit") int limit
 	);
+	default List<LawSemanticChunkRow> findSemanticChunksByLegacyTextRouted(@Param("documentTypes") List<String> documentTypes,
+		@Param("keywords") List<String> keywords,
+		@Param("limit") int limit, com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
+		return routing == null ? findSemanticChunksByLegacyText(documentTypes, keywords, limit) : findSemanticChunksByLegacyTextCaptured(documentTypes, keywords, limit, routing);
+	}
+	List<LawSemanticChunkRow> findSemanticChunksByLegacyTextCaptured(@Param("documentTypes") List<String> documentTypes,
+		@Param("keywords") List<String> keywords,
+		@Param("limit") int limit, @Param("routing") com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing);
 
 	List<LawSemanticChunkRow> findSemanticChunksByDocumentTitleAndText(
 		@Param("documentTypes") List<String> documentTypes,
@@ -207,6 +227,16 @@ public interface RagDocumentMapper {
 		@Param("textKeywords") List<String> textKeywords,
 		@Param("limit") int limit
 	);
+	default List<LawSemanticChunkRow> findSemanticChunksByDocumentTitleAndTextRouted(@Param("documentTypes") List<String> documentTypes,
+		@Param("titleKeywords") List<String> titleKeywords,
+		@Param("textKeywords") List<String> textKeywords,
+		@Param("limit") int limit, com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
+		return routing == null ? findSemanticChunksByDocumentTitleAndText(documentTypes, titleKeywords, textKeywords, limit) : findSemanticChunksByDocumentTitleAndTextCaptured(documentTypes, titleKeywords, textKeywords, limit, routing);
+	}
+	List<LawSemanticChunkRow> findSemanticChunksByDocumentTitleAndTextCaptured(@Param("documentTypes") List<String> documentTypes,
+		@Param("titleKeywords") List<String> titleKeywords,
+		@Param("textKeywords") List<String> textKeywords,
+		@Param("limit") int limit, @Param("routing") com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing);
 
 	List<LawSemanticChunkRow> findSemanticChunksByDocumentTitleAndTextScoped(
 		@Param("documentTypes") List<String> documentTypes,
@@ -214,12 +244,30 @@ public interface RagDocumentMapper {
 		@Param("textKeywords") List<String> textKeywords,
 		@Param("limit") int limit
 	);
+	default List<LawSemanticChunkRow> findSemanticChunksByDocumentTitleAndTextScopedRouted(@Param("documentTypes") List<String> documentTypes,
+		@Param("titleKeywords") List<String> titleKeywords,
+		@Param("textKeywords") List<String> textKeywords,
+		@Param("limit") int limit, com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
+		return routing == null ? findSemanticChunksByDocumentTitleAndTextScoped(documentTypes, titleKeywords, textKeywords, limit) : findSemanticChunksByDocumentTitleAndTextScopedCaptured(documentTypes, titleKeywords, textKeywords, limit, routing);
+	}
+	List<LawSemanticChunkRow> findSemanticChunksByDocumentTitleAndTextScopedCaptured(@Param("documentTypes") List<String> documentTypes,
+		@Param("titleKeywords") List<String> titleKeywords,
+		@Param("textKeywords") List<String> textKeywords,
+		@Param("limit") int limit, @Param("routing") com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing);
 
 	List<LawSemanticChunkRow> findSemanticChunksByDocumentTitleScoped(
 		@Param("documentTypes") List<String> documentTypes,
 		@Param("titleKeywords") List<String> titleKeywords,
 		@Param("limit") int limit
 	);
+	default List<LawSemanticChunkRow> findSemanticChunksByDocumentTitleScopedRouted(@Param("documentTypes") List<String> documentTypes,
+		@Param("titleKeywords") List<String> titleKeywords,
+		@Param("limit") int limit, com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
+		return routing == null ? findSemanticChunksByDocumentTitleScoped(documentTypes, titleKeywords, limit) : findSemanticChunksByDocumentTitleScopedCaptured(documentTypes, titleKeywords, limit, routing);
+	}
+	List<LawSemanticChunkRow> findSemanticChunksByDocumentTitleScopedCaptured(@Param("documentTypes") List<String> documentTypes,
+		@Param("titleKeywords") List<String> titleKeywords,
+		@Param("limit") int limit, @Param("routing") com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing);
 
 	List<LawSemanticChunkRow> findSemanticChunksByDocumentTitleWithTextHints(
 		@Param("documentTypes") List<String> documentTypes,
@@ -227,12 +275,30 @@ public interface RagDocumentMapper {
 		@Param("textKeywords") List<String> textKeywords,
 		@Param("limit") int limit
 	);
+	default List<LawSemanticChunkRow> findSemanticChunksByDocumentTitleWithTextHintsRouted(@Param("documentTypes") List<String> documentTypes,
+		@Param("titleKeywords") List<String> titleKeywords,
+		@Param("textKeywords") List<String> textKeywords,
+		@Param("limit") int limit, com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
+		return routing == null ? findSemanticChunksByDocumentTitleWithTextHints(documentTypes, titleKeywords, textKeywords, limit) : findSemanticChunksByDocumentTitleWithTextHintsCaptured(documentTypes, titleKeywords, textKeywords, limit, routing);
+	}
+	List<LawSemanticChunkRow> findSemanticChunksByDocumentTitleWithTextHintsCaptured(@Param("documentTypes") List<String> documentTypes,
+		@Param("titleKeywords") List<String> titleKeywords,
+		@Param("textKeywords") List<String> textKeywords,
+		@Param("limit") int limit, @Param("routing") com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing);
 
 	List<LawSemanticChunkRow> findSemanticChunksByHeadingText(
 		@Param("documentTypes") List<String> documentTypes,
 		@Param("keywords") List<String> keywords,
 		@Param("limit") int limit
 	);
+	default List<LawSemanticChunkRow> findSemanticChunksByHeadingTextRouted(@Param("documentTypes") List<String> documentTypes,
+		@Param("keywords") List<String> keywords,
+		@Param("limit") int limit, com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
+		return routing == null ? findSemanticChunksByHeadingText(documentTypes, keywords, limit) : findSemanticChunksByHeadingTextCaptured(documentTypes, keywords, limit, routing);
+	}
+	List<LawSemanticChunkRow> findSemanticChunksByHeadingTextCaptured(@Param("documentTypes") List<String> documentTypes,
+		@Param("keywords") List<String> keywords,
+		@Param("limit") int limit, @Param("routing") com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing);
 
 	List<DocumentIdentityCandidate> findDocumentExpansionDocuments(
 		@Param("targets") List<String> targets,
@@ -240,6 +306,16 @@ public interface RagDocumentMapper {
 		@Param("provisionTerms") List<String> provisionTerms,
 		@Param("limit") int limit
 	);
+	default List<DocumentIdentityCandidate> findDocumentExpansionDocumentsRouted(@Param("targets") List<String> targets,
+		@Param("titleTerms") List<String> titleTerms,
+		@Param("provisionTerms") List<String> provisionTerms,
+		@Param("limit") int limit, com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
+		return routing == null ? findDocumentExpansionDocuments(targets, titleTerms, provisionTerms, limit) : findDocumentExpansionDocumentsCaptured(targets, titleTerms, provisionTerms, limit, routing);
+	}
+	List<DocumentIdentityCandidate> findDocumentExpansionDocumentsCaptured(@Param("targets") List<String> targets,
+		@Param("titleTerms") List<String> titleTerms,
+		@Param("provisionTerms") List<String> provisionTerms,
+		@Param("limit") int limit, @Param("routing") com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing);
 
 	List<LawSemanticChunkRow> findDocumentExpansionChunks(
 		@Param("documentIds") List<Long> documentIds,
@@ -249,6 +325,20 @@ public interface RagDocumentMapper {
 		@Param("perDocumentLimit") int perDocumentLimit,
 		@Param("limit") int limit
 	);
+	default List<LawSemanticChunkRow> findDocumentExpansionChunksRouted(@Param("documentIds") List<Long> documentIds,
+		@Param("provisionTerms") List<String> provisionTerms,
+		@Param("headingTerms") List<String> headingTerms,
+		@Param("evidenceTerms") List<String> evidenceTerms,
+		@Param("perDocumentLimit") int perDocumentLimit,
+		@Param("limit") int limit, com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
+		return routing == null ? findDocumentExpansionChunks(documentIds, provisionTerms, headingTerms, evidenceTerms, perDocumentLimit, limit) : findDocumentExpansionChunksCaptured(documentIds, provisionTerms, headingTerms, evidenceTerms, perDocumentLimit, limit, routing);
+	}
+	List<LawSemanticChunkRow> findDocumentExpansionChunksCaptured(@Param("documentIds") List<Long> documentIds,
+		@Param("provisionTerms") List<String> provisionTerms,
+		@Param("headingTerms") List<String> headingTerms,
+		@Param("evidenceTerms") List<String> evidenceTerms,
+		@Param("perDocumentLimit") int perDocumentLimit,
+		@Param("limit") int limit, @Param("routing") com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing);
 
 	IndexContentSnapshot findCurrentIndexedSnapshot(
 		@Param("model") String model,

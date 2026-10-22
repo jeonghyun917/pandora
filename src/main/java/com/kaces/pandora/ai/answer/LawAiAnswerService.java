@@ -14,6 +14,8 @@ import com.kaces.pandora.lawdata.search.LawSearchQuery;
 import com.kaces.pandora.rag.chunk.RagChunker;
 import com.kaces.pandora.rag.common.HwpxTextCleaner;
 import com.kaces.pandora.rag.persistence.RagDocumentMapper;
+import com.kaces.pandora.rag.recovery.RagRecoveryRoutingService;
+import com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot;
 import com.kaces.pandora.rag.search.RagChunkSearchIndexService;
 import com.kaces.pandora.semantic.config.LawAiCoverageAwareProperties;
 import com.kaces.pandora.semantic.config.LawAiDocumentExpansionProperties;
@@ -67,6 +69,17 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Service
 public class LawAiAnswerService {
+	private RagRecoveryRoutingService recoveryRoutingService;
+
+	@Autowired
+	void configureRecoveryRouting(RagRecoveryRoutingService service) {
+		this.recoveryRoutingService = java.util.Objects.requireNonNull(service);
+	}
+
+	private RecoveryRoutingSnapshot captureRecoveryRouting() {
+		// Standalone legacy constructors remain usable; Spring requires the routing bean above.
+		return recoveryRoutingService == null ? null : recoveryRoutingService.capture();
+	}
 
 	private static final Logger log = LoggerFactory.getLogger(LawAiAnswerService.class);
 	private static final int DEFAULT_LIMIT = 8;
@@ -578,14 +591,15 @@ public class LawAiAnswerService {
 	// 메소드 설명: answer 처리 흐름을 수행합니다.
 	public LawAiAnswerResponse answer(LawAiAnswerRequest request) {
 		TimingProbe timing = TimingProbe.started();
-		String cacheKey = answerCacheKey(request);
+		RecoveryRoutingSnapshot routing = captureRecoveryRouting();
+		String cacheKey = answerCacheKey(request, routing);
 		LawAiAnswerResponse cached = cachedAnswer(cacheKey, timing);
 		if (cached != null) {
 			logTiming("cache", cached.question(), requestTargetsForLog(request), cached.totalCnt(), cached.timing());
 			return cached;
 		}
 
-		RetrievalResult retrieval = retrieve(request, timing);
+		RetrievalResult retrieval = retrieve(request, timing, routing);
 		if (!"OK".equals(retrieval.resultMsg())) {
 			String publicMessage = publicNoGroundMessage(retrieval);
 			recordSearchFailure(retrieval, publicMessage, timing);
@@ -670,15 +684,20 @@ public class LawAiAnswerService {
 
 	// 메소드 설명: answerStream 처리 흐름을 수행합니다.
 	public SseEmitter answerStream(LawAiAnswerRequest request) {
+		RecoveryRoutingSnapshot routing = captureRecoveryRouting();
 		SseEmitter emitter = new SseEmitter(Duration.ofMinutes(4).toMillis());
-		CompletableFuture.runAsync(() -> streamAnswer(request, emitter), streamExecutor);
+		CompletableFuture.runAsync(() -> streamAnswer(request, emitter, routing), streamExecutor);
 		return emitter;
 	}
 
 	// 메소드 설명: streamAnswer 처리 흐름을 수행합니다.
 	private void streamAnswer(LawAiAnswerRequest request, SseEmitter emitter) {
+		streamAnswer(request, emitter, captureRecoveryRouting());
+	}
+
+	private void streamAnswer(LawAiAnswerRequest request, SseEmitter emitter, RecoveryRoutingSnapshot routing) {
 		TimingProbe timing = TimingProbe.started();
-		String cacheKey = answerCacheKey(request);
+		String cacheKey = answerCacheKey(request, routing);
 		try {
 			LawAiAnswerResponse cached = cachedAnswer(cacheKey, timing);
 			if (cached != null) {
@@ -693,7 +712,7 @@ public class LawAiAnswerService {
 				return;
 			}
 
-			RetrievalResult retrieval = retrieve(request, timing);
+			RetrievalResult retrieval = retrieve(request, timing, routing);
 			if (!"OK".equals(retrieval.resultMsg())) {
 				String publicMessage = publicNoGroundMessage(retrieval);
 				recordSearchFailure(retrieval, publicMessage, timing);
@@ -1092,6 +1111,10 @@ public class LawAiAnswerService {
 
 	// 메소드 설명: retrieve 처리 흐름을 수행합니다.
 	private RetrievalResult retrieve(LawAiAnswerRequest request, TimingProbe timing) {
+		return retrieve(request, timing, captureRecoveryRouting());
+	}
+
+	private RetrievalResult retrieve(LawAiAnswerRequest request, TimingProbe timing, RecoveryRoutingSnapshot routing) {
 		String question = request == null ? "" : request.question();
 		int limit = request == null || request.limit() == null ? DEFAULT_LIMIT : request.limit();
 		LawSearchQuery normalized = LawSearchQuery.normalize(
@@ -1150,19 +1173,20 @@ public class LawAiAnswerService {
 		timing.plannerMs.addAndGet(elapsedMillis(plannerStart));
 		CompletableFuture<DocumentCandidateExpansion.Result> documentExpansionFuture = documentExpansionProperties.enabled()
 			? CompletableFuture.supplyAsync(
-				() -> documentExpansionSearchService.search(
+				() -> routing == null ? documentExpansionSearchService.search(
 					queryPlan.documentSearchAnchor(),
 					targets,
 					normalized.includeFuture(),
 					Set.of()
-				),
+				) : documentExpansionSearchService.search(queryPlan.documentSearchAnchor(),targets,normalized.includeFuture(),Set.of(),routing),
 				searchExecutor
 			)
 			: CompletableFuture.completedFuture(disabledDocumentExpansionResult());
 		CompletableFuture<List<LawSemanticChunkRow>> lexicalFuture = CompletableFuture.supplyAsync(() -> {
 			try {
-				return findLexicalChunks(queryPlan, targets, normalized.includeFuture());
+				return findLexicalChunks(queryPlan, targets, normalized.includeFuture(), routing);
 			} catch (RuntimeException exception) {
+				if(routing!=null)throw exception;
 				log.warn("AI lexical DB search failed. Continuing with vector candidates. message={}", exception.getMessage());
 				return List.of();
 			}
@@ -1171,12 +1195,12 @@ public class LawAiAnswerService {
 			? CompletableFuture.supplyAsync(
 				() -> koreanBm25SearchService == null
 					? List.of()
-					: koreanBm25SearchService.search(
+					: routing == null ? koreanBm25SearchService.search(
 						normalized.query(),
 						queryPlan.bm25Keywords(),
 						targets,
 						rrfProperties.rrfFusedLimit()
-					),
+					) : koreanBm25SearchService.search(normalized.query(),queryPlan.bm25Keywords(),targets,rrfProperties.rrfFusedLimit(),routing),
 				searchExecutor
 			)
 			: CompletableFuture.completedFuture(List.of());
@@ -1184,11 +1208,11 @@ public class LawAiAnswerService {
 			groupBalancedBm25SearchService == null
 				? CompletableFuture.completedFuture(disabledBm25VariantResult())
 				: CompletableFuture.supplyAsync(
-					() -> groupBalancedBm25SearchService.search(
+					() -> routing == null ? groupBalancedBm25SearchService.search(
 						queryPlan,
 						targets,
 						rrfProperties.rrfFusedLimit()
-					),
+					) : groupBalancedBm25SearchService.search(queryPlan,targets,rrfProperties.rrfFusedLimit(),routing),
 					searchExecutor
 				);
 		CompletableFuture<List<List<Double>>> embeddingFuture = CompletableFuture.supplyAsync(() -> {
@@ -1204,12 +1228,12 @@ public class LawAiAnswerService {
 		List<List<Double>> queryVectors = joinFuture(embeddingFuture);
 		long qdrantStart = System.nanoTime();
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		List<QdrantSearchHit> hits = semanticVectorSearchService.search(
+		List<QdrantSearchHit> hits = routing == null || routing.replacedDocumentIds().isEmpty() ? semanticVectorSearchService.search(
 			queryVectors,
 			targets,
 			VECTOR_CANDIDATE_LIMIT,
 			searchExecutor
-		);
+		) : semanticVectorSearchService.search(queryVectors, targets, VECTOR_CANDIDATE_LIMIT, searchExecutor, routing);
 		timing.qdrantMs.set(elapsedMillis(qdrantStart));
 
 		long candidateBuildStart = System.nanoTime();
@@ -1217,12 +1241,12 @@ public class LawAiAnswerService {
 		for (QdrantSearchHit hit : hits) {
 			vectorScoreByChunkId.put(scoreKey(hit.target(), hit.chunkId()), hit.score());
 		}
-		List<LexicalSearchHit> bm25Hits = joinFutureOrDefault(
+		List<LexicalSearchHit> bm25Hits = routing == null ? joinFutureOrDefault(
 			bm25Future,
 			List.of(),
 			BM25_SHADOW_TIMEOUT_MILLIS
-		);
-		GroupBalancedBm25SearchService.Result bm25Variant = joinBm25VariantFuture(bm25VariantFuture);
+		) : joinFuture(bm25Future);
+		GroupBalancedBm25SearchService.Result bm25Variant = routing == null ? joinBm25VariantFuture(bm25VariantFuture) : joinFuture(bm25VariantFuture);
 		Set<Long> lawChunkIdSet = new LinkedHashSet<>();
 		Set<Long> ragChunkIdSet = new LinkedHashSet<>();
 		for (QdrantSearchHit hit : hits) {
@@ -1260,7 +1284,9 @@ public class LawAiAnswerService {
 		CompletableFuture<List<LawSemanticChunkRow>> ragVectorDbFuture = ragChunkIds.isEmpty()
 			? CompletableFuture.completedFuture(List.of())
 			: CompletableFuture.supplyAsync(
-				() -> ragDocumentMapper.findSemanticChunksByIds(ragChunkIds),
+				() -> routing == null || routing.documents().isEmpty()
+					? ragDocumentMapper.findSemanticChunksByIds(ragChunkIds)
+					: ragDocumentMapper.findSemanticChunksByIdsRouted(ragChunkIds, routing),
 				searchExecutor
 			);
 		for (LawSemanticChunkRow chunk : joinFuture(lawVectorDbFuture)) {
@@ -1289,7 +1315,7 @@ public class LawAiAnswerService {
 		timing.candidateBuildMs.addAndGet(elapsedMillis(candidateBuildStart));
 		long keywordTimeoutMillis = lexicalSearchTimeoutMillis(normalized.query(), vectorChunks.size());
 		long lexicalWaitStart = System.nanoTime();
-		List<LawSemanticChunkRow> lexicalChunks = joinFutureOrDefault(lexicalFuture, List.of(), keywordTimeoutMillis);
+		List<LawSemanticChunkRow> lexicalChunks = routing == null ? joinFutureOrDefault(lexicalFuture, List.of(), keywordTimeoutMillis) : joinFuture(lexicalFuture);
 		long lexicalElapsedMs = elapsedMillis(lexicalWaitStart);
 		timing.lexicalMs.addAndGet(lexicalElapsedMs);
 		timing.dbMs.addAndGet(lexicalElapsedMs);
@@ -1332,7 +1358,7 @@ public class LawAiAnswerService {
 			.toList();
 		Set<String> finalControlCandidateKeys = finalControlCandidateKeys(hits, lexicalChunks, bm25Hits);
 		DocumentCandidateExpansion.Result documentExpansion = finalizeDocumentExpansion(
-			joinDocumentExpansion(documentExpansionFuture),
+			routing == null ? joinDocumentExpansion(documentExpansionFuture) : joinFuture(documentExpansionFuture),
 			finalControlCandidateKeys
 		);
 		if (documentExpansion.status() == DocumentCandidateExpansion.Status.NO_STRONG_ANCHOR) {
@@ -1345,7 +1371,7 @@ public class LawAiAnswerService {
 					targets,
 					normalized.includeFuture(),
 					finalControlCandidateKeys,
-					documentExpansion
+					documentExpansion, routing
 				),
 				finalControlCandidateKeys
 			);
@@ -1443,7 +1469,7 @@ public class LawAiAnswerService {
 		timing.judgePrepMs.addAndGet(elapsedMillis(judgePrepStart));
 		List<LawSemanticChunkRow> judgeContextChunks = shouldJudgeExactCandidateText(normalized.query())
 			? judgeCandidateChunks
-			: enrichWithParentContext(judgeCandidateChunks, normalized.query(), timing);
+			: enrichWithParentContext(judgeCandidateChunks, normalized.query(), timing, routing);
 		long judgeStart = System.nanoTime();
 		EvidenceJudge.Result judgedEvidence = evidenceJudge.judge(
 			normalized.query(),
@@ -1489,7 +1515,7 @@ public class LawAiAnswerService {
 				timing.judgePrepMs.addAndGet(elapsedMillis(judgePrepStart));
 				judgeContextChunks = shouldJudgeExactCandidateText(normalized.query())
 					? judgeCandidateChunks
-					: enrichWithParentContext(judgeCandidateChunks, normalized.query(), timing);
+					: enrichWithParentContext(judgeCandidateChunks, normalized.query(), timing, routing);
 				long fallbackJudgeStart = System.nanoTime();
 				judgedEvidence = evidenceJudge.judge(
 					normalized.query(),
@@ -1507,7 +1533,7 @@ public class LawAiAnswerService {
 			judgeContextChunks,
 			normalized.query(),
 			finalScoreByChunkId,
-			combinedScoreByChunkId
+			combinedScoreByChunkId, routing
 		);
 		finalScoreByChunkId = judgedEvidence.scoreByChunkId();
 		evidenceChunks = judgedEvidence.chunks();
@@ -1660,7 +1686,7 @@ public class LawAiAnswerService {
 		}
 		ParentContextExpansionResult displayContext = shouldJudgeExactCandidateText(normalized.query())
 			? new ParentContextExpansionResult(orderedChunks, Map.of())
-			: enrichWithParentContextResult(orderedChunks, normalized.query(), timing);
+			: enrichWithParentContextResult(orderedChunks, normalized.query(), timing, routing);
 		List<LawSemanticChunkRow> displayChunks = displayContext.chunks();
 		Map<String, LawSemanticChunkRow> matchedChunkByKey = orderedChunks.stream()
 			.collect(java.util.stream.Collectors.toMap(
@@ -3025,16 +3051,26 @@ public class LawAiAnswerService {
 		String query,
 		TimingProbe timing
 	) {
-		return enrichWithParentContextResult(chunks, query, timing).chunks();
+		return enrichWithParentContext(chunks, query, timing, null);
+	}
+
+	private List<LawSemanticChunkRow> enrichWithParentContext(List<LawSemanticChunkRow> chunks, String query,
+		TimingProbe timing, RecoveryRoutingSnapshot routing) {
+		return enrichWithParentContextResult(chunks, query, timing, routing).chunks();
 	}
 
 	private record ParentContextExpansionResult(List<LawSemanticChunkRow> chunks, Map<String, List<Long>> contextChunkIdsByKey) {}
 	private record ExpandedContextChunk(LawSemanticChunkRow chunk, List<Long> chunkIds) {}
 
 	private ParentContextExpansionResult enrichWithParentContextResult(List<LawSemanticChunkRow> chunks, String query, TimingProbe timing) {
+		return enrichWithParentContextResult(chunks, query, timing, null);
+	}
+
+	private ParentContextExpansionResult enrichWithParentContextResult(List<LawSemanticChunkRow> chunks, String query,
+		TimingProbe timing, RecoveryRoutingSnapshot routing) {
 		long start = System.nanoTime();
 		try {
-			return enrichWithParentContextInternal(chunks, query);
+			return enrichWithParentContextInternal(chunks, query, routing);
 		} finally {
 			if (timing != null) {
 				timing.parentContextMs.addAndGet(elapsedMillis(start));
@@ -3043,6 +3079,11 @@ public class LawAiAnswerService {
 	}
 
 	private ParentContextExpansionResult enrichWithParentContextInternal(List<LawSemanticChunkRow> chunks, String query) {
+		return enrichWithParentContextInternal(chunks, query, null);
+	}
+
+	private ParentContextExpansionResult enrichWithParentContextInternal(List<LawSemanticChunkRow> chunks, String query,
+		RecoveryRoutingSnapshot routing) {
 		if (chunks == null || chunks.isEmpty()) {
 			return new ParentContextExpansionResult(List.of(), Map.of());
 		}
@@ -3052,12 +3093,13 @@ public class LawAiAnswerService {
 			String chunkKey = scoreKey(chunk.target(), chunk.chunkId());
 			if (isRagTarget(chunk.target()) && !ragContextByChunkKey.containsKey(chunkKey)) {
 				try {
-					ragContextByChunkKey.put(chunkKey, ragDocumentMapper.findSemanticContextChunks(
+					ragContextByChunkKey.put(chunkKey, routing == null ? ragDocumentMapper.findSemanticContextChunks(
 						chunk.documentId(),
 						chunk.sortOrder(),
 						PARENT_CONTEXT_WINDOW
-					));
+					) : ragDocumentMapper.findSemanticContextChunksRouted(chunk.documentId(),chunk.sortOrder(),PARENT_CONTEXT_WINDOW,routing));
 				} catch (RuntimeException exception) {
+					if(routing!=null)throw exception;
 					log.warn("Failed to load parent context for RAG document. documentId={} message={}", chunk.documentId(), exception.getMessage());
 					ragContextByChunkKey.put(chunkKey, List.of());
 				}
@@ -5362,13 +5404,19 @@ public class LawAiAnswerService {
 		Map<String, Double> finalScoreByChunkId,
 		Map<String, Double> combinedScoreByChunkId
 	) {
+		return preserveIntentDirectEvidenceChunks(judgedEvidence,judgeContextChunks,query,finalScoreByChunkId,combinedScoreByChunkId,null);
+	}
+
+	private EvidenceJudge.Result preserveIntentDirectEvidenceChunks(EvidenceJudge.Result judgedEvidence,
+		List<LawSemanticChunkRow> judgeContextChunks,String query,Map<String,Double> finalScoreByChunkId,
+		Map<String,Double> combinedScoreByChunkId,RecoveryRoutingSnapshot routing) {
 		if (judgedEvidence == null || judgeContextChunks == null || judgeContextChunks.isEmpty()) {
 			return judgedEvidence;
 		}
 		if (judgedEvidence.directEvidenceRequired() && judgedEvidence.directEvidenceCount() == 0) {
 			return judgedEvidence;
 		}
-		List<LawSemanticChunkRow> recoveredCandidates = recoverScopeAnchoredProcedureCandidates(judgedEvidence, judgeContextChunks, query);
+		List<LawSemanticChunkRow> recoveredCandidates = recoverScopeAnchoredProcedureCandidates(judgedEvidence, judgeContextChunks, query, routing);
 		if (recoveredCandidates.size() > judgeContextChunks.size()) {
 			judgeContextChunks = recoveredCandidates;
 			judgedEvidence = evidenceJudge.judge(query, judgeContextChunks,
@@ -5459,6 +5507,11 @@ public class LawAiAnswerService {
 	private List<LawSemanticChunkRow> recoverScopeAnchoredProcedureCandidates(
 		EvidenceJudge.Result judged, List<LawSemanticChunkRow> candidates, String query
 	) {
+		return recoverScopeAnchoredProcedureCandidates(judged,candidates,query,null);
+	}
+
+	private List<LawSemanticChunkRow> recoverScopeAnchoredProcedureCandidates(EvidenceJudge.Result judged,
+		List<LawSemanticChunkRow> candidates,String query,RecoveryRoutingSnapshot routing) {
 		if (ragDocumentMapper == null || judged.directEvidenceCount() == 0
 			|| !isProjectReviewScopeQuestion(normalizeForMatch(query), queryTerms(query))
 			|| judged.chunks().stream().noneMatch(EvidenceJudge::isNationalSoftwareReviewScope)
@@ -5475,8 +5528,9 @@ public class LawAiAnswerService {
 					&& EvidenceJudge.committeeEstablishmentRuleText(anchor.chunkText()).isBlank())
 				|| searchedDocuments.size() >= 2 || !searchedDocuments.add(anchor.documentId())) { continue; }
 			try {
-				List<LawSemanticChunkRow> neighbors = ragDocumentMapper.findSemanticContextChunks(
-					anchor.documentId(), anchor.sortOrder(), PARENT_CONTEXT_WINDOW);
+				List<LawSemanticChunkRow> neighbors = routing == null ? ragDocumentMapper.findSemanticContextChunks(
+					anchor.documentId(), anchor.sortOrder(), PARENT_CONTEXT_WINDOW)
+					: ragDocumentMapper.findSemanticContextChunksRouted(anchor.documentId(),anchor.sortOrder(),PARENT_CONTEXT_WINDOW,routing);
 				if (neighbors == null) { continue; }
 				for (LawSemanticChunkRow neighbor : neighbors) {
 					if (neighbor == null || neighbor.documentId() != anchor.documentId()
@@ -5494,6 +5548,7 @@ public class LawAiAnswerService {
 					}
 				}
 			} catch (RuntimeException exception) {
+				if(routing!=null)throw exception;
 				log.warn("Failed to recover adjacent review procedure. documentId={} exceptionType={}",
 					anchor.documentId(), exception.getClass().getSimpleName());
 			}
@@ -6043,6 +6098,12 @@ public class LawAiAnswerService {
 		Set<String> existingCandidateKeys,
 		DocumentCandidateExpansion.Result strongAnchorResult
 	) {
+		return bm25TitleDocumentExpansion(anchor,bm25Hits,bm25Chunks,plannedTerms,targets,includeFuture,existingCandidateKeys,strongAnchorResult,null);
+	}
+
+	private DocumentCandidateExpansion.Result bm25TitleDocumentExpansion(DocumentSearchAnchor anchor,List<LexicalSearchHit> bm25Hits,
+		List<LawSemanticChunkRow> bm25Chunks,List<String> plannedTerms,List<String> targets,boolean includeFuture,
+		Set<String> existingCandidateKeys,DocumentCandidateExpansion.Result strongAnchorResult,RecoveryRoutingSnapshot routing) {
 		if (!documentExpansionProperties.bm25TitleEnabled() || !rrfProperties.enabled()) {
 			return strongAnchorResult;
 		}
@@ -6054,12 +6115,12 @@ public class LawAiAnswerService {
 			documentExpansionProperties.bm25TitlePolicy()
 		);
 		return switch (selection.status()) {
-			case APPLIED -> documentExpansionSearchService.searchBm25Seeded(
+			case APPLIED -> routing == null ? documentExpansionSearchService.searchBm25Seeded(
 				anchor,
 				selection.seeds(),
 				includeFuture,
 				existingCandidateKeys
-			);
+			) : documentExpansionSearchService.searchBm25Seeded(anchor,selection.seeds(),includeFuture,existingCandidateKeys,routing);
 			case NO_MATCH -> emptyDocumentExpansionResult(
 				DocumentCandidateExpansion.Status.BM25_TITLE_NO_MATCH,
 				bm25TitleNoMatchReasonCodes(selection.diagnostics())
@@ -8175,12 +8236,27 @@ public class LawAiAnswerService {
 		}
 	}
 
+	private List<LawSemanticChunkRow> safeLexicalQuery(String label,Supplier<List<LawSemanticChunkRow>> query,
+		RecoveryRoutingSnapshot routing) {
+		if(routing==null)return safeLexicalQuery(label,query);
+		var rows=query.get();
+		return rows==null ? List.of() : rows;
+	}
+
 	// 메소드 설명: findLexicalChunks 처리 흐름을 수행합니다.
 	private List<LawSemanticChunkRow> findFastIntentRagChunks(
 		QuestionSearchPlan queryPlan,
 		List<String> ragTargets,
 		String normalizedQuery
 	) {
+		return findFastIntentRagChunks(queryPlan, ragTargets, normalizedQuery, null);
+	}
+
+	private List<LawSemanticChunkRow> findFastIntentRagChunks(
+		QuestionSearchPlan queryPlan,
+		List<String> ragTargets,
+		String normalizedQuery
+	, RecoveryRoutingSnapshot routing) {
 		if (queryPlan == null || ragTargets == null || ragTargets.isEmpty()) {
 			return List.of();
 		}
@@ -8195,7 +8271,7 @@ public class LawAiAnswerService {
 				ragTargets,
 				policySearchKeywords,
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 		}
 		if (isInformationSystemCompliancePenaltyQuestion(normalizedQuery)) {
 			List<LawSemanticChunkRow> compliancePenaltyChunks = findRagChunksByDocumentTitleAndHintsThenFilter(
@@ -8225,7 +8301,7 @@ public class LawAiAnswerService {
 				),
 				this::isInformationSystemCompliancePenaltyEvidence,
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			);
+			, routing);
 			if (!compliancePenaltyChunks.isEmpty()) {
 				return finishLexicalChunks(
 					compliancePenaltyChunks.stream()
@@ -8252,7 +8328,7 @@ public class LawAiAnswerService {
 				),
 				chunk -> isProjectReviewManagementGuideTargetChunk(chunk) || isProjectReviewScopeDecisionChunk(chunk),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 			chunks.addAll(findRagChunksByDocumentTitleAndHintsThenFilter(
 				ragTargets,
 				List.of(
@@ -8269,7 +8345,7 @@ public class LawAiAnswerService {
 				),
 				this::isInformationSystemPreConsultationTargetEvidence,
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 		}
 		if (!projectReviewPreConsultationRelationQuestion && isProjectReviewQuestion(terms) && isProjectReviewScopeQuestion(normalizedQuery, terms)) {
 			chunks.addAll(findRagChunksByDocumentTitleAndHintsThenFilter(
@@ -8288,7 +8364,7 @@ public class LawAiAnswerService {
 				),
 				chunk -> isProjectReviewManagementGuideTargetChunk(chunk) || isProjectReviewScopeDecisionChunk(chunk),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 		}
 		if (!projectReviewPreConsultationRelationQuestion && isInformationSystemPreConsultationQuestion(normalizedQuery)) {
 			chunks.addAll(findRagChunksByDocumentTitleAndHintsThenFilter(
@@ -8310,7 +8386,7 @@ public class LawAiAnswerService {
 				),
 				this::isInformationSystemPreConsultationTargetEvidence,
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 		}
 		if (isPublicDataCustomSupportQuestion(normalizedQuery)) {
 			chunks.addAll(findRagChunksByDocumentTitleAndHintsThenFilter(
@@ -8332,7 +8408,7 @@ public class LawAiAnswerService {
 				),
 				this::isDirectPublicDataCustomSupportEvidence,
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 		}
 		if (isPublicDataStandardizationQuestion(normalizedQuery)) {
 			if (isPublicDataStandardizationScopeQuestion(normalizedQuery)) {
@@ -8348,7 +8424,7 @@ public class LawAiAnswerService {
 					),
 					this::isPublicDataStandardizationScopeEvidence,
 					FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-				));
+				, routing));
 			} else {
 				chunks.addAll(findRagChunksByDocumentTitleAndHintsThenFilter(
 					ragTargets,
@@ -8362,7 +8438,7 @@ public class LawAiAnswerService {
 					),
 					chunk -> isPrimaryPublicDataQualityDiagnosisOverview(chunk) || isPublicDataQualityDiagnosisFullCountEvidence(chunk),
 					FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-				));
+				, routing));
 			}
 		}
 		if (isCctvPublicPlaceExceptionQuestion(normalizedQuery)) {
@@ -8382,7 +8458,7 @@ public class LawAiAnswerService {
 				),
 				this::isDirectCctvPublicPlaceExceptionEvidence,
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 		}
 		if (isCctvInvestigationProvisionQuestion(normalizedQuery)) {
 			chunks.addAll(findRagChunksByDocumentTitleThenFilter(
@@ -8394,7 +8470,7 @@ public class LawAiAnswerService {
 				),
 				this::isDirectCctvInvestigationProvisionEvidence,
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 		}
 		if (isPublicDataMachineReadableFormatQuestion(normalizedQuery)) {
 			chunks.addAll(findRagChunksByDocumentTitleAndHintsThenFilter(
@@ -8414,12 +8490,16 @@ public class LawAiAnswerService {
 				),
 				chunk -> isDirectPublicDataMachineReadableEvidence(normalizedChunkEvidenceText(chunk)),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 		}
 		return finishLexicalChunks(chunks, query);
 	}
 
 	private List<LawSemanticChunkRow> findLexicalChunks(QuestionSearchPlan queryPlan, List<String> targets, boolean includeFuture) {
+		return findLexicalChunks(queryPlan, targets, includeFuture, null);
+	}
+
+	private List<LawSemanticChunkRow> findLexicalChunks(QuestionSearchPlan queryPlan, List<String> targets, boolean includeFuture, RecoveryRoutingSnapshot routing) {
 		String query = queryPlan.question();
 		List<String> keywords = queryPlan.lexicalKeywords();
 		String normalizedQuery = normalizeForMatch(query);
@@ -8443,8 +8523,8 @@ public class LawAiAnswerService {
 		if (!ragTargets.isEmpty() && !lawTargets.isEmpty()) {
 			// A family-specific fast path must not suppress other requested sources.
 			List<LawSemanticChunkRow> familyCandidates = new java.util.ArrayList<>(
-				findLexicalChunks(queryPlan, lawTargets, includeFuture));
-			familyCandidates.addAll(findLexicalChunks(queryPlan, ragTargets, includeFuture));
+				findLexicalChunks(queryPlan, lawTargets, includeFuture, routing));
+			familyCandidates.addAll(findLexicalChunks(queryPlan, ragTargets, includeFuture, routing));
 			return finishLexicalChunks(familyCandidates, query);
 		}
 		boolean strictDocumentEvidenceLookup = isStrictDocumentEvidenceAnchorQuestion(query, normalizedQuery)
@@ -8467,7 +8547,7 @@ public class LawAiAnswerService {
 						includeFuture,
 						LAW_TEXT_KEYWORD_FETCH_LIMIT
 					)
-				);
+				, routing);
 				chunks.addAll(discoveryLawChunks);
 				if (!discoveryLawChunks.isEmpty() && ragTargets.isEmpty()) {
 					return finishLexicalChunks(chunks, query);
@@ -8476,12 +8556,17 @@ public class LawAiAnswerService {
 		}
 		if (strictDocumentEvidenceLookup && !documentEvidenceSqlKeywords.isEmpty()) {
 			if (!ragTargets.isEmpty()) {
-				chunks.addAll(safeLexicalQuery("RAG document title and evidence", () -> ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScoped(
+				chunks.addAll(safeLexicalQuery("RAG document title and evidence", () -> (routing == null ? ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScoped(
 					ragTargets,
 					documentTitleAnchors,
 					documentEvidenceSqlKeywords,
 					FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-				)));
+				) : ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScopedRouted(
+					ragTargets,
+					documentTitleAnchors,
+					documentEvidenceSqlKeywords,
+					FOCUSED_RAG_KEYWORD_FETCH_LIMIT
+				, routing)), routing));
 			}
 			if (!lawTargets.isEmpty()) {
 				chunks.addAll(safeLexicalQuery("law document title and evidence", () -> lawChunkMapper.findSemanticChunksByDocumentTitleAndText(
@@ -8490,7 +8575,7 @@ public class LawAiAnswerService {
 					documentEvidenceSqlKeywords,
 					includeFuture,
 					LAW_TEXT_KEYWORD_FETCH_LIMIT
-				)));
+				), routing));
 			}
 			List<LawSemanticChunkRow> articleReferenceChunks = chunks.stream()
 				.filter(chunk -> containsArticleReferenceFromQuery(chunk, query))
@@ -8508,7 +8593,7 @@ public class LawAiAnswerService {
 				lawTargets,
 				documentTitleAnchors,
 				documentEvidenceSqlKeywords,
-				includeFuture
+				includeFuture, routing
 			);
 			if (!boundedTitleLookup.chunks().isEmpty()) {
 				if (!intentSpecificLexicalLookup && boundedTitleLookup.hasReturnableBoundedMatch()) {
@@ -8554,13 +8639,13 @@ public class LawAiAnswerService {
 					includeFuture,
 					LAW_TEXT_KEYWORD_FETCH_LIMIT
 				)
-			);
+			, routing);
 			if (!policyLawChunks.isEmpty()) {
 				return finishLexicalChunks(policyLawChunks, query);
 			}
 		}
 		if (!boundedRagDocumentTitleMatched && intentSpecificLexicalLookup && !ragTargets.isEmpty()) {
-			List<LawSemanticChunkRow> fastIntentChunks = findFastIntentRagChunks(queryPlan, ragTargets, normalizedQuery);
+			List<LawSemanticChunkRow> fastIntentChunks = findFastIntentRagChunks(queryPlan, ragTargets, normalizedQuery, routing);
 			if (!fastIntentChunks.isEmpty()) {
 				if (chunks.isEmpty()) {
 					return fastIntentChunks;
@@ -8574,7 +8659,7 @@ public class LawAiAnswerService {
 				ragTargets,
 				combineRagKeywords(queryPlan.focusedKeywords(), queryPlan.lexicalKeywords()),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 			focusedLookup = true;
 		}
 		if (isHardwareSoftwareQuestion(queryTerms(query)) && !ragTargets.isEmpty()) {
@@ -8583,7 +8668,7 @@ public class LawAiAnswerService {
 				ragTargets,
 				List.of("단순 H/W", "Appliance", "소프트웨어사업으로 볼 수 없는"),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 			focusedLookup = true;
 		}
 		if (isProjectReviewQuestion(queryTerms(query)) && isProjectReviewScopeQuestion(normalizeForMatch(query), queryTerms(query)) && !ragTargets.isEmpty()) {
@@ -8604,11 +8689,11 @@ public class LawAiAnswerService {
 				),
 				chunk -> isProjectReviewManagementGuideTargetChunk(chunk) || isProjectReviewScopeDecisionChunk(chunk),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			);
+			, routing);
 			if (!fastProjectReviewChunks.isEmpty()) {
 				return finishLexicalChunks(fastProjectReviewChunks, query);
 			}
-			List<LawSemanticChunkRow> scopedProjectReviewChunks = safeLexicalQuery("RAG project review scoped", () -> ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScoped(
+			List<LawSemanticChunkRow> scopedProjectReviewChunks = safeLexicalQuery("RAG project review scoped", () -> (routing == null ? ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScoped(
 				ragTargets,
 				projectReviewTitles,
 				List.of(
@@ -8619,7 +8704,18 @@ public class LawAiAnswerService {
 					"적용 대상 사업"
 				),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			) : ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScopedRouted(
+				ragTargets,
+				projectReviewTitles,
+				List.of(
+					"대상사업 : 국가기관등의 장이 발주하는 소프트웨어사업",
+					"국가기관등의 장이 발주하는 소프트웨어사업",
+					"국가기관 등이 발주하는 모든 SW사업",
+					"소프트웨어와 관련된 서비스",
+					"적용 대상 사업"
+				),
+				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
+			, routing)), routing);
 			chunks.addAll(scopedProjectReviewChunks);
 			if (!scopedProjectReviewChunks.isEmpty()) {
 				return finishLexicalChunks(chunks, query);
@@ -8637,7 +8733,7 @@ public class LawAiAnswerService {
 					"소프트웨어와 관련된 서비스"
 				),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 			focusedLookup = true;
 		}
 		if (isSecurityReviewQuestion(queryTerms(query)) && normalizeForMatch(query).contains("대상") && !ragTargets.isEmpty()) {
@@ -8653,7 +8749,7 @@ public class LawAiAnswerService {
 					"보안성 검토 절차 이행 생략 대상"
 				),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 			focusedLookup = true;
 		}
 		if (!documentTitleAnchors.isEmpty()) {
@@ -8662,19 +8758,24 @@ public class LawAiAnswerService {
 					ragTargets,
 					documentTitleAnchors,
 					FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-				));
+				, routing));
 			}
 			focusedLookup = true;
 		}
 		if (!documentEvidenceAnchors.isEmpty()) {
 			if (strictDocumentEvidenceLookup) {
 				if (!ragTargets.isEmpty() && !documentEvidenceSqlKeywords.isEmpty()) {
-					chunks.addAll(safeLexicalQuery("RAG document title and evidence", () -> ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScoped(
+					chunks.addAll(safeLexicalQuery("RAG document title and evidence", () -> (routing == null ? ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScoped(
 						ragTargets,
 						documentTitleAnchors,
 						documentEvidenceSqlKeywords,
 						FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-					)));
+					) : ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScopedRouted(
+						ragTargets,
+						documentTitleAnchors,
+						documentEvidenceSqlKeywords,
+						FOCUSED_RAG_KEYWORD_FETCH_LIMIT
+					, routing)), routing));
 				}
 				if (!lawTargets.isEmpty() && !documentEvidenceSqlKeywords.isEmpty()) {
 					chunks.addAll(safeLexicalQuery("law document title and evidence", () -> lawChunkMapper.findSemanticChunksByDocumentTitleAndText(
@@ -8683,7 +8784,7 @@ public class LawAiAnswerService {
 						documentEvidenceSqlKeywords,
 						includeFuture,
 						LAW_TEXT_KEYWORD_FETCH_LIMIT
-					)));
+					), routing));
 				}
 			}
 			if (strictDocumentEvidenceLookup
@@ -8693,7 +8794,7 @@ public class LawAiAnswerService {
 					documentTitleAnchors,
 					includeFuture,
 					Math.max(120, LAW_TITLE_KEYWORD_FETCH_LIMIT)
-				));
+				), routing);
 				chunks.addAll(documentEvidenceAnchorMatchedChunks(titleChunks, query));
 			}
 			if (strictDocumentEvidenceLookup
@@ -8707,7 +8808,7 @@ public class LawAiAnswerService {
 					ragTargets,
 					documentEvidenceSqlKeywords.isEmpty() ? documentEvidenceAnchors : documentEvidenceSqlKeywords,
 					FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-				));
+				, routing));
 			}
 			if (!boundedLawEvidenceMatched && !lawTargets.isEmpty()) {
 				List<String> lawEvidenceKeywords = documentEvidenceSqlKeywords.isEmpty() ? documentEvidenceAnchors : documentEvidenceSqlKeywords;
@@ -8716,7 +8817,7 @@ public class LawAiAnswerService {
 					lawEvidenceKeywords,
 					includeFuture,
 					LAW_TEXT_KEYWORD_FETCH_LIMIT
-				)));
+				), routing));
 			}
 			if (isStrictDocumentEvidenceAnchorQuestion(query, normalizedQuery)
 				&& !documentTitleAnchors.isEmpty()
@@ -8726,7 +8827,7 @@ public class LawAiAnswerService {
 					documentTitleAnchors,
 					includeFuture,
 					Math.max(120, LAW_TITLE_KEYWORD_FETCH_LIMIT)
-				));
+				), routing);
 				chunks.addAll(documentEvidenceAnchorMatchedChunks(titleChunks, query));
 			}
 			focusedLookup = true;
@@ -8745,7 +8846,7 @@ public class LawAiAnswerService {
 				),
 				includeFuture,
 				LAW_TEXT_KEYWORD_FETCH_LIMIT
-			));
+			), routing);
 			chunks.addAll(scopedPublicDataLawChunks.stream()
 				.filter(this::isDirectPublicDataLawUsePromotionEvidence)
 				.toList());
@@ -8767,7 +8868,7 @@ public class LawAiAnswerService {
 					"협의 결과서 통보"
 				),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 			focusedLookup = true;
 		}
 		if (isPublicDataCustomSupportQuestion(normalizedQuery) && !ragTargets.isEmpty()) {
@@ -8785,7 +8886,7 @@ public class LawAiAnswerService {
 					"삭제"
 				),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 			focusedLookup = true;
 		}
 		if (isPublicDataStandardizationQuestion(normalizedQuery) && !ragTargets.isEmpty()) {
@@ -8802,11 +8903,11 @@ public class LawAiAnswerService {
 				),
 				chunk -> isPrimaryPublicDataQualityDiagnosisOverview(chunk) || isPublicDataQualityDiagnosisFullCountEvidence(chunk),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			);
+			, routing);
 			if (!fastPublicDataStandardizationChunks.isEmpty()) {
 				return finishLexicalChunks(fastPublicDataStandardizationChunks, query);
 			}
-			List<LawSemanticChunkRow> scopedPublicDataStandardizationChunks = safeLexicalQuery("RAG public data standardization scoped", () -> ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScoped(
+			List<LawSemanticChunkRow> scopedPublicDataStandardizationChunks = safeLexicalQuery("RAG public data standardization scoped", () -> (routing == null ? ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScoped(
 				ragTargets,
 				publicDataStandardizationTitles,
 				List.of(
@@ -8817,7 +8918,18 @@ public class LawAiAnswerService {
 					"예방적 품질관리 진단영역 및 진단항목"
 				),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			) : ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScopedRouted(
+				ragTargets,
+				publicDataStandardizationTitles,
+				List.of(
+					"예방적 품질관리 진단 기준",
+					"4개의 진단영역",
+					"진단항목은 총 9개",
+					"총 18개의 진단기준",
+					"예방적 품질관리 진단영역 및 진단항목"
+				),
+				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
+			, routing)), routing);
 			chunks.addAll(scopedPublicDataStandardizationChunks);
 			if (!scopedPublicDataStandardizationChunks.isEmpty()) {
 				return finishLexicalChunks(chunks, query);
@@ -8842,7 +8954,7 @@ public class LawAiAnswerService {
 						"총 18개의 진단기준"
 					),
 					FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-				));
+				, routing));
 			}
 			focusedLookup = true;
 		}
@@ -8858,7 +8970,7 @@ public class LawAiAnswerService {
 					"파기"
 				),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 			focusedLookup = true;
 		}
 		if (isPrivacyRetentionDestructionQuestion(normalizedQuery)) {
@@ -8880,16 +8992,21 @@ public class LawAiAnswerService {
 					privacyDestructionTitles,
 					this::isPrivacyRetentionDestructionEvidence,
 					FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-				);
+				, routing);
 				if (!fastPrivacyDestructionChunks.isEmpty()) {
 					return finishLexicalChunks(fastPrivacyDestructionChunks, query);
 				}
-				List<LawSemanticChunkRow> scopedPrivacyDestructionChunks = safeLexicalQuery("RAG privacy destruction scoped", () -> ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScoped(
+				List<LawSemanticChunkRow> scopedPrivacyDestructionChunks = safeLexicalQuery("RAG privacy destruction scoped", () -> (routing == null ? ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScoped(
 					ragTargets,
 					privacyDestructionTitles,
 					privacyDestructionEvidence,
 					FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-				));
+				) : ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScopedRouted(
+					ragTargets,
+					privacyDestructionTitles,
+					privacyDestructionEvidence,
+					FOCUSED_RAG_KEYWORD_FETCH_LIMIT
+				, routing)), routing);
 				chunks.addAll(scopedPrivacyDestructionChunks);
 				if (!scopedPrivacyDestructionChunks.isEmpty()) {
 					return finishLexicalChunks(chunks, query);
@@ -8902,7 +9019,7 @@ public class LawAiAnswerService {
 					privacyDestructionEvidence,
 					includeFuture,
 					LAW_TEXT_KEYWORD_FETCH_LIMIT
-				)));
+				), routing));
 			}
 			focusedLookup = true;
 		}
@@ -8916,7 +9033,7 @@ public class LawAiAnswerService {
 					"메타데이터"
 				),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 			focusedLookup = true;
 		}
 		if (isKoreanLiteratureExportQuestion(normalizedQuery) && !ragTargets.isEmpty()) {
@@ -8929,7 +9046,7 @@ public class LawAiAnswerService {
 					"한국고전과 근현대 걸작 기획 번역"
 				),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 			focusedLookup = true;
 		}
 		if (isQuantumOecdQuestion(normalizedQuery) && !ragTargets.isEmpty()) {
@@ -8943,7 +9060,7 @@ public class LawAiAnswerService {
 					"대한민국이 수행해 온 역할"
 				),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 			focusedLookup = true;
 		}
 		if (isTvingSmishingQuestion(normalizedQuery) && !ragTargets.isEmpty()) {
@@ -8957,7 +9074,7 @@ public class LawAiAnswerService {
 					"티빙(TVING) 침해사고"
 				),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 			focusedLookup = true;
 		}
 		if (isCctvPublicPlaceExceptionQuestion(normalizedQuery) && !ragTargets.isEmpty()) {
@@ -8978,11 +9095,11 @@ public class LawAiAnswerService {
 				),
 				this::isDirectCctvPublicPlaceExceptionEvidence,
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			);
+			, routing);
 			if (!fastCctvPublicPlaceChunks.isEmpty()) {
 				return finishLexicalChunks(fastCctvPublicPlaceChunks, query);
 			}
-			List<LawSemanticChunkRow> scopedCctvPublicPlaceChunks = safeLexicalQuery("RAG CCTV public place exception scoped", () -> ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScoped(
+			List<LawSemanticChunkRow> scopedCctvPublicPlaceChunks = safeLexicalQuery("RAG CCTV public place exception scoped", () -> (routing == null ? ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScoped(
 				ragTargets,
 				cctvGuideTitles,
 				List.of(
@@ -8992,7 +9109,17 @@ public class LawAiAnswerService {
 					"예외적으로 설치·운영"
 				),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			) : ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScopedRouted(
+				ragTargets,
+				cctvGuideTitles,
+				List.of(
+					"공개된 장소에서의 고정형 영상정보처리기기 설치는 원칙적으로 금지",
+					"법 제25조에서 정하는 사유",
+					"법령에서 구체적으로 허용",
+					"예외적으로 설치·운영"
+				),
+				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
+			, routing)), routing);
 			chunks.addAll(scopedCctvPublicPlaceChunks);
 			if (!scopedCctvPublicPlaceChunks.isEmpty()) {
 				return finishLexicalChunks(chunks, query);
@@ -9009,7 +9136,7 @@ public class LawAiAnswerService {
 						"법 제25조"
 					),
 					FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-				));
+				, routing));
 			}
 			focusedLookup = true;
 		}
@@ -9024,11 +9151,11 @@ public class LawAiAnswerService {
 				cctvGuideTitles,
 				this::isDirectCctvInvestigationProvisionEvidence,
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			);
+			, routing);
 			if (!fastCctvInvestigationChunks.isEmpty()) {
 				return finishLexicalChunks(fastCctvInvestigationChunks, query);
 			}
-			List<LawSemanticChunkRow> scopedCctvInvestigationChunks = safeLexicalQuery("RAG CCTV investigation provision scoped", () -> ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScoped(
+			List<LawSemanticChunkRow> scopedCctvInvestigationChunks = safeLexicalQuery("RAG CCTV investigation provision scoped", () -> (routing == null ? ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScoped(
 				ragTargets,
 				cctvGuideTitles,
 				List.of(
@@ -9040,7 +9167,19 @@ public class LawAiAnswerService {
 					"제3자에게 제공"
 				),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			) : ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScopedRouted(
+				ragTargets,
+				cctvGuideTitles,
+				List.of(
+					"경찰이나 검찰에 수사목적으로 CCTV 자료를 열람 또는 제공",
+					"수사기관이 범죄 수사와 공소제기 유지를 위해 CCTV 자료를 요청",
+					"개인영상정보 목적 외 이용·제3자 제공 제한의 예외",
+					"범죄의 수사와 공소의 제기",
+					"법 제18조제2항",
+					"제3자에게 제공"
+				),
+				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
+			, routing)), routing);
 			chunks.addAll(scopedCctvInvestigationChunks);
 			if (!scopedCctvInvestigationChunks.isEmpty()) {
 				return finishLexicalChunks(chunks, query);
@@ -9056,7 +9195,7 @@ public class LawAiAnswerService {
 						"제3자에게 제공"
 					),
 					FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-				));
+				, routing));
 			}
 			focusedLookup = true;
 		}
@@ -9074,7 +9213,7 @@ public class LawAiAnswerService {
 					"관리책임자"
 				),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 			focusedLookup = true;
 		}
 		if (isAiCommitteeFunctionQuestion(normalizedQuery) && !lawTargets.isEmpty()) {
@@ -9089,7 +9228,7 @@ public class LawAiAnswerService {
 				),
 				includeFuture,
 				LAW_TEXT_KEYWORD_FETCH_LIMIT
-			)));
+			), routing));
 			focusedLookup = true;
 		}
 		if (KoreanQueryNormalizer.isProcurementCatalogContractQuestion(query) && !ragTargets.isEmpty()) {
@@ -9097,7 +9236,7 @@ public class LawAiAnswerService {
 				ragTargets,
 				KoreanQueryNormalizer.procurementCatalogFocusedKeywords(query),
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 			focusedLookup = true;
 		}
 		if (focusedLookup && chunks.size() >= MIN_FOCUSED_LEXICAL_CHUNKS) {
@@ -9117,7 +9256,7 @@ public class LawAiAnswerService {
 			if (!entityTitles.isEmpty() && !entityLabels.isEmpty()) {
 				List<LawSemanticChunkRow> entityChunks = safeLexicalQuery("law entity title and text",
 					() -> lawChunkMapper.findSemanticChunksByDocumentTitleAndText(
-						lawTargets, entityTitles, entityLabels, includeFuture, LAW_TEXT_KEYWORD_FETCH_LIMIT));
+						lawTargets, entityTitles, entityLabels, includeFuture, LAW_TEXT_KEYWORD_FETCH_LIMIT), routing);
 				if (!entityChunks.isEmpty()) return finishLexicalChunks(entityChunks, query);
 			}
 		}
@@ -9127,7 +9266,7 @@ public class LawAiAnswerService {
 				ragTargets,
 				genericKeywords,
 				focusedLookup ? GENERIC_RAG_KEYWORD_FETCH_LIMIT : FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			));
+			, routing));
 		}
 		if (!boundedLawEvidenceMatched
 			&& !lawTargets.isEmpty()
@@ -9139,7 +9278,7 @@ public class LawAiAnswerService {
 					lawTextKeywords,
 					includeFuture,
 					LAW_TEXT_KEYWORD_FETCH_LIMIT
-				)));
+				), routing));
 			}
 			List<String> lawTitleKeywords = lawTitleKeywords(query);
 			if (!lawTitleKeywords.isEmpty()) {
@@ -9149,7 +9288,7 @@ public class LawAiAnswerService {
 					lawTitleKeywords,
 					includeFuture,
 					LAW_TITLE_KEYWORD_FETCH_LIMIT
-				)));
+				), routing));
 			}
 		}
 		return finishLexicalChunks(chunks, query);
@@ -9162,6 +9301,11 @@ public class LawAiAnswerService {
 		List<String> documentEvidenceSqlKeywords,
 		boolean includeFuture
 	) {
+		return findBoundedDocumentTitleChunks(ragTargets,lawTargets,documentTitleAnchors,documentEvidenceSqlKeywords,includeFuture,null);
+	}
+
+	private BoundedDocumentTitleLookup findBoundedDocumentTitleChunks(List<String> ragTargets,List<String> lawTargets,
+		List<String> documentTitleAnchors,List<String> documentEvidenceSqlKeywords,boolean includeFuture,RecoveryRoutingSnapshot routing) {
 		List<LawSemanticChunkRow> chunks = new java.util.ArrayList<>();
 		boolean ragTitleMatched = false;
 		boolean lawEvidenceMatched = false;
@@ -9173,14 +9317,14 @@ public class LawAiAnswerService {
 				documentEvidenceSqlKeywords,
 				chunk -> true,
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-			);
+			, routing);
 			if (ragTitleChunks.isEmpty()) {
 				ragTitleChunks = findRagChunksByDocumentTitleThenFilter(
 					ragTargets,
 					documentTitleAnchors,
 					chunk -> true,
 					FOCUSED_RAG_KEYWORD_FETCH_LIMIT
-				);
+				, routing);
 			}
 			chunks.addAll(ragTitleChunks);
 			ragTitleMatched = !ragTitleChunks.isEmpty();
@@ -9194,7 +9338,7 @@ public class LawAiAnswerService {
 					documentEvidenceSqlKeywords,
 					includeFuture,
 					LAW_TEXT_KEYWORD_FETCH_LIMIT
-				));
+				), routing);
 				lawEvidenceMatched = !lawTitleChunks.isEmpty();
 			}
 			if (lawTitleChunks.isEmpty()) {
@@ -9203,7 +9347,7 @@ public class LawAiAnswerService {
 					documentTitleAnchors,
 					includeFuture,
 					LAW_TITLE_KEYWORD_FETCH_LIMIT
-				));
+				), routing);
 				lawTitleOnlyMatched = !lawTitleChunks.isEmpty();
 			}
 			chunks.addAll(lawTitleChunks);
@@ -9258,6 +9402,15 @@ public class LawAiAnswerService {
 		Predicate<LawSemanticChunkRow> predicate,
 		int limit
 	) {
+		return findRagChunksByDocumentTitleThenFilter(ragTargets, titleKeywords, predicate, limit, null);
+	}
+
+	private List<LawSemanticChunkRow> findRagChunksByDocumentTitleThenFilter(
+		List<String> ragTargets,
+		List<String> titleKeywords,
+		Predicate<LawSemanticChunkRow> predicate,
+		int limit
+	, RecoveryRoutingSnapshot routing) {
 		if (ragTargets == null || ragTargets.isEmpty()
 			|| titleKeywords == null || titleKeywords.isEmpty()
 			|| predicate == null || limit <= 0) {
@@ -9265,12 +9418,16 @@ public class LawAiAnswerService {
 		}
 		List<LawSemanticChunkRow> titleScopedChunks = safeLexicalQuery(
 			"RAG document title scoped",
-			() -> ragDocumentMapper.findSemanticChunksByDocumentTitleScoped(
+			() -> (routing == null ? ragDocumentMapper.findSemanticChunksByDocumentTitleScoped(
 				ragTargets,
 				titleKeywords,
 				Math.max(limit, FOCUSED_RAG_KEYWORD_FETCH_LIMIT)
-			)
-		);
+			) : ragDocumentMapper.findSemanticChunksByDocumentTitleScopedRouted(
+				ragTargets,
+				titleKeywords,
+				Math.max(limit, FOCUSED_RAG_KEYWORD_FETCH_LIMIT)
+			, routing))
+		, routing);
 		if (titleScopedChunks.isEmpty()) {
 			return List.of();
 		}
@@ -9288,8 +9445,18 @@ public class LawAiAnswerService {
 		Predicate<LawSemanticChunkRow> predicate,
 		int limit
 	) {
+		return findRagChunksByDocumentTitleAndHintsThenFilter(ragTargets, titleKeywords, textKeywords, predicate, limit, null);
+	}
+
+	private List<LawSemanticChunkRow> findRagChunksByDocumentTitleAndHintsThenFilter(
+		List<String> ragTargets,
+		List<String> titleKeywords,
+		List<String> textKeywords,
+		Predicate<LawSemanticChunkRow> predicate,
+		int limit
+	, RecoveryRoutingSnapshot routing) {
 		if (textKeywords == null || textKeywords.isEmpty()) {
-			return findRagChunksByDocumentTitleThenFilter(ragTargets, titleKeywords, predicate, limit);
+			return findRagChunksByDocumentTitleThenFilter(ragTargets, titleKeywords, predicate, limit, routing);
 		}
 		if (ragTargets == null || ragTargets.isEmpty()
 			|| titleKeywords == null || titleKeywords.isEmpty()
@@ -9298,13 +9465,18 @@ public class LawAiAnswerService {
 		}
 		List<LawSemanticChunkRow> titleScopedChunks = safeLexicalQuery(
 			"RAG document title with text hints",
-			() -> ragDocumentMapper.findSemanticChunksByDocumentTitleWithTextHints(
+			() -> (routing == null ? ragDocumentMapper.findSemanticChunksByDocumentTitleWithTextHints(
 				ragTargets,
 				titleKeywords,
 				textKeywords,
 				Math.max(limit, FOCUSED_RAG_KEYWORD_FETCH_LIMIT)
-			)
-		);
+			) : ragDocumentMapper.findSemanticChunksByDocumentTitleWithTextHintsRouted(
+				ragTargets,
+				titleKeywords,
+				textKeywords,
+				Math.max(limit, FOCUSED_RAG_KEYWORD_FETCH_LIMIT)
+			, routing))
+		, routing);
 		if (titleScopedChunks.isEmpty()) {
 			return List.of();
 		}
@@ -9316,6 +9488,10 @@ public class LawAiAnswerService {
 	}
 
 	private List<LawSemanticChunkRow> findRagChunksByText(List<String> ragTargets, List<String> keywords, int limit) {
+		return findRagChunksByText(ragTargets, keywords, limit, null);
+	}
+
+	private List<LawSemanticChunkRow> findRagChunksByText(List<String> ragTargets, List<String> keywords, int limit, RecoveryRoutingSnapshot routing) {
 		List<String> preparedKeywords = prepareRagKeywordBatches(keywords);
 		if (ragTargets == null || ragTargets.isEmpty() || preparedKeywords.isEmpty() || limit <= 0) {
 			return List.of();
@@ -9329,12 +9505,17 @@ public class LawAiAnswerService {
 		List<String> headingKeywords = headingRagKeywords(preparedKeywords);
 		if (!headingKeywords.isEmpty()) {
 			try {
-				chunks.addAll(ragDocumentMapper.findSemanticChunksByHeadingText(
+				chunks.addAll((routing == null ? ragDocumentMapper.findSemanticChunksByHeadingText(
 					ragTargets,
 					headingKeywords,
 					Math.max(24, Math.min(limit, 80))
-				));
+				) : ragDocumentMapper.findSemanticChunksByHeadingTextRouted(
+					ragTargets,
+					headingKeywords,
+					Math.max(24, Math.min(limit, 80))
+				, routing)));
 			} catch (RuntimeException exception) {
+				if (routing != null) throw exception;
 				log.warn("AI RAG heading lexical search failed. keywords={} message={}", headingKeywords, exception.getMessage());
 			}
 			if (finishLexicalChunks(chunks, "").size() >= Math.min(limit, MIN_FOCUSED_LEXICAL_CHUNKS)) {
@@ -9345,8 +9526,9 @@ public class LawAiAnswerService {
 		for (int start = 0; start < indexedKeywords.size() && textBatchCount < MAX_RAG_TEXT_BATCHES; start += RAG_LEXICAL_BATCH_SIZE) {
 			List<String> batch = indexedKeywords.subList(start, Math.min(start + RAG_LEXICAL_BATCH_SIZE, indexedKeywords.size()));
 			try {
-				chunks.addAll(queryRagLexicalChunks(ragTargets, batch, perBatchLimit));
+				chunks.addAll(queryRagLexicalChunks(ragTargets, batch, perBatchLimit, routing));
 			} catch (RuntimeException exception) {
+				if (routing != null) throw exception;
 				log.warn("AI RAG lexical batch failed. keywords={} message={}", batch, exception.getMessage());
 				List<String> retryKeywords = batch.stream()
 					.filter(value -> value.length() >= 2)
@@ -9358,9 +9540,10 @@ public class LawAiAnswerService {
 							ragTargets,
 							List.of(retryKeyword),
 							perBatchLimit
-						));
+						, routing));
 						log.info("AI RAG lexical retry completed with core term={}", retryKeyword);
 					} catch (RuntimeException retryException) {
+				if (routing != null) throw retryException;
 						log.warn(
 							"AI RAG lexical core-term retry failed. keyword={} message={}",
 							retryKeyword,
@@ -9396,18 +9579,26 @@ public class LawAiAnswerService {
 		List<String> keywords,
 		int limit
 	) {
+		return queryRagLexicalChunks(ragTargets, keywords, limit, null);
+	}
+
+	private List<LawSemanticChunkRow> queryRagLexicalChunks(
+		List<String> ragTargets,
+		List<String> keywords,
+		int limit
+	, RecoveryRoutingSnapshot routing) {
 		if (ragChunkSearchIndexService != null && !ragChunkSearchIndexService.isReady()) {
 			List<LawSemanticChunkRow> indexed = safeLexicalQuery(
 				"partial RAG exact-term index",
-				() -> ragDocumentMapper.findSemanticChunksByText(ragTargets, keywords, limit)
-			);
+				() -> (routing == null ? ragDocumentMapper.findSemanticChunksByText(ragTargets, keywords, limit) : ragDocumentMapper.findSemanticChunksByTextRouted(ragTargets, keywords, limit, routing))
+			, routing);
 			List<LawSemanticChunkRow> legacy = safeLexicalQuery(
 				"legacy RAG text during exact-term backfill",
-				() -> ragDocumentMapper.findSemanticChunksByLegacyText(ragTargets, keywords, limit)
-			);
+				() -> (routing == null ? ragDocumentMapper.findSemanticChunksByLegacyText(ragTargets, keywords, limit) : ragDocumentMapper.findSemanticChunksByLegacyTextRouted(ragTargets, keywords, limit, routing))
+			, routing);
 			return mergeChunks(indexed, legacy).stream().limit(limit).toList();
 		}
-		return ragDocumentMapper.findSemanticChunksByText(ragTargets, keywords, limit);
+		return (routing == null ? ragDocumentMapper.findSemanticChunksByText(ragTargets, keywords, limit) : ragDocumentMapper.findSemanticChunksByTextRouted(ragTargets, keywords, limit, routing));
 	}
 
 	private List<String> indexedRagKeywords(List<String> keywords) {
@@ -11194,6 +11385,10 @@ public class LawAiAnswerService {
 
 	// 메소드 설명: answerCacheKey 처리 흐름을 수행합니다.
 	private String answerCacheKey(LawAiAnswerRequest request) {
+		return answerCacheKey(request, null);
+	}
+
+	private String answerCacheKey(LawAiAnswerRequest request, RecoveryRoutingSnapshot routing) {
 		String question = request == null || request.question() == null ? "" : request.question().trim().replaceAll("\\s+", " ");
 		if (question.isBlank()) {
 			return null;
@@ -11206,6 +11401,7 @@ public class LawAiAnswerService {
 			.toList();
 		return String.join("|",
 			searchIndexVersion(),
+			"routing=" + (routing == null ? "legacy" : routing.cacheIdentity()),
 			String.valueOf(safeLimit),
 			"future=" + (request == null || request.includeFutureEnabled()),
 			String.join(",", targets),
