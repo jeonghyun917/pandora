@@ -1,6 +1,90 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.kaces.pandora.rag.recovery.RagRecoveryMapper">
+  <select id="findTerminalGenerations" resultType="string">
+    SELECT generation_id FROM rag_recovery_generations WHERE document_id=#{documentId} AND product_sha=#{productSha}
+      AND manifest=#{manifest} AND state IN ('FAILED','STALE') ORDER BY generation_id LIMIT 10001
+  </select>
+  <select id="listGenerations" resultType="com.kaces.pandora.rag.recovery.RecoveryGeneration">
+    SELECT <include refid="generationColumns"/> FROM rag_recovery_generations WHERE document_id=#{documentId}
+    ORDER BY created_at DESC,generation_id LIMIT 101
+  </select>
+  <select id="findRollbackByInput" resultType="com.kaces.pandora.rag.recovery.RecoveryRollbackIntent">
+    SELECT operation_id AS id,document_id AS documentId,input_hash AS inputHash,base_revision AS baseRevision,
+      expected_revision AS expectedRevision,active_generation AS activeGeneration,restore_generation AS restoreGeneration,
+      routing_identity AS routingIdentity,corpus_fingerprint AS corpusFingerprint,lexical_fingerprint AS lexicalFingerprint,state
+    FROM rag_recovery_rollbacks WHERE input_hash=#{inputHash}
+  </select>
+  <insert id="insertRollback">
+    INSERT INTO rag_recovery_rollbacks(operation_id,document_id,input_hash,base_revision,expected_revision,active_generation,restore_generation,
+      routing_identity,corpus_fingerprint,state)
+    VALUES(#{intent.id},#{intent.documentId},#{intent.inputHash},#{intent.baseRevision},#{intent.expectedRevision},#{intent.activeGeneration},
+      #{intent.restoreGeneration},#{intent.routingIdentity},#{intent.corpusFingerprint},'PREPARING')
+  </insert>
+  <update id="readyRollback">UPDATE rag_recovery_rollbacks SET lexical_fingerprint=#{fingerprint},state='READY' WHERE operation_id=#{id} AND state='PREPARING' AND lexical_fingerprint IS NULL</update>
+  <update id="appliedRollback">UPDATE rag_recovery_rollbacks SET state='APPLIED',applied_at=NOW(6) WHERE operation_id=#{id} AND state='READY'</update>
+  <select id="findBaseline" resultType="string">SELECT generation_id FROM rag_recovery_baselines WHERE document_id=#{documentId}</select>
+  <select id="findBaselineAssets" resultType="com.kaces.pandora.rag.recovery.RecoveryBaselineAssets">
+    SELECT document_id AS documentId,generation_id AS generationId,baseline_hash AS baselineHash,vector_collection AS vectorCollection,
+      embedding_model AS embeddingModel,vector_fingerprint AS vectorFingerprint,chunk_count AS chunkCount
+    FROM rag_recovery_baseline_assets WHERE document_id=#{documentId}
+  </select>
+  <insert id="insertBaselineAssets">
+    INSERT INTO rag_recovery_baseline_assets(document_id,generation_id,baseline_hash,vector_collection,embedding_model,vector_fingerprint,chunk_count)
+    VALUES(#{assets.documentId},#{assets.generationId},#{assets.baselineHash},#{assets.vectorCollection},#{assets.embeddingModel},#{assets.vectorFingerprint},#{assets.chunkCount})
+  </insert>
+  <update id="changeGenerationState">
+    UPDATE rag_recovery_generations SET state=#{next},
+      promoted_at=CASE WHEN #{next}='ACTIVE' THEN NOW() ELSE promoted_at END
+    WHERE generation_id=#{id} AND state=#{expected}
+  </update>
+  <update id="casPointer">
+    UPDATE rag_recovery_pointers SET revision=#{next.revision},active_generation=#{next.activeGeneration}
+    WHERE document_id=#{expected.documentId} AND revision=#{expected.revision} AND active_generation=#{expected.activeGeneration}
+      AND source_hash=#{expected.sourceHash} AND baseline_hash=#{expected.baselineHash}
+      AND #{next.documentId}=document_id AND #{next.sourceHash}=source_hash AND #{next.baselineHash}=baseline_hash
+      AND #{next.revision}=revision+1
+  </update>
+  <update id="casEpoch">
+    UPDATE rag_recovery_routing_epoch SET revision=revision+1,lexical_generation=#{generation},lexical_fingerprint=#{fingerprint},published_corpus_revision=corpus_revision
+    WHERE singleton_id=1 AND revision=#{expected}
+  </update>
+  <select id="findCorpusRevision" resultType="long">
+    SELECT corpus_revision FROM rag_recovery_routing_epoch WHERE singleton_id=1
+  </select>
+  <select id="isCorpusCurrent" resultType="boolean">
+    SELECT corpus_revision=published_corpus_revision FROM rag_recovery_routing_epoch WHERE singleton_id=1
+  </select>
+  <update id="markCorpusChanged">
+    UPDATE rag_recovery_routing_epoch SET corpus_revision=corpus_revision+1 WHERE singleton_id=1
+  </update>
+  <update id="casCorpusEpoch">
+    UPDATE rag_recovery_routing_epoch SET revision=revision+1,lexical_generation=#{generation},lexical_fingerprint=#{fingerprint},published_corpus_revision=corpus_revision
+    WHERE singleton_id=1 AND revision=#{expected} AND corpus_revision=#{corpusRevision}
+  </update>
+  <select id="lockRoutingEpoch" resultType="com.kaces.pandora.rag.recovery.RecoveryRoutingEpoch">
+    SELECT revision,lexical_generation AS lexicalGeneration,lexical_fingerprint AS lexicalFingerprint
+    FROM rag_recovery_routing_epoch WHERE singleton_id=1 FOR UPDATE
+  </select>
+  <select id="findPreparation" resultType="com.kaces.pandora.rag.recovery.RecoveryPreparationReceipt">
+    SELECT generation_id AS generationId,manifest,base_revision AS baseRevision,routing_identity AS routingIdentity,
+      corpus_fingerprint AS corpusFingerprint FROM rag_recovery_preparations WHERE generation_id=#{generationId}
+  </select>
+  <insert id="insertPreparation">
+    INSERT INTO rag_recovery_preparations(generation_id,manifest,base_revision,routing_identity,corpus_fingerprint)
+    VALUES(#{receipt.generationId},#{receipt.manifest},#{receipt.baseRevision},#{receipt.routingIdentity},#{receipt.corpusFingerprint})
+  </insert>
+  <select id="findGenerationLexicalChunks" resultType="com.kaces.pandora.semantic.lexical.LexicalChunkDocument">
+    SELECT d.document_type AS target,c.chunk_id AS chunkId,c.document_id AS documentId,
+      CONCAT('rag:',c.document_id,':',SHA2(COALESCE(NULLIF(c.parent_section_title,''),d.title),256)) AS parentKey,
+      c.content_hash AS contentHash,d.title AS documentTitle,COALESCE(c.parent_section_title,'') AS parentTitle,
+      COALESCE(c.chunk_title,'') AS chunkTitle,c.chunk_text AS body
+    FROM rag_recovery_members m JOIN rag_document_chunks c ON c.chunk_id=m.chunk_id
+      JOIN rag_recovery_generations g ON g.generation_id=m.generation_id AND g.document_id=c.document_id
+      JOIN rag_documents d ON d.document_id=c.document_id
+    WHERE m.generation_id=#{generationId} AND d.use_yn='Y' AND COALESCE(c.quality_status,'PASS') IN ('PASS','REVIEW')
+    ORDER BY c.chunk_id LIMIT 10001
+  </select>
   <select id="lockDocument" resultType="long">SELECT document_id FROM rag_documents WHERE document_id=#{documentId} FOR UPDATE</select>
   <select id="lockDocumentByHash" resultType="long">SELECT document_id FROM rag_documents WHERE file_hash=#{hash} FOR UPDATE</select>
   <select id="lockDocumentsByPaths" resultType="long">

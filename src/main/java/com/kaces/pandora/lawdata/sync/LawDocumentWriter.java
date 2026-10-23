@@ -36,6 +36,9 @@ public class LawDocumentWriter {
 	private final LawVersionStatusService lawVersionStatusService;
 	private final LawAiProperties properties;
 	private final LawSemanticChunkPlanner chunkPlanner = new LawSemanticChunkPlanner();
+    private com.kaces.pandora.rag.recovery.RagRecoveryWriteGuard corpusGuard;
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureCorpusGuard(com.kaces.pandora.rag.recovery.RagRecoveryWriteGuard guard) { corpusGuard=guard; }
 
 	
 	public LawDocumentWriter(
@@ -60,7 +63,9 @@ public class LawDocumentWriter {
 
 	
 	// 메소드 설명: upsertDocument 처리 흐름을 수행합니다.
+	@Transactional
 	public long upsertDocument(SearchDocument document) {
+		if(corpusGuard!=null)corpusGuard.markCorpusChanged();
 		
 		SearchDocument normalized = new SearchDocument(
 			document.target(),
@@ -120,6 +125,7 @@ public class LawDocumentWriter {
 
 	
 	// 메소드 설명: replaceChunks 처리 흐름을 수행합니다.
+	@Transactional
 	public int replaceChunks(
 		long documentId,
 		long detailId,
@@ -132,6 +138,7 @@ public class LawDocumentWriter {
 		if (lawChunkMapper.findActiveChunkVersion(documentId) > 0) {
 			return createCandidateChunks(documentId, detailId, documentTarget, documentTitle, sections, sourceUrl).expectedChunkCount();
 		}
+		if(corpusGuard!=null)corpusGuard.markCorpusChanged();
 		
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		List<PlannedLawChunk> plannedChunks = chunkPlanner.plan(
@@ -263,6 +270,7 @@ public class LawDocumentWriter {
 		List<Long> activeChunkIds = lawChunkMapper.findActiveChunkIdsByDocumentId(documentId).stream()
 			.filter(chunkId -> !rollbackChunkIds.contains(chunkId))
 			.toList();
+		if(corpusGuard!=null)corpusGuard.markCorpusChanged();
 		lawChunkMapper.retireActiveChunkVersionsExcept(documentId, retiredVersion);
 		lawChunkMapper.reactivateChunkVersion(documentId, retiredVersion);
 		lawChunkMapper.retireOtherActiveChunkVersionStates(documentId, retiredVersion);

@@ -643,6 +643,68 @@ public class QdrantClient {
         return new RecoveryPointInspection(com.kaces.pandora.common.text.LawHashUtils.sha256(objectMapper.writeValueAsString(canonical)),missing);
     }
 
+    /** Preservation receipt for legacy points; does not invent missing content/model payload tags. */
+    public String baselineRagFingerprint(List<LawSemanticChunkRow> chunks) {
+        if(chunks==null || chunks.isEmpty() || chunks.size()>10000 || chunks.stream().anyMatch(java.util.Objects::isNull))throw new IllegalArgumentException("Bounded baseline required");
+        var rows=chunks.stream().sorted(java.util.Comparator.comparingLong(LawSemanticChunkRow::chunkId)).toList();
+        var ids=new java.util.HashSet<Long>();long documentId=rows.get(0).documentId();
+        for(var row:rows) {
+            if(documentId<=0 || row.documentId()!=documentId || row.chunkId()<=0 || row.chunkId()>Long.MAX_VALUE-RAG_POINT_ID_OFFSET
+                    || !ids.add(row.chunkId()) || !Set.of("official_doc","internal_doc","reference_doc").contains(row.target())
+                    || chunkVersion(row)!=4 || row.contentHash()==null || !row.contentHash().matches("[0-9a-f]{64}"))
+                throw new IllegalArgumentException("Invalid baseline identity");
+        }
+        String collection=ragCollection();
+        var before=indexSnapshot(collection).orElseThrow(()->new IllegalStateException("Baseline collection unavailable"));
+        if(!before.isStable() || baselineDocumentCount(collection,documentId)!=rows.size())
+            throw new IllegalStateException("Baseline document parity mismatch");
+        var receipts=new ArrayList<String>();
+        for(int start=0;start<rows.size();start+=128) {
+            var batch=rows.subList(start,Math.min(start+128,rows.size()));
+            var expected=new java.util.TreeMap<Long,LawSemanticChunkRow>();
+            batch.forEach(row->expected.put(ragPointId(row.chunkId()),row));
+            var response=restClient.post().uri("/collections/{collection}/points",collection)
+                .body(Map.of("ids",List.copyOf(expected.keySet()),"with_payload",true,"with_vector",true)).retrieve().body(Map.class);
+            if(response==null || !(response.get("result") instanceof List<?> points) || points.size()!=batch.size())
+                throw new IllegalStateException("Baseline points missing");
+            var canonical=new java.util.TreeMap<Long,Object>();
+            for(var item:points) {
+                if(!(item instanceof Map<?,?> point) || !(point.get("payload") instanceof Map<?,?> payload)
+                        || !(point.get("vector") instanceof List<?> vector) || vector.size()!=properties.qdrant().vectorSize())
+                    throw new IllegalStateException("Malformed baseline point");
+                long pointId=strictPositivePointId(point.get("id"));var row=expected.get(pointId);
+                if(row==null || canonical.containsKey(pointId) || strictPositivePointId(payload.get("chunkId"))!=row.chunkId()
+                        || strictPositivePointId(payload.get("documentId"))!=documentId || strictPositivePointId(payload.get("chunkVersion"))!=4
+                        || !row.target().equals(payload.get("target")) || !"ACTIVE".equals(payload.get("activationStatus"))
+                        || !blankIfNull(row.sourcePath()).equals(payload.get("sourcePath")))throw new IllegalStateException("Baseline point identity mismatch");
+                var bits=new ArrayList<Integer>(vector.size());double norm=0;
+                for(var value:vector) {
+                    if(!(value instanceof Number number) || !Double.isFinite(number.doubleValue()) || !Float.isFinite(number.floatValue()))
+                        throw new IllegalStateException("Malformed baseline vector");
+                    norm+=number.doubleValue()*number.doubleValue();bits.add(Float.floatToIntBits(number.floatValue()));
+                }
+                if(norm<=0 || !Double.isFinite(norm))throw new IllegalStateException("Invalid baseline vector norm");
+                var boundPayload=new java.util.TreeMap<String,Object>();payload.forEach((key,value)->boundPayload.put(key.toString(),value));
+                canonical.put(pointId,List.of(row.contentHash(),boundPayload,bits));
+            }
+            receipts.add(com.kaces.pandora.common.text.LawHashUtils.sha256(objectMapper.writeValueAsString(canonical)));
+        }
+        var after=indexSnapshot(collection).orElseThrow(()->new IllegalStateException("Baseline collection disappeared"));
+        if(!after.isStable() || before.vectorSize()!=after.vectorSize() || !before.distance().equals(after.distance())
+                || baselineDocumentCount(collection,documentId)!=rows.size())throw new IllegalStateException("Baseline changed during readback");
+        return com.kaces.pandora.common.text.LawHashUtils.sha256(objectMapper.writeValueAsString(
+            List.of(collection,documentId,rows.size(),before.vectorSize(),before.distance(),receipts)));
+    }
+    private long baselineDocumentCount(String collection,long documentId) {
+        var response=restClient.post().uri("/collections/{collection}/points/count",collection)
+            .body(Map.of("exact",true,"filter",Map.of("must",List.of(Map.of("key","documentId","match",Map.of("value",documentId))))))
+            .retrieve().body(Map.class);
+        if(response==null || !(response.get("result") instanceof Map<?,?> result)
+                || !(result.get("count") instanceof Number count) || count.longValue()<0 || count.doubleValue()!=count.longValue())
+            throw new IllegalStateException("Baseline count unavailable");
+        return count.longValue();
+    }
+
     /** Full namespace parity. This is a readback receipt, not a distributed transaction. */
     public String verifyRagRecoveryCollection(String generationId,String embeddingModel,String manifest,
             List<com.kaces.pandora.rag.document.RagDocumentChunkRow> chunks,List<List<Double>> vectors) {
@@ -876,9 +938,18 @@ public class QdrantClient {
 			.toList();
 	}
 
+    public void assertRecoveryReady(com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
+        if(routing==null)throw new IllegalArgumentException("Captured routing required");
+        for(var asset:routing.assets().values()) {
+            if(!ragRecoveryCollection(asset.generationId()).equals(asset.vectorCollection()))throw new IllegalStateException("Recovery namespace mismatch");
+            var state=indexSnapshot(asset.vectorCollection()).orElseThrow(()->new IllegalStateException("Active recovery collection unavailable"));
+            if(!state.isStable() || state.exactPointCount()!=asset.chunkCount())throw new IllegalStateException("Active recovery collection parity mismatch");
+        }
+    }
 	public List<QdrantSearchHit> searchBalanced(List<Double> vector,List<String> targets,int perTargetLimit,int maxTotalLimit,
 			com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
 		if(routing==null)throw new IllegalArgumentException("Captured recovery routing required");
+        assertRecoveryReady(routing);
 		if(routing.replacedDocumentIds().isEmpty())return searchBalanced(vector,targets,perTargetLimit,maxTotalLimit);
 		var normalized=targets==null?List.<String>of():targets.stream().filter(t->t!=null && !t.isBlank()).distinct().toList();
 		int per=Math.max(1,perTargetLimit),total=Math.max(per,maxTotalLimit);
@@ -910,6 +981,7 @@ public class QdrantClient {
 			searchFailureCount.incrementAndGet();
 			throw new IllegalStateException("Active recovery search unavailable",unavailable);
 		}
+        assertRecoveryReady(routing);
 		return hits.stream().collect(java.util.stream.Collectors.toMap(h->h.target()+":"+h.chunkId(),h->h,
 			(a,b)->a.score()>=b.score()?a:b)).values().stream().sorted(Comparator.comparingDouble(QdrantSearchHit::score).reversed()
 			.thenComparing(QdrantSearchHit::target).thenComparingLong(QdrantSearchHit::chunkId)).limit(total).toList();
@@ -918,7 +990,7 @@ public class QdrantClient {
 	private List<QdrantSearchHit> searchRecoveryRoute(List<Double> vector,String target,int limit,String collection,Map<String,?> filter,
 			com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing,Long documentId,com.kaces.pandora.rag.recovery.RecoveryAssets assets) {
 		var response=qdrantPostForMapOnce("/collections/{collection}/points/search",collection,Map.of("vector",vector,"limit",limit,
-			"with_payload",List.of("target","chunkId","documentId","generationId","manifest","qualityStatus","activationStatus"),"with_vector",false,"filter",filter));
+			"with_payload",List.of("target","chunkId","documentId","generationId","manifest","qualityStatus","activationStatus","contentHash","embeddingModel"),"with_vector",false,"filter",filter));
 		var hits=new ArrayList<QdrantSearchHit>();
 		for(var item:(List<?>)response.get("result")) {
 			var payload=(Map<?,?>)((Map<?,?>)item).get("payload");
@@ -933,6 +1005,12 @@ public class QdrantClient {
 					|| !assets.manifest().equals(payload.get("manifest")) || !Set.of("PASS","REVIEW").contains(String.valueOf(payload.get("qualityStatus")))) {
 				throw new IllegalStateException("Recovery search crossed generation boundary");
 			}
+            if(assets!=null) {
+                if(!(payload.get("contentHash") instanceof String hash) || !hash.matches("[0-9a-f]{64}")
+                        || !properties.openai().embeddingModel().equals(payload.get("embeddingModel"))
+                        || strictPositivePointId(((Map<?,?>)item).get("id"))!=ragPointId(hit.chunkId()))throw new IllegalStateException("Recovery hit content identity unavailable");
+                hit=new QdrantSearchHit(hit.target(),hit.chunkId(),hit.score(),hash);
+            }
 			hits.add(hit);
 		}
 		return hits;

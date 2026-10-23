@@ -70,6 +70,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @Service
 public class LawAiAnswerService {
 	private RagRecoveryRoutingService recoveryRoutingService;
+    private com.kaces.pandora.rag.recovery.RagRecoveryReadinessService recoveryReadiness;
+    @Autowired
+    void configureRecoveryReadiness(com.kaces.pandora.rag.recovery.RagRecoveryReadinessService readiness) { recoveryReadiness=readiness; }
 
 	@Autowired
 	void configureRecoveryRouting(RagRecoveryRoutingService service) {
@@ -78,7 +81,10 @@ public class LawAiAnswerService {
 
 	private RecoveryRoutingSnapshot captureRecoveryRouting() {
 		// Standalone legacy constructors remain usable; Spring requires the routing bean above.
-		return recoveryRoutingService == null ? null : recoveryRoutingService.capture();
+        if(recoveryRoutingService==null)return null;
+        var captured=recoveryRoutingService.capture();
+        if(recoveryReadiness!=null)recoveryReadiness.verify(captured);
+        return captured;
 	}
 
 	private static final Logger log = LoggerFactory.getLogger(LawAiAnswerService.class);
@@ -654,7 +660,7 @@ public class LawAiAnswerService {
 			GroundedAnswerRepairService.Result repaired = groundedAnswerRepairService.verifyAndRepair(
 				retrieval.query(),
 				answer,
-				retrieval.grounds()
+				retrieval.grounds(), routing
 			);
 			timing.verifyMs.addAndGet(elapsedMillis(verifyStart));
 			logRepairDiagnostics(retrieval.query(), repaired);
@@ -788,7 +794,7 @@ public class LawAiAnswerService {
 				GroundedAnswerRepairService.Result repaired = groundedAnswerRepairService.verifyAndRepair(
 					retrieval.query(),
 					answer,
-					retrieval.grounds()
+					retrieval.grounds(), routing
 				);
 				timing.verifyMs.addAndGet(elapsedMillis(verifyStart));
 				logRepairDiagnostics(retrieval.query(), repaired);
@@ -1295,6 +1301,12 @@ public class LawAiAnswerService {
 		for (LawSemanticChunkRow chunk : joinFuture(ragVectorDbFuture)) {
 			chunkById.put(scoreKey(chunk.target(), chunk.chunkId()), chunk);
 		}
+        if(routing!=null)for(var hit:hits) {
+            var chunk=chunkById.get(scoreKey(hit.target(),hit.chunkId()));
+            boolean replacement=chunk!=null && isRagTarget(chunk.target()) && routing.replacedDocumentIds().contains(chunk.documentId());
+            if((hit.contentHash()!=null && (chunk==null || !hit.contentHash().equals(chunk.contentHash())))
+                    || replacement && hit.contentHash()==null)throw new IllegalStateException("Recovery vector content differs from captured membership");
+        }
 		long vectorDbElapsedMs = elapsedMillis(vectorDbStart);
 		timing.vectorDbMs.addAndGet(vectorDbElapsedMs);
 		timing.dbMs.addAndGet(vectorDbElapsedMs);
@@ -2319,7 +2331,8 @@ public class LawAiAnswerService {
 		List<String> targets = evalCase.targets() == null || evalCase.targets().isEmpty()
 			? List.of("law", "admrul", "official_doc", "internal_doc")
 			: evalCase.targets();
-		RetrievalResult retrieval = retrieve(new LawAiAnswerRequest(null, targets, evalCase.question(), 8, true));
+		RecoveryRoutingSnapshot routing=captureRecoveryRouting();
+		RetrievalResult retrieval = retrieve(new LawAiAnswerRequest(null, targets, evalCase.question(), 8, true),TimingProbe.started(),routing);
 		List<String> expectedTerms = normalizedEvalList(evalCase.expectedTerms());
 		List<String> expectedTitleTerms = normalizedEvalList(evalCase.expectedTitleTerms());
 		List<String> expectedSectionTypes = normalizedEvalList(evalCase.expectedSectionTypes());
@@ -2382,7 +2395,7 @@ public class LawAiAnswerService {
 			: expectedResultMsgs.stream().anyMatch(result -> normalizeForMatch(result).equals(normalizeForMatch(retrieval.resultMsg())));
 		boolean answerVerificationRequired = shouldVerifyAnswerForEval(evalCase, expectsOkResult);
 		AnswerEvalResult answerEval = answerVerificationRequired && expectsOkResult && resultMatched && !retrieval.answerChunks().isEmpty()
-			? evaluateAnswerForCase(evalCase, retrieval, expectedTerms, expectedAnswerTerms, forbiddenTerms, forbiddenAnswerTerms)
+			? evaluateAnswerForCase(evalCase, retrieval, expectedTerms, expectedAnswerTerms, forbiddenTerms, forbiddenAnswerTerms,routing)
 			: AnswerEvalResult.notRequired(answerVerificationRequired);
 		boolean passed = resultMatched
 			&& (!expectsOkResult || !retrieval.answerChunks().isEmpty())
@@ -2477,7 +2490,7 @@ public class LawAiAnswerService {
 		List<String> expectedTerms,
 		List<String> expectedAnswerTerms,
 		List<String> forbiddenTerms,
-		List<String> forbiddenAnswerTerms
+		List<String> forbiddenAnswerTerms, RecoveryRoutingSnapshot routing
 	) {
 		String documentDiscoveryAnswer = DocumentDiscoveryAnswerComposer.compose(
 			retrieval.query(),
@@ -2523,7 +2536,7 @@ public class LawAiAnswerService {
 			GroundedAnswerRepairService.Result repaired = groundedAnswerRepairService.verifyAndRepair(
 				evalCase.question(),
 				answer,
-				retrieval.grounds()
+				retrieval.grounds(), routing
 			);
 			logRepairDiagnostics(evalCase.question(), repaired);
 			AnswerVerificationService.Result verification = repaired.verification();

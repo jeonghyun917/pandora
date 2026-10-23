@@ -26,6 +26,9 @@ public record RecoveryCandidatePlan(long documentId,String sourceHash,String pro
     static String manifestFor(long documentId,String sourceHash,String productSha,List<RagDocumentChunkRow> chunks) {
         return hash(List.of(documentId,sourceHash,productSha,canonical(documentId,chunks,false)));
     }
+    static String baselineHashFor(long documentId,List<RagDocumentChunkRow> chunks) {
+        return hash(canonical(documentId,chunks,true));
+    }
 
     private static List<RagDocumentChunkRow> canonical(long documentId,List<RagDocumentChunkRow> rows,boolean stored) {
         if(rows==null || rows.isEmpty() || rows.size()>10000)throw new IllegalArgumentException("Bounded nonempty chunks required");

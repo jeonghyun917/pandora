@@ -23,6 +23,7 @@ class KoreanBm25SearchServiceTests {
 		var routing=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(1,java.util.Map.of(),java.util.Map.of(),java.util.Set.of(),revision,namespace);
 		var state=new SemanticLexicalMapper.IndexStateRow(namespace,"test",1,10,revision,"RECOVERY_READY",null);
 		when(mapper.findRecoveryState(namespace)).thenReturn(state);
+        when(mapper.recoveryAvailable(namespace,revision)).thenReturn(true);
 		when(mapper.findRecoveryTermStatistics(eq(namespace),eq(revision),anyList()))
 			.thenReturn(List.of(new SemanticLexicalMapper.TermStatisticRow("검사",1)));
 		when(mapper.findRecoveryBm25TermMatches(eq(namespace),eq(revision),anyList(),eq(List.of("official_doc"))))
@@ -30,6 +31,9 @@ class KoreanBm25SearchServiceTests {
 		assertThat(service(mapper).search("검사",List.of(),List.of("official_doc"),5,routing))
 			.extracting(LexicalSearchHit::chunkId).containsExactly(123L);
 		verify(mapper,never()).findReadyRevision();
+        when(mapper.recoveryAvailable(namespace,revision)).thenReturn(false);
+        assertThatThrownBy(()->service(mapper).search("검사",List.of(),List.of("official_doc"),5,routing)).isInstanceOf(IllegalStateException.class);
+        when(mapper.recoveryAvailable(namespace,revision)).thenReturn(true);
 		when(mapper.findRecoveryState(namespace)).thenReturn(null);
 		assertThatThrownBy(()->service(mapper).search("검사",List.of(),List.of("official_doc"),5,routing))
 			.isInstanceOf(IllegalStateException.class);

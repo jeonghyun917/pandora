@@ -5,6 +5,12 @@ import java.util.*;
 import org.junit.jupiter.api.Test;
 
 class RagRecoveryRoutingTests {
+    @Test void preparationCannotReadUnboundRoutingOutsideTransaction() {
+        var service=new RagRecoveryRoutingService(org.mockito.Mockito.mock(RagRecoveryMapper.class),
+            org.mockito.Mockito.mock(com.kaces.pandora.semantic.lexical.SemanticLexicalMapper.class),
+            org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class));
+        assertThatThrownBy(service::captureInTransaction).isInstanceOf(IllegalStateException.class);
+    }
     private static final String GENERATION="c87a26f6-cc34-4303-bdc2-929657369db3";
     @Test void lexicalNamespaceIsCapturedRatherThanResolvedAgainByFingerprint() {
         var first=new RecoveryRoutingSnapshot(1,Map.of(),Map.of(),Set.of(),"e".repeat(64),"recovery_"+GENERATION);

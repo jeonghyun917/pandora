@@ -61,6 +61,10 @@ public class ClaimVerifier {
 	}
 
 	public VerificationResult verifyDetailed(String answer, List<LawAiAnswerGround> grounds) {
+		return verifyDetailed(answer,grounds,null);
+	}
+	public VerificationResult verifyDetailed(String answer,List<LawAiAnswerGround> grounds,
+            com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
 		if (isInsufficientEvidenceAnswer(answer)) {
 			return result(
 				INSUFFICIENT_EVIDENCE_MESSAGE,
@@ -96,7 +100,7 @@ public class ClaimVerifier {
 		List<ClaimEvidenceLink> evidenceLinks = new ArrayList<>();
 		List<ClaimMatcherShadowResult> shadowResults = new ArrayList<>();
 		ClaimEvidenceMatcher.EvidenceIndex evidenceIndex = evidenceMatcher.index(grounds);
-		SemanticEvidenceMatcher.EvidenceIndex semanticIndex = semanticEvidenceMatcher.index(grounds);
+		SemanticEvidenceMatcher.EvidenceIndex semanticIndex = routing==null?semanticEvidenceMatcher.index(grounds):semanticEvidenceMatcher.index(grounds,routing);
 		int substantiveClaims = 0;
 		int supportedSubstantiveClaims = 0;
 

@@ -1,3 +1,45 @@
+const recoveryRoot = '/api/law-data/rag-recovery';
+const recoveryUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const recoveryHash = /^[0-9a-f]{64}$/;
+function recoveryDocumentId(value) {
+  const text = String(value ?? '').trim();
+  if (!/^[1-9]\d*$/.test(text) || !Number.isSafeInteger(Number(text))) throw new Error('단일 문서 ID를 입력하세요.');
+  return Number(text);
+}
+async function recoveryResponse(response) {
+  if (response.status === 401) throw new Error('관리자 로그인이 필요합니다.');
+  if (response.status === 403) throw new Error('관리자 권한 또는 요청 보호 검증에 실패했습니다. 상태를 새로 확인하세요.');
+  if (!response.ok) throw new Error('복구 작업이 거부됐습니다. 자동 재시도하지 않습니다. 최신 상태와 검증 기록을 확인하세요.');
+  return readJsonResponse(response);
+}
+export async function fetchRecoverySession() {
+  return recoveryResponse(await fetch(`${recoveryRoot}/session`, { credentials: 'same-origin', cache: 'no-store' }));
+}
+export async function fetchRecoveryStatus(documentId) {
+  return recoveryResponse(await fetch(`${recoveryRoot}/status?${new URLSearchParams({ documentId: recoveryDocumentId(documentId) })}`, { credentials: 'same-origin', cache: 'no-store' }));
+}
+export async function previewRecovery(documentId) {
+  return recoveryResponse(await fetch(`${recoveryRoot}/preview?${new URLSearchParams({ documentId: recoveryDocumentId(documentId) })}`, { credentials: 'same-origin', cache: 'no-store' }));
+}
+export async function runRecoveryAction(action, value, csrfToken) {
+  if (!recoveryHash.test(csrfToken ?? '')) throw new Error('새 관리자 요청 보호 세션이 필요합니다.');
+  let body;
+  const validRevision = (revision) => Number.isSafeInteger(revision) && revision >= 0 && revision < Number.MAX_SAFE_INTEGER;
+  if (action === 'create' && recoveryHash.test(value?.expectedPreviewHash ?? '')) {
+    body = { documentId: recoveryDocumentId(value.documentId), expectedPreviewHash: value.expectedPreviewHash };
+  } else if (['validate', 'prepare'].includes(action) && recoveryUuid.test(value?.generationId ?? '')) {
+    body = { generationId: value.generationId };
+  } else if (action === 'promote' && recoveryUuid.test(value?.generationId ?? '') && validRevision(value?.expectedRevision) && recoveryHash.test(value?.expectedManifest ?? '')) {
+    body = { generationId: value.generationId, expectedRevision: value.expectedRevision, expectedManifest: value.expectedManifest };
+  } else if (action === 'rollback' && recoveryUuid.test(value?.expectedActiveGeneration ?? '') && recoveryUuid.test(value?.restoreGeneration ?? '')
+      && value.expectedActiveGeneration !== value.restoreGeneration && validRevision(value?.expectedRevision)) {
+    body = { documentId: recoveryDocumentId(value.documentId), expectedActiveGeneration: value.expectedActiveGeneration,
+      expectedRevision: value.expectedRevision, restoreGeneration: value.restoreGeneration };
+  } else throw new Error('새 서버 검증 결과와 정확한 복구 작업 범위가 필요합니다.');
+  return recoveryResponse(await fetch(`${recoveryRoot}/${action}`, { method: 'POST', credentials: 'same-origin', cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', 'X-Pandora-Recovery-CSRF': csrfToken }, body: JSON.stringify(body) }));
+}
+
 // 메소드 설명: searchLawData 처리 흐름을 수행합니다.
 export async function rebuildLexicalIndex() {
   const response = await fetch('/api/admin/semantic-lexical-index/rebuild', {

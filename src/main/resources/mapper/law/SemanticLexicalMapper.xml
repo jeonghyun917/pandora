@@ -4,6 +4,19 @@
   "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
 <mapper namespace="com.kaces.pandora.semantic.lexical.SemanticLexicalMapper">
+  <insert id="recordRecoveryIntegrity">
+    INSERT INTO semantic_lexical_recovery_integrity(index_version,chunk_count,term_count,statistic_count)
+    SELECT #{indexVersion},#{chunkCount},#{termCount},COUNT(*) FROM semantic_lexical_term_stats WHERE index_version=#{indexVersion}
+  </insert>
+  <select id="recoveryAvailable" resultType="boolean" timeout="10">
+    SELECT EXISTS(SELECT 1 FROM semantic_lexical_recovery_integrity i
+      JOIN semantic_lexical_index_state s ON s.index_version=i.index_version
+      WHERE i.index_version=#{indexVersion} AND s.status='RECOVERY_READY' AND s.content_fingerprint=#{revision}
+        AND i.chunk_count=s.active_chunk_count
+        AND i.chunk_count=(SELECT COUNT(*) FROM semantic_lexical_chunks c WHERE c.index_version=i.index_version AND c.build_status='READY')
+        AND i.term_count=(SELECT COUNT(*) FROM semantic_lexical_terms t WHERE t.index_version=i.index_version)
+        AND i.statistic_count=(SELECT COUNT(*) FROM semantic_lexical_term_stats t WHERE t.index_version=i.index_version))
+  </select>
 
   <select id="findRecoveryState" resultType="com.kaces.pandora.semantic.lexical.SemanticLexicalMapper$IndexStateRow" timeout="5">
     SELECT index_version AS indexVersion, tokenizer_version AS tokenizerVersion,

@@ -26,6 +26,7 @@ public class RagRecoveryIndexService {
     private final SemanticLexicalMapper lexical;
     private final SemanticLexicalIndexService lexicalIndex;
     private final TransactionTemplate transaction;
+    private final RagRecoveryRoutingService routing;
     private final String model;
     private final String productSha;
 
@@ -39,10 +40,24 @@ public class RagRecoveryIndexService {
         this.model=properties.openai().embeddingModel(); this.productSha=productSha;
         transaction=new TransactionTemplate(manager);
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        transaction.setIsolationLevel(TransactionDefinition.ISOLATION_SERIALIZABLE);
+        routing=new RagRecoveryRoutingService(recovery,lexical,manager);
     }
 
     public RecoveryAssets prepare(String generationId) {
-        Snapshot initial=snapshot(generationId);
+        try { return prepareBound(generationId); }
+        catch(RecoveryStaleException stale) {
+            transaction.executeWithoutResult(status->{
+                recovery.lockRoutingEpoch();
+                var generation=recovery.findGeneration(generationId,true);
+                if(generation!=null && productSha.equals(generation.productSha()) && Set.of("VALIDATED","INDEX_READY").contains(generation.state()))
+                    if(recovery.changeGenerationState(generationId,generation.state(),"STALE")!=1)throw new IllegalStateException("Stale state conflict");
+            });
+            throw stale;
+        }
+    }
+    private RecoveryAssets prepareBound(String generationId) {
+        Snapshot initial=snapshot(generationId,true);
         if ("INDEX_READY".equals(initial.generation().state())) {
             var existing=recovery.findAssets(generationId);
             if(existing==null)throw new IllegalStateException("Recovery assets missing");
@@ -87,7 +102,7 @@ public class RagRecoveryIndexService {
         return transaction.execute(status->{
             var current=captureLocked(generationId);
             if(!current.corpusHash().equals(initial.corpusHash()) || !current.generation().manifest().equals(initial.generation().manifest())) {
-                throw new IllegalStateException("Recovery corpus changed during preparation");
+                throw new RecoveryStaleException("Recovery corpus changed during preparation");
             }
             if("INDEX_READY".equals(current.generation().state())) {
                 if(!assets.equals(recovery.findAssets(generationId)))throw new IllegalStateException("Recovery asset receipt conflict");
@@ -104,7 +119,7 @@ public class RagRecoveryIndexService {
 
     public void verify(RecoveryAssets assets) {
         checkedAssets(assets);
-        var current=snapshot(assets.generationId());
+        var current=snapshot(assets.generationId(),false);
         if(!"INDEX_READY".equals(current.generation().state()) || !assets.equals(recovery.findAssets(assets.generationId()))
                 || !assets.manifest().equals(current.generation().manifest()) || assets.chunkCount()!=current.chunks().size()) {
             throw new IllegalStateException("Recovery receipt is not current");
@@ -120,35 +135,72 @@ public class RagRecoveryIndexService {
         return qdrant.verifyRagRecoveryCollection(snapshot.generation().id(),model,snapshot.generation().manifest(),snapshot.chunks(),
                 snapshot.chunks().stream().map(c->vectors.get(c.chunkId())).toList());
     }
-    private Snapshot snapshot(String id) { return transaction.execute(status->captureLocked(id)); }
-    private Snapshot captureLocked(String id) {
+    private Snapshot snapshot(String id,boolean reserve) {
+        return transaction.execute(status->{
+            var snapshot=captureLocked(id);
+            var existing=recovery.findPreparation(id);
+            if(existing==null) {
+                if(!reserve || recovery.findAssets(id)!=null || !recovery.findEmbeddingReceipts(id).isEmpty()
+                        || lexical.findRecoveryState("recovery_"+id)!=null)
+                    throw new IllegalStateException("Unbound recovery assets require diagnosis");
+                if(recovery.insertPreparation(snapshot.preparation())!=1)throw new IllegalStateException("Preparation reservation conflict");
+            }
+            return snapshot;
+        });
+    }
+    RecoveryPreparationReceipt recheckForPromotion(String id) {
+        if(!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
+            throw new IllegalStateException("Promotion recheck requires a transaction");
+        var snapshot=captureLocked(id,false);
+        if(!snapshot.preparation().equals(recovery.findPreparation(id)))throw new IllegalStateException("Preparation unavailable");
+        return snapshot.preparation();
+    }
+    private Snapshot captureLocked(String id) { return captureLocked(id,true); }
+    private Snapshot captureLocked(String id,boolean checkOriginal) {
         if(id==null || !id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
                 || productSha==null || !productSha.matches("[0-9a-f]{40}"))throw new IllegalArgumentException("Verified generation/product required");
+        if(recovery.lockRoutingEpoch()==null)throw new IllegalStateException("Routing epoch unavailable");
+        var captured=routing.captureInTransaction();
         var initial=recovery.findGeneration(id,false);
         if(initial==null)throw new IllegalStateException("Generation unavailable");
         var document=documents.findSourceProofDocument(initial.documentId(),true);
         var generation=recovery.findGeneration(id,true);
         if(document==null || generation==null || !productSha.equals(generation.productSha())
                 || !Set.of("VALIDATED","INDEX_READY").contains(generation.state()))throw new IllegalStateException("Generation not validated");
-        var preview=candidates.lockedPreview(generation.documentId(),productSha);
-        if(!preview.sourceHash().equals(generation.sourceHash()) || !preview.baselineHash().equals(generation.baselineHash())
-                || !preview.manifest().equals(generation.manifest()))throw new IllegalStateException("Source or baseline changed");
+        if(checkOriginal) {
+            var preview=candidates.lockedPreview(generation.documentId(),productSha);
+            if(!preview.sourceHash().equals(generation.sourceHash()) || !preview.baselineHash().equals(generation.baselineHash())
+                    || !preview.manifest().equals(generation.manifest()))throw new IllegalStateException("Source or baseline changed");
+        } else if(!document.fileHash().equals(generation.sourceHash())
+                || !candidates.lockedStoredBaselineHash(generation.documentId()).equals(generation.baselineHash())) {
+            throw new IllegalStateException("Stored source or baseline changed");
+        }
         var pointer=recovery.findPointer(generation.documentId(),true);
-        // Task4 replaces this conservative capability fence with the global routing epoch snapshot.
-        if(pointer==null || pointer.revision()!=0 || recovery.changedPointerCount()!=0)throw new IllegalStateException("Routing-aware corpus snapshot required");
+        if(pointer==null || !pointer.equals(captured.documents().get(generation.documentId())))
+            throw new IllegalStateException("Routing pointer changed");
         var chunks=List.copyOf(recovery.findCandidateChunks(id));
         if(chunks.isEmpty() || chunks.size()>10000 || !RecoveryCandidatePlan.manifestFor(generation.documentId(),generation.sourceHash(),productSha,
                 chunks.stream().map(RagRecoverySourceValidator::unassigned).toList()).equals(generation.manifest()))throw new IllegalStateException("Candidate manifest changed");
-        var corpus=new ArrayList<LexicalChunkDocument>();
-        for(var row:lexical.findActiveSearchableChunks())if(!(row.target().equals(document.documentType()) && row.documentId()==generation.documentId()))corpus.add(row);
+        var replacements=new TreeMap<Long,List<LexicalChunkDocument>>();
+        for(var documentId:captured.replacedDocumentIds()) {
+            if(documentId==generation.documentId())continue;
+            var active=captured.documents().get(documentId);
+            var rows=List.copyOf(recovery.findGenerationLexicalChunks(active.activeGeneration()));
+            if(rows.isEmpty() || rows.size()>10000)throw new IllegalStateException("Active lexical membership unavailable");
+            replacements.put(documentId,rows);
+        }
+        var replacement=new ArrayList<LexicalChunkDocument>();
         for(var row:chunks)if(Set.of("PASS","REVIEW").contains(row.qualityStatus())) {
             String parent=row.parentSectionTitle()==null || row.parentSectionTitle().isEmpty()?document.title():row.parentSectionTitle();
-            corpus.add(new LexicalChunkDocument(document.documentType(),row.chunkId(),row.documentId(),
+            replacement.add(new LexicalChunkDocument(document.documentType(),row.chunkId(),row.documentId(),
                     "rag:"+row.documentId()+":"+LawHashUtils.sha256(parent),row.contentHash(),document.title(),row.parentSectionTitle(),row.chunkTitle(),row.chunkText()));
         }
-        corpus.sort(Comparator.comparing(LexicalChunkDocument::target).thenComparingLong(LexicalChunkDocument::chunkId));
-        var frozen=List.copyOf(corpus);
-        return new Snapshot(generation,chunks,frozen,LawHashUtils.sha256(new ObjectMapper().writeValueAsString(frozen)));
+        replacements.put(generation.documentId(),replacement);
+        var corpus=RecoveryCorpus.overlay(captured.revision(),lexical.findActiveSearchableChunks(),replacements);
+        var preparation=new RecoveryPreparationReceipt(id,generation.manifest(),captured.revision(),captured.cacheIdentity(),corpus.fingerprint());
+        var existing=recovery.findPreparation(id);
+        if(existing!=null && !existing.equals(preparation))throw new RecoveryStaleException("Recovery preparation is stale or changed");
+        return new Snapshot(generation,chunks,corpus.chunks(),corpus.fingerprint(),preparation);
     }
     private void checkedAssets(RecoveryAssets assets) {
         if(assets==null || !qdrant.ragRecoveryCollection(assets.generationId()).equals(assets.vectorCollection())
@@ -157,5 +209,6 @@ public class RagRecoveryIndexService {
                 || assets.lexicalFingerprint()==null || !assets.lexicalFingerprint().matches("[0-9a-f]{64}")
                 || assets.chunkCount()<=0 || assets.chunkCount()>10000)throw new IllegalArgumentException("Bounded manifest-bound asset receipt required");
     }
-    private record Snapshot(RecoveryGeneration generation,List<RagDocumentChunkRow> chunks,List<LexicalChunkDocument> corpus,String corpusHash) { }
+    private record Snapshot(RecoveryGeneration generation,List<RagDocumentChunkRow> chunks,List<LexicalChunkDocument> corpus,String corpusHash,
+        RecoveryPreparationReceipt preparation) { }
 }

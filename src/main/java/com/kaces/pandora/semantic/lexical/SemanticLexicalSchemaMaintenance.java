@@ -24,6 +24,14 @@ public class SemanticLexicalSchemaMaintenance implements ApplicationRunner {
 		jdbcTemplate.execute(chunkTable());
 		jdbcTemplate.execute(termTable());
 		jdbcTemplate.execute(termStatsTable());
+        jdbcTemplate.execute("""
+            CREATE TABLE IF NOT EXISTS semantic_lexical_recovery_integrity (
+              index_version VARCHAR(64) NOT NULL PRIMARY KEY,chunk_count INT NOT NULL,
+              term_count BIGINT NOT NULL,statistic_count BIGINT NOT NULL,
+              CONSTRAINT fk_recovery_lexical_integrity FOREIGN KEY(index_version)
+                REFERENCES semantic_lexical_index_state(index_version) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """);
 		ensureBinaryTermIdentity("semantic_lexical_terms");
 		ensureBinaryTermIdentity("semantic_lexical_term_stats");
 	}

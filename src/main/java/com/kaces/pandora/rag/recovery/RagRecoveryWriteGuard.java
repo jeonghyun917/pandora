@@ -62,4 +62,10 @@ public class RagRecoveryWriteGuard {
         if(!TransactionSynchronizationManager.isActualTransactionActive())
             throw new IllegalStateException("Document mutation requires a transaction");
     }
+    /** Lock before any visible corpus mutation; rollback also rolls back the revision. */
+    public void markCorpusChanged() {
+        requireTransaction();
+        if(mapper.lockRoutingEpoch()==null || mapper.markCorpusChanged()!=1)
+            throw new IllegalStateException("Corpus mutation coordination unavailable");
+    }
 }

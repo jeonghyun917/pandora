@@ -48,6 +48,12 @@ class RagRecoveryDatabaseTests {
             var snapshot = List.of(new com.kaces.pandora.semantic.lexical.LexicalChunkDocument("official_doc", 123, 456,
                 "parent", "a".repeat(64), "제목", "부모", "조문", "원본 보존"));
             assertThat(lexicalService.verifyRecovery(lexicalGeneration, snapshot)).isEqualTo(result.contentFingerprint());
+            assertThat(lexical.recoveryAvailable(lexicalVersion,result.contentFingerprint())).isTrue();
+            jdbc.update("DELETE FROM semantic_lexical_terms WHERE index_version=? LIMIT 1",lexicalVersion);
+            assertThat(lexical.recoveryAvailable(lexicalVersion,result.contentFingerprint())).isFalse();
+            // Separate namespace below keeps the existing full readback mutation tests intact.
+            jdbc.update("DELETE FROM semantic_lexical_index_state WHERE index_version=?",lexicalVersion);
+            lexicalService.rebuildRecovery(lexicalGeneration,snapshot);
             assertThat(lexical.findRecoveryTermStatistics(lexicalVersion,result.contentFingerprint(),List.of("원본")))
                 .extracting(row -> row.term()).contains("원본");
             assertThat(lexical.findRecoveryBm25TermMatches(lexicalVersion,result.contentFingerprint(),List.of("원본"),List.of("official_doc")))
@@ -86,7 +92,9 @@ class RagRecoveryDatabaseTests {
                 jdbc.update("UPDATE rag_document_chunks SET index_status='INDEXED',updated_at='2000-01-01' WHERE document_id=?",id);
                 var oldIds=documents.findActiveChunkIdsByDocumentIdAndVersion(id,4);
                 long oldId=oldIds.get(0);
-                jdbc.update("INSERT INTO rag_chunk_embeddings(chunk_id,embedding_model,vector_store,vector_point_id,status) VALUES(?,'test-model','baseline',?,'INDEXED')",oldId,String.valueOf(oldId));
+                jdbc.update("UPDATE rag_document_chunks SET quality_status='CONTEXT_ONLY' WHERE chunk_id=?",oldIds.get(3));
+                for(var baselineId:oldIds.subList(0,3))jdbc.update("INSERT INTO rag_chunk_embeddings(chunk_id,embedding_model,vector_store,vector_point_id,content_hash,status) VALUES(?,'text-embedding-3-small','unused-rag',?,?,'INDEXED')",
+                    baselineId,String.valueOf(com.kaces.pandora.infra.qdrant.QdrantClient.ragPointId(baselineId)),"a".repeat(64));
                 var original=mock(RagOriginalDocumentStore.class);when(original.materialize(documents.findDocumentById(id))).thenReturn(file);
                 var service=new RagRecoveryCandidateService(documents,recovery,original,new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds));
                 var before=jdbc.queryForList("SELECT * FROM rag_document_chunks WHERE document_id=? ORDER BY chunk_id",id);
@@ -186,9 +194,17 @@ class RagRecoveryDatabaseTests {
                     when(q.inspectRagRecoveryPoints(anyString(), anyString(), anyString(), anyList(), anyList()))
                         .thenReturn(new com.kaces.pandora.infra.qdrant.QdrantClient.RecoveryPointInspection(null, Set.of(nextIds.iterator().next())));
                     var assets = indexService.prepare(next.id());
+                    var preparation=recovery.findPreparation(next.id());
+                    assertThat(preparation.baseRevision()).isZero();
+                    assertThat(preparation.manifest()).isEqualTo(next.manifest());
+                    assertThat(preparation.routingIdentity()).matches("[0-9a-f]{64}");
+                    assertThat(preparation.corpusFingerprint()).matches("[0-9a-f]{64}");
                     assertThat(assets.chunkCount()).isEqualTo(2);
                     assertThat(recovery.findGeneration(next.id(),false).state()).isEqualTo("INDEX_READY");
                     assertThat(indexService.prepare(next.id())).isEqualTo(assets);
+                    jdbc.update("UPDATE rag_recovery_preparations SET corpus_fingerprint=? WHERE generation_id=?","0".repeat(64),next.id());
+                    assertThatThrownBy(()->indexService.verify(assets)).isInstanceOf(IllegalStateException.class);
+                    jdbc.update("UPDATE rag_recovery_preparations SET corpus_fingerprint=? WHERE generation_id=?",preparation.corpusFingerprint(),next.id());
                     verify(embeddingClient, times(1)).embed(anyList());
                     @SuppressWarnings("unchecked")
                     var writtenBatches = org.mockito.ArgumentCaptor.forClass((Class<List<RagDocumentChunkRow>>)(Class<?>)List.class);
@@ -199,24 +215,77 @@ class RagRecoveryDatabaseTests {
                     assertThatThrownBy(() -> indexService.verify(assets)).isInstanceOf(IllegalStateException.class);
                     var router = new RagRecoveryRoutingService(recovery, lexical, new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds));
                     var beforeRouting = router.capture();
+                    var futurePreview=service.preview(id,"d".repeat(40));
+                    var future=service.create(id,futurePreview.previewHash(),"d".repeat(40));
+                    assertThat(new RagRecoveryValidationService(documents,recovery,original,
+                        new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds),"d".repeat(40)).validate(future.id()).passed()).isTrue();
                     assertThat(beforeRouting.replacedDocumentIds()).isEmpty();
                     assertThat(beforeRouting.baselineGenerations()).contains(recovery.findPointer(id,false).activeGeneration());
-                    jdbc.update("UPDATE rag_recovery_generations SET state='RETIRED' WHERE generation_id=?", recovery.findPointer(id,false).activeGeneration());
-                    jdbc.update("UPDATE rag_recovery_generations SET state='ACTIVE' WHERE generation_id=?", next.id());
-                    jdbc.update("UPDATE rag_recovery_pointers SET revision=1,active_generation=? WHERE document_id=?",next.id(),id);
-                    jdbc.update("UPDATE rag_recovery_routing_epoch SET revision=1,lexical_generation=?,lexical_fingerprint=? WHERE singleton_id=1",next.id(),assets.lexicalFingerprint());
+                    doReturn("d".repeat(64)).when(q).verifyRagRecoveryCollection(anyString(),anyString(),anyString(),anyList(),anyList());
+                    when(q.baselineRagFingerprint(anyList())).thenReturn("e".repeat(64));
+                    var baselineService=new RagRecoveryBaselineService(documents,recovery,service,q,
+                        new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds),
+                        new com.kaces.pandora.semantic.config.LawAiProperties(null,
+                            new com.kaces.pandora.semantic.config.LawAiProperties.Qdrant("http://127.0.0.1:1","unused-law","unused-rag",3),null,null));
+                    var preserved=baselineService.capture(id);
+                    assertThat(preserved.chunkCount()).isEqualTo(3);
+                    assertThat(baselineService.capture(id)).isEqualTo(preserved);
+                    when(q.baselineRagFingerprint(anyList())).thenReturn("f".repeat(64));
+                    assertThatThrownBy(()->baselineService.verify(id)).isInstanceOf(IllegalStateException.class);
+                    when(q.baselineRagFingerprint(anyList())).thenReturn("e".repeat(64));
+                    var promotion=new RagRecoveryPromotionService(indexService,recovery,baselineService,new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds));
+                    assertThatThrownBy(()->promotion.promote(next.id(),0,"0".repeat(64))).isInstanceOf(IllegalStateException.class);
+                    jdbc.execute("CREATE TRIGGER reject_recovery_promotion BEFORE UPDATE ON rag_recovery_pointers FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected-promotion-failure'");
+                    try {
+                        assertThatThrownBy(()->promotion.promote(next.id(),0,next.manifest())).isInstanceOf(RuntimeException.class);
+                        assertThat(recovery.findRoutingEpoch().revision()).isZero();
+                        assertThat(recovery.findPointer(id,false).revision()).isZero();
+                        assertThat(recovery.findGeneration(next.id(),false).state()).isEqualTo("INDEX_READY");
+                        assertThat(jdbc.queryForObject("SELECT promoted_at FROM rag_recovery_generations WHERE generation_id=?",java.sql.Timestamp.class,next.id())).isNull();
+                    } finally { jdbc.execute("DROP TRIGGER IF EXISTS reject_recovery_promotion"); }
+                    var promoters=java.util.concurrent.Executors.newFixedThreadPool(2);
+                    try {
+                        var attempts=new ArrayList<java.util.concurrent.Future<Boolean>>();
+                        for(int attempt=0;attempt<2;attempt++)attempts.add(promoters.submit(()->{
+                            try { promotion.promote(next.id(),0,next.manifest());return true; }
+                            catch(RuntimeException rejected){return false;}
+                        }));
+                        int wins=0;for(var attempt:attempts)if(attempt.get(20,java.util.concurrent.TimeUnit.SECONDS))wins++;
+                        assertThat(wins).isEqualTo(1);
+                    } finally { promoters.shutdownNow(); }
+                    assertThat(recovery.findRoutingEpoch().revision()).isEqualTo(1);
+                    assertThat(recovery.findPointer(id,false).activeGeneration()).isEqualTo(next.id());
+                    assertThat(jdbc.queryForObject("SELECT promoted_at FROM rag_recovery_generations WHERE generation_id=?",java.sql.Timestamp.class,next.id())).isNotNull();
                     var afterRouting=router.capture();
+                    when(q.ragRecoveryCollection(future.id())).thenReturn("rag_recovery_"+future.id().replace("-",""));
+                    when(q.inspectRagRecoveryPoints(eq(future.id()),anyString(),anyString(),anyList(),anyList()))
+                        .thenReturn(new com.kaces.pandora.infra.qdrant.QdrantClient.RecoveryPointInspection(null,Set.of()));
+                    doReturn("d".repeat(64)).when(q).verifyRagRecoveryCollection(anyString(),anyString(),anyString(),anyList(),anyList());
+                    var futureIndex=new RagRecoveryIndexService(documents,recovery,service,receiptService,embeddingClient,q,lexical,
+                        new com.kaces.pandora.semantic.lexical.SemanticLexicalIndexService(lexical,new com.kaces.pandora.semantic.lexical.KoreanLexicalTokenizer()),
+                        new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds),
+                        new com.kaces.pandora.semantic.config.LawAiProperties(null,
+                            new com.kaces.pandora.semantic.config.LawAiProperties.Qdrant("http://127.0.0.1:1","unused-law","unused-rag",3),null,null),"d".repeat(40));
+                    assertThat(futureIndex.prepare(future.id()).chunkCount()).isEqualTo(2);
+                    assertThat(recovery.findPreparation(future.id()).baseRevision()).isEqualTo(1);
+                    assertThat(recovery.findPointer(id,false).activeGeneration()).isEqualTo(next.id());
+                    assertThat(recovery.findGenerationLexicalChunks(next.id())).extracting(row->row.chunkId())
+                        .containsExactlyInAnyOrderElementsOf(nextIds);
                     assertThat(afterRouting.replacedDocumentIds()).contains(id);
                     assertThat(afterRouting.cacheIdentity()).isNotEqualTo(beforeRouting.cacheIdentity());
                     assertThat(beforeRouting.documents().get(id).revision()).isZero();
                     var allIds = jdbc.queryForList("SELECT chunk_id FROM rag_document_chunks WHERE document_id=? ORDER BY chunk_id", Long.class, id);
                     assertThat(documents.findSemanticChunksByIdsRouted(allIds, beforeRouting)).extracting(row -> row.chunkId())
-                        .containsExactlyInAnyOrderElementsOf(oldIds);
+                        .containsExactlyInAnyOrderElementsOf(oldIds.subList(0,3));
                     var activeIds = recovery.findCandidateChunks(next.id()).stream().map(RagDocumentChunkRow::chunkId).toList();
                     assertThat(documents.findSemanticChunksByIdsRouted(allIds, afterRouting)).extracting(row -> row.chunkId())
                         .containsExactlyInAnyOrderElementsOf(activeIds);
                     assertThat(documents.findSemanticChunksByIdsRouted(activeIds, beforeRouting)).isEmpty();
                     assertThat(documents.findSemanticChunksByIdsRouted(oldIds, afterRouting)).isEmpty();
+                    assertThat(documents.findSourceProofChunksByIdsRouted(activeIds,afterRouting)).hasSize(2);
+                    assertThat(documents.findSourceProofChunksByIdsRouted(activeIds,beforeRouting)).isEmpty();
+                    assertThat(new com.kaces.pandora.rag.chunk.RagSourceTableEvidenceService(documents,original)
+                        .fromSelectedChunks(activeIds,afterRouting)).hasSize(2);
                     var types=List.of("official_doc"); var titles=List.of("원본 보존"); var terms=List.of("원본","검토");
                     var titleReads=List.of(
                         documents.findSemanticChunksByDocumentTitleScopedRouted(types,titles,100,afterRouting),
@@ -233,13 +302,13 @@ class RagRecoveryDatabaseTests {
                     assertThat(documents.findDocumentExpansionChunksRouted(List.of(id),List.of(),List.of(),List.of(),100,100,afterRouting))
                         .extracting(row->row.chunkId()).containsExactlyInAnyOrderElementsOf(activeIds);
                     assertThat(documents.findDocumentExpansionChunksRouted(List.of(id),List.of(),List.of(),List.of(),100,100,beforeRouting))
-                        .extracting(row->row.chunkId()).containsExactlyInAnyOrderElementsOf(oldIds);
+                        .extracting(row->row.chunkId()).containsExactlyInAnyOrderElementsOf(oldIds.subList(0,3));
                     assertThat(documents.countChunkSearchRouted("official_doc","원본 보존",afterRouting)).isEqualTo(activeIds.size());
                     assertThat(documents.searchChunksRouted("official_doc","원본 보존",100,0,afterRouting))
                         .extracting(row->row.chunkId()).containsExactlyInAnyOrderElementsOf(activeIds);
                     assertThat(documents.countChunkSearchRouted("official_doc","원본 보존",beforeRouting)).isEqualTo(oldIds.size());
                     assertThat(documents.findSemanticChunksByDocumentTitleScopedRouted(types,titles,100,beforeRouting).stream()
-                        .filter(row->row.documentId()==id).map(row->row.chunkId()).toList()).containsExactlyInAnyOrderElementsOf(oldIds);
+                        .filter(row->row.documentId()==id).map(row->row.chunkId()).toList()).containsExactlyInAnyOrderElementsOf(oldIds.subList(0,3));
                     assertThat(documents.findSemanticChunksByDocumentIdRouted(id, beforeRouting)).extracting(row -> row.chunkId())
                         .containsExactlyInAnyOrderElementsOf(oldIds);
                     assertThat(documents.findSemanticChunksByDocumentIdRouted(id, afterRouting)).extracting(row -> row.chunkId())
@@ -250,6 +319,50 @@ class RagRecoveryDatabaseTests {
                         .containsExactlyInAnyOrderElementsOf(activeIds);
                     jdbc.update("DELETE FROM rag_recovery_assets WHERE generation_id=?",next.id());
                     assertThatThrownBy(router::capture).isInstanceOf(IllegalStateException.class);
+                    assertThat(recovery.insertAssets(assets)).isEqualTo(1);
+                    var rollback=new RagRecoveryRollbackService(recovery,documents,router,baselineService,lexical,
+                        new com.kaces.pandora.semantic.lexical.SemanticLexicalIndexService(lexical,new com.kaces.pandora.semantic.lexical.KoreanLexicalTokenizer()),
+                        new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds));
+                    jdbc.execute("CREATE TRIGGER reject_recovery_rollback BEFORE UPDATE ON rag_recovery_pointers FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected-rollback-failure'");
+                    try {
+                        assertThatThrownBy(()->rollback.rollback(id,next.id(),1,preserved.generationId())).isInstanceOf(RuntimeException.class);
+                        assertThat(recovery.findPointer(id,false).activeGeneration()).isEqualTo(next.id());
+                        assertThat(recovery.findRoutingEpoch().revision()).isEqualTo(1);
+                        assertThat(recovery.findGeneration(preserved.generationId(),false).state()).isEqualTo("RETIRED");
+                    } finally { jdbc.execute("DROP TRIGGER IF EXISTS reject_recovery_rollback"); }
+                    var restored=rollback.rollback(id,next.id(),1,preserved.generationId());
+                    assertThat(restored.revision()).isEqualTo(2);
+                    assertThat(restored.activeGeneration()).isEqualTo(preserved.generationId());
+                    var restoredRouting=router.capture();
+                    assertThat(restoredRouting.replacedDocumentIds()).doesNotContain(id);
+                    assertThat(documents.findSemanticChunksByDocumentIdRouted(id,restoredRouting)).extracting(row->row.chunkId())
+                        .containsExactlyInAnyOrderElementsOf(oldIds);
+                    assertThat(documents.findSemanticChunksByDocumentIdRouted(id,afterRouting)).extracting(row->row.chunkId())
+                        .containsExactlyInAnyOrderElementsOf(activeIds);
+                    assertThatThrownBy(()->rollback.rollback(id,next.id(),1,preserved.generationId())).isInstanceOf(IllegalStateException.class);
+                    assertThatThrownBy(()->futureIndex.prepare(future.id())).isInstanceOf(IllegalStateException.class);
+                    assertThat(recovery.findGeneration(future.id(),false).state()).isEqualTo("STALE");
+                    var freshPreview=service.preview(id,"d".repeat(40));
+                    var freshCandidate=service.create(id,freshPreview.previewHash(),"d".repeat(40));
+                    assertThat(freshCandidate.id()).isNotEqualTo(future.id());
+                    assertThat(service.create(id,freshPreview.previewHash(),"d".repeat(40))).isEqualTo(freshCandidate);
+                    var uiStatus=new RagRecoveryWorkflowService(service,null,null,null,null,baselineService,recovery,"d".repeat(40),false).status(id);
+                    assertThat(uiStatus.pointer().revision()).isEqualTo(2);
+                    assertThat(uiStatus.mutationsEnabled()).isFalse();
+                    assertThat(uiStatus.generations()).extracting(RecoveryGeneration::id).contains(freshCandidate.id());
+                    jdbc.update("DELETE FROM rag_recovery_assets WHERE generation_id=?",next.id());
+                    assertThat(router.capture().replacedDocumentIds()).doesNotContain(id);
+                    new org.springframework.transaction.support.TransactionTemplate(new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds))
+                        .executeWithoutResult(tx->assertThat(recovery.markCorpusChanged()).isEqualTo(1));
+                    assertThatThrownBy(router::capture).isInstanceOf(IllegalStateException.class);
+                    var refresher=new RagRecoveryCorpusRefreshService(recovery,lexical,router,
+                        new com.kaces.pandora.semantic.lexical.SemanticLexicalIndexService(lexical,new com.kaces.pandora.semantic.lexical.KoreanLexicalTokenizer()),
+                        new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds));
+                    var refreshed=refresher.rebuild();
+                    assertThat(router.capture().revision()).isEqualTo(3);
+                    assertThat(router.capture().cacheIdentity()).isNotEqualTo(restoredRouting.cacheIdentity());
+                    assertThat(refreshed.indexVersion()).isEqualTo(router.capture().lexicalNamespace());
+                    jdbc.update("DELETE FROM semantic_lexical_index_state WHERE index_version=?",refreshed.indexVersion());
                     assertThat(validation.validate(created.id()).passed()).isTrue();
                     jdbc.update("UPDATE rag_document_chunks SET chunk_text='변조된 원문' WHERE chunk_id=?",candidateIds.get(0));
                     assertThat(validation.validate(created.id()).passed()).isFalse();
@@ -260,6 +373,10 @@ class RagRecoveryDatabaseTests {
             } finally {
                 jdbc.execute("DROP TRIGGER IF EXISTS "+trigger);
                 jdbc.update("UPDATE rag_recovery_routing_epoch SET revision=0,lexical_generation=NULL,lexical_fingerprint=NULL WHERE singleton_id=1");
+                jdbc.update("DELETE p FROM rag_recovery_preparations p JOIN rag_recovery_generations g ON g.generation_id=p.generation_id WHERE g.document_id=?",id);
+                jdbc.update("DELETE FROM rag_recovery_baseline_assets WHERE document_id=?",id);
+                jdbc.update("DELETE FROM semantic_lexical_index_state WHERE index_version IN (SELECT CONCAT('recovery_',operation_id) FROM rag_recovery_rollbacks WHERE document_id=?)",id);
+                jdbc.update("DELETE FROM rag_recovery_rollbacks WHERE document_id=?",id);
                 jdbc.update("DELETE FROM rag_recovery_baselines WHERE document_id=?",id);
                 jdbc.update("DELETE FROM semantic_lexical_index_state WHERE index_version IN (SELECT CONCAT('recovery_',generation_id) FROM rag_recovery_generations WHERE document_id=?)",id);
                 jdbc.update("DELETE FROM rag_recovery_pointers WHERE document_id=?",id);

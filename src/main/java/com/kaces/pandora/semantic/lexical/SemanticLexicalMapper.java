@@ -11,6 +11,8 @@ public interface SemanticLexicalMapper {
 	List<LexicalChunkDocument> findActiveSearchableChunks();
 
 	String findReadyRevision();
+    int recordRecoveryIntegrity(@Param("indexVersion") String indexVersion,@Param("chunkCount") int chunkCount,@Param("termCount") int termCount);
+    boolean recoveryAvailable(@Param("indexVersion") String indexVersion,@Param("revision") String revision);
 	List<TermStatisticRow> findRecoveryTermStatistics(@Param("indexVersion") String indexVersion,
 		@Param("revision") String revision,@Param("terms") List<String> terms);
 	List<Bm25TermMatchRow> findRecoveryBm25TermMatches(@Param("indexVersion") String indexVersion,

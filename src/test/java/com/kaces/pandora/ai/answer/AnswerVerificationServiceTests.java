@@ -11,6 +11,16 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class AnswerVerificationServiceTests {
+    @Test void boundVerifierUsesTheSameCapturedRoutingWithoutThreadLocalState() {
+        var claims=mock(ClaimVerifier.class);
+        var routing=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(0,java.util.Map.of(),java.util.Map.of(),java.util.Set.of(),null,null);
+        var expected=new ClaimVerifier().verifyDetailed("",List.of());
+        when(claims.verifyDetailed(org.mockito.ArgumentMatchers.anyString(),anyList(),org.mockito.ArgumentMatchers.eq(routing))).thenReturn(expected);
+        var bound=new AnswerVerificationService(new AnswerGuard(),claims).withRouting(routing);
+        assertThat(bound.verify("문장",List.of()).claimResult()).isSameAs(expected);
+        verify(claims).verifyDetailed(org.mockito.ArgumentMatchers.anyString(),anyList(),org.mockito.ArgumentMatchers.eq(routing));
+        verify(claims,never()).verifyDetailed(org.mockito.ArgumentMatchers.anyString(),anyList());
+    }
 
 	@Test
 	void specificProcurementRecommendationKeepsItsQuestionScopeBoundary() {

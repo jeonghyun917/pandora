@@ -234,6 +234,7 @@ public class RagImportService {
 		String mimeType = Files.probeContentType(file);
 		int importTrustLevel = trustLevel;
 		return importTransaction.execute(transaction -> {
+		if (recoveryWriteGuard != null) recoveryWriteGuard.markCorpusChanged();
 		if (recoveryWriteGuard != null) recoveryWriteGuard.assertMutableHash(fileHash);
 		mapper.upsertDocument(
 			documentType,
@@ -414,6 +415,7 @@ public class RagImportService {
 			return;
 		}
 		importTransaction.executeWithoutResult(transaction -> {
+			if (recoveryWriteGuard != null) recoveryWriteGuard.markCorpusChanged();
 			if (recoveryWriteGuard != null) recoveryWriteGuard.assertMutablePaths(unpreferredPaths);
 			List<Long> oldChunkIds = mapper.findActiveChunkIdsByFilePathsAndVersion(unpreferredPaths, ACTIVE_CHUNK_VERSION);
 			markEmbeddingsSuperseded(oldChunkIds);

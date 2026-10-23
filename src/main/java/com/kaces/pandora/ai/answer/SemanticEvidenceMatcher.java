@@ -39,6 +39,9 @@ public class SemanticEvidenceMatcher {
 	}
 
 	public EvidenceIndex index(List<LawAiAnswerGround> grounds) {
+		return index(grounds,null);
+	}
+	public EvidenceIndex index(List<LawAiAnswerGround> grounds,com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
 		List<IndexedAtom> atoms = new ArrayList<>();
 		List<com.kaces.pandora.rag.chunk.SourceTableBindings.Binding> bindings = new ArrayList<>();
 		boolean sourceReadAllowed = tableEvidence != null && !selectedTableIds(grounds).isEmpty();
@@ -76,7 +79,7 @@ public class SemanticEvidenceMatcher {
 			if (sourceReadAllowed) {
 				var ids = selectedTableIds(List.of(ground));
 				if (!ids.isEmpty()) {
-					var verified = sourceCache.computeIfAbsent(ids, this::readTableBindings);
+					var verified = sourceCache.computeIfAbsent(ids, selected -> readTableBindings(selected,routing));
 					for (var binding : verified) {
 						if (binding.documentId() != ground.documentId()) { continue; }
 						bindings.add(binding);
@@ -104,9 +107,11 @@ public class SemanticEvidenceMatcher {
 		return List.copyOf(ids);
 	}
 
-	private List<com.kaces.pandora.rag.chunk.SourceTableBindings.Binding> readTableBindings(List<Long> ids) {
+	private List<com.kaces.pandora.rag.chunk.SourceTableBindings.Binding> readTableBindings(List<Long> ids,
+            com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
 		try {
-			return tableEvidence.fromSelectedChunks(ids).stream().filter(java.util.Objects::nonNull).toList();
+			return (routing==null?tableEvidence.fromSelectedChunks(ids):tableEvidence.fromSelectedChunks(ids,routing))
+                .stream().filter(java.util.Objects::nonNull).toList();
 		} catch (RuntimeException unavailable) { return List.of(); }
 	}
 

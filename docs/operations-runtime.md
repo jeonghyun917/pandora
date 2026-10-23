@@ -275,3 +275,45 @@ logs/rag-eval-gate-latest.md
 ```
 
 The gate must pass before the jar is promoted to the batch runner.
+
+## Isolated RAG document recovery
+
+The admin panel's document recovery section uses `/api/law-data/rag-recovery`.
+It requires a normal authenticated `ADMIN` session even when general authentication
+is disabled. GET `session` supplies a session-bound CSRF value; POST `create`,
+`validate`, `prepare`, `promote`, and `rollback` require
+`X-Pandora-Recovery-CSRF`. Cross-origin mutations are rejected. Do not copy login
+credentials, cookies, or tokens into scripts or evidence.
+
+Recovery mutations are closed by default. The server settings are
+`pandora.rag.recovery.product-sha` (the verified full 40-character product commit)
+and `pandora.rag.recovery.mutations-enabled` (default `false`). A product SHA is
+not proof that operational gates passed. Keep mutations disabled until isolated
+real-Q verification, baseline DB/Q preservation, complete routing capability,
+compatible corpus writers, source validation, quota/network checks, and deployment
+health have all been established. A closed-gate app deployment is not a recovery
+or a quality-gate PASS. Do not promote this build to the batch runner merely to
+make its writer compatible; batch promotion retains its separate quality gate.
+
+The supported order is preview/status, inactive candidate creation, validation,
+isolated preparation/readback, and exact-revision promotion. The UI never chains
+these writes automatically. Source/manifest/revision changes require fresh
+evidence; an old terminal failure must not be blindly replayed. Rollback restores
+the registered preserved baseline, not arbitrary candidate IDs, and uses a fresh
+immutable full-corpus lexical namespace. Existing chunks and vector/keyword assets
+are not deleted by pointer promotion or rollback.
+
+Ordinary ingestion and law activation update a transactional corpus revision.
+After recovery has been published, new requests fail closed if that corpus has
+changed. The normal complete lexical rebuild retains captured recovery replacements
+and publishes a new namespace only if both routing and corpus revisions still match.
+Do not manually edit revisions, generation memberships, integrity receipts, or READY
+states. Previously captured requests keep their immutable namespaces. Active vector
+and lexical cardinality checks also run before cached answers can be returned;
+they are availability checks, not a claim of distributed atomicity or protection
+against arbitrary out-of-band asset replacement.
+
+If a recovery test script is rejected by host policy, leave that branch blocked.
+Do not change ExecutionPolicy, use Bypass/IEX/inline replacement, or rerun the same
+denied operation through another engine. An administrator must provide a
+policy-compliant execution route; user approval alone does not alter host policy.

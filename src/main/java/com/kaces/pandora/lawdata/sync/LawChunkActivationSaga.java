@@ -34,6 +34,9 @@ class LawChunkActivationSaga {
 	private final LawAiProperties properties;
 	private final LawActivationTransactionExecutor transactions;
 	private final String runtimeInstanceId;
+    private com.kaces.pandora.rag.recovery.RagRecoveryWriteGuard corpusGuard;
+    @Autowired
+    void configureCorpusGuard(com.kaces.pandora.rag.recovery.RagRecoveryWriteGuard guard) { corpusGuard=guard; }
 
 	@Autowired
 	LawChunkActivationSaga(LawChunkMapper mapper, QdrantClient qdrant, LawAiProperties properties, LawActivationTransactionExecutor transactions) {
@@ -149,6 +152,7 @@ class LawChunkActivationSaga {
 	}
 
 	private void flip(ActivationContext context) {
+		if(corpusGuard!=null)corpusGuard.markCorpusChanged();
 		if (!renewLease(context, QDRANT_ACTIVATING)) throw new IllegalStateException("Activation ownership changed before database flip.");
 		if (!context.priorIds.isEmpty() && mapper.retireChunkIdsForOperation(context.documentId, context.priorIds, context.owner) != context.priorIds.size()) {
 			throw new IllegalStateException("Prior chunk retirement was rejected.");

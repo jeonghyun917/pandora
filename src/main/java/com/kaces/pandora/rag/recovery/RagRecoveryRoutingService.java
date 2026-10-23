@@ -20,7 +20,23 @@ public class RagRecoveryRoutingService {
         transaction.setReadOnly(true);
     }
     public RecoveryRoutingSnapshot capture() {
-        try { return transaction.execute(status->{
+        try { return transaction.execute(status->readSnapshot());
+        } catch(RuntimeException unavailable) {
+            throw new IllegalStateException("Recovery routing unavailable",unavailable);
+        }
+    }
+    RecoveryRoutingSnapshot captureInTransaction() {
+        if(!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
+            throw new IllegalStateException("Routing capture requires a transaction");
+        return readSnapshot();
+    }
+    RecoveryRoutingSnapshot captureForRebuildInTransaction() {
+        if(!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
+            throw new IllegalStateException("Routing capture requires a transaction");
+        return readSnapshot(false);
+    }
+    private RecoveryRoutingSnapshot readSnapshot() { return readSnapshot(true); }
+    private RecoveryRoutingSnapshot readSnapshot(boolean requireCurrent) {
             var epoch=recovery.findRoutingEpoch();
             if(epoch==null || epoch.revision()<0)throw new IllegalStateException("Routing epoch unavailable");
             var pointers=recovery.listRoutingPointers();
@@ -31,6 +47,7 @@ public class RagRecoveryRoutingService {
                 if(epoch.lexicalGeneration()!=null || epoch.lexicalFingerprint()!=null)throw new IllegalStateException("Initial routing epoch changed");
                 lexicalRevision=lexical.findReadyRevision();
             } else {
+                if(requireCurrent && !Boolean.TRUE.equals(recovery.isCorpusCurrent()))throw new IllegalStateException("Recovery corpus requires rebuild");
                 if(epoch.lexicalGeneration()==null || !epoch.lexicalGeneration().matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
                     throw new IllegalStateException("Routing lexical generation unavailable");
                 }
@@ -60,8 +77,5 @@ public class RagRecoveryRoutingService {
             }
             return new RecoveryRoutingSnapshot(epoch.revision(),documents,assets,baselineIds,lexicalRevision,
                 epoch.revision()==0 ? null : "recovery_"+epoch.lexicalGeneration());
-        }); } catch(RuntimeException unavailable) {
-            throw new IllegalStateException("Recovery routing unavailable",unavailable);
-        }
     }
 }

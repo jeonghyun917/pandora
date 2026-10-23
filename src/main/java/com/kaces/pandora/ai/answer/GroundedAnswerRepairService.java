@@ -40,6 +40,12 @@ public class GroundedAnswerRepairService {
 		this.rewriter = rewriter;
 	}
 
+    public Result verifyAndRepair(String question,String draft,List<LawAiAnswerGround> grounds,
+            com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
+        if(routing==null)return verifyAndRepair(question,draft,grounds);
+        // Per-call immutable binding also covers every rewrite and atom fallback verification.
+        return new GroundedAnswerRepairService(verificationService.withRouting(routing),rewriter).verifyAndRepair(question,draft,grounds);
+    }
 	public Result verifyAndRepair(
 		String question,
 		String draft,

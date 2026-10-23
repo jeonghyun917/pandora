@@ -46,9 +46,8 @@ public class RagRecoveryCandidateService {
                 if(recovery.insertBaseline(documentId,baselineId)!=1)throw new IllegalStateException("Baseline designation conflict");
                 for(var chunk:plan.baseline())addMember(baselineId,chunk.chunkId());
                 recovery.insertPointer(new RecoverySnapshot(documentId,0,baselineId,preview.sourceHash(),preview.baselineHash()));
-            } else if(!pointer.sourceHash().equals(preview.sourceHash()) || !pointer.baselineHash().equals(preview.baselineHash()) || pointer.revision()!=0) {
-                // Subsequent generations require the routing-aware snapshot reader from Task 4.
-                throw new IllegalStateException("Baseline changed or routing-aware snapshot required");
+            } else if(!pointer.sourceHash().equals(preview.sourceHash()) || !pointer.baselineHash().equals(preview.baselineHash())) {
+                throw new IllegalStateException("Baseline changed");
             }
             String id=UUID.randomUUID().toString();
             var generation=new RecoveryGeneration(id,documentId,preview.sourceHash(),productSha,preview.baselineHash(),
@@ -77,13 +76,26 @@ public class RagRecoveryCandidateService {
             if(!sourceHash.equals(sha(source)))throw new IllegalStateException("Source changed during extraction");
             var candidate=RecoveryCandidatePlan.of(documentId,sourceHash,productSha,baseline,candidates);
             // Bind metadata and index status as well as the immutable chunk payload.
-            String baselineHash=hash(List.of(document,candidate.baselineHash(),bounded(recovery.baselineStorageSnapshot(documentId),10001),
-                    bounded(recovery.embeddingSnapshot(documentId),100001),bounded(recovery.keywordSnapshot(documentId),10001),
-                    bounded(recovery.keywordTermSnapshot(documentId),100001)));
+            String baselineHash=storedBaselineHash(document,candidate.baselineHash());
+            var pointer=recovery.findPointer(documentId,lock);
+            var terminal=recovery.findTerminalGenerations(documentId,productSha,candidate.manifest());
+            if(terminal==null || terminal.size()>10000)throw new IllegalStateException("Recovery attempt history bound exceeded");
+            Object routingBinding=pointer!=null && pointer.revision()>0?pointer:"baseline";
             var preview=new Preview(documentId,sourceHash,productSha,baselineHash,candidate.manifest(),
-                    hash(List.of(documentId,sourceHash,productSha,baselineHash,candidate.manifest())),baseline.size(),candidates.size());
+                    hash(List.of(documentId,sourceHash,productSha,baselineHash,candidate.manifest(),routingBinding,List.copyOf(terminal))),baseline.size(),candidates.size());
             return new Plan(preview,List.copyOf(baseline),candidate.chunks());
         } catch(java.io.IOException unavailable) { throw new IllegalStateException("Original unavailable",unavailable); }
+    }
+    String lockedStoredBaselineHash(long documentId) {
+        var document=documents.findSourceProofDocument(documentId,true);
+        if(document==null)throw new IllegalStateException("Active document unavailable");
+        return storedBaselineHash(document,RecoveryCandidatePlan.baselineHashFor(documentId,documents.findActiveChunksForSourceProof(documentId,true)));
+    }
+    private String storedBaselineHash(RagDocumentRow document,String chunkHash) {
+        long documentId=document.documentId();
+        return hash(List.of(document,chunkHash,bounded(recovery.baselineStorageSnapshot(documentId),10001),
+            bounded(recovery.embeddingSnapshot(documentId),100001),bounded(recovery.keywordSnapshot(documentId),10001),
+            bounded(recovery.keywordTermSnapshot(documentId),100001)));
     }
     private void addMember(String generation,long chunkId) {
         if(recovery.insertMembership(generation,chunkId)!=1)throw new IllegalStateException("Candidate membership conflict");

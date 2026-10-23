@@ -62,6 +62,7 @@ class LawAiAnswerServiceClaimOutcomeTests {
 		answerClient = mock(OpenAiAnswerClient.class);
 		evidenceJudge = mock(EvidenceJudge.class);
 		answerVerificationService = mock(AnswerVerificationService.class);
+        when(answerVerificationService.withRouting(any())).thenReturn(answerVerificationService);
 
 		when(embeddingClient.embed(anyList())).thenReturn(List.of(List.of(0.1d)));
 		when(qdrantClient.searchBalanced(anyList(), anyList(), anyInt(), anyInt()))
@@ -282,12 +283,15 @@ class LawAiAnswerServiceClaimOutcomeTests {
 		var before=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(0,Map.of(),Map.of(),java.util.Set.of(),null,null);
 		var after=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(1,Map.of(),Map.of(),java.util.Set.of(),null,null);
 		service.configureRecoveryRouting(router);
+        var readiness=mock(com.kaces.pandora.rag.recovery.RagRecoveryReadinessService.class);
+        service.configureRecoveryReadiness(readiness);
 		when(router.capture()).thenReturn(before,before,after);
 		when(answerClient.answer(anyString(),anyString(),anyInt())).thenReturn(GENERATED_ANSWER);
 		when(answerVerificationService.verify(eq(QUESTION),eq(GENERATED_ANSWER),anyList()))
 			.thenReturn(verificationResult(GENERATED_ANSWER,REPAIRED_ANSWER,false));
 		assertThat(service.answer(request()).timing().cacheHit()).isFalse();
 		assertThat(service.answer(request()).timing().cacheHit()).isTrue();
+        verify(readiness,times(2)).verify(before);
 		assertThat(service.answer(request()).timing().cacheHit()).isFalse();
 		when(router.capture()).thenThrow(new IllegalStateException("routing unavailable"));
 		org.assertj.core.api.Assertions.assertThatThrownBy(()->service.answer(request()))
@@ -307,12 +311,32 @@ class LawAiAnswerServiceClaimOutcomeTests {
 		service.configureRecoveryRouting(router);
 		when(router.capture()).thenReturn(routing);
 		when(qdrantClient.searchBalanced(anyList(),anyList(),anyInt(),anyInt(),eq(routing)))
-			.thenReturn(List.of(new QdrantSearchHit("official_doc",row.chunkId(),.95)));
+			.thenReturn(List.of(new QdrantSearchHit("official_doc",row.chunkId(),.95,row.contentHash())));
 		when(ragDocumentMapper.findSemanticChunksByIdsRouted(List.of(row.chunkId()),routing)).thenReturn(List.of(row));
 		var debug=service.debug(new LawAiDebugRequest("official_doc",List.of("official_doc"),"과업심의 절차는?",8,true,null));
 		assertThat(debug.vectorHits()).extracting(LawAiDebugResponse.Item::chunkId).containsExactly(row.chunkId());
 		verify(router,times(1)).capture();
+        when(qdrantClient.searchBalanced(anyList(),anyList(),anyInt(),anyInt(),eq(routing)))
+            .thenReturn(List.of(new QdrantSearchHit("official_doc",row.chunkId(),.95,"tampered")));
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->service.debug(new LawAiDebugRequest("official_doc",List.of("official_doc"),"과업심의 절차는?",8,true,null)))
+            .isInstanceOf(IllegalStateException.class);
 	}
+
+    @Test void unavailableActiveAssetsCannotReturnAnAlreadyCachedAnswer() {
+        var router=mock(com.kaces.pandora.rag.recovery.RagRecoveryRoutingService.class);
+        var routing=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(0,Map.of(),Map.of(),java.util.Set.of(),null,null);
+        var readiness=mock(com.kaces.pandora.rag.recovery.RagRecoveryReadinessService.class);
+        service.configureRecoveryRouting(router);service.configureRecoveryReadiness(readiness);
+        when(router.capture()).thenReturn(routing);
+        when(answerClient.answer(anyString(),anyString(),anyInt())).thenReturn(GENERATED_ANSWER);
+        when(answerVerificationService.verify(eq(QUESTION),eq(GENERATED_ANSWER),anyList()))
+            .thenReturn(verificationResult(GENERATED_ANSWER,REPAIRED_ANSWER,false));
+        assertThat(service.answer(request()).resultMsg()).isEqualTo("OK");
+        org.mockito.Mockito.doThrow(new IllegalStateException("active assets unavailable")).when(readiness).verify(routing);
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->service.answer(request()))
+            .isInstanceOf(IllegalStateException.class).hasMessage("active assets unavailable");
+        verify(answerClient,times(1)).answer(anyString(),anyString(),anyInt());
+    }
 
 	@Test
 	void streamingCacheCannotCrossCapturedRevision() throws Exception {

@@ -14,9 +14,13 @@ public class RagSourceTableEvidenceService {
         this.mapper=mapper;this.originals=originals;
     }
     public List<SourceTableBindings.Binding> fromSelectedChunks(List<Long> ids) {
+        return fromSelectedChunks(ids,null);
+    }
+    public List<SourceTableBindings.Binding> fromSelectedChunks(List<Long> ids,
+            com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
         if(ids==null || ids.isEmpty() || ids.size()>64 || ids.stream().anyMatch(id->id==null || id<=0)) { return List.of(); }
         try {
-            var rows=mapper.findSourceProofChunksByIds(ids);
+            var rows=routing==null?mapper.findSourceProofChunksByIds(ids):mapper.findSourceProofChunksByIdsRouted(ids,routing);
             if(rows==null || rows.size()>64 || rows.stream().anyMatch(r->r==null || !ids.contains(r.chunkId()))) { return List.of(); }
             var byDocument=rows.stream().filter(r->r.sourceProvenance()!=null)
                 .collect(java.util.stream.Collectors.groupingBy(com.kaces.pandora.rag.document.RagSourceProofRow::documentId));

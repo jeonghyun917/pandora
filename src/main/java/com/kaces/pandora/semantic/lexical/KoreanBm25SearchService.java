@@ -81,7 +81,7 @@ public class KoreanBm25SearchService {
 		if(namespace==null)return;
 		var state=mapper.findRecoveryState(namespace);
 		if(state==null || !namespace.equals(state.indexVersion()) || !revision.equals(state.contentFingerprint())
-			|| !"RECOVERY_READY".equals(state.status()))throw new IllegalStateException("Active recovery lexical assets unavailable");
+			|| !"RECOVERY_READY".equals(state.status()) || !mapper.recoveryAvailable(namespace,revision))throw new IllegalStateException("Active recovery lexical assets unavailable");
 	}
 
 	private List<LexicalSearchHit> searchRevision(String query,List<String> plannedKeywords,List<String> targets,int limit,

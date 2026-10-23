@@ -29,19 +29,50 @@ import tools.jackson.databind.DatabindException;
 import tools.jackson.databind.ObjectMapper;
 
 class QdrantClientTests {
+    @Test void baselineReadbackBindsExistingVectorAndRejectsMissingOrForeignPoint() throws Exception {
+        var mode=new AtomicInteger();
+        server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/collections",exchange->{
+            String path=exchange.getRequestURI().getPath();
+            if(path.endsWith("/points/count")){respond(exchange,200,"{\"result\":{\"count\":1}}");return;}
+            if(path.endsWith("/points")) {
+                if(mode.get()==1){respond(exchange,200,"{\"result\":[]}");return;}
+                var payload=java.util.Map.of("chunkId",7,"documentId",mode.get()==2?99:42,"target","official_doc",
+                    "chunkVersion",4,"activationStatus","ACTIVE","sourcePath","$.v4.chunks[0]");
+                var point=java.util.Map.of("id",QdrantClient.ragPointId(7),"payload",payload,
+                    "vector",java.util.Collections.nCopies(1536,mode.get()==3?.2:.1));
+                respond(exchange,200,new ObjectMapper().writeValueAsString(java.util.Map.of("result",java.util.List.of(point))));return;
+            }
+            respond(exchange,200,readyCollection(1536,1));
+        });server.start();client=client();
+        var row=new LawSemanticChunkRow(7L,42L,"official_doc","42","title",null,null,null,null,null,"title","body",1,
+            "$.v4.chunks[0]",null,1,"a".repeat(64),"parent","body","PASS","body",null,4);
+        assertThatThrownBy(()->client.baselineRagFingerprint(java.util.List.of())).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(()->client.baselineRagFingerprint(java.util.Arrays.asList((LawSemanticChunkRow)null))).isInstanceOf(IllegalArgumentException.class);
+        String first=client.baselineRagFingerprint(java.util.List.of(row));
+        assertThat(first).matches("[0-9a-f]{64}");
+        assertThat(client.baselineRagFingerprint(java.util.List.of(row))).isEqualTo(first);
+        for(int failure:new int[]{1,2}) {mode.set(failure);
+            assertThatThrownBy(()->client.baselineRagFingerprint(java.util.List.of(row))).isInstanceOf(IllegalStateException.class);}
+        mode.set(3);
+        assertThat(client.baselineRagFingerprint(java.util.List.of(row))).isNotEqualTo(first);
+    }
 
     @Test void generationSnapshotFiltersBaselineBeforeTopKAndFailsForMissingActiveAssets() throws Exception {
         String generation="c87a26f6-cc34-4303-bdc2-929657369db3";
         String collection="rag_recovery_"+generation.replace("-", "");
         var bodies=new java.util.concurrent.ConcurrentHashMap<String,String>();
         var missing=new java.util.concurrent.atomic.AtomicBoolean();
+        var pointCount=new AtomicInteger(2);
         server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
         server.createContext("/collections",exchange->{
             String path=exchange.getRequestURI().getPath();
             bodies.put(path,new String(exchange.getRequestBody().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8));
             if(path.contains(collection)) {
                 if(missing.get()){respond(exchange,404,"{}");return;}
-                respond(exchange,200,"{\"result\":[{\"id\":300,\"score\":0.7,\"payload\":{\"target\":\"official_doc\",\"chunkId\":300,\"documentId\":42,\"generationId\":\""+generation+"\",\"manifest\":\""+"b".repeat(64)+"\",\"qualityStatus\":\"PASS\"}}]}");
+                if(path.endsWith("/points/count")){respond(exchange,200,"{\"result\":{\"count\":"+pointCount.get()+"}}");return;}
+                if(path.equals("/collections/"+collection)){respond(exchange,200,collectionWithQueue("green",1536,2,0,2,1));return;}
+                respond(exchange,200,"{\"result\":[{\"id\":9000000000000300,\"score\":0.7,\"payload\":{\"target\":\"official_doc\",\"chunkId\":300,\"documentId\":42,\"generationId\":\""+generation+"\",\"manifest\":\""+"b".repeat(64)+"\",\"contentHash\":\""+"a".repeat(64)+"\",\"embeddingModel\":\"text-embedding-3-small\",\"qualityStatus\":\"PASS\"}}]}");
             } else {
                 assertThat(bodies.get(path)).contains("\"documentId\"","42","must_not");
                 respond(exchange,200,"{\"result\":[{\"id\":11,\"score\":0.6,\"payload\":{\"target\":\"official_doc\",\"chunkId\":11,\"documentId\":77}}]}");
@@ -53,6 +84,10 @@ class QdrantClientTests {
         assertThat(client.searchBalanced(java.util.Collections.nCopies(1536,.1),java.util.List.of("official_doc"),1,2,routing))
             .extracting(com.kaces.pandora.semantic.search.QdrantSearchHit::chunkId).containsExactly(300L,11L);
         assertThat(bodies.get("/collections/"+collection+"/points/search")).contains("generationId","manifest","qualityStatus");
+        client.assertRecoveryReady(routing);
+        pointCount.set(1);
+        assertThatThrownBy(()->client.assertRecoveryReady(routing)).isInstanceOf(IllegalStateException.class);
+        pointCount.set(2);
         missing.set(true);
         assertThatThrownBy(()->client.searchBalanced(java.util.Collections.nCopies(1536,.1),java.util.List.of("official_doc"),1,2,routing))
             .isInstanceOf(IllegalStateException.class);

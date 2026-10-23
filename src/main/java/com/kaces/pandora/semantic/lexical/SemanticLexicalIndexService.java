@@ -25,6 +25,11 @@ public class SemanticLexicalIndexService {
 	private final Supplier<String> versionSupplier;
 	private final TransactionTemplate transactionTemplate;
 	private final List<Field> fields;
+    private org.springframework.beans.factory.ObjectProvider<com.kaces.pandora.rag.recovery.RagRecoveryCorpusRefreshService> recoveryRefresh;
+    @Autowired
+    void configureRecoveryRefresh(org.springframework.beans.factory.ObjectProvider<com.kaces.pandora.rag.recovery.RagRecoveryCorpusRefreshService> refresh) {
+        recoveryRefresh=refresh;
+    }
 
 	public SemanticLexicalIndexService(SemanticLexicalMapper mapper, KoreanLexicalTokenizer tokenizer) {
 		this(mapper, tokenizer, () -> UUID.randomUUID().toString(), null, defaultLexical());
@@ -81,6 +86,10 @@ public class SemanticLexicalIndexService {
 
 	public String currentRevision() {
 		try {
+            if(recoveryRefresh!=null) {
+                var refresh=recoveryRefresh.getObject();
+                if(refresh.isRequired())return refresh.currentRevision();
+            }
 			return mapper.findReadyRevision();
 		} catch (RuntimeException exception) {
 			return null;
@@ -95,6 +104,10 @@ public class SemanticLexicalIndexService {
 	}
 
 	public BuildResult rebuild() {
+        if(recoveryRefresh!=null) {
+            var refresh=recoveryRefresh.getObject();
+            if(refresh.isRequired())return refresh.rebuild();
+        }
 		String indexVersion = versionSupplier.get();
 		List<LexicalChunkDocument> documents = mapper.findActiveSearchableChunks();
 		if (documents == null) {
@@ -154,7 +167,7 @@ public class SemanticLexicalIndexService {
 			? 0.0
 			: (double) totalWeightedLength / documents.size();
 		String fingerprint = recovery ? recoveryFingerprint(documents) : contentFingerprint(documents);
-		publish(indexVersion, fingerprint, documents.size(), averageWeightedLength, recovery);
+		publish(indexVersion, fingerprint, documents.size(), termRows, averageWeightedLength, recovery);
 		return new BuildResult(
 			indexVersion,
 			fingerprint,
@@ -226,12 +239,15 @@ public class SemanticLexicalIndexService {
 		String indexVersion,
 		String fingerprint,
 		int activeChunkCount,
+		int termCount,
 		double averageWeightedLength,
 		boolean recovery
 	) {
 		Runnable publication = () -> {
 			mapper.markChunksReady(indexVersion);
 			if (recovery) {
+                if(mapper.recordRecoveryIntegrity(indexVersion,activeChunkCount,termCount)!=1)
+                    throw new IllegalStateException("Recovery integrity receipt publication failed");
 				if (mapper.markRecoveryIndexReady(indexVersion, fingerprint, activeChunkCount, averageWeightedLength) != 1) {
 					throw new IllegalStateException("Recovery lexical publication failed.");
 				}

@@ -31,6 +31,10 @@ class RagSourceTableEvidenceServiceTests {
         doReturn(file).when(originals).materialize(document);
         var service=new RagSourceTableEvidenceService(mapper,originals);
         assertThat(service.fromSelectedChunks(List.of(1L,2L))).hasSize(2);
+        var routing=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(0,java.util.Map.of(),java.util.Map.of(),java.util.Set.of(),null,null);
+        when(mapper.findSourceProofChunksByIdsRouted(List.of(1L,2L),routing)).thenReturn(proofRows);
+        assertThat(service.fromSelectedChunks(List.of(1L,2L),routing)).hasSize(2);
+        verify(mapper).findSourceProofChunksByIdsRouted(List.of(1L,2L),routing);
         assertThat(service.fromSelectedChunks(List.of())).isEmpty();
         assertThat(service.fromSelectedChunks(null)).isEmpty();
         assertThat(service.fromSelectedChunks(java.util.Collections.nCopies(65,1L))).isEmpty();

@@ -23,6 +23,7 @@ class SemanticLexicalIndexServiceTests {
 	void recoveryFingerprintBindsActualBodyAndFieldWeights() {
 		SemanticLexicalMapper mapper = mock(SemanticLexicalMapper.class);
 		when(mapper.markRecoveryIndexReady(any(), any(), any(Integer.class), any(Double.class))).thenReturn(1);
+        when(mapper.recordRecoveryIntegrity(any(),any(Integer.class),any(Integer.class))).thenReturn(1);
 		var service = new SemanticLexicalIndexService(mapper, new KoreanLexicalTokenizer());
 		var first = service.rebuildRecovery("6dca282f-56c2-477e-b1b1-66d35d5e9d56", List.of(document("law", 1, "법", "조", "원문")));
 		var changed = service.rebuildRecovery("6dca282f-56c2-477e-b1b1-66d35d5e9d57", List.of(document("law", 1, "법", "조", "변조")));
@@ -37,6 +38,7 @@ class SemanticLexicalIndexServiceTests {
 	void recoveryBuildNeverPublishesAsOrdinaryReady() {
 		SemanticLexicalMapper mapper = mock(SemanticLexicalMapper.class);
 		when(mapper.markRecoveryIndexReady(any(), any(), any(Integer.class), any(Double.class))).thenReturn(1);
+        when(mapper.recordRecoveryIntegrity(any(),any(Integer.class),any(Integer.class))).thenReturn(1);
 		SemanticLexicalIndexService service = new SemanticLexicalIndexService(mapper, new KoreanLexicalTokenizer());
 		String generation = "6dca282f-56c2-477e-b1b1-66d35d5e9d56";
 		var result = service.rebuildRecovery(generation, List.of(document("law", 1, "법", "조", "본문")));

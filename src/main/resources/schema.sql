@@ -472,7 +472,10 @@ CREATE TABLE IF NOT EXISTS rag_recovery_routing_epoch (
     CONSTRAINT chk_recovery_epoch_revision CHECK (revision>=0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 INSERT IGNORE INTO rag_recovery_routing_epoch(singleton_id,revision) VALUES(1,0);
+ALTER TABLE rag_recovery_routing_epoch ADD COLUMN IF NOT EXISTS corpus_revision BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE rag_recovery_routing_epoch ADD COLUMN IF NOT EXISTS published_corpus_revision BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE rag_recovery_generations ADD COLUMN IF NOT EXISTS validated_at DATETIME NULL;
+ALTER TABLE rag_recovery_generations ADD COLUMN IF NOT EXISTS promoted_at DATETIME NULL;
 
 CREATE TABLE IF NOT EXISTS rag_recovery_members (
     generation_id CHAR(36) NOT NULL,
@@ -510,6 +513,53 @@ CREATE TABLE IF NOT EXISTS rag_recovery_assets (
     PRIMARY KEY (generation_id),
     CONSTRAINT fk_recovery_assets_generation FOREIGN KEY (generation_id) REFERENCES rag_recovery_generations(generation_id),
     CONSTRAINT chk_recovery_assets_count CHECK (chunk_count BETWEEN 1 AND 10000)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS rag_recovery_rollbacks (
+    operation_id CHAR(36) NOT NULL,
+    document_id BIGINT NOT NULL,
+    input_hash CHAR(64) NOT NULL,
+    base_revision BIGINT NOT NULL,
+    expected_revision BIGINT NOT NULL,
+    active_generation CHAR(36) NOT NULL,
+    restore_generation CHAR(36) NOT NULL,
+    routing_identity CHAR(64) NOT NULL,
+    corpus_fingerprint CHAR(64) NOT NULL,
+    lexical_fingerprint CHAR(64) NULL,
+    state VARCHAR(16) NOT NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    applied_at DATETIME(6) NULL,
+    PRIMARY KEY (operation_id), UNIQUE KEY uk_recovery_rollback_input (input_hash),
+    CONSTRAINT fk_recovery_rollback_document FOREIGN KEY (document_id) REFERENCES rag_documents(document_id),
+    CONSTRAINT chk_recovery_rollback_revision CHECK (base_revision>=0 AND expected_revision>=0),
+    CONSTRAINT chk_recovery_rollback_state CHECK (state IN ('PREPARING','READY','APPLIED','FAILED','STALE'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS rag_recovery_baseline_assets (
+    document_id BIGINT NOT NULL,
+    generation_id CHAR(36) NOT NULL,
+    baseline_hash CHAR(64) NOT NULL,
+    vector_collection VARCHAR(100) NOT NULL,
+    embedding_model VARCHAR(100) NOT NULL,
+    vector_fingerprint CHAR(64) NOT NULL,
+    chunk_count INT NOT NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (document_id),
+    CONSTRAINT fk_recovery_baseline_asset_document FOREIGN KEY (document_id) REFERENCES rag_documents(document_id),
+    CONSTRAINT fk_recovery_baseline_asset_generation FOREIGN KEY (generation_id) REFERENCES rag_recovery_generations(generation_id),
+    CONSTRAINT chk_recovery_baseline_asset_count CHECK (chunk_count BETWEEN 1 AND 10000)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS rag_recovery_preparations (
+    generation_id CHAR(36) NOT NULL,
+    manifest CHAR(64) NOT NULL,
+    base_revision BIGINT NOT NULL,
+    routing_identity CHAR(64) NOT NULL,
+    corpus_fingerprint CHAR(64) NOT NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (generation_id),
+    CONSTRAINT fk_recovery_preparation_generation FOREIGN KEY (generation_id) REFERENCES rag_recovery_generations(generation_id),
+    CONSTRAINT chk_recovery_preparation_revision CHECK (base_revision >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS rag_import_jobs (

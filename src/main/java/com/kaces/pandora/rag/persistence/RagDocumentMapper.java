@@ -25,6 +25,8 @@ public interface RagDocumentMapper {
     List<RagDocumentChunkRow> findActiveChunksForSourceProof(@Param("documentId") long documentId, @Param("lock") boolean lock);
     int backfillSourceProofIfUnchanged(@Param("expected") RagDocumentChunkRow expected, @Param("fileHash") String fileHash, @Param("proof") String proof);
 	List<com.kaces.pandora.rag.document.RagSourceProofRow> findSourceProofChunksByIds(@Param("chunkIds") List<Long> chunkIds);
+	List<com.kaces.pandora.rag.document.RagSourceProofRow> findSourceProofChunksByIdsRouted(@Param("chunkIds") List<Long> chunkIds,
+        @Param("routing") com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing);
 	void insertImportJob(
 		@Param("job") RagImportJobKey job,
 		@Param("path") String path,
