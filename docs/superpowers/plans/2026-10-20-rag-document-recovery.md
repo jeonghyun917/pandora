@@ -10,6 +10,21 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-20-rag-document-recovery-design.md` (approved by user continuation on 2026-10-20).
 
+## Current execution checkpoint — 2026-10-23
+
+Tasks 1–5 implementation and local/fenced-DB verification are committed and pushed as
+`bf04f5cc0f2d86295692cbd2b194f1bfd1c64457`. Independent high-risk review was completed;
+five Important findings were fixed and tested. Final backend1785/f0/e0/skipped21,
+frontend22/build pass, and official app8080 closed-gate deployment are recorded in
+`docs/evidence/rag-quality/document-recovery-20261023.md`.
+
+Task 3 real-Q integration and Task 6 live recovery/quality checkpoints remain open.
+Current Q readiness is false; no operating candidate or promotion was performed.
+Automation stays PAUSED. Do not repeat passed same-SHA suites for push/deployment,
+replay terminal quality failures, or treat original-fidelity 4→17 validation as
+actual semantic/release PASS. Resume from the concrete external conditions in the
+evidence document, not from the old unchecked implementation bullets below.
+
 ## Global Constraints
 
 - Keep automation PAUSED; shared main, 18080 and existing Q process remain unchanged.
