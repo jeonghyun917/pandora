@@ -295,8 +295,7 @@ public class SemanticLexicalIndexService {
 		canonical.add(fields.stream().map(field -> List.of(field.kind(), field.weight())).toList());
 		canonical.add(documents.stream().sorted(Comparator.comparing(LexicalChunkDocument::target)
 			.thenComparingLong(LexicalChunkDocument::chunkId)).toList());
-		return com.kaces.pandora.common.text.LawHashUtils.sha256(
-			new tools.jackson.databind.ObjectMapper().writeValueAsString(canonical));
+		return com.kaces.pandora.common.text.LawHashUtils.sha256Json(canonical);
 	}
 
 	private String nullToEmpty(String value) {

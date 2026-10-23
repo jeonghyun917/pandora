@@ -3,7 +3,6 @@ package com.kaces.pandora.rag.recovery;
 import com.kaces.pandora.common.text.LawHashUtils;
 import com.kaces.pandora.semantic.lexical.LexicalChunkDocument;
 import java.util.*;
-import tools.jackson.databind.ObjectMapper;
 
 /** Complete immutable lexical view for one proposed routing transition. */
 public record RecoveryCorpus(long baseRevision,List<LexicalChunkDocument> chunks,String fingerprint) {
@@ -37,6 +36,6 @@ public record RecoveryCorpus(long baseRevision,List<LexicalChunkDocument> chunks
         var keys=new HashSet<String>();
         for(var row:result)if(!keys.add(row.target()+":"+row.chunkId()))throw new IllegalArgumentException("Duplicate corpus identity");
         var frozen=List.copyOf(result);
-        return new RecoveryCorpus(baseRevision,frozen,LawHashUtils.sha256(new ObjectMapper().writeValueAsString(List.of(baseRevision,frozen))));
+        return new RecoveryCorpus(baseRevision,frozen,LawHashUtils.sha256Json(List.of(baseRevision,frozen)));
     }
 }
