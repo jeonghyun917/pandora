@@ -219,7 +219,7 @@ public class SemanticLexicalIndexService {
 		var counts = mapper.recoveryCounts(version);
 		if (counts == null || counts.chunkCount() != snapshot.size() || counts.termCount() != termCount || counts.statisticCount() != documentFrequencies.size()
 				|| Double.compare(before.averageWeightedLength(), (double) weightedLength / snapshot.size()) != 0
-				|| !before.equals(mapper.findRecoveryState(version))) {
+				|| !before.equals(mapper.findRecoveryState(version)) || !mapper.recoveryAvailable(version,fingerprint)) {
 			throw new IllegalStateException("Recovery lexical parity or statistics changed.");
 		}
 		return fingerprint;

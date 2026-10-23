@@ -48,6 +48,13 @@ class RagRecoveryDatabaseTests {
             var snapshot = List.of(new com.kaces.pandora.semantic.lexical.LexicalChunkDocument("official_doc", 123, 456,
                 "parent", "a".repeat(64), "제목", "부모", "조문", "원본 보존"));
             assertThat(lexicalService.verifyRecovery(lexicalGeneration, snapshot)).isEqualTo(result.contentFingerprint());
+            new org.springframework.transaction.support.TransactionTemplate(new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds)).executeWithoutResult(status->{
+                jdbc.update("DELETE FROM semantic_lexical_term_cardinality WHERE index_version=?",lexicalVersion);
+                assertThatThrownBy(() -> lexicalService.verifyRecovery(lexicalGeneration,snapshot))
+                    .as("Preparation must reject an unavailable request-time asset")
+                    .isInstanceOf(IllegalStateException.class);
+                status.setRollbackOnly();
+            });
             assertThat(lexical.findRecoveryStatisticsForVerification(lexicalVersion,List.of("원본")))
                 .containsExactly(new com.kaces.pandora.semantic.lexical.SemanticLexicalMapper.TermStatisticRow("원본",1));
             jdbc.update("DELETE FROM semantic_lexical_term_stats WHERE index_version=? AND term='원본'",lexicalVersion);

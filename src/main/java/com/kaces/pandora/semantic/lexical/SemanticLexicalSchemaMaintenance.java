@@ -34,6 +34,20 @@ public class SemanticLexicalSchemaMaintenance implements ApplicationRunner {
             """);
 		ensureBinaryTermIdentity("semantic_lexical_terms");
 		ensureBinaryTermIdentity("semantic_lexical_term_stats");
+		ensureRecoveryTermCardinality();
+	}
+
+	private void ensureRecoveryTermCardinality() {
+		jdbcTemplate.execute("""
+			CREATE TABLE IF NOT EXISTS semantic_lexical_term_cardinality (
+			 index_version VARCHAR(64) NOT NULL,target VARCHAR(30) NOT NULL,chunk_id BIGINT NOT NULL,term_count BIGINT NOT NULL,
+			 PRIMARY KEY(index_version,target,chunk_id),
+			 CONSTRAINT fk_lexical_term_cardinality_chunk FOREIGN KEY(index_version,target,chunk_id)
+			 REFERENCES semantic_lexical_chunks(index_version,target,chunk_id) ON DELETE CASCADE,
+			 CONSTRAINT chk_lexical_term_cardinality_nonnegative CHECK(term_count>=0)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+			""");
+		RecoveryCardinalityMaintenance.ensure(jdbcTemplate);
 	}
 
 	private void ensureRecoveryStatus() {

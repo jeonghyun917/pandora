@@ -5,16 +5,25 @@
 
 <mapper namespace="com.kaces.pandora.semantic.lexical.SemanticLexicalMapper">
   <insert id="recordRecoveryIntegrity">
-    INSERT INTO semantic_lexical_recovery_integrity(index_version,chunk_count,term_count,statistic_count)
-    SELECT #{indexVersion},#{chunkCount},#{termCount},COUNT(*) FROM semantic_lexical_term_stats WHERE index_version=#{indexVersion}
+    INSERT INTO semantic_lexical_recovery_integrity(index_version,chunk_count,term_count,statistic_count,cardinality_epoch)
+    SELECT #{indexVersion},#{chunkCount},#{termCount},
+      (SELECT COUNT(*) FROM semantic_lexical_term_stats WHERE index_version=#{indexVersion}),e.epoch
+    FROM semantic_lexical_cardinality_epoch e WHERE e.id=1 AND e.enabled=true
   </insert>
   <select id="recoveryAvailable" resultType="boolean" timeout="10">
     SELECT EXISTS(SELECT 1 FROM semantic_lexical_recovery_integrity i
       JOIN semantic_lexical_index_state s ON s.index_version=i.index_version
+      JOIN semantic_lexical_cardinality_epoch e ON e.id=1 AND e.enabled=true AND e.epoch=i.cardinality_epoch
       WHERE i.index_version=#{indexVersion} AND s.status='RECOVERY_READY' AND s.content_fingerprint=#{revision}
         AND i.chunk_count=s.active_chunk_count
         AND i.chunk_count=(SELECT COUNT(*) FROM semantic_lexical_chunks c WHERE c.index_version=i.index_version AND c.build_status='READY')
-        AND i.term_count=(SELECT COUNT(*) FROM semantic_lexical_terms t WHERE t.index_version=i.index_version)
+        AND i.chunk_count=(SELECT COUNT(*) FROM semantic_lexical_term_cardinality t WHERE t.index_version=i.index_version AND t.epoch=e.epoch)
+        AND i.term_count=(SELECT COALESCE(SUM(t.term_count),0) FROM semantic_lexical_term_cardinality t WHERE t.index_version=i.index_version AND t.epoch=e.epoch)
+        AND ((i.term_count&gt;0 AND EXISTS(SELECT 1 FROM semantic_lexical_terms t WHERE t.index_version=i.index_version LIMIT 1))
+          OR (i.term_count=0 AND NOT EXISTS(SELECT 1 FROM semantic_lexical_terms t WHERE t.index_version=i.index_version LIMIT 1)))
+        AND (SELECT COUNT(*) FROM information_schema.TRIGGERS tr JOIN semantic_lexical_cardinality_triggers a
+          ON a.trigger_name=tr.TRIGGER_NAME AND a.created_stamp=DATE_FORMAT(tr.CREATED,'%Y-%m-%d %H:%i:%s.%f')
+          AND a.body_hash=SHA2(tr.ACTION_STATEMENT,256) WHERE tr.TRIGGER_SCHEMA=DATABASE())=5
         AND i.statistic_count=(SELECT COUNT(*) FROM semantic_lexical_term_stats t WHERE t.index_version=i.index_version))
   </select>
 
