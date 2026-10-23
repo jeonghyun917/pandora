@@ -22,7 +22,8 @@ public interface SemanticLexicalMapper {
 	List<ChunkRow> findRecoveryChunks(@Param("indexVersion") String indexVersion, @Param("documents") List<LexicalChunkDocument> documents);
 	List<TermRow> findRecoveryTerms(@Param("indexVersion") String indexVersion, @Param("documents") List<LexicalChunkDocument> documents);
 	RecoveryCounts recoveryCounts(@Param("indexVersion") String indexVersion);
-	record RecoveryCounts(long chunkCount, long termCount, long statisticMismatches) { }
+	List<TermStatisticRow> findRecoveryStatisticsForVerification(@Param("indexVersion") String indexVersion, @Param("terms") List<String> terms);
+	record RecoveryCounts(long chunkCount, long termCount, long statisticCount) { }
 
 	List<TermStatisticRow> findTermStatistics(
 		@Param("revision") String revision,

@@ -48,6 +48,14 @@ class RagRecoveryDatabaseTests {
             var snapshot = List.of(new com.kaces.pandora.semantic.lexical.LexicalChunkDocument("official_doc", 123, 456,
                 "parent", "a".repeat(64), "제목", "부모", "조문", "원본 보존"));
             assertThat(lexicalService.verifyRecovery(lexicalGeneration, snapshot)).isEqualTo(result.contentFingerprint());
+            assertThat(lexical.findRecoveryStatisticsForVerification(lexicalVersion,List.of("원본")))
+                .containsExactly(new com.kaces.pandora.semantic.lexical.SemanticLexicalMapper.TermStatisticRow("원본",1));
+            jdbc.update("DELETE FROM semantic_lexical_term_stats WHERE index_version=? AND term='원본'",lexicalVersion);
+            assertThatThrownBy(() -> lexicalService.verifyRecovery(lexicalGeneration,snapshot)).isInstanceOf(IllegalStateException.class);
+            jdbc.update("INSERT INTO semantic_lexical_term_stats(index_version,term,document_frequency) VALUES(?,'원본',1)",lexicalVersion);
+            jdbc.update("INSERT INTO semantic_lexical_term_stats(index_version,term,document_frequency) VALUES(?,'unexpected-statistic',1)",lexicalVersion);
+            assertThatThrownBy(() -> lexicalService.verifyRecovery(lexicalGeneration,snapshot)).isInstanceOf(IllegalStateException.class);
+            jdbc.update("DELETE FROM semantic_lexical_term_stats WHERE index_version=? AND term='unexpected-statistic'",lexicalVersion);
             assertThat(lexical.recoveryAvailable(lexicalVersion,result.contentFingerprint())).isTrue();
             jdbc.update("DELETE FROM semantic_lexical_terms WHERE index_version=? LIMIT 1",lexicalVersion);
             assertThat(lexical.recoveryAvailable(lexicalVersion,result.contentFingerprint())).isFalse();
@@ -71,6 +79,19 @@ class RagRecoveryDatabaseTests {
             jdbc.update("DELETE FROM semantic_lexical_chunks WHERE index_version=? AND chunk_id=124", lexicalVersion);
             assertThat(lexicalService.verifyRecovery(lexicalGeneration, snapshot)).isEqualTo(result.contentFingerprint());
             assertThatThrownBy(() -> jdbc.update("UPDATE semantic_lexical_index_state SET status='UNSAFE' WHERE index_version=?", lexicalVersion)).isInstanceOf(RuntimeException.class);
+            String multiGeneration=UUID.randomUUID().toString();
+            String multiVersion="recovery_"+multiGeneration;
+            try {
+                var multi=List.of(
+                    new com.kaces.pandora.semantic.lexical.LexicalChunkDocument("law",999,1,null,"hash","원본","","","원본"),
+                    new com.kaces.pandora.semantic.lexical.LexicalChunkDocument("admrul",999,1,null,"hash","원본","","","원본"));
+                var built=lexicalService.rebuildRecovery(multiGeneration,multi);
+                assertThat(lexicalService.verifyRecovery(multiGeneration,multi)).isEqualTo(built.contentFingerprint());
+                assertThat(lexical.findRecoveryStatisticsForVerification(multiVersion,List.of("원본")))
+                    .containsExactly(new com.kaces.pandora.semantic.lexical.SemanticLexicalMapper.TermStatisticRow("원본",2));
+                jdbc.update("UPDATE semantic_lexical_term_stats SET document_frequency=4 WHERE index_version=?",multiVersion);
+                assertThatThrownBy(() -> lexicalService.verifyRecovery(multiGeneration,multi)).isInstanceOf(IllegalStateException.class);
+            } finally { jdbc.update("DELETE FROM semantic_lexical_index_state WHERE index_version=?",multiVersion); }
         } finally {
             jdbc.update("DELETE FROM semantic_lexical_index_state WHERE index_version=?", lexicalVersion);
         }

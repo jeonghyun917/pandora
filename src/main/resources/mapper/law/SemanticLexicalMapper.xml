@@ -44,14 +44,12 @@
     SELECT
       (SELECT COUNT(*) FROM semantic_lexical_chunks WHERE index_version = #{indexVersion}) AS chunkCount,
       (SELECT COUNT(*) FROM semantic_lexical_terms WHERE index_version = #{indexVersion}) AS termCount,
-      ((SELECT COUNT(*) FROM semantic_lexical_term_stats s LEFT JOIN
-        (SELECT term, COUNT(DISTINCT CONCAT(target, ':', chunk_id)) AS frequency
-         FROM semantic_lexical_terms WHERE index_version = #{indexVersion} GROUP BY term) actual
-         ON actual.term = s.term
-        WHERE s.index_version = #{indexVersion} AND (actual.frequency IS NULL OR s.document_frequency != actual.frequency))
-       + (SELECT COUNT(DISTINCT t.term) FROM semantic_lexical_terms t LEFT JOIN semantic_lexical_term_stats s
-          ON s.index_version = t.index_version AND s.term = t.term
-          WHERE t.index_version = #{indexVersion} AND s.term IS NULL)) AS statisticMismatches
+      (SELECT COUNT(*) FROM semantic_lexical_term_stats WHERE index_version = #{indexVersion}) AS statisticCount
+  </select>
+  <select id="findRecoveryStatisticsForVerification" resultType="com.kaces.pandora.semantic.lexical.SemanticLexicalMapper$TermStatisticRow" timeout="30">
+    SELECT term,document_frequency AS documentFrequency FROM semantic_lexical_term_stats
+    WHERE index_version=#{indexVersion} AND term IN
+    <foreach collection="terms" item="term" open="(" separator="," close=")">#{term}</foreach>
   </select>
 
   <select id="findActiveSearchableChunks"
