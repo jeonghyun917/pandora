@@ -65,3 +65,22 @@ Get-AuthenticodeSignature 'C:\dev\workspace-egov\pandora\.worktrees\group-balanc
 
 예약은 PAUSED, 운영 mutation gate는 false를 유지한다. 검증 정책을 바꾸기 위한 제품 코드
 수정이나 ownership fence 삭제는 하지 않는다.
+# 2026-10-23 후속 상태
+
+사용자가 에이전트의 정식 CurrentUser RemoteSigned 적용을 명시 승인했다.
+실제 계정은 고정현, 프로필은 C:\Users\kaces이며 승인 호스트에서 Windows PowerShell
+CurrentUser=RemoteSigned/effective=RemoteSigned를 확인했다(cfdca3).
+조직 정책·LocalMachine은 변경하지 않았다. 아래의 과거 Restricted 차단은 해소됐다.
+
+실제 격리 Q 검증은 실행됐으나 UUID baseline 컬렉션 생성에서 Gridstore os error3로 실패했다.
+짧은 합성 컬렉션은 같은 서버에서 생성·삭제 성공했고, 짧은 root 및 상대경로 시도는 실패했다.
+상대경로 제품 수정은 원복했다. LongPathsEnabled=0은 읽기 확인만 했으며 시스템 설정을
+바꾸지 않았다. 따라서 실제 Q PASS와 문서1765 승격은 아직 아니다. 예약PAUSED 유지.
+
+# 최신: 실제 격리 검증 통과
+
+확장 Windows 경로 표기(`\\?\` + 검증된 전용 root)를 공식 startup의 저장·snapshot
+설정 계약에 사용하자 동일 실제 integration이 exit0/1test/f0/e0/skipped0으로 통과했다
+(09785c/97ff2f). OS 장경로 레지스트리는 변경하지 않았다. UUID 컬렉션이나 ownership,
+원본 보존·혼입·누락 검증을 줄이지 않았다. 앞선 경로 차단 기록은 이 결과로 해소된다.
+새 config는 storage_path와 snapshots_path에 같은 root의 확장 절대경로를 사용해야 한다.

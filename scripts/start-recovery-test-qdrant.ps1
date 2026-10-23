@@ -11,11 +11,11 @@ if (-not $root.StartsWith($allowed, [StringComparison]::OrdinalIgnoreCase) -or
     throw 'Dedicated worktree runtime/qdrant-recovery-test-* directory required.'
 }
 $config = Join-Path $root 'config.yaml'
-$normalized = $root.Replace('\', '/')
+$normalized = '\\?\' + $root
 $expected = @"
 storage:
-  storage_path: '$normalized/storage'
-  snapshots_path: '$normalized/snapshots'
+  storage_path: '$normalized\storage'
+  snapshots_path: '$normalized\snapshots'
 service:
   host: 127.0.0.1
   http_port: 26333
