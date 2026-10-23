@@ -28,6 +28,10 @@ Restricted에서는 관리자 실행이나 파일 서명만으로도 스크립�
    해당한다. 공유 6333/6334 프로세스와 데이터 경로를 바꾸는 승인이 아니다.
 3. 변경이 승인·적용된 뒤 다음 읽기 전용 결과만 전달한다. 비밀번호/cookie/token은 필요 없다.
 
+검토 대상 원본 script SHA256: start=`7196f966939c091ad7add780e394bf8f0d6c9037854b81250a4a6fb34a89b88a`,
+assert=`e722a42872ecb8328846a8d68c6adbd390f2b93ce196980c9ef710fecfc0bd4c`.
+이는 신뢰를 우회해 부여하는 명령이 아니라 보안 담당자의 파일 검토 식별자다.
+
 ```powershell
 # Windows PowerShell 5.1 창에서 실행. 실행 정책을 바꾸는 명령이 아니다.
 Get-ExecutionPolicy

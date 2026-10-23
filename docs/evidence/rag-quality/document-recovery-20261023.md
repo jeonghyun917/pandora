@@ -1,5 +1,49 @@
 # 문서 세대 복구 구현·폐쇄 게이트 배포 — 2026-10-23
 
+## 후속 실행: 운영 Q 기동 및 legacy baseline 호환
+
+최신 제품 `3fdad7daea2358a4de2a391bd26b5bb304ce6510` committed/pushed `4fb074`.
+사용자의 직접 기동 승인 뒤 공식 start-qdrant.cmd로 운영 Q를 기동했다(`f50f62`).
+기존 C:\dev\qdrant-storage의 두 필수 collection 존재, 모든 Q 프로세스/공유 포트 부재를
+확인한 뒤 시작했으며 다른 Q를 종료하지 않았다. 실측 `fcccd3`: PID17204, 공식 binary/config,
+127.0.0.1:6333/6334, law_chunks211658/rag_chunks_v4 84248, green/optimizer ok,
+DB-Q 개수 일치/qreadytrue/qfail0. Q binary SHA256
+`911f28497e4bc962a899c1e60ee7e0cf3e59ce5f3afd9cf96a3fbaeb17ffa395`.
+
+독립 읽기 전용 baseline 검사 `795379`에서 기존 payload에 activationStatus가 없어
+identity mismatch를 확인했다. 필드별 대조 `6bcf6b`는 ID/doc/version/target/sourcePath 일치를
+보였다. 기존 검색은 CANDIDATE/RETIRED를 제외하고 오래된 untagged baseline도 사용한다.
+복구 보존 검사만 존재하지 않던 ACTIVE 태그를 강제 요구한 가정을 수정했다. 원래 필드 부재를
+그대로 payload 지문에 포함하며 Q를 수정하거나 ACTIVE로 재분류하지 않는다. 명시 null,
+CANDIDATE, RETIRED, UNKNOWN, 외래 generationId/manifest는 계속 거부한다.
+최종 의미 verifier·원문 조건/범위 guard와 격리 ownership fence는 변경하지 않았다.
+
+TDD RED `ff3488`/`1e2ef2`→Q 전체 집중 GREEN `25d9b4`/`2f7db2` exit0.
+동일 수정 트리의 실제 read-only `49f73a`: 저장 baseline4/검색 subset3,
+Q 보존 지문 `6a6e0bcba3fa3e32a69830a8aee3b77e305be6cd9eeb61878ddeda912b131d6a`.
+이 probe 출력의 product 인자는 이전 배포 SHA였으므로 이전 배포 코드 통과로 오인하지 않는다.
+검사 실행은 위 수정 working tree이며 그 동일 트리를 3fdad7d로 커밋했다.
+읽기 전용 DB linkage `fc2e2d`: chunk157908/157910/157911의 model/store/point/hash/INDEXED
+각각 정확 일치, matched3/searchable3/storedBaseline4. 영수증 영속화나 후보 생성은 하지 않았다.
+새 코드 full `343e40`, session98837, 완료 `9e61bc`: fresh133XML/1785/f0/e0/skipped25 exit0.
+종료한 격리 DB opt-in 4개가 추가 제외됐으며 DB/mapper 변경은 없다. 그 DB 경로는 이전 제품
+fenced-DB 포함 full1785/skipped21 근거를 유지한다. 실제 Q integration은 이 결과에 포함하지 않는다.
+
+현재 남은 관리자 조건은 [정확한 정책 인계 절차](qdrant-policy-handoff-20261023.md)에 있다.
+Windows PowerShell의 기존 거부 스크립트는 재실행하지 않았고, 다른 엔진으로 바꾸거나 정책을
+변경하지 않았다. PowerShell7의 RemoteSigned를 Windows PowerShell 허용 근거로 대체하지 않는다.
+운영 Q 기동 성공은 실제 격리 검증 PASS가 아니다. 예약PAUSED/mutation=false/기존4청크 보존 유지.
+
+새 제품 공식 staging `57b5a8`/`fbc8ac` exit0, JAR
+`a5087c061b93957906203c410e59b0badf24a0e43ca9adf48e19a5cbc2f4530a`.
+공식 status3c6236→공식 stop a1b931(8080 리스너 소멸 확인)→이전 supervisor 종료d5e415→
+공식 deploy e6cbf0/190d97 순서이며 내부 Bypass stop 분기는 사용하지 않았다.
+**새 supervisor63131 유지 / app PID85836 / runtime30323f98-6cec-4557-af84-7242626c5e4c**.
+배포 후6d823b: JAR SHA 일치, Q PID17204 유지, lawDB=Q211658/ragDB=Q84248,
+qreadytrue/qfail0, config e7b08ced/index e39713ce/lexical15b68153.
+운영 후보·승격·외부 품질 평가 미실행. Windows PowerShell 유효 정책은6fa8dc에서
+문자열 Restricted로도 직접 확인했으며 기존 차단 스크립트 재실행은 없었다.
+
 제품: `bf04f5cc0f2d86295692cbd2b194f1bfd1c64457` (승인된 feature branch push 완료).
 예약 `pandora-1003-case-release-gate`는 PAUSED로 확인했으며 재개하지 않았다.
 
