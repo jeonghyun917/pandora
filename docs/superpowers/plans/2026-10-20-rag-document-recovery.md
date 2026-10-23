@@ -18,8 +18,18 @@ five Important findings were fixed and tested. Final backend1785/f0/e0/skipped21
 frontend22/build pass, and official app8080 closed-gate deployment are recorded in
 `docs/evidence/rag-quality/document-recovery-20261023.md`.
 
-Task 3 real-Q integration and Task 6 live recovery/quality checkpoints remain open.
-Current Q readiness is false; no operating candidate or promotion was performed.
+Task 3 real-Q integration now passed unchanged strict checks (09785c/97ff2f).
+Live preparation exposed fingerprint heap duplication (fixed52d1bfd), global-statistic
+query timeout (fixed8727bf2), and request posting-count timeout (fixed56d91b4).
+Latest stable backend: fresh135XML1788/f0/e0/skipped21; independent cardinality review
+findings fixed with actual fenced DB counterexamples. Product56d91b4 is pushed and
+officially deployed with JAR396ba4bfd9e921e43d33bdea2b98b7021974d4e734570ff81a85417d67b0cd4d.
+Current app33180/runtimec58d0afd-9e87-4052-acd0-b4bcfe751d2a is supervised by77655;
+shared Q17204 remains ready, DB-Q211658/84248 exact. New inactive candidate
+6601b516-4736-440e-8c5b-368a22fb951f passed original validation and is preparing once.
+The first two failed candidates remain unchanged. Pointer revision0/baseline4 remain active;
+no promotion yet. Task6 actual full preparation/readiness, promotion/consumer verification,
+then condition-proof and penalty→Difficult12→holdout57→full1003 remain open.
 Automation stays PAUSED. Do not repeat passed same-SHA suites for push/deployment,
 replay terminal quality failures, or treat original-fidelity 4→17 validation as
 actual semantic/release PASS. Resume from the concrete external conditions in the

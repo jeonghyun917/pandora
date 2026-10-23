@@ -26,21 +26,22 @@
 Files: `schema.sql`, `SemanticLexicalSchemaMaintenance.java`, `SemanticLexicalMapper.xml`,
 new fenced `RecoveryCardinalityDatabaseTests.java`; reuse the existing DB test fence.
 
-Interfaces: no new public HTTP API. Table columns are `index_version VARCHAR(64)`,
-`target VARCHAR(30)`, `chunk_id BIGINT`, `term_count BIGINT CHECK(term_count>=0)`.
-Trigger names: `recovery_terms_insert_count`, `recovery_terms_delete_count`,
+Interfaces: no new public HTTP API. Counter columns are `index_version VARCHAR(64)`,
+`target VARCHAR(30)`, `chunk_id BIGINT`, `term_count BIGINT CHECK(term_count>=0)`, `epoch CHAR(36)`.
+Separate singleton epoch and trigger-attestation tables bind integrity receipts.
+Trigger names: `recovery_chunks_insert_count`, `recovery_terms_insert_count`, `recovery_terms_delete_count`,
 `recovery_terms_update_old_count`, `recovery_terms_update_new_count`.
 
-- [ ] Write actual fenced DB tests for every review-focus boundary, normal DML, missing/extra postings and namespace isolation. Observe failure before implementation.
-- [ ] Create counters and provenance in idempotent maintenance, serialized by a DB advisory lock. Install five single-statement triggers. Do not scan/backfill existing postings; never synthesize a missing counter from postings.
-- [ ] Replace only readiness posting COUNT with per-chunk SUM, trigger-presence and actual existence checks. Leave complete preparation readback/counts unchanged.
-- [ ] Run focused isolated tests, self-review correctness, one independent high-risk review and fix important in-scope findings.
-- [ ] Run stable backend suite once; commit/push exact verified files.
+- [x] Write actual fenced DB tests for every review-focus boundary, normal DML, missing/extra postings and namespace isolation. Observe failure before implementation.
+- [x] Create counters and provenance in idempotent maintenance, serialized by a DB advisory lock. Install five single-statement triggers. Do not scan/backfill existing postings; never synthesize a missing counter from postings.
+- [x] Replace only readiness posting COUNT with per-chunk SUM, trigger attestation and actual existence checks. Leave complete preparation readback/counts unchanged; require final request readiness too.
+- [x] Run focused isolated tests, self-review correctness, one independent high-risk review and fix important in-scope findings.
+- [x] Run stable backend suite once; commit/push exact verified files. Product56d91b4, fresh1788/f0/e0/skipped21.
 
 ## Task 2: Official deployment and bounded live continuation
 
-- [ ] Gracefully stop only the fenced DB after verification. Stage official JAR; check owners/writers and officially deploy exact product with recovery gate closed initially.
-- [ ] Verify trigger/schema install, unchanged baseline Q/DB, runtime/JAR health and counterless old namespaces fail closed. Do not manufacture counters for them.
-- [ ] Enable only the approved recovery flow through official deployment; fresh preview/create/validate/prepare for document1765 under the new product identity.
-- [ ] Verify complete assets, exact readiness within10s and preserved baseline, then promote via normal ADMIN/CSRF UI. Verify request routing and source-consumer behavior.
+- [x] Gracefully stop only the fenced DB after verification. Stage official JAR; check owners/writers and officially deploy exact product with recovery gate closed initially.
+- [x] Verify trigger/schema install, unchanged baseline Q/DB, runtime/JAR health and counterless old namespaces fail closed. Do not manufacture counters for them.
+- [x] Enable only the approved recovery flow through official deployment; fresh preview/create/validate/prepare for document1765 under the new product identity.
+- [x] Verify complete assets, exact readiness within10s and preserved baseline, then promote via normal ADMIN/CSRF UI. Verify request routing and source-consumer behavior. Actualrevision1,17members/proof/context, readiness685/920/771ms; closed-gate restart preservesepoch and activegeneration.
 - [ ] Continue original condition-proof/penalty→Difficult12→holdout57→full1003 order only when its prerequisites really pass. Keep automation PAUSED.
