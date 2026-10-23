@@ -37,8 +37,15 @@ class QdrantClientTests {
             if(path.endsWith("/points/count")){respond(exchange,200,"{\"result\":{\"count\":1}}");return;}
             if(path.endsWith("/points")) {
                 if(mode.get()==1){respond(exchange,200,"{\"result\":[]}");return;}
-                var payload=java.util.Map.of("chunkId",7,"documentId",mode.get()==2?99:42,"target","official_doc",
-                    "chunkVersion",4,"activationStatus","ACTIVE","sourcePath","$.v4.chunks[0]");
+                var payload=new java.util.HashMap<String,Object>(java.util.Map.of("chunkId",7,"documentId",mode.get()==2?99:42,"target","official_doc",
+                    "chunkVersion",4,"activationStatus","ACTIVE","sourcePath","$.v4.chunks[0]"));
+                if(mode.get()>=4)payload.remove("activationStatus");
+                if(mode.get()==5)payload.put("activationStatus",null);
+                if(mode.get()==6)payload.put("activationStatus","CANDIDATE");
+                if(mode.get()==7)payload.put("activationStatus","RETIRED");
+                if(mode.get()==8)payload.put("generationId","foreign-generation");
+                if(mode.get()==9)payload.put("activationStatus","UNKNOWN");
+                if(mode.get()==10)payload.put("manifest","b".repeat(64));
                 var point=java.util.Map.of("id",QdrantClient.ragPointId(7),"payload",payload,
                     "vector",java.util.Collections.nCopies(1536,mode.get()==3?.2:.1));
                 respond(exchange,200,new ObjectMapper().writeValueAsString(java.util.Map.of("result",java.util.List.of(point))));return;
@@ -56,6 +63,12 @@ class QdrantClientTests {
             assertThatThrownBy(()->client.baselineRagFingerprint(java.util.List.of(row))).isInstanceOf(IllegalStateException.class);}
         mode.set(3);
         assertThat(client.baselineRagFingerprint(java.util.List.of(row))).isNotEqualTo(first);
+        mode.set(4);
+        String legacy=client.baselineRagFingerprint(java.util.List.of(row));
+        assertThat(legacy).isNotEqualTo(first);
+        assertThat(client.baselineRagFingerprint(java.util.List.of(row))).isEqualTo(legacy);
+        for(int invalid:new int[]{5,6,7,8,9,10}) { mode.set(invalid);
+            assertThatThrownBy(()->client.baselineRagFingerprint(java.util.List.of(row))).isInstanceOf(IllegalStateException.class); }
     }
 
     @Test void generationSnapshotFiltersBaselineBeforeTopKAndFailsForMissingActiveAssets() throws Exception {

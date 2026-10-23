@@ -673,9 +673,14 @@ public class QdrantClient {
                         || !(point.get("vector") instanceof List<?> vector) || vector.size()!=properties.qdrant().vectorSize())
                     throw new IllegalStateException("Malformed baseline point");
                 long pointId=strictPositivePointId(point.get("id"));var row=expected.get(pointId);
+                // Historical shared RAG points predate activation tags. Preserve absence,
+                // never manufacture ACTIVE or accept explicit null/foreign generation tags.
+                boolean legacyUntagged=!payload.containsKey("activationStatus")
+                    && !payload.containsKey("generationId") && !payload.containsKey("manifest");
                 if(row==null || canonical.containsKey(pointId) || strictPositivePointId(payload.get("chunkId"))!=row.chunkId()
                         || strictPositivePointId(payload.get("documentId"))!=documentId || strictPositivePointId(payload.get("chunkVersion"))!=4
-                        || !row.target().equals(payload.get("target")) || !"ACTIVE".equals(payload.get("activationStatus"))
+                        || !row.target().equals(payload.get("target")) || !(legacyUntagged || "ACTIVE".equals(payload.get("activationStatus")))
+                        || payload.containsKey("generationId") || payload.containsKey("manifest")
                         || !blankIfNull(row.sourcePath()).equals(payload.get("sourcePath")))throw new IllegalStateException("Baseline point identity mismatch");
                 var bits=new ArrayList<Integer>(vector.size());double norm=0;
                 for(var value:vector) {
