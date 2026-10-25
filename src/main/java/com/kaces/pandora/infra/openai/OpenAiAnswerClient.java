@@ -163,9 +163,21 @@ public class OpenAiAnswerClient extends GroundedAnswerRewriter {
 			+ "본문의 '모든 SW사업(상용SW포함)'은 자연어로 '상용소프트웨어를 포함한 모든 소프트웨어사업'으로 풀어 쓰세요. "
 			+ "발주기관과 모든·상용 포함 조건은 그대로 보존하고, 다른 사업 종류나 추가 적용 범위로 바꾸지 마세요. "
 			+ "이 규칙은 위의 제도 식별 자리표시자보다 우선하며 원문의 기관·SW 조건과 예외를 생략하지 않습니다.";
-		return requestAnswer(question, "질문:\n" + question + "\n검증된 근거:\n" + context,
+		String answer=requestAnswer(question, "질문:\n" + question + "\n검증된 근거:\n" + context,
 			explicitProcedure ? Math.max(2048, answerMaxOutputTokens()) : answerMaxOutputTokens(), requestInstructions);
+        return preserveAdditiveBusinessSubject(question,answer);
 	}
+
+    private String preserveAdditiveBusinessSubject(String question,String answer) {
+        if(question==null || answer==null)return answer;
+        var subject=java.util.regex.Pattern.compile("^\\s*([\\p{IsHangul}\\p{Alnum} ]{1,80}?(?:사업|시스템))도(?=\\s|[?？]|$)").matcher(question);
+        if(!subject.find())return answer;
+        String literal=subject.group(1).trim();
+        for(String particle:List.of("이","가")) {
+            if(answer.startsWith(literal+particle+" "))return literal+"도"+answer.substring(literal.length()+particle.length());
+        }
+        return answer;
+    }
 
 	// 메소드 설명: answerStreaming 처리 흐름을 수행합니다.
 	public String answerStreaming(String question, String context, Consumer<String> onDelta) {

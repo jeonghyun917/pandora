@@ -9,6 +9,25 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class OpenAiAnswerClientPromptTests {
+    @Test void conditionalClientPreservesTheExplicitAdditiveBusinessSubject() {
+        String condition="국가기관 등이 발주하는 모든 SW사업(상용SW포함)에 해당하면 적용 대상 사업입니다.";
+        var client=new OpenAiAnswerClient(new LawAiProperties(null,null,null,null),new ObjectMapper()){
+            @Override protected String requestAnswer(String question,String input,int budget,String instructions){return "웹서비스 사업이 "+condition;}
+        };
+        assertThat(client.rewriteConditional("웹서비스 사업도 심의 대상인가요?",List.of("적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)"),List.of("공공소프트웨어사업 과업심의 가이드")))
+            .isEqualTo("웹서비스 사업도 "+condition);
+    }
+    @Test void additivePreservationDoesNotRewriteUnmatchedSubjectsOrEvidenceConditions() {
+        for(var pair:List.of(
+            List.of("웹서비스 사업이 심의 대상인가요?","웹서비스 사업이 원문 조건에 해당하면 대상입니다."),
+            List.of("웹서비스 사업도 심의 대상인가요?","다른 사업이 원문 조건에 해당하면 대상입니다."),
+            List.of("웹서비스 사업도 심의 대상인가요?","원문의 기관이 조건을 정합니다."))) {
+            var client=new OpenAiAnswerClient(new LawAiProperties(null,null,null,null),new ObjectMapper()){
+                @Override protected String requestAnswer(String question,String input,int budget,String instructions){return pair.get(1);}
+            };
+            assertThat(client.rewriteConditional(pair.get(0),List.of("적용 대상 사업 국가기관 등이 발주하는 모든 SW사업"),List.of("공공소프트웨어사업 과업심의 가이드"))).isEqualTo(pair.get(1));
+        }
+    }
     @Test void closedReferencedLegalRuleRequestsLiteralConditionAndConclusionOnly() {
         var payload=new java.util.concurrent.atomic.AtomicReference<String>();var contract=new java.util.concurrent.atomic.AtomicReference<String>();
         var client=new OpenAiAnswerClient(new LawAiProperties(null,null,null,null),new ObjectMapper()){
