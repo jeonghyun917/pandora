@@ -165,6 +165,9 @@ public class OpenAiAnswerClient extends GroundedAnswerRewriter {
 			+ "이 규칙은 위의 제도 식별 자리표시자보다 우선하며 원문의 기관·SW 조건과 예외를 생략하지 않습니다.";
 		String answer=requestAnswer(question, "질문:\n" + question + "\n검증된 근거:\n" + context,
 			explicitProcedure ? Math.max(2048, answerMaxOutputTokens()) : answerMaxOutputTokens(), requestInstructions);
+        String ownedScope="모든 SW사업(상용SW포함)";
+        if(answer!=null && supportedEvidenceAtoms.stream().anyMatch(atom->atom.contains(ownedScope)))
+            answer=answer.replace(ownedScope,"상용소프트웨어를 포함한 모든 소프트웨어사업");
         return preserveAdditiveBusinessSubject(question,answer);
 	}
 

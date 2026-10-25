@@ -10,12 +10,23 @@ import tools.jackson.databind.ObjectMapper;
 
 class OpenAiAnswerClientPromptTests {
     @Test void conditionalClientPreservesTheExplicitAdditiveBusinessSubject() {
-        String condition="국가기관 등이 발주하는 모든 SW사업(상용SW포함)에 해당하면 적용 대상 사업입니다.";
+        String condition="국가기관 등이 발주하는 상용소프트웨어를 포함한 모든 소프트웨어사업에 해당하면 적용 대상 사업입니다.";
         var client=new OpenAiAnswerClient(new LawAiProperties(null,null,null,null),new ObjectMapper()){
             @Override protected String requestAnswer(String question,String input,int budget,String instructions){return "웹서비스 사업이 "+condition;}
         };
         assertThat(client.rewriteConditional("웹서비스 사업도 심의 대상인가요?",List.of("적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)"),List.of("공공소프트웨어사업 과업심의 가이드")))
             .isEqualTo("웹서비스 사업도 "+condition);
+    }
+    @Test void canonicalScopeWordingRequiresTheSameCompleteSourceScope() {
+        var client=new OpenAiAnswerClient(new LawAiProperties(null,null,null,null),new ObjectMapper()){
+            @Override protected String requestAnswer(String question,String input,int budget,String instructions){return "웹서비스 사업도 국가기관 등이 발주하는 모든 SW사업(상용SW포함)에 해당하면 적용 대상 사업입니다.";}
+        };
+        String result=client.rewriteConditional("웹서비스 사업도 심의 대상인가요?",List.of("적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)"),List.of("공공소프트웨어사업 과업심의 가이드"));
+        assertThat(result).isEqualTo("웹서비스 사업도 국가기관 등이 발주하는 상용소프트웨어를 포함한 모든 소프트웨어사업에 해당하면 적용 대상 사업입니다.");
+        var ground=new com.kaces.pandora.ai.answer.LawAiAnswerGround(1,1,1,"official_doc","공공소프트웨어사업 과업심의 가이드","기관","공식 문서",null,null,"page 5","적용 대상 사업",5,"적용 대상 사업 국가기관 등이 발주하는 모든 SW사업(상용SW포함)",null,null,1.0);
+        assertThat(new com.kaces.pandora.ai.answer.ClaimVerifier().verifyDetailed(result,List.of(ground)).insufficientEvidence()).isFalse();
+        String unowned=client.rewriteConditional("웹서비스 사업도 심의 대상인가요?",List.of("적용 대상 사업 국가기관 등이 발주하는 소프트웨어사업"),List.of("공공소프트웨어사업 과업심의 가이드"));
+        assertThat(unowned).contains("모든 SW사업(상용SW포함)");
     }
     @Test void additivePreservationDoesNotRewriteUnmatchedSubjectsOrEvidenceConditions() {
         for(var pair:List.of(
