@@ -85,6 +85,7 @@ class OpenAiAnswerClientPromptTests {
 		assertThat(captured.get()).contains("검증된 명시 절차가 있는 경우에만", "과업내용 확정", "일정 예외", "대상 분류를 의무로 강화하지");
 		assertThat(captured.get()).contains("각 절차와 예외는 독립된 완결 문장", "하며", "명시된 동일 주체");
 		assertThat(captured.get()).contains("범위 판단과 법정 절차를 분리", "조건부 대상 분류", "원문 그대로");
+		assertThat(captured.get()).contains("분류 표제는 결론 자리", "조건절에 복사하지", "기관·사업분류 조건 자체는 삭제하지");
 	}
 	@Test
 	void outputTokenExhaustionIsDiagnosedWithoutLoggingResponseData() throws Exception {
