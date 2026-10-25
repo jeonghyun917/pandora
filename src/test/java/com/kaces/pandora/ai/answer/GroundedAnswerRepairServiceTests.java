@@ -14,6 +14,36 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class GroundedAnswerRepairServiceTests {
+    @Test void referencedLegalRuleUsesExistingConditionalApiAndFullVerification() {
+        var grounds=List.of(SourceOwnedConditionalScopeTests.ground(SourceOwnedConditionalScopeTests.SOURCE));
+        var called=new java.util.concurrent.atomic.AtomicBoolean();
+        var service=new GroundedAnswerRepairService(realVerificationService(),new GroundedAnswerRewriter(){
+            @Override public String rewrite(String question,List<String> atoms){throw new AssertionError("Do not route a scoped rule through verbatim rewrite");}
+            @Override public String rewriteConditional(String question,List<String> atoms,List<String> titles){
+                called.set(true);assertThat(atoms).hasSize(1);
+                assertThat(atoms.get(0)).contains(SourceOwnedConditionalScopeTests.FIRST,SourceOwnedConditionalScopeTests.RULE);
+                assertThat(titles).containsExactly("원문 법률");return SourceOwnedConditionalScopeTests.CLAIM;
+            }
+        });
+        var result=service.verifyAndRepair("정보화시스템 법제도 준수안하면 어떤 불이익?",SourceOwnedConditionalScopeTests.RULE,grounds);
+        assertThat(called).isTrue();assertThat(result.insufficientEvidence()).as(result.toString()).isFalse();
+        assertThat(result.verifiedAnswer()).isEqualTo(SourceOwnedConditionalScopeTests.CLAIM);
+    }
+    @Test void referencedLegalRewriteCannotDropAnyOwnedConditionOrInventAnOutcome() {
+        var grounds=List.of(SourceOwnedConditionalScopeTests.ground(SourceOwnedConditionalScopeTests.SOURCE));
+        for(String output:List.of(SourceOwnedConditionalScopeTests.CLAIM.replace("위반하였다고 인정하는 경우에는","위반하면"),
+            SourceOwnedConditionalScopeTests.CLAIM.replace("개선을 권고할 수 있다","개선을 권고하여야 한다"),
+            SourceOwnedConditionalScopeTests.CLAIM.replace("국가기관등의 장이 소프트웨어사업을 추진하는 경우에 해당하면","소프트웨어사업이면"),
+            SourceOwnedConditionalScopeTests.CLAIM+" 자동으로 입찰 참가자격이 제한된다.")){
+            var called=new java.util.concurrent.atomic.AtomicBoolean();
+            var service=new GroundedAnswerRepairService(realVerificationService(),new GroundedAnswerRewriter(){
+                @Override public String rewrite(String question,List<String> atoms){throw new AssertionError("Conditional only");}
+                @Override public String rewriteConditional(String question,List<String> atoms,List<String> titles){called.set(true);return output;}
+            });
+            var result=service.verifyAndRepair("정보화시스템 법제도 준수안하면 어떤 불이익?",SourceOwnedConditionalScopeTests.RULE,grounds);
+            assertThat(called).as(output).isTrue();assertThat(result.insufficientEvidence()).as(output).isTrue();
+        }
+    }
 	@Test
 	void expandedDirectParentCandidatesKeepTheirWholeOwnedAnnotation() throws Exception {
 		String body = "향후 입찰공고시 반영여부를 재확인*하여 미준수 항목 개선권고 예정";

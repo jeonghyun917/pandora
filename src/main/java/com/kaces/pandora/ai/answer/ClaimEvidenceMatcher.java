@@ -402,10 +402,20 @@ public class ClaimEvidenceMatcher {
 	}
 
 	public EvidenceIndex index(List<LawAiAnswerGround> grounds) {
-		return new EvidenceIndex(evidenceSentences(grounds));
+		return new EvidenceIndex(evidenceSentences(grounds),SourceOwnedConditionalScope.index(grounds));
 	}
 
 	public Match match(String claim, EvidenceIndex evidenceIndex) {
+        Match ordinary=matchOrdinary(claim,evidenceIndex);
+        if(ordinary.status()!=Status.INSUFFICIENT || evidenceIndex==null)return ordinary;
+        for(var bound:SourceOwnedConditionalScope.bind(claim,evidenceIndex.scopeRules)){
+            Match literal=matchOrdinary(bound.operativeLiteral(),evidenceIndex);
+            if(literal.status()==Status.SUPPORTED && literal.groundNumber()==bound.owner())return literal;
+        }
+        return ordinary;
+    }
+
+    private Match matchOrdinary(String claim,EvidenceIndex evidenceIndex) {
 		List<String> claimTokens = tokenize(claim);
 		Set<String> claimNumbers = ClaimNumericNormalizer.tokens(claim);
 		List<String> orderedClaimNumbers = ClaimNumericNormalizer.orderedTokens(claim);
@@ -1819,9 +1829,11 @@ public class ClaimEvidenceMatcher {
 
 	public static final class EvidenceIndex {
 		private final List<EvidenceSentence> sentences;
+		private final List<SourceOwnedConditionalScope.Rule> scopeRules;
 
-		private EvidenceIndex(List<EvidenceSentence> sentences) {
+		private EvidenceIndex(List<EvidenceSentence> sentences,List<SourceOwnedConditionalScope.Rule> scopeRules) {
 			this.sentences = sentences == null ? List.of() : List.copyOf(sentences);
+			this.scopeRules=List.copyOf(scopeRules);
 		}
 	}
 

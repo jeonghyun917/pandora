@@ -9,6 +9,19 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class OpenAiAnswerClientPromptTests {
+    @Test void closedReferencedLegalRuleRequestsLiteralConditionAndConclusionOnly() {
+        var payload=new java.util.concurrent.atomic.AtomicReference<String>();var contract=new java.util.concurrent.atomic.AtomicReference<String>();
+        var client=new OpenAiAnswerClient(new LawAiProperties(null,null,null,null),new ObjectMapper()){
+            @Override protected String requestAnswer(String question,String input,int budget,String instructions){payload.set(input);contract.set(instructions);return "조건부 답변";}
+        };
+        String condition="국가기관등의 장이 소프트웨어사업을 추진하는 경우";
+        String rule="과학기술정보통신부장관은 제1항에 따른 확인결과 관련 법령을 위반하였다고 인정하는 경우에는 개선을 권고할 수 있다.";
+        String source="① 과학기술정보통신부장관은 "+condition+" 관련 법령을 준수하였는지를 확인하고, 그 결과를 공개할 수 있다.\n② "+rule+"\n③";
+        assertThat(client.rewriteConditional("정보화사업이 법령을 준수하지 않으면?",List.of(source),List.of("원문 법률"))).isEqualTo("조건부 답변");
+        assertThat(payload.get()).contains(condition,rule);
+        assertThat(contract.get()).contains("조건 원문", "결론 원문", "문자 그대로", "실제 해당 여부");
+        assertThat(contract.get()).doesNotContain("[원문 제도의] 대상입니다.", "발주기관");
+    }
 	@Test
 	void explicitProcedureInputDoesNotTurnDocumentMetadataIntoTargetClassification() {
 		var input = new java.util.concurrent.atomic.AtomicReference<String>();

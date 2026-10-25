@@ -89,7 +89,7 @@ public class SemanticEvidenceMatcher {
 				}
 			}
 		}
-		return new EvidenceIndex(atoms, bindings.stream().distinct().toList());
+		return new EvidenceIndex(atoms, bindings.stream().distinct().toList(),SourceOwnedConditionalScope.index(grounds));
 	}
 
 	private List<Long> selectedTableIds(List<LawAiAnswerGround> grounds) {
@@ -142,6 +142,17 @@ public class SemanticEvidenceMatcher {
 	}
 
 	public SemanticMatch match(EvidenceAtom claim, EvidenceIndex evidenceIndex) {
+        SemanticMatch ordinary=matchOrdinary(claim,evidenceIndex);
+        if(ordinary.status()!=ClaimEvidenceMatcher.Status.INSUFFICIENT || claim==null || evidenceIndex==null)return ordinary;
+        for(var bound:SourceOwnedConditionalScope.bind(claim.sourceText(),evidenceIndex.scopeRules())){
+            SemanticMatch literal=matchOrdinary(parser.parse(bound.operativeLiteral()),evidenceIndex);
+            if(literal.status()==ClaimEvidenceMatcher.Status.SUPPORTED && literal.groundNumber()==bound.owner())
+                return new SemanticMatch(literal.status(),literal.alignedSlots(),literal.groundNumber(),literal.evidenceSentence(),literal.coverage(),"SOURCE_OWNED_CONDITIONAL_RULE");
+        }
+        return ordinary;
+    }
+
+    private SemanticMatch matchOrdinary(EvidenceAtom claim,EvidenceIndex evidenceIndex) {
 		if (claim == null || claim.parseStatus() == EvidenceAtom.ParseStatus.AMBIGUOUS) {
 			return SemanticMatch.insufficient("CLAIM_PARSE_INCOMPLETE");
 		}
@@ -408,11 +419,13 @@ public class SemanticEvidenceMatcher {
 	}
 
 	public record EvidenceIndex(List<IndexedAtom> atoms,
-		List<com.kaces.pandora.rag.chunk.SourceTableBindings.Binding> tableBindings) {
-		public EvidenceIndex(List<IndexedAtom> atoms) { this(atoms, List.of()); }
+		List<com.kaces.pandora.rag.chunk.SourceTableBindings.Binding> tableBindings,List<SourceOwnedConditionalScope.Rule> scopeRules) {
+		public EvidenceIndex(List<IndexedAtom> atoms) { this(atoms, List.of(),List.of()); }
+        public EvidenceIndex(List<IndexedAtom> atoms,List<com.kaces.pandora.rag.chunk.SourceTableBindings.Binding> tableBindings){this(atoms,tableBindings,List.of());}
 		public EvidenceIndex {
 			atoms = atoms == null ? List.of() : List.copyOf(atoms);
 			tableBindings = tableBindings == null ? List.of() : List.copyOf(tableBindings);
+			scopeRules=scopeRules==null?List.of():List.copyOf(scopeRules);
 		}
 
 		public static EvidenceIndex of(EvidenceAtom... atoms) {

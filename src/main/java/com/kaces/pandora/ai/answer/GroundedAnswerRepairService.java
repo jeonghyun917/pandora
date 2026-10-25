@@ -98,13 +98,20 @@ public class GroundedAnswerRepairService {
 			return result(initial, false, false, "REWRITER_UNAVAILABLE", selectedAtoms.size());
 		}
 
+        boolean literalLegalScopeBinding=generalScopeBinding && selectedAtoms.size()==1
+            && SourceOwnedConditionalScope.original(0,selectedAtoms.get(0)).isPresent();
+        String literalContext=literalLegalScopeBinding?selectedAtoms.get(0):"";
+        Set<Integer> literalOwners=literalLegalScopeBinding?SourceOwnedConditionalScope.index(safeGrounds).stream()
+            .filter(rule->literalContext.equals(rule.originalContext())).map(SourceOwnedConditionalScope.Rule::owner)
+            .collect(java.util.stream.Collectors.toSet()):Set.of();
+
 		String rewritten;
 		try {
 			log.info("Grounded answer rewrite boundary={} selectedAtomCount={}",
 				generalScopeBinding ? "conditional" : "legacy", selectedAtoms.size());
 			rewritten = generalScopeBinding
 				? rewriter.rewriteConditional(question, selectedAtoms, safeGrounds.stream()
-					.filter(ground -> ground != null && normalize(ground.title()).contains("과업심의"))
+					.filter(ground -> ground != null && (literalLegalScopeBinding?literalOwners.contains(ground.number()):normalize(ground.title()).contains("과업심의")))
 					.map(LawAiAnswerGround::title).distinct().toList())
 				: rewriter.rewrite(question, selectedAtoms);
 		} catch (RuntimeException exception) {
@@ -132,6 +139,8 @@ public class GroundedAnswerRepairService {
 		if (generalScopeConditionDropped) {
 			return result(initial, true, false, "SOURCE_CONDITION_NOT_PRESERVED", selectedAtoms.size());
 		}
+        if(literalLegalScopeBinding && SourceOwnedConditionalScope.bind(rewritten,SourceOwnedConditionalScope.index(safeGrounds)).isEmpty())
+            return result(initial,true,false,"SOURCE_CONDITION_NOT_PRESERVED",selectedAtoms.size());
 		boolean droppedTargetScope = selectedAtoms.stream()
 			.filter(atom -> !explicitTargetScope(atom).isBlank())
 			.anyMatch(atom -> !normalizedRewrite.contains(normalize(atom)));
@@ -569,7 +578,7 @@ public class GroundedAnswerRepairService {
 
 	private List<String> selectGeneralSoftwareScopeAtoms(String question, String rejectedDraft,
 		List<LawAiAnswerGround> grounds) {
-		if (!normalize(question).contains("과업심의")) { return List.of(); }
+		if (!normalize(question).contains("과업심의")) { return selectLiteralLegalScopeAtoms(question,grounds); }
 		// Source criteria may seed a conditional rewrite, but are never returned
 		// as an answer without the original question's full verification.
 		List<CandidateAtom> candidates = fallbackCandidateAtoms(grounds).stream()
@@ -611,6 +620,19 @@ public class GroundedAnswerRepairService {
 		}
 		return List.copyOf(selected);
 	}
+
+    private List<String> selectLiteralLegalScopeAtoms(String question,List<LawAiAnswerGround> grounds) {
+        if(!QuestionIntentProfile.from(question).intentTypes().contains("penalty"))return List.of();
+        var rules=SourceOwnedConditionalScope.index(grounds);
+        if(rules.size()!=1)return List.of();
+        var rule=rules.get(0);
+        if(rule.originalContext().length()>MAX_ATOM_CHARACTERS)return List.of();
+        try {
+            if(!isFullyClaimSupported(verificationService.verify(question,rule.premiseLiteral(),grounds))
+                || !isFullyClaimSupported(verificationService.verify(question,rule.operativeLiteral(),grounds)))return List.of();
+            return List.of(rule.originalContext());
+        } catch(RuntimeException unavailable){return List.of();}
+    }
 
 	private String explicitSourceOwnedException(ClaimEvidenceAtomizer.SourceLinkedDuty binding) {
 		// Render only slots inherited from this already validated closed paragraph.

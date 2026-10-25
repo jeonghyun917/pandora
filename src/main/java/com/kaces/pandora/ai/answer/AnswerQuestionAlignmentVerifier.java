@@ -116,12 +116,14 @@ public class AnswerQuestionAlignmentVerifier {
 		}
 		boolean completeAnswerCoverage = hasCompleteAnswerCoverage(supportedLinks, alignmentProfile);
 		Map<Integer, String> subjectContextByGround = subjectContextByGround(grounds);
+		List<SourceOwnedConditionalScope.Rule> scopeRules=SourceOwnedConditionalScope.index(grounds);
 		List<CandidateResult> candidates = supportedLinks.stream()
 			.flatMap(link -> assess(
 				link,
 				alignmentProfile,
 				subjectContextByGround.getOrDefault(link.groundNumber(), ""),
-				completeAnswerCoverage
+				completeAnswerCoverage,
+                scopeRules.stream().filter(rule->rule.owner()==link.groundNumber()).toList()
 			).stream())
 			.toList();
 		for (CandidateResult candidate : candidates) {
@@ -183,7 +185,8 @@ public class AnswerQuestionAlignmentVerifier {
 		ClaimVerifier.ClaimEvidenceLink link,
 		AlignmentProfile profile,
 		String subjectContext,
-		boolean completeAnswerCoverage
+		boolean completeAnswerCoverage,
+        List<SourceOwnedConditionalScope.Rule> scopeRules
 	) {
 		List<String> claimAtoms = atomizer.atomizeForAlignment(link.claim());
 		if (claimAtoms.isEmpty()) {
@@ -196,7 +199,7 @@ public class AnswerQuestionAlignmentVerifier {
 				evidenceProposition,
 				profile,
 				subjectContext,
-				completeAnswerCoverage
+				completeAnswerCoverage,scopeRules
 			))
 			.toList();
 	}
@@ -206,7 +209,8 @@ public class AnswerQuestionAlignmentVerifier {
 		String evidenceProposition,
 		AlignmentProfile profile,
 		String subjectContext,
-		boolean completeAnswerCoverage
+		boolean completeAnswerCoverage,
+        List<SourceOwnedConditionalScope.Rule> scopeRules
 	) {
 		String claimProposition = directProposition(claimAtom);
 		String normalizedClaimProposition = normalize(claimProposition);
@@ -253,7 +257,8 @@ public class AnswerQuestionAlignmentVerifier {
 		if (!configuredPolicyBridgeMatched
 			&& !configuredAnswerCoverageBridgeMatched
 			&& !profile.conditionGroups().stream()
-			.allMatch(group -> group.stream().allMatch(normalizedClaimProposition::contains))) {
+			.allMatch(group -> group.stream().allMatch(normalizedClaimProposition::contains)
+                || SourceOwnedConditionalScope.provesLegalCondition(claimProposition,group,scopeRules))) {
 			missing.add(CONDITION);
 		}
 		if (claimHasRelation
