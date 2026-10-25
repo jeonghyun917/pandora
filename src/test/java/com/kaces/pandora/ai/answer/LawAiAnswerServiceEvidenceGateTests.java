@@ -16,6 +16,36 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
+    @Test void complianceLawLookupUsesConfiguredSoftwareConceptRatherThanOnlySurfaceWording() throws Exception {
+        var captured=new java.util.ArrayList<String>();
+        var law=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),new Class<?>[]{LawChunkMapper.class},
+            (proxy,method,args)->{
+                if(method.getName().equals("findSemanticChunksByText")) captured.addAll((List<String>)args[1]);
+                return List.of();
+            });
+        var service=service(law,null);
+        try {
+            var plan=QuestionSearchPlan.from("정보화시스템 법제도 미준수의 조치는 무엇인가요?");
+            assertThat(plan.profile().entities()).isNotEmpty();
+            findLexicalChunks(service,plan,List.of("law"),false);
+            assertThat(captured).contains("소프트웨어사업");
+        } finally {service.shutdownExecutors();}
+    }
+    @Test void complianceFastRagHitMustNotSuppressTheRequestedLawFamily() throws Exception {
+        var guide=chunk(99101L,"official_doc","정보화사업 사전협의 안내","미준수 시 불이익",
+            "전자정부 성과관리 지침에 따라 정보화사업의 발주 현황을 점검한다. 사전협의 절차를 미이행하고 발주를 추진한 사업에 대해 발주 중지 요청 및 사전협의 이행을 권고한다. 이행 권고에도 불구하고 사전협의를 미이행하는 경우 감사기관에 통보한다.");
+        var lawRule=chunk(99102L,"law","소프트웨어 진흥법","소프트웨어사업 관리 감독 및 개선권고",
+            "국가기관등의 장이 소프트웨어사업을 추진하는 경우 관련 법령의 준수 여부를 확인한다. 위반하였다고 인정하는 경우에는 개선을 권고할 수 있다.");
+        var law=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),new Class<?>[]{LawChunkMapper.class},
+            (proxy,method,args)->method.getName().equals("findSemanticChunksByText")?List.of(lawRule):List.of());
+        var rag=(RagDocumentMapper)java.lang.reflect.Proxy.newProxyInstance(RagDocumentMapper.class.getClassLoader(),new Class<?>[]{RagDocumentMapper.class},
+            (proxy,method,args)->List.of(guide));
+        var service=service(law,rag);
+        try {
+            assertThat(findLexicalChunks(service,QuestionSearchPlan.from("정보화사업 법령을 준수하지 않으면 어떤 조치가 있나요?"),
+                List.of("official_doc","law"),false)).contains(guide,lawRule);
+        } finally {service.shutdownExecutors();}
+    }
 	@Test
 	void compliancePenaltyLookupRetainsSourceOwnedPreconsultationConsequences() throws Exception {
 		var consequence = chunk(99008L, "official_doc", "정보화사업 사전협의 안내", "미준수 시 불이익",

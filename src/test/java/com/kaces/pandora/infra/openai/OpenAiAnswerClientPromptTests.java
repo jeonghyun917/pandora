@@ -96,9 +96,10 @@ class OpenAiAnswerClientPromptTests {
 			var client = new OpenAiAnswerClient(new LawAiProperties(null, null, null, null), new ObjectMapper());
 			var method = OpenAiAnswerClient.class.getDeclaredMethod("extractOutputText", java.util.Map.class);
 			method.setAccessible(true);
-			assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> method.invoke(client, java.util.Map.of(
+			var failure=org.assertj.core.api.Assertions.catchThrowable(() -> method.invoke(client, java.util.Map.of(
 				"status", "incomplete", "incomplete_details", java.util.Map.of("reason", "max_output_tokens"),
-				"output", List.of(), "private_data", "secret response content")))).isNotNull();
+				"output", List.of(), "private_data", "secret response content")));
+			assertThat(failure).hasRootCauseMessage("OpenAI answer response did not contain text. failureType=OUTPUT_TOKEN_LIMIT");
 			assertThat(appender.list).extracting(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage)
 				.anySatisfy(message -> assertThat(message).contains("failureType=OUTPUT_TOKEN_LIMIT"))
 				.allSatisfy(message -> assertThat(message).doesNotContain("secret response content"));
@@ -107,6 +108,14 @@ class OpenAiAnswerClientPromptTests {
 			appender.stop();
 		}
 	}
+
+    @Test void nonTruncatedMissingTextRetainsItsDistinctFailureDiagnosis() throws Exception {
+        var client=new OpenAiAnswerClient(new LawAiProperties(null,null,null,null),new ObjectMapper());
+        var method=OpenAiAnswerClient.class.getDeclaredMethod("extractOutputText",java.util.Map.class);
+        method.setAccessible(true);
+        var failure=org.assertj.core.api.Assertions.catchThrowable(()->method.invoke(client,java.util.Map.of("status","completed","output",List.of(),"private_data","never disclose")));
+        assertThat(failure).hasRootCauseMessage("OpenAI answer response did not contain text. failureType=NO_OUTPUT_TEXT");
+    }
 
 	@Test
 	void conditionalRewriteSendsClassificationContractAsApiInstructions() throws Exception {

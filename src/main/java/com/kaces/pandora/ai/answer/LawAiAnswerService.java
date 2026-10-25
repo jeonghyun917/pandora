@@ -10006,6 +10006,13 @@ public class LawAiAnswerService {
 
 	private List<String> lawTextKeywords(String query) {
 		java.util.LinkedHashSet<String> keywords = new java.util.LinkedHashSet<>();
+        // Recall vocabulary only: this does not establish an answer's subject or scope.
+        QuestionIntentProfile.from(query).entities().stream()
+            .flatMap(entity -> entity.directEvidenceGroups().stream()).flatMap(List::stream)
+            .map(this::normalizeForMatch).filter(this::isFocusedLawTextKeyword)
+            .filter(term -> !isIntentLikeTerm(term)).distinct()
+            .sorted(Comparator.comparingInt(String::length).reversed()).limit(2)
+            .forEach(term -> addCoreLawTextKeyword(keywords,term));
 		for (String anchor : documentEvidenceAnchorKeywords(query)) {
 			addCoreLawTextKeyword(keywords, normalizeForMatch(anchor));
 		}

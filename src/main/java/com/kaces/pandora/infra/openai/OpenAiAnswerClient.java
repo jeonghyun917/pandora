@@ -351,7 +351,8 @@ public class OpenAiAnswerClient extends GroundedAnswerRewriter {
 		String answer = builder.toString().trim();
 		if (answer.isBlank()) {
 			log.warn("OpenAI answer output unavailable failureType={}", truncated ? "OUTPUT_TOKEN_LIMIT" : "NO_OUTPUT_TEXT");
-			throw new IllegalStateException("OpenAI answer response did not contain text.");
+			throw new IllegalStateException("OpenAI answer response did not contain text. failureType="
+                + (truncated ? "OUTPUT_TOKEN_LIMIT" : "NO_OUTPUT_TEXT"));
 		}
 		return truncated ? answer + TRUNCATED_NOTICE : answer;
 	}
