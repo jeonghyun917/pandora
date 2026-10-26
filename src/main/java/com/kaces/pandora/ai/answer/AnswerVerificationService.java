@@ -34,6 +34,9 @@ public class AnswerVerificationService {
     AnswerVerificationService withRouting(com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot captured) {
         return new AnswerVerificationService(answerGuard,claimVerifier,alignmentVerifier,java.util.Objects.requireNonNull(captured));
     }
+    ClaimVerifier.EvidenceScope openEvidenceScope(List<LawAiAnswerGround> grounds) {
+        return claimVerifier.openEvidenceScope(grounds,routing);
+    }
     private ClaimVerifier.VerificationResult verifyClaims(String answer,List<LawAiAnswerGround> grounds) {
         return routing==null?claimVerifier.verifyDetailed(answer,grounds):claimVerifier.verifyDetailed(answer,grounds,routing);
     }

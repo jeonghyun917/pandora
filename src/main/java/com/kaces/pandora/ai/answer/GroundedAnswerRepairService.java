@@ -52,6 +52,12 @@ public class GroundedAnswerRepairService {
 		List<LawAiAnswerGround> grounds
 	) {
 		List<LawAiAnswerGround> safeGrounds = grounds == null ? List.of() : List.copyOf(grounds);
+        try(var scope=verificationService.openEvidenceScope(safeGrounds)) {
+            return verifyAndRepairScoped(question,draft,safeGrounds);
+        }
+    }
+
+    private Result verifyAndRepairScoped(String question,String draft,List<LawAiAnswerGround> safeGrounds) {
 		AnswerVerificationService.Result initial;
 		try {
 			initial = verificationService.verify(question, draft, safeGrounds);

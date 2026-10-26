@@ -27,6 +27,39 @@ public class ClaimVerifier {
 	private final KoreanEvidenceAtomParser evidenceAtomParser;
 	private final LawAiVerificationProperties verificationProperties;
 	private final ClaimEvidenceAtomizer claimAtomizer = new ClaimEvidenceAtomizer();
+    private final ThreadLocal<PreparedEvidence> scopedEvidence = new ThreadLocal<>();
+
+    interface EvidenceScope extends AutoCloseable { @Override void close(); }
+
+    /** Synchronous repair lifetime only; each verification still evaluates all claims. */
+    EvidenceScope openEvidenceScope(List<LawAiAnswerGround> grounds,
+            com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
+        PreparedEvidence previous=scopedEvidence.get();
+        scopedEvidence.set(new PreparedEvidence(grounds.stream().map(ground->new LawAiAnswerGround(
+            ground.number(),ground.chunkId(),ground.documentId(),ground.target(),ground.title(),ground.agencyName(),
+            ground.categoryName(),ground.sourceDate(),ground.effectiveStatus(),ground.chunkNo(),ground.chunkTitle(),
+            ground.pageNo(),ground.snippet(),ground.sourcePath(),ground.sourceUrl(),ground.score(),ground.matchedChildText(),
+            ground.parentContextText(),ground.contextChunkIds()==null?null:
+                java.util.Collections.unmodifiableList(new ArrayList<>(ground.contextChunkIds())),
+            ground.contextPolicy(),ground.evidenceRole())).toList(),routing));
+        return ()->{if(previous==null)scopedEvidence.remove();else scopedEvidence.set(previous);};
+    }
+
+    private PreparedEvidence matchingEvidence(List<LawAiAnswerGround> grounds,
+            com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
+        PreparedEvidence prepared=scopedEvidence.get();
+        return prepared!=null && prepared.routing==routing && prepared.grounds.equals(grounds)?prepared:null;
+    }
+
+    private static final class PreparedEvidence {
+        final List<LawAiAnswerGround> grounds;
+        final com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing;
+        ClaimEvidenceMatcher.EvidenceIndex control;
+        SemanticEvidenceMatcher.EvidenceIndex semantic;
+        PreparedEvidence(List<LawAiAnswerGround> grounds,com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
+            this.grounds=grounds;this.routing=routing;
+        }
+    }
 
 	public ClaimVerifier() {
 		this(new ClaimEvidenceMatcher());
@@ -99,8 +132,14 @@ public class ClaimVerifier {
 		List<String> contradictedClaims = new ArrayList<>();
 		List<ClaimEvidenceLink> evidenceLinks = new ArrayList<>();
 		List<ClaimMatcherShadowResult> shadowResults = new ArrayList<>();
-		ClaimEvidenceMatcher.EvidenceIndex evidenceIndex = evidenceMatcher.index(grounds);
-		SemanticEvidenceMatcher.EvidenceIndex semanticIndex = routing==null?semanticEvidenceMatcher.index(grounds):semanticEvidenceMatcher.index(grounds,routing);
+        PreparedEvidence prepared=matchingEvidence(grounds,routing);
+        ClaimEvidenceMatcher.EvidenceIndex evidenceIndex=prepared!=null && prepared.control!=null?prepared.control:evidenceMatcher.index(grounds);
+        if(prepared!=null)prepared.control=evidenceIndex;
+        // Without a captured generation, source-table proofs must be resolved afresh.
+        boolean reuseSemantic=prepared!=null && routing!=null;
+        SemanticEvidenceMatcher.EvidenceIndex semanticIndex=reuseSemantic && prepared.semantic!=null?prepared.semantic:
+            routing==null?semanticEvidenceMatcher.index(grounds):semanticEvidenceMatcher.index(grounds,routing);
+        if(reuseSemantic)prepared.semantic=semanticIndex;
 		int substantiveClaims = 0;
 		int supportedSubstantiveClaims = 0;
 
