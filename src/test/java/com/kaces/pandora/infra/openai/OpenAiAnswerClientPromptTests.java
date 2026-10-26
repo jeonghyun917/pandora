@@ -9,6 +9,20 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class OpenAiAnswerClientPromptTests {
+    @Test void literalRuleRequestKeepsTheHypothesisConnectorSeparateFromTheSourceCondition() {
+        var payload=new java.util.concurrent.atomic.AtomicReference<String>();
+        var contract=new java.util.concurrent.atomic.AtomicReference<String>();
+        String scope="국가기관등의 장이 소프트웨어사업을 추진하는 경우";
+        String operative="과학기술정보통신부장관은 제1항에 따른 확인결과 관련 법령을 위반하였다고 인정하는 경우에는 개선을 권고할 수 있다.";
+        String source="① 과학기술정보통신부장관은 "+scope+" 관련 법령을 준수하였는지를 확인하고, 그 결과를 공개할 수 있다.\n② "+operative+"\n③";
+        String invalid="디지털사업이 "+scope+" "+operative;
+        var client=new OpenAiAnswerClient(new LawAiProperties(null,null,null,null),new ObjectMapper()){
+            @Override protected String requestAnswer(String question,String input,int budget,String instructions){payload.set(input);contract.set(instructions);return invalid;}
+        };
+        assertThat(client.rewriteConditional("디지털사업 법령 미준수 시 조치는?",List.of(source),List.of("원문 법률"))).isEqualTo(invalid);
+        assertThat(payload.get()).contains("필수 조건부 연결구(삭제 금지): 에 해당하면",scope+"에 해당하면 "+operative);
+        assertThat(contract.get()).contains("'경우'로 끝나더라도", "'에 해당하면'을 생략하거나 다른 연결어로 바꾸지 마세요");
+    }
     @Test void defaultBudgetAllowsReasoningAndVisibleOutputWithoutOverridingExplicitLimits() {
         assertThat(new LawAiProperties(null,null,null,null).openai().answerMaxOutputTokens()).isEqualTo(4096);
         assertThat(new LawAiProperties.OpenAi("",null,null,null,null,0).answerMaxOutputTokens()).isEqualTo(4096);
