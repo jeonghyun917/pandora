@@ -6,6 +6,8 @@
 **Architecture/spec:** Existing policy metadata supplies a bounded title/body lookup. Its hit supplements rather than replaces SW domain lookup. Candidate filtering retains the explicit legal-basis norm; direct/supporting judgment and all final checks stay authoritative.
 **Tech stack:** Existing Java17/properties/MyBatis/JUnit, no dependency.
 
+Implementation and official closed deployment completed through0ebc55e with fresh137XML1833/f0/e0/skip26. Original candidate-only/local trace missed the final display cap; the subsequent display-order regression and correction are recorded in the ledger. New0ebc55e SNS PASS; penalty actual FAIL with supporting norm present as ninth selected row. Initial SW57 premise omission and repair structural rejection remain fail-closed; no failure replay. Difficult12/holdout57/full1003 remain gated. A new single synthetic public-payload diagnostic approval is pending because previous one-call approval is consumed. This is not overall quality completion.
+
 ## Constraints and review focus
 
 - Administrative-sanction rules do not automatically cover criminal or contractual penalties.
