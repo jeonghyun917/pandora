@@ -143,10 +143,11 @@ public class GroundedAnswerRepairService {
 			&& (!normalizedRewrite.contains("국가기관")
 				|| !(normalizedRewrite.contains("소프트웨어사업") || normalizedRewrite.contains("sw사업")));
 		if (generalScopeConditionDropped) {
-			return result(initial, true, false, "SOURCE_CONDITION_NOT_PRESERVED", selectedAtoms.size());
+			return result(initial, true, false, literalLegalScopeBinding
+                ? literalRejectionReason(rewritten, literalContext) : "SOURCE_CONDITION_NOT_PRESERVED", selectedAtoms.size());
 		}
         if(literalLegalScopeBinding && SourceOwnedConditionalScope.bind(rewritten,SourceOwnedConditionalScope.index(safeGrounds)).isEmpty())
-            return result(initial,true,false,"SOURCE_CONDITION_NOT_PRESERVED",selectedAtoms.size());
+            return result(initial,true,false,literalRejectionReason(rewritten,literalContext),selectedAtoms.size());
 		boolean droppedTargetScope = selectedAtoms.stream()
 			.filter(atom -> !explicitTargetScope(atom).isBlank())
 			.anyMatch(atom -> !normalizedRewrite.contains(normalize(atom)));
@@ -626,6 +627,16 @@ public class GroundedAnswerRepairService {
 		}
 		return List.copyOf(selected);
 	}
+
+    // Diagnostic only: never changes, repairs, or accepts a rejected model response.
+    private String literalRejectionReason(String rewritten,String literalContext) {
+        var rule=SourceOwnedConditionalScope.original(0,literalContext);
+        if(rule.isEmpty())return "SOURCE_LITERAL_CERTIFICATE_UNAVAILABLE";
+        String text=normalize(rewritten);
+        if(!text.contains(normalize(rule.get().scopeLiteral())))return "SOURCE_SCOPE_TEXT_MISMATCH";
+        if(!text.contains(normalize(rule.get().operativeLiteral())))return "SOURCE_OPERATIVE_TEXT_MISMATCH";
+        return "SOURCE_LITERAL_STRUCTURE_MISMATCH";
+    }
 
     private List<String> selectLiteralLegalScopeAtoms(String question,List<LawAiAnswerGround> grounds) {
         if(!QuestionIntentProfile.from(question).intentTypes().contains("penalty"))return List.of();

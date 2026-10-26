@@ -14,6 +14,24 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class GroundedAnswerRepairServiceTests {
+    @Test void rejectedLiteralRewritesReportOnlyTheFailedBoundaryWithoutEchoingOutput() {
+        var grounds=List.of(SourceOwnedConditionalScopeTests.ground(SourceOwnedConditionalScopeTests.SOURCE));
+        var outputs=java.util.Map.of(
+            SourceOwnedConditionalScopeTests.CLAIM.replace("국가기관등의 장이 소프트웨어사업을 추진하는 경우에 해당하면","소프트웨어사업이면"),"SOURCE_SCOPE_TEXT_MISMATCH",
+            SourceOwnedConditionalScopeTests.CLAIM.replace("개선을 권고할 수 있다","개선을 권고하여야 한다"),"SOURCE_OPERATIVE_TEXT_MISMATCH",
+            SourceOwnedConditionalScopeTests.CLAIM.replace("에 해당하면 ","에 해당하면, "),"SOURCE_LITERAL_STRUCTURE_MISMATCH");
+        for(var output:outputs.entrySet()) {
+            var service=new GroundedAnswerRepairService(realVerificationService(),new GroundedAnswerRewriter(){
+                @Override public String rewrite(String question,List<String> atoms){throw new AssertionError("Conditional only");}
+                @Override public String rewriteConditional(String question,List<String> atoms,List<String> titles){return output.getKey();}
+            });
+            var result=service.verifyAndRepair("디지털사업 법령 미준수 시 조치는?",SourceOwnedConditionalScopeTests.RULE,grounds);
+            assertThat(result.insufficientEvidence()).isTrue();
+            assertThat(result.diagnostics().reason()).isEqualTo(output.getValue());
+            assertThat(result.diagnostics().accepted()).isFalse();
+            assertThat(result.diagnostics().toString()).doesNotContain(output.getKey());
+        }
+    }
     @Test void referencedLegalRuleUsesExistingConditionalApiAndFullVerification() {
         var grounds=List.of(SourceOwnedConditionalScopeTests.ground(SourceOwnedConditionalScopeTests.SOURCE));
         var called=new java.util.concurrent.atomic.AtomicBoolean();
