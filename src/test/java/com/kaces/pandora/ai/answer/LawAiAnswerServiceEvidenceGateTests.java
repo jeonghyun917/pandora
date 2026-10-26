@@ -16,6 +16,19 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
+    @Test void displayCompressionRunsBeforeTheSeparateSupportingSlot() throws Exception {
+        String q="정보시스템 법제도 미준수 시 제재 범위는?";
+        var direct=java.util.stream.LongStream.range(99341,99349).mapToObj(id->chunk(id,"official_doc","정보화사업 법령준수 안내","미준수 조치","정보화사업 법제도 미준수 시 보완 요구를 할 수 있다. 사업 구분 "+id)).toList();
+        var basis=chunk(99349L,"law","행정기본법","제재처분의 기준","제재처분의 근거가 되는 법률에는 제재처분의 주체, 사유, 유형 및 상한을 명확하게 규정하여야 한다.");
+        var premature=new java.util.ArrayList<>(direct);premature.add(basis);
+        assertThat(new EvidenceCandidateDiversifier().diversify(premature,8)).doesNotContain(basis);
+        var service=service();
+        try {
+            var select=LawAiAnswerService.class.getDeclaredMethod("selectDisplayEvidenceChunks",List.class,List.class,String.class,boolean.class,int.class);select.setAccessible(true);
+            var result=(List<LawSemanticChunkRow>)select.invoke(service,direct,List.of(basis),q,true,8);
+            assertThat(result).hasSize(9).containsAll(direct).contains(basis);
+        }finally{service.shutdownExecutors();}
+    }
     @Test void separateBasisBudgetPreservesEightDirectRowsThroughAnswerCompression() throws Exception {
         String q="정보시스템 법제도 미준수 시 제재 범위는?";
         var direct=java.util.stream.LongStream.range(99331,99339).mapToObj(id->chunk(id,"law","소프트웨어 진흥법","관리감독",SourceOwnedConditionalScopeTests.SOURCE)).toList();

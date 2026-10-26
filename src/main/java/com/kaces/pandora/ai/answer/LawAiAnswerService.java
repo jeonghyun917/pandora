@@ -1673,8 +1673,6 @@ public class LawAiAnswerService {
 				hybrid
 			);
 		}
-        evidenceChunks=withAdministrativeSanctionBasisSupport(evidenceChunks,judgeContextChunks,
-            normalized.query(),judgedEvidence.directEvidenceFound(),DEFAULT_LIMIT+1);
 		List<LawSemanticChunkRow> orderedEvidenceChunks = DocumentDiscoveryPolicy.orderChunks(
 			normalized.query(),
 			evidenceChunks.stream()
@@ -1682,10 +1680,9 @@ public class LawAiAnswerService {
 				.toList(),
 			finalScoreByChunkId
 		);
-		List<LawSemanticChunkRow> orderedChunks = evidenceCandidateDiversifier.diversify(
-			orderedEvidenceChunks,
-			normalized.display()
-		);
+		List<LawSemanticChunkRow> orderedChunks = selectDisplayEvidenceChunks(
+			orderedEvidenceChunks,judgeContextChunks,normalized.query(),
+			judgedEvidence.directEvidenceFound(),normalized.display());
 		if (orderedChunks.isEmpty()
 			&& !judgedEvidence.directEvidenceRequired()
 			&& !judgedEvidence.conceptEvidenceRequired()) {
@@ -11062,6 +11059,14 @@ public class LawAiAnswerService {
         return isLawTarget(target) && "CURRENT".equals(status)
             && normalizeForMatch(body).contains(normalizeForMatch(
                 "제재처분의 근거가 되는 법률에는 제재처분의 주체, 사유, 유형 및 상한을 명확하게 규정하여야 한다."));
+    }
+
+    private List<LawSemanticChunkRow> selectDisplayEvidenceChunks(
+        List<LawSemanticChunkRow> ranked,List<LawSemanticChunkRow> candidates,String query,
+        boolean directEvidenceFound,int displayLimit) {
+        return withAdministrativeSanctionBasisSupport(
+            evidenceCandidateDiversifier.diversify(ranked,displayLimit),candidates,query,
+            directEvidenceFound,Math.min(DEFAULT_LIMIT+1,displayLimit+1));
     }
 
     private List<LawSemanticChunkRow> withAdministrativeSanctionBasisSupport(
