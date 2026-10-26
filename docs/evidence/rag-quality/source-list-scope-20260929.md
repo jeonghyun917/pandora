@@ -1,5 +1,9 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-26 f2d032e penaltyd62b66/bbaae0 실제품질FAIL archive20261026-023901-341Z: 빈출력·고CPUtimeout해소/원문조건·질문정렬미통과·NO_ALIGNED_SUPPORTED_ATOM. 실패재생없음. 새로컬진단201afe/5f8d89 법령54건이검색·순위에는있고의도필터후0;902735/ae3c06의RAG전용penalty후보predicate가원인(엔티티앵커목록은비어필터미적용). 기존엄격원문항참조인증서를만족하는law/admrul만후보보존/점수강제승격·적용단정·검증완화없음. RED402c61/0532a6→집중e2117c/d33edb PASS, 로컬9dc538/2e2fc6 filtered/Judge 법령제57조유지·481d52/5795be 기존최종8개에도유지. 전체f2a5b6/3f99e0 exit0. 새제품배포·고유평가대기/예약PAUSED/전체완료아님.
+
+- 2026-10-26 출력예산호출연결 제품f2d032e commit/push046a45/전체137XML1820/f0/e0/skip26/stagee46c53 JAR870d878cca442e1213d031edd68a20c7166feb3fca7be0957adb50d38201b5c3. 공식statusfac71d/stopfb69c7·구supervisorf6b6d5종료→공식폐쇄deployd72ad5/ba2e98 session81011유지/PID52724/runtime4cbdcc2f-15cb-432f-9c46-e7d1eba132fc. 건강03f821 DB=Q211658/84248/qreadytrue/qfail0/1765revision1·17hydration/proof/context/cache보존. 새SNS5cbc21/9300a4 실제PASS·answerVerifiedtrue704756. 새penaltyd62b66/session58500 고유logs/rag-eval-penalty-f2d032e-20261026.json 진행/예약PAUSED/실패재생·검증완화없음/전체완료아님.
+
 - 2026-10-26 제품3016eb1 penaltydc56c9/99779e 실제FAIL archive20261026-023017-637Z: OUTPUT_TOKEN_LIMIT/복구CPUtimeout아님. 원인8e3761/ee5f76: 서비스answerGenerationProfile이 설정4096과별도로520/700/900상수를명시전달하여이전설정변경이해당호출에미적용. 새합성프로필RED6b7a4a/f38b86 실제700vs4096→문맥근거수·길이그대로/출력예산만설정반영wrapper→집중5aed02/fee3c3 PASS·전체d41cac/7f5dea exit0. 추가예산증설·모델·검증기·oracle불변. 원인수정새제품배포후새평가예정/실패재생금지/예약PAUSED/전체완료아님.
 
 - 2026-10-26 고CPU수정 제품3016eb1 commit/push7c43e1/stageb02ee8 JAR6f0644758ea746aeb7101a09691d29f75ae02653a8cc99af07b625f4e5b95168. 공식status49f036/stopd6dc19·구supervisor8b4366종료→공식폐쇄deploy1ded00/f46738 session74200유지/PID50616/runtime33e97e43-54b1-47ef-aee6-0bb49d4851ba. 건강85e9d8 DB=Q211658/84248/qreadytrue/qfail0/1765revision1·17hydration/proof/context/cache보존. 새SNS795c9b/3364e6 실제PASS·answerVerifiedtrue09acb9. 새penaltydc56c9/session68450 고유logs/rag-eval-penalty-3016eb1-20261026.json 진행/과거실패재생없음/예약PAUSED/18080PID66592·Q62376불변. 전체품질완료아님.

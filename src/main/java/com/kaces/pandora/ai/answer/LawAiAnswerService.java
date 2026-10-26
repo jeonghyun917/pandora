@@ -11037,9 +11037,12 @@ public class LawAiAnswerService {
 	}
 
 	private boolean isInformationSystemCompliancePenaltyEvidence(LawSemanticChunkRow chunk) {
-		if (chunk == null || !isRagTarget(chunk.target())) {
+		if (chunk == null) {
 			return false;
 		}
+        // Keep a complete literal legal rule as a candidate; applicability is still verified later.
+        if(isLawTarget(chunk.target()))return SourceOwnedConditionalScope.original(0,chunk.chunkText()).isPresent();
+        if(!isRagTarget(chunk.target()))return false;
 		String text = normalizedChunkEvidenceText(chunk);
 		if (text.isBlank()) {
 			return false;

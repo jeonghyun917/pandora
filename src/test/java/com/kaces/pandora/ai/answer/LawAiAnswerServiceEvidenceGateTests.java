@@ -16,6 +16,16 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
+    @Test void consequenceIntentRetainsACompleteSourceOwnedLegalRuleAlongsideDocumentaryConsequences() throws Exception {
+        var legal=chunk(99111L,"law","소프트웨어 진흥법","사업 관리 감독",SourceOwnedConditionalScopeTests.SOURCE);
+        var unowned=chunk(99112L,"law","소프트웨어 진흥법","사업 관리 감독",SourceOwnedConditionalScopeTests.SOURCE.replace("제1항에 따른 확인결과","확인결과"));
+        var guide=chunk(99113L,"official_doc","정보화사업 법령준수 안내","미준수 시 조치","정보화사업 법제도 미준수 시 보완 요구를 할 수 있다.");
+        var service=service();
+        try {
+            var filtered=filterByQuestionIntent(service,List.of(guide,legal,unowned),"정보화시스템 법제도 미준수의 조치는 무엇인가요?");
+            assertThat(filtered).contains(guide,legal).doesNotContain(unowned);
+        } finally {service.shutdownExecutors();}
+    }
     @Test void allAnswerProfilesPreserveConfiguredReasoningOutputHeadroom() throws Exception {
         var service=service();
         var method=LawAiAnswerService.class.getDeclaredMethod("answerGenerationProfile",String.class,List.class);
