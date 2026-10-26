@@ -3881,6 +3881,12 @@ public class LawAiAnswerService {
 	}
 
 	private AnswerGenerationProfile answerGenerationProfile(String query, List<LawSemanticChunkRow> chunks) {
+        AnswerGenerationProfile profile=answerContextProfile(query,chunks);
+        return new AnswerGenerationProfile(profile.groundLimit(),profile.contextCharsPerGround(),
+            Math.max(profile.maxOutputTokens(),properties.openai().answerMaxOutputTokens()));
+    }
+
+    private AnswerGenerationProfile answerContextProfile(String query,List<LawSemanticChunkRow> chunks) {
 		String normalized = normalizeForMatch(query);
 		QuestionIntentProfile profile = QuestionIntentProfile.from(query);
 		boolean carefulQuestion = isCarefulAnswerQuestion(normalized, profile) || hasMixedAnswerContext(chunks);

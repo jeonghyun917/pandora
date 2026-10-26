@@ -16,6 +16,16 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
+    @Test void allAnswerProfilesPreserveConfiguredReasoningOutputHeadroom() throws Exception {
+        var service=service();
+        var method=LawAiAnswerService.class.getDeclaredMethod("answerGenerationProfile",String.class,List.class);
+        method.setAccessible(true);
+        try { for(String query:List.of("문서란 무엇인가요?","자료 보관 방법은 무엇인가요?","공공 소프트웨어사업의 예외와 기한은 무엇인가요?")) {
+            Object profile=method.invoke(service,query,List.of());
+            var budget=profile.getClass().getDeclaredMethod("maxOutputTokens");budget.setAccessible(true);
+            assertThat(budget.invoke(profile)).as(query).isEqualTo(4096);
+        } } finally {service.shutdownExecutors();}
+    }
     @Test void configuredDomainTitleCandidatesAvoidTheBroadLawScanButDoNotReplaceEmptyFallback() throws Exception {
         var rule=chunk(99103L,"law","소프트웨어 진흥법","사업 관리 감독","국가기관등의 장이 소프트웨어사업을 추진하는 경우 관련 법령의 준수 여부를 확인한다.");
         var broad=new java.util.concurrent.atomic.AtomicInteger();
