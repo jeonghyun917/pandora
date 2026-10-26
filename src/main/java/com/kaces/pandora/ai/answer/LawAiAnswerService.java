@@ -3174,6 +3174,12 @@ public class LawAiAnswerService {
 		if (contextChunks.isEmpty()) {
 			return new ExpandedContextChunk(chunk, List.of());
 		}
+        // With one original body there is no parent evidence to add; metadata must not replace its literal boundary.
+        if(isLawTarget(chunk.target()) && contextChunks.size()==1
+                && contextChunks.get(0).chunkId()==chunk.chunkId()
+                && SourceOwnedConditionalScope.original(0,chunk.chunkText()).isPresent()) {
+            return new ExpandedContextChunk(chunk,List.of(chunk.chunkId()));
+        }
 		ParentContextTextResult context = buildParentContextTextResult(chunk, contextChunks, query);
 		String expandedText = context.text();
 		if (expandedText.isBlank()) {

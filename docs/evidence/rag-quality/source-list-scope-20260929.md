@@ -1,5 +1,7 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-26 e20b5b7 공식폐쇄배포5cd0dc/048c44 JAR711500b4.../runtime3cc3559e.../건강4524de·1765보존. SNS8f1ffd/ce60b3 실제PASS; penaltyf7a38c/0566d1 실제품질FAIL: 법령11294230 최종선택·unsupported0이나NO_ALIGNED_SUPPORTED_ATOM/조건·명제미충족. 새로컬54e8ab/af8223 원문432인증유효→문맥메타484→표시511→조립인증0 재현. RED8b14d5/406e76 메타표제/후속RED4e8a63/6a0d5d 표시입자결합 손실→동일청크하나뿐인완전법령원문은그대로/조립proof는기존인증서통과시원문그대로·1200cap유지. 실제이웃제한은보존·인증거부유지. 집중cea7e7/1ae958 및현재원문a8f0c3/80313a 432→432→432·인증1, 독립리뷰C/I없음/전체c0a7a8/5baa62 fresh137XML1822/f0/e0/skip26. 검증기·SourceOwned규칙·oracle불변/실패재생없음/새배포평가대기/예약PAUSED.
+
 - 2026-10-26 f2d032e penaltyd62b66/bbaae0 실제품질FAIL archive20261026-023901-341Z: 빈출력·고CPUtimeout해소/원문조건·질문정렬미통과·NO_ALIGNED_SUPPORTED_ATOM. 실패재생없음. 새로컬진단201afe/5f8d89 법령54건이검색·순위에는있고의도필터후0;902735/ae3c06의RAG전용penalty후보predicate가원인(엔티티앵커목록은비어필터미적용). 기존엄격원문항참조인증서를만족하는law/admrul만후보보존/점수강제승격·적용단정·검증완화없음. RED402c61/0532a6→집중e2117c/d33edb PASS, 로컬9dc538/2e2fc6 filtered/Judge 법령제57조유지·481d52/5795be 기존최종8개에도유지. 전체f2a5b6/3f99e0 exit0. 새제품배포·고유평가대기/예약PAUSED/전체완료아님.
 
 - 2026-10-26 출력예산호출연결 제품f2d032e commit/push046a45/전체137XML1820/f0/e0/skip26/stagee46c53 JAR870d878cca442e1213d031edd68a20c7166feb3fca7be0957adb50d38201b5c3. 공식statusfac71d/stopfb69c7·구supervisorf6b6d5종료→공식폐쇄deployd72ad5/ba2e98 session81011유지/PID52724/runtime4cbdcc2f-15cb-432f-9c46-e7d1eba132fc. 건강03f821 DB=Q211658/84248/qreadytrue/qfail0/1765revision1·17hydration/proof/context/cache보존. 새SNS5cbc21/9300a4 실제PASS·answerVerifiedtrue704756. 새penaltyd62b66/session58500 고유logs/rag-eval-penalty-f2d032e-20261026.json 진행/예약PAUSED/실패재생·검증완화없음/전체완료아님.

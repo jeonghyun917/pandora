@@ -80,6 +80,8 @@ public class ParentContextAssembler {
 		String matchedChildText = matchedChunk == null ? chunk.chunkText() : matchedChunk.chunkText();
 		String parentContextText = sameNormalizedText(matchedChildText, chunk.chunkText()) ? null : chunk.chunkText();
 		String contextPolicy = parentContextText == null ? "matched_child_only" : "parent_context_expanded";
+        boolean literalLegalProof=("law".equals(chunk.target()) || "admrul".equals(chunk.target()))
+            && SourceOwnedConditionalScope.original(0,matchedChildText).isPresent();
 		return new LawAiAnswerGround(
 			number,
 			chunk.chunkId(),
@@ -97,7 +99,7 @@ public class ParentContextAssembler {
 			chunk.sourcePath(),
 			chunk.sourceUrl(),
 			score(scoreByChunkId, matchedKey, displayKey),
-			limitText(cleanDisplayText(matchedChildText), 1_200),
+			limitText(literalLegalProof?matchedChildText:cleanDisplayText(matchedChildText), 1_200),
 			parentContextText == null ? null : limitText(cleanDisplayText(parentContextText), 2_800),
 			contextChunkIds(chunk, matchedChunk, parentContextText == null ? List.of() : explicitContextChunkIds),
 			contextPolicy,

@@ -16,6 +16,26 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
+    @Test void singleSourceLegalRuleKeepsItsLiteralBodyButNeverDropsAnAdjacentRestriction() throws Exception {
+        var original=new LawSemanticChunkRow(99121L,210L,"law","210","소프트웨어 진흥법","","","20260101","CURRENT","제57조","제57조(관리감독)",SourceOwnedConditionalScopeTests.SOURCE,null,"","",1,"original","제57조","penalty","PASS",null,null,4);
+        var restriction=new LawSemanticChunkRow(99122L,210L,"law","210","소프트웨어 진흥법","","","20260101","CURRENT","제57조 계속","제57조(관리감독) 계속","다만, 해당 소프트웨어사업은 별도 조건에 해당하면 적용하지 아니한다.",null,"","",2,"restriction","제57조","exception","PASS",null,null,4);
+        var service=service();
+        try {
+            var method=LawAiAnswerService.class.getDeclaredMethod("enrichChunkWithParentContext",LawSemanticChunkRow.class,List.class,String.class);method.setAccessible(true);
+            String question="정보화시스템 법제도 미준수의 조치는 무엇인가요?";
+            var single=(LawSemanticChunkRow)method.invoke(service,original,List.of(original),question);
+            var twice=(LawSemanticChunkRow)method.invoke(service,single,List.of(original),question);
+            assertThat(single.chunkText()).isEqualTo(SourceOwnedConditionalScopeTests.SOURCE);
+            assertThat(twice.chunkText()).isEqualTo(SourceOwnedConditionalScopeTests.SOURCE);
+            var assembler=new ParentContextAssembler();
+            var literalGrounds=assembler.toGrounds(List.of(single),Map.of("law:99121",original),Map.of(),LawSemanticChunkRow::chunkText);
+            assertThat(literalGrounds.get(0).matchedChildText()).isEqualTo(SourceOwnedConditionalScopeTests.SOURCE);
+            assertThat(SourceOwnedConditionalScope.index(literalGrounds)).hasSize(1);
+            var expanded=(LawSemanticChunkRow)method.invoke(service,original,List.of(original,restriction),question);
+            assertThat(expanded.chunkText()).contains("적용하지 아니한다");
+            assertThat(SourceOwnedConditionalScope.index(assembler.toGrounds(List.of(expanded),Map.of("law:99121",original),Map.of(),LawSemanticChunkRow::chunkText))).isEmpty();
+        } finally {service.shutdownExecutors();}
+    }
     @Test void consequenceIntentRetainsACompleteSourceOwnedLegalRuleAlongsideDocumentaryConsequences() throws Exception {
         var legal=chunk(99111L,"law","소프트웨어 진흥법","사업 관리 감독",SourceOwnedConditionalScopeTests.SOURCE);
         var unowned=chunk(99112L,"law","소프트웨어 진흥법","사업 관리 감독",SourceOwnedConditionalScopeTests.SOURCE.replace("제1항에 따른 확인결과","확인결과"));
