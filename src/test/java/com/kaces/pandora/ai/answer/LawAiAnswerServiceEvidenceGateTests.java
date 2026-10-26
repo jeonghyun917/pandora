@@ -16,6 +16,119 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
+    @Test void separateBasisBudgetPreservesEightDirectRowsThroughAnswerCompression() throws Exception {
+        String q="정보시스템 법제도 미준수 시 제재 범위는?";
+        var direct=java.util.stream.LongStream.range(99331,99339).mapToObj(id->chunk(id,"law","소프트웨어 진흥법","관리감독",SourceOwnedConditionalScopeTests.SOURCE)).toList();
+        var basis=chunk(99339L,"law","행정기본법","제재처분의 기준","제재처분의 근거가 되는 법률에는 제재처분의 주체, 사유, 유형 및 상한을 명확하게 규정하여야 한다.");
+        var service=service();
+        try {
+            var support=LawAiAnswerService.class.getDeclaredMethod("withAdministrativeSanctionBasisSupport",List.class,List.class,String.class,boolean.class,int.class);support.setAccessible(true);
+            var supported=(List<LawSemanticChunkRow>)support.invoke(service,direct,List.of(basis),q,true,9);
+            assertThat(supported).hasSize(9).containsAll(direct).contains(basis);
+            var select=LawAiAnswerService.class.getDeclaredMethod("selectAnswerContextChunks",List.class,String.class);select.setAccessible(true);
+            assertThat((List<LawSemanticChunkRow>)select.invoke(service,supported,q)).hasSize(9).containsAll(direct).contains(basis);
+        }finally{service.shutdownExecutors();}
+    }
+    @Test void supportingBasisCannotDisplaceTheOnlyDirectRagRow() throws Exception {
+        var context=chunk(99321L,"official_doc","정보화사업 안내","개요","이 문서는 사업 관련 참고 정보를 제공한다.");
+        var direct=new LawSemanticChunkRow(99322L,context.documentId(),"official_doc","direct","정보화사업 법령준수 안내","","","20260101","CURRENT","본문","미준수 조치","정보화사업 법제도 미준수 시 보완 요구를 할 수 있다.",null,"","",2,"hash","미준수 조치","requirement","PASS",null,null,4);
+        var basis=chunk(99323L,"law","행정기본법","제재처분의 기준","제재처분의 근거가 되는 법률에는 제재처분의 주체, 사유, 유형 및 상한을 명확하게 규정하여야 한다.");
+        var service=service();
+        try {
+            var method=LawAiAnswerService.class.getDeclaredMethod("withAdministrativeSanctionBasisSupport",List.class,List.class,String.class,boolean.class,int.class);method.setAccessible(true);
+            var result=(List<LawSemanticChunkRow>)method.invoke(service,List.of(context,direct),List.of(basis),"정보시스템 법제도 미준수 시 제재 범위는?",true,2);
+            assertThat(result).containsExactly(context,direct);
+        }finally{service.shutdownExecutors();}
+    }
+    @Test void supplementalBasisGroundKeepsItsOriginalBodyButNotDirectRole() throws Exception {
+        String norm="제재처분의 근거가 되는 법률에는 제재처분의 주체, 사유, 유형 및 상한을 명확하게 규정하여야 한다.";
+        var basis=new LawAiAnswerGround(2,99311,99311,"law","행정기본법","","법률","20260319","CURRENT","제22조","제재처분의 기준",null,norm,"","",2.0,"앞선 조문 내용 ".repeat(160),null,List.of(99311L),"matched_child_only","direct");
+        var original=chunk(99311L,"law","행정기본법","제재처분의 기준","앞선 조문 내용 ".repeat(160)+norm);
+        var direct=SourceOwnedConditionalScopeTests.ground(SourceOwnedConditionalScopeTests.SOURCE);
+        var service=service();
+        try {
+            var method=LawAiAnswerService.class.getDeclaredMethod("markAdministrativeBasisSupport",List.class,String.class,Map.class);method.setAccessible(true);
+            var result=(List<LawAiAnswerGround>)method.invoke(service,List.of(direct,basis),"정보시스템 법제도 미준수 시 제재 범위는?",Map.of("law:99311",original));
+            assertThat(result.get(0)).isEqualTo(direct);
+            assertThat(result.get(1).evidenceRole()).isEqualTo("related_definition");
+            assertThat(result.get(1).matchedChildText()).isEqualTo(basis.matchedChildText());
+            assertThat(result.get(1).score()).isEqualTo(2.0);
+            assertThat(result.get(1).contextChunkIds()).containsExactly(99311L);
+        }finally{service.shutdownExecutors();}
+    }
+    @Test void generalBasisSupportNeedsExistingDirectEvidenceAndKeepsEveryUniqueSource() throws Exception {
+        var direct=chunk(99301L,"law","소프트웨어 진흥법","관리감독",SourceOwnedConditionalScopeTests.SOURCE);
+        var duplicate1=chunk(99302L,"official_doc","정보화사업 법령준수 안내","미준수 조치","정보화사업 법제도 미준수 시 보완 요구를 할 수 있다.");
+        var duplicate2=new LawSemanticChunkRow(99303L,duplicate1.documentId(),"official_doc","dup","정보화사업 법령준수 안내","","","20260101","CURRENT","본문","개요","이 문서는 사업 관련 참고 정보를 제공한다.",null,"","",2,"hash","개요","requirement","PASS",null,null,4);
+        var basis=chunk(99304L,"law","행정기본법","제재처분의 기준","제재처분의 근거가 되는 법률에는 제재처분의 주체, 사유, 유형 및 상한을 명확하게 규정하여야 한다.");
+        var rejected=new LawSemanticChunkRow(99305L,99305L,"law","99305","행정기본법","","","20260319","CURRENT","제22조","제재처분의 기준",basis.chunkText(),null,"","",1,"hash","제재처분의 기준","requirement","REJECTED",null,null,4);
+        var service=service();
+        try {
+            var method=LawAiAnswerService.class.getDeclaredMethod("withAdministrativeSanctionBasisSupport",List.class,List.class,String.class,boolean.class,int.class);method.setAccessible(true);
+            String q="정보시스템 법제도 미준수 시 제재 범위는?";
+            var selected=List.of(direct,duplicate1,duplicate2);
+            assertThat((List<LawSemanticChunkRow>)method.invoke(service,selected,List.of(basis),q,false,3)).containsExactlyElementsOf(selected);
+            assertThat((List<LawSemanticChunkRow>)method.invoke(service,selected,List.of(rejected),q,true,4)).containsExactlyElementsOf(selected);
+            var supported=(List<LawSemanticChunkRow>)method.invoke(service,selected,List.of(basis),q,true,4);
+            assertThat(supported).hasSize(4).containsAll(selected).contains(basis);
+            assertThat(supported.stream().map(LawSemanticChunkRow::documentId)).contains(direct.documentId(),duplicate1.documentId(),basis.documentId());
+            var unique=List.of(direct,duplicate1);
+            assertThat((List<LawSemanticChunkRow>)method.invoke(service,unique,List.of(basis),q,true,2)).containsExactlyElementsOf(unique);
+            assertThat((List<LawSemanticChunkRow>)method.invoke(service,selected,List.of(basis),"기관의 자료 보관 방법은?",true,3)).containsExactlyElementsOf(selected);
+        }finally{service.shutdownExecutors();}
+    }
+    @Test void supplementalLegalBasisDoesNotBecomeDirectEvidenceOrCreateAnAnswerByItself() throws Exception {
+        var basis=chunk(99231L,"law","행정기본법","제재처분의 기준","제재처분의 근거가 되는 법률에는 제재처분의 주체, 사유, 유형 및 상한을 명확하게 규정하여야 한다.");
+        var service=service();
+        try {
+            var direct=LawAiAnswerService.class.getDeclaredMethod("isIntentDirectEvidenceChunk",LawSemanticChunkRow.class,String.class);direct.setAccessible(true);
+            assertThat(direct.invoke(service,basis,"정보시스템 법제도 미준수 시 제재 범위는?")).isEqualTo(false);
+        } finally {service.shutdownExecutors();}
+    }
+    @Test void mixedFamilyThresholdKeepsTheDomainRuleAlongsideSupplementalBasis() throws Exception {
+        var bases=java.util.stream.LongStream.range(99240,99246).mapToObj(id->chunk(id,"law","행정기본법","제재처분의 기준","제재처분의 근거가 되는 법률에는 제재처분의 주체, 사유, 유형 및 상한을 명확하게 규정하여야 한다.")).toList();
+        var guides=java.util.stream.LongStream.range(99250,99255).mapToObj(id->chunk(id,"official_doc","정보화사업 사전협의 안내","미준수 조치","정보화사업 사전협의 미준수 시 감사기관에 통보한다.")).toList();
+        var domain=chunk(99260L,"law","소프트웨어 진흥법","사업 관리 감독",SourceOwnedConditionalScopeTests.SOURCE);
+        var law=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),new Class<?>[]{LawChunkMapper.class},(proxy,method,args)->{
+            if(method.getName().equals("findSemanticChunksByDocumentTitleAndText")) {
+                if(((List<?>)args[1]).contains("행정기본법"))return bases;
+                if(((List<?>)args[1]).contains("소프트웨어"))return List.of(domain);
+            }return List.of();
+        });
+        var rag=(RagDocumentMapper)java.lang.reflect.Proxy.newProxyInstance(RagDocumentMapper.class.getClassLoader(),new Class<?>[]{RagDocumentMapper.class},(proxy,method,args)->guides);
+        var service=service(law,rag);
+        try {
+            assertThat(findLexicalChunks(service,QuestionSearchPlan.from("정보시스템 법제도 미준수 시 제재 범위는?"),List.of("law","official_doc"),false))
+                .contains(domain).containsAll(bases).containsAll(guides);
+        }finally{service.shutdownExecutors();}
+    }
+    @Test void generalSanctionBasisLookupSupplementsRatherThanReplacesTheDomainRule() throws Exception {
+        var basis=chunk(99201L,"law","행정기본법","제재처분의 기준","제재처분의 근거가 되는 법률에는 제재처분의 주체, 사유, 유형 및 상한을 명확하게 규정하여야 한다.");
+        var domain=chunk(99202L,"law","소프트웨어 진흥법","사업 관리 감독",SourceOwnedConditionalScopeTests.SOURCE);
+        var law=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),new Class<?>[]{LawChunkMapper.class},(proxy,method,args)->{
+            if(method.getName().equals("findSemanticChunksByDocumentTitleAndText")) {
+                if(((List<?>)args[1]).contains("행정기본법"))return List.of(basis);
+                if(((List<?>)args[1]).contains("소프트웨어"))return List.of(domain);
+            }
+            return List.of();
+        });
+        var service=service(law,null);
+        try {
+            var result=findLexicalChunks(service,QuestionSearchPlan.from("정보시스템 법제도 미준수 시 제재 범위는?"),List.of("law"),false);
+            assertThat(result).contains(basis,domain);
+        } finally {service.shutdownExecutors();}
+    }
+    @Test void consequenceCandidatesRetainOnlyCompleteLegalSanctionBasisNorms() throws Exception {
+        String norm="제재처분의 근거가 되는 법률에는 제재처분의 주체, 사유, 유형 및 상한을 명확하게 규정하여야 한다.";
+        var basis=chunk(99211L,"law","행정기본법","제재처분의 기준",norm);
+        var partial=chunk(99212L,"law","다른 법률","일부 설명",norm.replace("상한", "자료"));
+        var mention=chunk(99213L,"official_doc","사업 안내","참고문헌",norm);
+        var service=service();
+        try {
+            assertThat(filterByQuestionIntent(service,List.of(basis,partial,mention),"정보시스템 법령 미준수 시 제재 범위는?"))
+                .contains(basis).doesNotContain(partial,mention);
+        } finally {service.shutdownExecutors();}
+    }
     @Test void singleSourceLegalRuleKeepsItsLiteralBodyButNeverDropsAnAdjacentRestriction() throws Exception {
         var original=new LawSemanticChunkRow(99121L,210L,"law","210","소프트웨어 진흥법","","","20260101","CURRENT","제57조","제57조(관리감독)",SourceOwnedConditionalScopeTests.SOURCE,null,"","",1,"original","제57조","penalty","PASS",null,null,4);
         var restriction=new LawSemanticChunkRow(99122L,210L,"law","210","소프트웨어 진흥법","","","20260101","CURRENT","제57조 계속","제57조(관리감독) 계속","다만, 해당 소프트웨어사업은 별도 조건에 해당하면 적용하지 아니한다.",null,"","",2,"restriction","제57조","exception","PASS",null,null,4);

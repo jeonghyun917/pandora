@@ -1673,6 +1673,8 @@ public class LawAiAnswerService {
 				hybrid
 			);
 		}
+        evidenceChunks=withAdministrativeSanctionBasisSupport(evidenceChunks,judgeContextChunks,
+            normalized.query(),judgedEvidence.directEvidenceFound(),DEFAULT_LIMIT+1);
 		List<LawSemanticChunkRow> orderedEvidenceChunks = DocumentDiscoveryPolicy.orderChunks(
 			normalized.query(),
 			evidenceChunks.stream()
@@ -1716,6 +1718,7 @@ public class LawAiAnswerService {
 			evidenceRoleForSelectionPolicy(judgedEvidence.selectionPolicy()),
 			displayContext.contextChunkIdsByKey()
 		);
+        grounds=markAdministrativeBasisSupport(grounds,normalized.query(),matchedChunkByKey);
 		grounds = DocumentDiscoveryPolicy.orderGrounds(normalized.query(), grounds);
 		timing.groundsMs.addAndGet(elapsedMillis(groundsStart));
 		if (grounds.isEmpty()) {
@@ -3681,6 +3684,8 @@ public class LawAiAnswerService {
 			.filter(chunk -> !isForcedExcludedAnswerContextChunk(chunk, query))
 			.toList();
 		List<LawSemanticChunkRow> finalSelected = forcedFiltered;
+		finalSelected=withAdministrativeSanctionBasisSupport(finalSelected,displayChunks,query,
+			true,MAX_ANSWER_CONTEXT_GROUNDS+1);
 		if (!lexicalVariantProperties.authoritative() || finalSelected.isEmpty()) {
 			return finalSelected;
 		}
@@ -6732,7 +6737,7 @@ public class LawAiAnswerService {
 		}
 		if (isInformationSystemCompliancePenaltyQuestion(normalizedQuery)) {
 			List<LawSemanticChunkRow> filtered = candidates.stream()
-				.filter(this::isInformationSystemCompliancePenaltyEvidence)
+				.filter(this::isInformationSystemCompliancePenaltyCandidate)
 				.sorted(Comparator.comparingDouble(this::informationSystemCompliancePenaltyEvidencePriority).reversed())
 				.toList();
 			if (!filtered.isEmpty()) {
@@ -8666,7 +8671,12 @@ public class LawAiAnswerService {
 				)
 			, routing);
 			if (!policyLawChunks.isEmpty()) {
-				return finishLexicalChunks(policyLawChunks, query);
+                if(profile.matchedPolicyIds().contains("administrative_sanction_basis")) {
+                    // General legal limits supplement, never replace, the domain consequence source.
+                    chunks.addAll(policyLawChunks);
+                } else {
+				    return finishLexicalChunks(policyLawChunks, query);
+                }
 			}
 		}
 		if (!boundedRagDocumentTitleMatched && intentSpecificLexicalLookup && !ragTargets.isEmpty()) {
@@ -9823,11 +9833,12 @@ public class LawAiAnswerService {
 	}
 
 	private boolean isPolicyDocumentTitleKeyword(String value) {
-		if (value == null || value.trim().length() < 6) {
+		if (value == null || value.trim().length() < 4) {
 			return false;
 		}
 		String keyword = value.trim();
-		return keyword.contains("\uBC95\uB960")
+		return (keyword.matches("[가-힣ㆍ·]{4,40}법") && !keyword.endsWith("방법"))
+            || keyword.contains("\uBC95\uB960")
 			|| keyword.contains("\uC2DC\uD589\uB839")
 			|| keyword.contains("\uC2DC\uD589\uADDC\uCE59")
 			|| keyword.contains("\uD589\uC815\uADDC\uCE59")
@@ -11041,6 +11052,50 @@ public class LawAiAnswerService {
 		);
 		return complianceContext && consequenceIntent;
 	}
+
+    private boolean isInformationSystemCompliancePenaltyCandidate(LawSemanticChunkRow chunk) {
+        return isInformationSystemCompliancePenaltyEvidence(chunk)
+            || (chunk != null && isAdministrativeSanctionBasis(chunk.target(),chunk.effectiveStatus(),chunk.chunkText()));
+    }
+
+    private boolean isAdministrativeSanctionBasis(String target,String status,String body) {
+        return isLawTarget(target) && "CURRENT".equals(status)
+            && normalizeForMatch(body).contains(normalizeForMatch(
+                "제재처분의 근거가 되는 법률에는 제재처분의 주체, 사유, 유형 및 상한을 명확하게 규정하여야 한다."));
+    }
+
+    private List<LawSemanticChunkRow> withAdministrativeSanctionBasisSupport(
+        List<LawSemanticChunkRow> selected,List<LawSemanticChunkRow> candidates,String query,
+        boolean directEvidenceFound,int limit) {
+        if(selected==null || selected.isEmpty())return selected==null?List.of():selected;
+        if(!directEvidenceFound || limit<1 || candidates==null
+            || !QuestionIntentProfile.from(query).matchedPolicyIds().contains("administrative_sanction_basis")
+            || selected.stream().noneMatch(row->isIntentDirectEvidenceChunk(row,query)))return selected;
+        if(selected.stream().anyMatch(row->isAdministrativeSanctionBasis(row.target(),row.effectiveStatus(),row.chunkText())))return selected;
+        var basis=candidates.stream().filter(java.util.Objects::nonNull)
+            .filter(row->"PASS".equals(row.qualityStatus()))
+            .filter(row->isAdministrativeSanctionBasis(row.target(),row.effectiveStatus(),row.chunkText()))
+            .filter(this::hasUsefulText).findFirst();
+        if(basis.isEmpty())return selected;
+        if(selected.size()>=limit)return selected;
+        // A separate single supporting slot never evicts an accepted direct source.
+        var result=new java.util.ArrayList<>(selected);
+        result.add(basis.get());
+        return List.copyOf(result);
+    }
+
+    private List<LawAiAnswerGround> markAdministrativeBasisSupport(List<LawAiAnswerGround> grounds,String query,
+        Map<String,LawSemanticChunkRow> matchedChunkByKey) {
+        if(!QuestionIntentProfile.from(query).matchedPolicyIds().contains("administrative_sanction_basis"))return grounds;
+        return grounds.stream().map(g->{
+            var original=matchedChunkByKey.get(scoreKey(g.target(),g.chunkId()));
+            if(original==null || !isAdministrativeSanctionBasis(original.target(),original.effectiveStatus(),original.chunkText()))return g;
+            return
+            new LawAiAnswerGround(g.number(),g.chunkId(),g.documentId(),g.target(),g.title(),g.agencyName(),
+                g.categoryName(),g.sourceDate(),g.effectiveStatus(),g.chunkNo(),g.chunkTitle(),g.pageNo(),g.snippet(),
+                g.sourcePath(),g.sourceUrl(),g.score(),g.matchedChildText(),g.parentContextText(),g.contextChunkIds(),
+                g.contextPolicy(),"related_definition");}).toList();
+    }
 
 	private boolean isInformationSystemCompliancePenaltyEvidence(LawSemanticChunkRow chunk) {
 		if (chunk == null) {
