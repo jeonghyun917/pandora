@@ -9,6 +9,11 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class OpenAiAnswerClientPromptTests {
+    @Test void defaultBudgetAllowsReasoningAndVisibleOutputWithoutOverridingExplicitLimits() {
+        assertThat(new LawAiProperties(null,null,null,null).openai().answerMaxOutputTokens()).isEqualTo(2048);
+        assertThat(new LawAiProperties.OpenAi("",null,null,null,null,0).answerMaxOutputTokens()).isEqualTo(2048);
+        assertThat(new LawAiProperties.OpenAi("",null,null,null,null,700).answerMaxOutputTokens()).isEqualTo(700);
+    }
     @Test void duplicateClassificationScopeIsRemovedOnlyWhenLiterallyOwnedAndAlreadyPreserved() {
         String scope="공공기관이 발주하는 소프트웨어사업";
         String raw="웹서비스 사업도 "+scope+"에 해당하면 대상 사업 "+scope+"입니다. 다음 절차는 별도입니다.";

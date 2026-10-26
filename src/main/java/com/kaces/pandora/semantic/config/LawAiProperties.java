@@ -11,7 +11,7 @@ public record LawAiProperties(
 ) {
 	public LawAiProperties {
 		if (openai == null) {
-			openai = new OpenAi("", "text-embedding-3-small", "gpt-5-mini", "low", "low", 700);
+			openai = new OpenAi("", "text-embedding-3-small", "gpt-5-mini", "low", "low", 2048);
 		}
 		if (qdrant == null) {
 			qdrant = new Qdrant("http://127.0.0.1:6333", "law_chunks", "rag_chunks_v4", 1536);
@@ -46,7 +46,7 @@ public record LawAiProperties(
 				answerVerbosity = "low";
 			}
 			if (answerMaxOutputTokens <= 0) {
-				answerMaxOutputTokens = 700;
+				answerMaxOutputTokens = 2048;
 			}
 		}
 	}
