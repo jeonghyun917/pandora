@@ -9,6 +9,17 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class OpenAiAnswerClientPromptTests {
+    @Test void duplicateClassificationScopeIsRemovedOnlyWhenLiterallyOwnedAndAlreadyPreserved() {
+        String scope="공공기관이 발주하는 소프트웨어사업";
+        String raw="웹서비스 사업도 "+scope+"에 해당하면 대상 사업 "+scope+"입니다. 다음 절차는 별도입니다.";
+        var client=new OpenAiAnswerClient(new LawAiProperties(null,null,null,null),new ObjectMapper()){
+            @Override protected String requestAnswer(String question,String input,int budget,String instructions){return raw;}
+        };
+        assertThat(client.rewriteConditional("웹서비스 사업도 대상인가요?",List.of("대상 사업 "+scope),List.of("범위 안내")))
+            .isEqualTo("웹서비스 사업도 "+scope+"에 해당하면 대상 사업입니다. 다음 절차는 별도입니다.");
+        for(String source:List.of("대상 사업 다른 기관이 발주하는 소프트웨어사업", "대상 사업 "+scope+" 중 일부"))
+            assertThat(client.rewriteConditional("웹서비스 사업도 대상인가요?",List.of(source),List.of("범위 안내"))).isEqualTo(raw);
+    }
     @Test void conditionalClientPreservesTheExplicitAdditiveBusinessSubject() {
         String condition="국가기관 등이 발주하는 상용소프트웨어를 포함한 모든 소프트웨어사업에 해당하면 적용 대상 사업입니다.";
         var client=new OpenAiAnswerClient(new LawAiProperties(null,null,null,null),new ObjectMapper()){

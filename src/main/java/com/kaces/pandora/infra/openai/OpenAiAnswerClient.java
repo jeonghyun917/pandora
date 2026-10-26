@@ -168,8 +168,21 @@ public class OpenAiAnswerClient extends GroundedAnswerRewriter {
         String ownedScope="모든 SW사업(상용SW포함)";
         if(answer!=null && supportedEvidenceAtoms.stream().anyMatch(atom->atom.contains(ownedScope)))
             answer=answer.replace(ownedScope,"상용소프트웨어를 포함한 모든 소프트웨어사업");
-        return preserveAdditiveBusinessSubject(question,answer);
+        return preserveAdditiveBusinessSubject(question,removeOwnedDuplicateClassificationScope(answer,supportedEvidenceAtoms));
 	}
+
+    private String removeOwnedDuplicateClassificationScope(String answer,List<String> atoms) {
+        if(answer==null)return null;
+        for(String atom:atoms) {
+            var owned=java.util.regex.Pattern.compile("^(적용 대상 사업|대상 사업)\\s+([^\\r\\n.!?。]{8,300})$").matcher(atom.trim());
+            if(!owned.matches())continue;
+            String label=owned.group(1);
+            String scope=owned.group(2).trim().replace("모든 SW사업(상용SW포함)","상용소프트웨어를 포함한 모든 소프트웨어사업");
+            // Remove only a verbatim duplicate: the complete owned scope remains in the antecedent.
+            answer=answer.replace(scope+"에 해당하면 "+label+" "+scope+"입니다.",scope+"에 해당하면 "+label+"입니다.");
+        }
+        return answer;
+    }
 
     private String preserveAdditiveBusinessSubject(String question,String answer) {
         if(question==null || answer==null)return answer;
