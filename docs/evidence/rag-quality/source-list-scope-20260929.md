@@ -1,5 +1,9 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-10-26 650429e SNS1dfcc3/af37b7 실제PASS archive001935-493Z. penalty1bf954/1d1d6a 실제FAIL archive002155-603Z: 빈출력해소·법령개선권고문장SUPPORTED이나2048출력이중간‘국가기관’에서잘리고 TRUNCATED_NOTICE 포함/최종거부정상. 부분출력통과·실패재생없음. 공통기본예산4096으로상향, 명시700보존·기존절차최소2048테스트도명시설정fixture로보존. 집중20건0fd30d/ad9637 exit0; 동작코드추가없고상수설정만변경하여전체1813통과직후동일suite반복생략. 새배포후고유SNS→penalty검증대기/전체완료아님/예약PAUSED.
+
+- 2026-10-26 기본예산수정650429e commit/pushafbf57, stage8f2b0c SHA5c1fe3ae831cf36c59827952fa213365cf41dfdeccbbb1db586ef1ecbd19eb6b. 공식status/stop282263·구supervisor4804f2종료→공식폐쇄deploybc24cb/08b1c9 session96070유지/PID23604/runtime3a1a8f69-8eb0-4ff0-804c-23fb12ebabb1. 건강6c1dad DB=Q211658/84248/qreadytrue/qfail0/1765revision1·17 hydration/proof/context/cache보존. 새SNS1dfcc3/session23092 고유logs/rag-eval-sns-650429e-20261026.json 진행. 실패재생·검증완화없음/예약PAUSED/18080·Q불변.
+
 - 2026-10-26 2982700 SNS0b24d2/e7fd53 실제PASS1/1·answerVerifiedtrue(archive001434-627Z). 이어 penalty421baf/66f1ba 실제FAIL archive001508-818Z: 검색SQL timeout 없음, 새 진단이 failureType=OUTPUT_TOKEN_LIMIT를 명시/본문없음은미평가. 기존실패재생없음. 원인근거가확보되어 기본답변예산700→2048(기존절차분기수준)만조정/명시설정700유지테스트/모델·추론강도·verifier불변. 전체5b4911/e95468 exit0 fresh136XML1813/f0/e0/skip26. commit·push·공식배포후새평가예정. 법령후보회수와최종선택은별개/penalty품질PASS아님/Difficult·holdout·full대기/예약PAUSED.
 
 - 2026-10-26 중복수정2982700 commit/push8ec6a4, stage140274 SHA9872f6362cb6eb25545ebbc2c94b8d7c62cd9fd309989355c5a9939db74a44b8. 공식status/stop a88f0d→구supervisor4f7d2d종료→공식폐쇄deployfcf33b session92434유지/PID39556/runtime1b903a40-bf1d-4472-8576-041d23e485b4. 건강cd936f DB=Q211658/84248/qreadytrue/qfail0, 문서1765revision1/17 hydration·proof·context/cache 보존. 새SNS0b24d2/session41577 고유 logs/rag-eval-sns-2982700-20261026.json 실행. 예약PAUSED, Q62376·별도18080PID69228 불변. 기존SNS실패 재생없음/penalty진입대기/전체완료아님.

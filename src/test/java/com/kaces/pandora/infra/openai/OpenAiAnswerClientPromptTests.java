@@ -10,8 +10,8 @@ import tools.jackson.databind.ObjectMapper;
 
 class OpenAiAnswerClientPromptTests {
     @Test void defaultBudgetAllowsReasoningAndVisibleOutputWithoutOverridingExplicitLimits() {
-        assertThat(new LawAiProperties(null,null,null,null).openai().answerMaxOutputTokens()).isEqualTo(2048);
-        assertThat(new LawAiProperties.OpenAi("",null,null,null,null,0).answerMaxOutputTokens()).isEqualTo(2048);
+        assertThat(new LawAiProperties(null,null,null,null).openai().answerMaxOutputTokens()).isEqualTo(4096);
+        assertThat(new LawAiProperties.OpenAi("",null,null,null,null,0).answerMaxOutputTokens()).isEqualTo(4096);
         assertThat(new LawAiProperties.OpenAi("",null,null,null,null,700).answerMaxOutputTokens()).isEqualTo(700);
     }
     @Test void duplicateClassificationScopeIsRemovedOnlyWhenLiterallyOwnedAndAlreadyPreserved() {
@@ -86,7 +86,7 @@ class OpenAiAnswerClientPromptTests {
 	void literalProcedureRewriteHasRoomForScopeDutyAndException() {
 		var tokens = new java.util.concurrent.atomic.AtomicInteger();
 		var instructions = new java.util.concurrent.atomic.AtomicReference<String>();
-		var client = new OpenAiAnswerClient(new LawAiProperties(null, null, null, null), new ObjectMapper()) {
+		var client = new OpenAiAnswerClient(new LawAiProperties(new LawAiProperties.OpenAi("",null,null,null,null,700), null, null, null), new ObjectMapper()) {
 			@Override protected String requestAnswer(String question, String input, int budget, String contract) {
 				tokens.set(budget); instructions.set(contract); return "답변";
 			}
