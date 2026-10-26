@@ -16,6 +16,21 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
+    @Test void configuredDomainTitleCandidatesAvoidTheBroadLawScanButDoNotReplaceEmptyFallback() throws Exception {
+        var rule=chunk(99103L,"law","소프트웨어 진흥법","사업 관리 감독","국가기관등의 장이 소프트웨어사업을 추진하는 경우 관련 법령의 준수 여부를 확인한다.");
+        var broad=new java.util.concurrent.atomic.AtomicInteger();
+        var law=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),new Class<?>[]{LawChunkMapper.class},
+            (proxy,method,args)->{
+                if(method.getName().equals("findSemanticChunksByDocumentTitleAndText") && ((List<?>)args[1]).contains("소프트웨어"))return List.of(rule);
+                if(method.getName().equals("findSemanticChunksByText")){broad.incrementAndGet();throw new IllegalStateException("broad body scan timeout");}
+                return List.of();
+            });
+        var service=service(law,null);
+        try {
+            var result=findLexicalChunks(service,QuestionSearchPlan.from("정보화시스템 법제도 미준수의 조치는 무엇인가요?"),List.of("law","admrul"),true);
+            assertThat(result).contains(rule);assertThat(broad.get()).isZero();
+        } finally {service.shutdownExecutors();}
+    }
     @Test void complianceLawLookupUsesConfiguredSoftwareConceptRatherThanOnlySurfaceWording() throws Exception {
         var captured=new java.util.ArrayList<String>();
         var law=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),new Class<?>[]{LawChunkMapper.class},
@@ -29,6 +44,7 @@ class LawAiAnswerServiceEvidenceGateTests {
             assertThat(plan.profile().entities()).isNotEmpty();
             findLexicalChunks(service,plan,List.of("law"),false);
             assertThat(captured).contains("소프트웨어사업");
+            assertThat(captured).doesNotContain("정보화시스템법제도미준수의조치는무엇인가요","무엇인가요");
         } finally {service.shutdownExecutors();}
     }
     @Test void complianceFastRagHitMustNotSuppressTheRequestedLawFamily() throws Exception {

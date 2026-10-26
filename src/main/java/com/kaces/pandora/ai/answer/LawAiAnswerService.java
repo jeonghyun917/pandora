@@ -9286,6 +9286,15 @@ public class LawAiAnswerService {
 			&& !(guideFocusedQuestion && !ragTargets.isEmpty())) {
 			List<String> lawTextKeywords = lawTextKeywords(query);
 			if (!lawTextKeywords.isEmpty()) {
+                List<String> domainTitles=documentTitleAnchors.isEmpty()?domainLawTitleKeywords(profile):List.of();
+                if(!domainTitles.isEmpty()) {
+                    var scoped=safeLexicalQuery("law domain title and text",()->lawChunkMapper.findSemanticChunksByDocumentTitleAndText(
+                        lawTargets,domainTitles,lawTextKeywords,includeFuture,LAW_TEXT_KEYWORD_FETCH_LIMIT),routing);
+                    if(!scoped.isEmpty()) {
+                        chunks.addAll(scoped);
+                        return finishLexicalChunks(chunks,query);
+                    }
+                }
 				chunks.addAll(safeLexicalQuery("law generic text", () -> lawChunkMapper.findSemanticChunksByText(
 					lawTargets,
 					lawTextKeywords,
@@ -10004,6 +10013,12 @@ public class LawAiAnswerService {
 			.toList();
 	}
 
+    private List<String> domainLawTitleKeywords(QuestionIntentProfile profile) {
+        return profile.entities().stream().flatMap(entity->entity.directEvidenceGroups().stream()).flatMap(List::stream)
+            .map(this::normalizeForMatch).filter(term->term.endsWith("사업"))
+            .map(term->term.substring(0,term.length()-2)).filter(term->term.length()>=3)
+            .distinct().sorted(Comparator.comparingInt(String::length).reversed()).limit(2).toList();
+    }
 	private List<String> lawTextKeywords(String query) {
 		java.util.LinkedHashSet<String> keywords = new java.util.LinkedHashSet<>();
         // Recall vocabulary only: this does not establish an answer's subject or scope.
@@ -10013,13 +10028,14 @@ public class LawAiAnswerService {
             .filter(term -> !isIntentLikeTerm(term)).distinct()
             .sorted(Comparator.comparingInt(String::length).reversed()).limit(2)
             .forEach(term -> addCoreLawTextKeyword(keywords,term));
+        boolean configuredDomainTerms=!keywords.isEmpty();
 		for (String anchor : documentEvidenceAnchorKeywords(query)) {
 			addCoreLawTextKeyword(keywords, normalizeForMatch(anchor));
 		}
-		addCoreLawTextKeyword(keywords, normalizeForMatch(query));
+		if(!configuredDomainTerms)addCoreLawTextKeyword(keywords, normalizeForMatch(query));
 		for (String term : queryTerms(query)) {
 			String normalized = normalizeForMatch(stripIntentSuffix(stripTrailingJosa(stripIntentSuffix(term))));
-			addCoreLawTextKeyword(keywords, normalized);
+			if(!KoreanQueryNormalizer.isWeakQuestionTerm(normalized))addCoreLawTextKeyword(keywords, normalized);
 		}
 		if (keywords.isEmpty()) {
 			List<String> coreTerms = coreConceptTerms(queryTerms(query));
