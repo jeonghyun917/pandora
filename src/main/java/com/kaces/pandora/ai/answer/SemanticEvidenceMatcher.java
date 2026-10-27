@@ -146,8 +146,11 @@ public class SemanticEvidenceMatcher {
         if(ordinary.status()!=ClaimEvidenceMatcher.Status.INSUFFICIENT || claim==null || evidenceIndex==null)return ordinary;
         for(var bound:SourceOwnedConditionalScope.bind(claim.sourceText(),evidenceIndex.scopeRules())){
             SemanticMatch literal=matchOrdinary(parser.parse(bound.operativeLiteral()),evidenceIndex);
-            if(literal.status()==ClaimEvidenceMatcher.Status.SUPPORTED && literal.groundNumber()==bound.owner())
-                return new SemanticMatch(literal.status(),literal.alignedSlots(),literal.groundNumber(),literal.evidenceSentence(),literal.coverage(),"SOURCE_OWNED_CONDITIONAL_RULE");
+            if(literal.status()!=ClaimEvidenceMatcher.Status.SUPPORTED)continue;
+            SemanticMatch owned=literal.groundNumber()==bound.owner()?literal:matchOrdinary(parser.parse(bound.operativeLiteral()),
+                new EvidenceIndex(evidenceIndex.atoms().stream().filter(atom->atom.groundNumber()==bound.owner()).toList()));
+            if(owned.status()==ClaimEvidenceMatcher.Status.SUPPORTED && owned.groundNumber()==bound.owner())
+                return new SemanticMatch(owned.status(),owned.alignedSlots(),owned.groundNumber(),owned.evidenceSentence(),owned.coverage(),"SOURCE_OWNED_CONDITIONAL_RULE");
         }
         return ordinary;
     }

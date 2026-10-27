@@ -410,7 +410,10 @@ public class ClaimEvidenceMatcher {
         if(ordinary.status()!=Status.INSUFFICIENT || evidenceIndex==null)return ordinary;
         for(var bound:SourceOwnedConditionalScope.bind(claim,evidenceIndex.scopeRules)){
             Match literal=matchOrdinary(bound.operativeLiteral(),evidenceIndex);
-            if(literal.status()==Status.SUPPORTED && literal.groundNumber()==bound.owner())return literal;
+            if(literal.status()!=Status.SUPPORTED)continue;
+            Match owned=literal.groundNumber()==bound.owner()?literal:matchOrdinary(bound.operativeLiteral(),
+                new EvidenceIndex(evidenceIndex.sentences.stream().filter(sentence->sentence.groundNumber()==bound.owner()).toList(),List.of()));
+            if(owned.status()==Status.SUPPORTED && owned.groundNumber()==bound.owner())return owned;
         }
         return ordinary;
     }
@@ -973,6 +976,12 @@ public class ClaimEvidenceMatcher {
 				? Relation.COMPATIBLE
 				: Relation.NOT_ENTAILED;
 		}
+        // Compare only an asserted terminal permission; permissions inside different
+        // antecedents do not contradict each other.
+        if(opposite(claim.permissionMode(),evidence.permissionMode())
+            && claim.normalizedText().replaceFirst("할수(?:있|없)다$","할수#다")
+                .equals(evidence.normalizedText().replaceFirst("할수(?:있|없)다$","할수#다")))
+            return Relation.CONTRADICTED;
 		// A later condition cannot replace an explicit receipt or concessive antecedent.
 		if ((evidence.normalizedText().contains("받은경우")
 			|| evidence.normalizedText().contains("에도불구하고")

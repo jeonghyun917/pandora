@@ -5,6 +5,32 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class SourceOwnedConditionalScopeTests {
+    @Test void oppositePermissionsOnlyInsideDifferentAntecedentsAreNotAConflict() {
+        String permitted="기관은 자료를 공개할 수 있는 경우에는 심사 또는 검토를 진행한다.";
+        String unavailable="기관은 자료를 공개할 수 없는 경우에는 심사 또는 검토를 진행한다.";
+        assertThat(new ClaimEvidenceMatcher().match(permitted,List.of(operativeCopy(unavailable))).status())
+            .isEqualTo(ClaimEvidenceMatcher.Status.INSUFFICIENT);
+    }
+    @Test void copiedOperativeInAnotherGroundCannotHideTheOriginalProofOwner() {
+        var copy=operativeCopy(RULE);
+        var grounds=List.of(copy,ground(SOURCE));
+        var control=new ClaimEvidenceMatcher();
+        assertThat(control.match(RULE,grounds).groundNumber()).isEqualTo(2);
+        assertThat(control.match(CLAIM,grounds).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+        assertThat(control.match(CLAIM,grounds).groundNumber()).isEqualTo(1);
+        var semantic=new SemanticEvidenceMatcher();
+        var result=semantic.match(new KoreanEvidenceAtomParser().parse(CLAIM),semantic.index(grounds));
+        assertThat(result.status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+        assertThat(result.groundNumber()).isEqualTo(1);
+    }
+    @Test void originalOwnerSelectionDoesNotOverrideAnOperativeConflict() {
+        var grounds=List.of(operativeCopy(SOURCE.replace("개선을 권고할 수 있다","개선을 권고할 수 없다")),ground(SOURCE));
+        assertThat(new ClaimEvidenceMatcher().match(RULE,grounds).status()).isEqualTo(ClaimEvidenceMatcher.Status.CONFLICTED);
+        assertUnsupported(CLAIM,grounds);
+    }
+    private static LawAiAnswerGround operativeCopy(String body) {
+        return new LawAiAnswerGround(2,2,2,"official_doc","원문 안내","기관","공식 문서","20260101","CURRENT","본문","본문",null,body,"","",1.0,body,null,List.of(),"matched_child_only","direct");
+    }
     static final String SCOPE="국가기관등의 장이 소프트웨어사업을 추진하는 경우";
     static final String FIRST="과학기술정보통신부장관은 "+SCOPE+" 이 법 또는 관련 법령을 준수하였는지를 확인하고, 그 결과를 공개할 수 있다.";
     static final String RULE="과학기술정보통신부장관은 제1항에 따른 확인결과 국가기관등의 장이 이 법 또는 관련 법령을 위반하였다고 인정하는 경우에는 개선을 권고할 수 있다.";
