@@ -9,6 +9,22 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class OpenAiAnswerClientPromptTests {
+    @Test void literalRuleRequestIncludesTheBusinessSubjectInTheCompleteSentenceContract() {
+        var payload=new java.util.concurrent.atomic.AtomicReference<String>();
+        var contract=new java.util.concurrent.atomic.AtomicReference<String>();
+        String scope="국가기관등의 장이 소프트웨어사업을 추진하는 경우";
+        String operative="과학기술정보통신부장관은 제1항에 따른 확인결과 관련 법령을 위반하였다고 인정하는 경우에는 개선을 권고할 수 있다.";
+        String source="① 과학기술정보통신부장관은 "+scope+" 관련 법령을 준수하였는지를 확인하고, 그 결과를 공개할 수 있다.\n② "+operative+"\n③";
+        String missingSubject=scope+"에 해당하면 "+operative;
+        var client=new OpenAiAnswerClient(new LawAiProperties(null,null,null,null),new ObjectMapper()){
+            @Override protected String requestAnswer(String question,String input,int budget,String instructions){payload.set(input);contract.set(instructions);return missingSubject;}
+        };
+        assertThat(client.rewriteConditional("전산사업 법령 위반 시 조치는?",List.of(source),List.of("원문 법률"))).isEqualTo(missingSubject);
+        assertThat(payload.get()).contains("[질문의 사업]이 "+scope+"에 해당하면 "+operative);
+        assertThat(contract.get()).contains("조건 원문으로 문장을 시작하지 마세요", "사업명을 첫 주어로");
+        var rule=com.kaces.pandora.ai.answer.SourceOwnedConditionalScope.original(1,source).orElseThrow();
+        assertThat(com.kaces.pandora.ai.answer.SourceOwnedConditionalScope.bind(missingSubject,List.of(rule))).isEmpty();
+    }
     @Test void literalRuleRequestKeepsTheHypothesisConnectorSeparateFromTheSourceCondition() {
         var payload=new java.util.concurrent.atomic.AtomicReference<String>();
         var contract=new java.util.concurrent.atomic.AtomicReference<String>();
