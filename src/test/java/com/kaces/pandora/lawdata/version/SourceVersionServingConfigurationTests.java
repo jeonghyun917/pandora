@@ -31,7 +31,7 @@ class SourceVersionServingConfigurationTests {
             var paths=SourceVersionServingConfiguration.SERVING_PATHS;
             for(String path:List.of("/api/law-data/search","/api/law-data/chunk-search","/api/law-data/detail",
                     "/api/law-data/semantic/search","/api/law-data/ai/answer","/api/law-data/ai/answer-stream",
-                    "/api/law-data/ai/debug/search","/api/law-data/ai/debug/runtime-info","/api/law-data/ai/debug/evaluate/gate"))
+                    "/api/law-data/ai/debug/search","/api/law-data/ai/debug/runtime-info","/api/law-data/ai/debug/evaluate/gate","/api/admin/law-index-integrity/audit"))
                 assertThat(paths.stream().anyMatch(pattern->matcher.match(pattern,path))).as(path).isTrue();
             for(String path:List.of("/api/law-data/source-versions/promote","/api/law-data/source-versions/rollback",
                     "/api/law-data/rag-recovery/promote","/api/law-data/sync","/api/law-data/semantic/index-documents"))

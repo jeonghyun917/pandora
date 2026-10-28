@@ -14,7 +14,7 @@ public class SourceVersionServingConfiguration {
         "/api/law-data/search","/api/law-data/chunk-search","/api/law-data/detail","/api/law-data/proxy",
         "/api/law-data/semantic/search","/api/law-data/ai/answer","/api/law-data/ai/answer-stream",
         "/api/law-data/ai/debug/search","/api/law-data/ai/debug/runtime-info",
-        "/api/law-data/ai/debug/evaluate","/api/law-data/ai/debug/evaluate/gate");
+        "/api/law-data/ai/debug/evaluate","/api/law-data/ai/debug/evaluate/gate","/api/admin/law-index-integrity/audit");
     public record ServingResources(HikariDataSource pool,SourceVersionReadLeases leases) implements AutoCloseable {
         @Override public void close() {pool.close();}
     }

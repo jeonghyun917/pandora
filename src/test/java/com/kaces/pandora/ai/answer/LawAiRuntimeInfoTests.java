@@ -20,6 +20,25 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class LawAiRuntimeInfoTests {
+    @Test void activatedSourceIdentityChangesRuntimeIndexFingerprintAndReadinessCannotBeSkipped() {
+        var properties=properties();var q=qdrant(properties,true);
+        var service=service(mapper(LawChunkMapper.class,snapshot(20,'a'),false),mapper(RagDocumentMapper.class,snapshot(10,'b'),false),q,properties);
+        var router=org.mockito.Mockito.mock(com.kaces.pandora.rag.recovery.RagRecoveryRoutingService.class);
+        var readiness=org.mockito.Mockito.mock(com.kaces.pandora.rag.recovery.RagRecoveryReadinessService.class);
+        try {
+            String baseline=service.runtimeInfo().indexRevision();
+            String id="00000000-0000-0000-0000-000000000001",group="a".repeat(64);
+            var route=new com.kaces.pandora.lawdata.version.SourceVersionRoutingSnapshot.Route(group,1,"admrul","admrul:지침",10,20,java.util.Set.of(10L,20L),id,"b".repeat(64),"law_source_"+id.replace("-",""),"c".repeat(64),"d".repeat(64),"text-embedding-3-small",1,1);
+            var captured=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(1,java.util.Map.of(),java.util.Map.of(),java.util.Set.of(),"e".repeat(64),"recovery_"+id,new com.kaces.pandora.lawdata.version.SourceVersionRoutingSnapshot(1,java.util.Map.of(group,route)));
+            org.mockito.Mockito.when(router.capture()).thenReturn(captured);service.configureRecoveryRouting(router);service.configureRecoveryReadiness(readiness);
+            var active=service.runtimeInfo();
+            assertThat(active.indexRevision()).isNotNull().isNotEqualTo(baseline);assertThat(active.qdrantReady()).isTrue();
+            org.mockito.Mockito.verify(readiness).verify(captured);
+            org.mockito.Mockito.doThrow(new IllegalStateException("source vector namespace missing")).when(readiness).verify(captured);
+            var unavailable=service.runtimeInfo();
+            assertThat(unavailable.qdrantReady()).isFalse();assertThat(unavailable.indexRevision()).isNull();
+        } finally {service.shutdownExecutors();q.shutdownExecutor();}
+    }
 
 	@Test
 	void runtimeInfoPublishesDynamicRevisionFromBothCurrentIndexes() {

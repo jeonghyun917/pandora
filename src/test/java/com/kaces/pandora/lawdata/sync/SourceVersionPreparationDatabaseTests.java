@@ -19,6 +19,9 @@ class SourceVersionPreparationDatabaseTests {
     private SourceVersionEmbeddingReceipts receipts;
     private org.springframework.transaction.PlatformTransactionManager manager;
     private LawChunkMapper chunkMapper;
+    private com.kaces.pandora.rag.recovery.RagRecoveryMapper recoveryMapper;
+    private com.kaces.pandora.semantic.lexical.SemanticLexicalMapper lexicalMapper;
+    private SourceVersionVectorPreparation testVectors;
     private long baseline;
     private static final String SHA="c".repeat(40),TITLE="원문 준비 테스트 지침",KEY="admrul:원문준비테스트지침";
     @BeforeEach void setup() throws Exception {
@@ -32,21 +35,27 @@ class SourceVersionPreparationDatabaseTests {
         new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(new org.springframework.core.io.ClassPathResource("schema.sql")).execute(ds);
         db.update("DELETE FROM law_source_version_transitions");db.update("DELETE FROM law_source_version_vector_receipts");db.update("DELETE FROM law_source_version_history");db.update("DELETE FROM law_source_version_embedding_receipts");db.update("DELETE FROM law_source_version_candidates");db.update("DELETE FROM law_source_version_groups");
         db.update("UPDATE law_source_version_visibility_epoch SET revision=0 WHERE singleton_id=1");
-        db.update("DELETE FROM law_api_documents WHERE external_id IN ('source-prep-test-old','source-prep-test-new')");
+        db.update("DELETE FROM law_api_documents WHERE external_id IN ('source-prep-test-old','source-prep-test-new','source-prep-test-next')");
         db.update("INSERT INTO law_api_documents(target,external_id,title,source_date,canonical_key,effective_date,effective_status,raw_json,content_hash) VALUES('admrul','source-prep-test-old',?,'20250101',?,'20250101','CURRENT','{}',?)",TITLE,KEY,"a".repeat(64));
         baseline=db.queryForObject("SELECT document_id FROM law_api_documents WHERE external_id='source-prep-test-old'",Long.class);
         db.update("INSERT INTO law_api_document_chunks(document_id,chunk_type,chunk_text,embedding_text,content_hash) VALUES(?,'article','보존할 기존 본문','보존할 기존 본문',?)",baseline,"e".repeat(64));
         manager=new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds);
         store=new SourceVersionCandidateStore(db,manager);
         var factory=new org.mybatis.spring.SqlSessionFactoryBean();factory.setDataSource(ds);
-        factory.setMapperLocations(new org.springframework.core.io.ClassPathResource("mapper/law/LawChunkMapper.xml"),new org.springframework.core.io.ClassPathResource("mapper/law/LawDetailMapper.xml"),new org.springframework.core.io.ClassPathResource("mapper/law/LawAssetMapper.xml"));
+        factory.setMapperLocations(new org.springframework.core.io.ClassPathResource("mapper/law/LawChunkMapper.xml"),new org.springframework.core.io.ClassPathResource("mapper/law/LawDetailMapper.xml"),new org.springframework.core.io.ClassPathResource("mapper/law/LawAssetMapper.xml"),
+            new org.springframework.core.io.ClassPathResource("mapper/law/RagRecoveryMapper.xml"),new org.springframework.core.io.ClassPathResource("mapper/law/SemanticLexicalMapper.xml"));
         var session=new org.mybatis.spring.SqlSessionTemplate(factory.getObject());var chunks=session.getMapper(LawChunkMapper.class);
         chunkMapper=chunks;
+        recoveryMapper=session.getMapper(com.kaces.pandora.rag.recovery.RagRecoveryMapper.class);
+        lexicalMapper=session.getMapper(com.kaces.pandora.semantic.lexical.SemanticLexicalMapper.class);
         var json=new ObjectMapper();
         var writer=new LawDocumentWriter(null,session.getMapper(LawDetailMapper.class),chunks,session.getMapper(LawAssetMapper.class),new LawJsonWriter(json),null,null,null);
         preparation=new SourceVersionPreparationService(db,store,writer,chunks,new LawOpenApiPayloadParser(json,new LawJsonWriter(json)),manager,SHA);
         receipts=new SourceVersionEmbeddingReceipts(db,preparation,manager,"source-test-embedding",3);
         new SourceVersionSchemaMaintenance(db).run(null);
+        new com.kaces.pandora.semantic.lexical.SemanticLexicalSchemaMaintenance(db).run(null);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM rag_recovery_pointers",Integer.class)).isZero();
+        db.update("UPDATE rag_recovery_routing_epoch SET revision=0,lexical_generation=NULL,lexical_fingerprint=NULL,corpus_revision=0,published_corpus_revision=0 WHERE singleton_id=1");
     }
     @AfterEach void cleanupTriggers() {
         if(db==null)return;
@@ -289,8 +298,183 @@ class SourceVersionPreparationDatabaseTests {
         assertThat(receipt.vectorCollection()).isEqualTo(collection);assertThat(receipt.chunkCount()).isEqualTo(1);
         assertThat(service.prepare(candidate.id())).isEqualTo(receipt);
         assertThat(db.queryForObject("SELECT state FROM law_source_version_candidates WHERE candidate_id=?",String.class,candidate.id())).isEqualTo("VALIDATED");
-        org.mockito.Mockito.when(qdrant.baselineLawFingerprint(org.mockito.ArgumentMatchers.anyList())).thenReturn("a".repeat(64),"b".repeat(64));
+        var tx=new org.springframework.transaction.support.TransactionTemplate(manager);
+        tx.executeWithoutResult(status->{
+            db.queryForObject("SELECT revision FROM law_source_version_epoch WHERE singleton_id=1 FOR UPDATE",Long.class);
+            db.update("UPDATE law_source_version_candidates SET state='INDEX_READY' WHERE candidate_id=?",candidate.id());
+            store.registerPreserved(candidate.groupKey(),receiptDocument(candidate.id()),candidate.id());
+        });
+        assertThat(service.verifyPrepared(candidate.id())).isEqualTo(receipt);
+        assertThat(service.verifyPreserved(candidate.groupKey(),receiptDocument(candidate.id()))).isEqualTo(receipt.vectorFingerprint());
+        assertThat(service.verifyPreserved(candidate.groupKey(),baseline)).isEqualTo(receipt.baselineFingerprint());
         assertThatThrownBy(()->service.prepare(candidate.id())).isInstanceOf(IllegalStateException.class);
+        org.mockito.Mockito.verify(embedding,org.mockito.Mockito.times(1)).embed(org.mockito.ArgumentMatchers.anyList());
+        org.mockito.Mockito.when(qdrant.baselineLawFingerprint(org.mockito.ArgumentMatchers.anyList())).thenReturn("a".repeat(64),"b".repeat(64));
+        assertThat(service.verifyPrepared(candidate.id())).isEqualTo(receipt);
+        assertThatThrownBy(()->service.verifyPrepared(candidate.id())).isInstanceOf(IllegalStateException.class);
+        org.mockito.Mockito.when(qdrant.baselineLawFingerprint(org.mockito.ArgumentMatchers.anyList())).thenReturn("a".repeat(64));
+        org.mockito.Mockito.when(qdrant.findExistingLawPointIds(org.mockito.ArgumentMatchers.anyList())).thenReturn(Set.of(chunk));
+        assertThatThrownBy(()->service.verifyPrepared(candidate.id())).isInstanceOf(IllegalStateException.class).hasMessageContaining("shared");
+    }
+    private long receiptDocument(String candidate) {return db.queryForObject("SELECT candidate_document_id FROM law_source_version_candidates WHERE candidate_id=?",Long.class,candidate);}
+    @Test void preparedSourcePromotionAndRollbackKeepThePreservedBaselineAndPublishOneCorpus() {
+        var candidate=store.stage(baseline,0,source(),raw(),SHA);var validated=preparation.validate(candidate.id());
+        var old=db.queryForMap("SELECT * FROM law_api_documents WHERE document_id=?",baseline);
+        var service=transitionService();
+        var prepared=service.prepare(candidate.id());
+        assertThat(prepared.state()).isEqualTo("READY");assertThat(prepared.kind()).isEqualTo("PROMOTE");
+        assertThat(db.queryForMap("SELECT * FROM law_api_documents WHERE document_id=?",baseline)).isEqualTo(old);
+        assertThat(db.queryForObject("SELECT use_yn FROM law_api_documents WHERE document_id=?",String.class,validated.documentId())).isEqualTo("N");
+        assertThat(new SourceVersionRoutingReader(db,manager).capture().revision()).isZero();
+        assertThat(service.prepare(candidate.id())).isEqualTo(prepared);
+        var active=service.promote(prepared.id(),0);
+        assertThat(active.documentId()).isEqualTo(validated.documentId());assertThat(active.revision()).isEqualTo(1);
+        assertThat(new SourceVersionRoutingReader(db,manager).capture().activeVectors()).containsKey(candidate.id());
+        assertThat(db.queryForObject("SELECT use_yn FROM law_api_documents WHERE document_id=?",String.class,baseline)).isEqualTo("Y");
+        assertThat(db.queryForObject("SELECT effective_status FROM law_api_documents WHERE document_id=?",String.class,baseline)).isEqualTo("PAST");
+        assertThat(db.queryForObject("SELECT chunk_text FROM law_api_document_chunks WHERE document_id=?",String.class,baseline)).isEqualTo("보존할 기존 본문");
+        assertThatThrownBy(()->service.promote(prepared.id(),0)).isInstanceOf(IllegalStateException.class);
+        var rollback=service.prepareRollback(candidate.groupKey(),1,baseline);
+        assertThat(rollback.kind()).isEqualTo("ROLLBACK");assertThat(rollback.state()).isEqualTo("READY");
+        assertThat(service.rollback(rollback.id(),1).documentId()).isEqualTo(baseline);
+        var restored=new SourceVersionRoutingReader(db,manager).capture();
+        assertThat(restored.revision()).isEqualTo(2);assertThat(restored.activeVectors()).isEmpty();
+        assertThat(restored.routes().get(candidate.groupKey()).activeDocumentId()).isEqualTo(baseline);
+        assertThat(db.queryForObject("SELECT state FROM law_source_version_candidates WHERE candidate_id=?",String.class,candidate.id())).isEqualTo("RETIRED");
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM law_source_version_history",Integer.class)).isEqualTo(2);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM law_source_version_transitions WHERE state='APPLIED'",Integer.class)).isEqualTo(2);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM law_source_version_vector_receipts",Integer.class)).isEqualTo(1);
+        assertThat(receipts.load(candidate.id())).hasSize(1);
+    }
+    @Test void followingVersionUsesPreservedIsolatedVectorsAndCanRestoreThePreviousRegisteredVersion() {
+        var first=store.stage(baseline,0,source(),raw(),SHA);var validated=preparation.validate(first.id());var service=transitionService();
+        service.promote(service.prepare(first.id()).id(),0);
+        var nextSource=new SearchDocument("admrul","source-prep-test-next",TITLE,"","","20261020",KEY,"20261020","CURRENT","/DRF/lawService.do?target=admrul&ID=source-prep-test-next&type=JSON","{}");
+        var next=store.stage(validated.documentId(),1,nextSource,raw().replace("미이행 시","재협의 미이행 시"),SHA);
+        var nextValidation=preparation.validate(next.id());var prepared=service.prepare(next.id());
+        assertThat(db.queryForObject("SELECT baseline_vector_fingerprint FROM law_source_version_vector_receipts WHERE candidate_id=?",String.class,next.id())).isEqualTo("d".repeat(64));
+        assertThat(service.promote(prepared.id(),1).documentId()).isEqualTo(nextValidation.documentId());
+        var rollback=service.prepareRollback(first.groupKey(),2,validated.documentId());
+        assertThat(service.rollback(rollback.id(),2).documentId()).isEqualTo(validated.documentId());
+        var route=new SourceVersionRoutingReader(db,manager).capture().routes().get(first.groupKey());
+        assertThat(route.candidateId()).isEqualTo(first.id());assertThat(route.historyDocumentIds()).hasSize(3);
+        assertThat(db.queryForObject("SELECT state FROM law_source_version_candidates WHERE candidate_id=?",String.class,next.id())).isEqualTo("RETIRED");
+        assertThat(receipts.load(first.id())).hasSize(1);assertThat(receipts.load(next.id())).hasSize(1);
+        assertThatThrownBy(()->service.prepareRollback(first.groupKey(),3,Long.MAX_VALUE)).isInstanceOf(RuntimeException.class);
+    }
+    @Test void sourcePointerFailureRollsBackCandidateVisibilityAndAllPublishedEpochs() {
+        var candidate=store.stage(baseline,0,source(),raw(),SHA);var validated=preparation.validate(candidate.id());
+        var service=transitionService();var prepared=service.prepare(candidate.id());
+        var before=db.queryForMap("SELECT * FROM law_source_version_groups WHERE group_key=?",candidate.groupKey());
+        db.execute("CREATE TRIGGER fail_source_preparation BEFORE UPDATE ON law_source_version_groups FOR EACH ROW BEGIN IF NEW.revision>OLD.revision THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected source pointer failure'; END IF; END");
+        assertThatThrownBy(()->service.promote(prepared.id(),0)).isInstanceOf(RuntimeException.class);
+        assertThat(db.queryForMap("SELECT * FROM law_source_version_groups WHERE group_key=?",candidate.groupKey())).isEqualTo(before);
+        assertThat(db.queryForObject("SELECT state FROM law_source_version_candidates WHERE candidate_id=?",String.class,candidate.id())).isEqualTo("INDEX_READY");
+        assertThat(db.queryForObject("SELECT use_yn FROM law_api_documents WHERE document_id=?",String.class,validated.documentId())).isEqualTo("N");
+        assertThat(db.queryForObject("SELECT effective_status FROM law_api_documents WHERE document_id=?",String.class,baseline)).isEqualTo("CURRENT");
+        assertThat(recoveryMapper.findRoutingEpoch().revision()).isZero();
+        assertThat(new SourceVersionRoutingReader(db,manager).capture().revision()).isZero();
+        assertThat(db.queryForObject("SELECT state FROM law_source_version_transitions WHERE transition_id=?",String.class,prepared.id())).isEqualTo("READY");
+    }
+    @Test void changedLexicalAssetOrCorpusCannotActivateAPreparedSource() {
+        var candidate=store.stage(baseline,0,source(),raw(),SHA);preparation.validate(candidate.id());
+        var service=transitionService();var prepared=service.prepare(candidate.id());
+        var tx=new org.springframework.transaction.support.TransactionTemplate(manager);
+        tx.executeWithoutResult(status->{
+            db.update("UPDATE semantic_lexical_terms SET term_frequency=term_frequency+1 WHERE index_version=? LIMIT 1","recovery_"+prepared.id());
+            assertThatThrownBy(()->service.promote(prepared.id(),0)).isInstanceOf(IllegalStateException.class);
+            status.setRollbackOnly();
+        });
+        db.update("UPDATE rag_recovery_routing_epoch SET corpus_revision=corpus_revision+1 WHERE singleton_id=1");
+        assertThatThrownBy(()->service.promote(prepared.id(),0)).isInstanceOf(IllegalStateException.class);
+        assertThat(db.queryForObject("SELECT active_document_id FROM law_source_version_groups WHERE group_key=?",Long.class,candidate.groupKey())).isEqualTo(baseline);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM law_source_version_transitions WHERE state='APPLIED'",Integer.class)).isZero();
+    }
+    @Test void servingLeaseBlocksTheActualPromotionUntilResponseCompletion() throws Exception {
+        var candidate=store.stage(baseline,0,source(),raw(),SHA);var validated=preparation.validate(candidate.id());
+        var service=transitionService();var prepared=service.prepare(candidate.id());
+        var leases=new SourceVersionReadLeases(db.getDataSource(),1,java.time.Duration.ofMillis(100));
+        var executor=java.util.concurrent.Executors.newSingleThreadExecutor();var lease=leases.acquire();
+        try {
+            var switched=executor.submit(()->service.promote(prepared.id(),0));
+            assertThatThrownBy(()->switched.get(150,java.util.concurrent.TimeUnit.MILLISECONDS)).isInstanceOf(java.util.concurrent.TimeoutException.class);
+            assertThat(db.queryForObject("SELECT active_document_id FROM law_source_version_groups WHERE group_key=?",Long.class,candidate.groupKey())).isEqualTo(baseline);
+            lease.close();
+            assertThat(switched.get(5,java.util.concurrent.TimeUnit.SECONDS).documentId()).isEqualTo(validated.documentId());
+        } finally {lease.close();executor.shutdownNow();}
+    }
+    @Test void sourceIndexAuditRequiresFullIsolatedReadbackRatherThanASharedEmbeddingPlaceholder() {
+        var candidate=store.stage(baseline,0,source(),raw(),SHA);var validated=preparation.validate(candidate.id());
+        var service=transitionService();var prepared=service.prepare(candidate.id());
+        var beans=new org.springframework.beans.factory.support.DefaultListableBeanFactory();
+        beans.registerSingleton("sourcePreparation",preparation);beans.registerSingleton("sourceVectors",testVectors);
+        var verifier=new SourceVersionIntegrityVerifier(db,beans.getBeanProvider(SourceVersionPreparationService.class),beans.getBeanProvider(SourceVersionVectorPreparation.class));
+        var q=org.mockito.Mockito.mock(com.kaces.pandora.infra.qdrant.QdrantClient.class);
+        var auditProperties=new com.kaces.pandora.semantic.config.LawAiProperties(new com.kaces.pandora.semantic.config.LawAiProperties.OpenAi("","source-test-embedding","gpt-5-mini","low","low",100),new com.kaces.pandora.semantic.config.LawAiProperties.Qdrant("http://127.0.0.1:1","law_shared","rag",3),null,null);
+        var audit=new com.kaces.pandora.semantic.integrity.LawIndexIntegrityService(chunkMapper,q,auditProperties);
+        audit.configureSourceVersionIntegrity(verifier);
+        var ids=chunkMapper.findChunkIdsByDocumentId(validated.documentId());
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM law_api_chunk_embeddings e JOIN law_api_document_chunks c ON c.chunk_id=e.chunk_id WHERE c.document_id=?",Integer.class,validated.documentId())).isZero();
+        var inactive=audit.auditByChunkIds("admrul",ids);
+        assertThat(inactive.scannedRows()).isEqualTo(validated.chunkCount());assertThat(inactive.issues()).isEmpty();
+        assertThat(new SourceVersionRoutingReader(db,manager).capture().revision()).isZero();
+        service.promote(prepared.id(),0);
+        var report=audit.auditByChunkIds("admrul",ids);
+        assertThat(report.scannedRows()).isEqualTo(validated.chunkCount());assertThat(report.issues()).isEmpty();
+        db.update("UPDATE law_source_version_vector_receipts SET vector_fingerprint=? WHERE candidate_id=?","f".repeat(64),candidate.id());
+        assertThatThrownBy(()->audit.auditByChunkIds("admrul",ids)).isInstanceOf(IllegalStateException.class);
+    }
+    private SourceVersionTransitionService transitionService() {
+        var embedding=org.mockito.Mockito.mock(com.kaces.pandora.infra.openai.OpenAiEmbeddingClient.class);
+        var q=org.mockito.Mockito.mock(com.kaces.pandora.infra.qdrant.QdrantClient.class);
+        org.mockito.Mockito.when(embedding.embed(org.mockito.ArgumentMatchers.anyList())).thenReturn(List.of(List.of(1.0,2.0,3.0)));
+        org.mockito.Mockito.when(q.lawSourceVersionCollection(org.mockito.ArgumentMatchers.anyString())).thenAnswer(call->"law_source_"+call.<String>getArgument(0).replace("-",""));
+        org.mockito.Mockito.when(q.baselineLawFingerprint(org.mockito.ArgumentMatchers.anyList())).thenReturn("a".repeat(64));
+        org.mockito.Mockito.when(q.inspectLawSourceVersionPoints(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyList()))
+            .thenReturn(new com.kaces.pandora.infra.qdrant.QdrantClient.RecoveryPointInspection(null,Set.of()));
+        org.mockito.Mockito.when(q.verifyLawSourceVersionCollection(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyList())).thenReturn("d".repeat(64));
+        var vectors=new SourceVersionVectorPreparation(db,preparation,receipts,chunkMapper,embedding,q,manager,"source-test-embedding");
+        testVectors=vectors;
+        var routing=new com.kaces.pandora.rag.recovery.RagRecoveryRoutingService(recoveryMapper,lexicalMapper,manager);
+        routing.configureSourceVersionRouting(new SourceVersionRoutingReader(db,manager));
+        var index=new com.kaces.pandora.semantic.lexical.SemanticLexicalIndexService(lexicalMapper,new com.kaces.pandora.semantic.lexical.KoreanLexicalTokenizer());
+        return new SourceVersionTransitionService(db,store,preparation,vectors,chunkMapper,new SourceVersionCorpusService(db,store),recoveryMapper,routing,lexicalMapper,index,manager,SHA,"c".repeat(64));
+    }
+    @Test void corpusCaptureWaitsForVisibilityBeforeTakingTheRegistrationEpoch() throws Exception {
+        var sources=new SourceVersionCorpusService(db,store);
+        var executor=java.util.concurrent.Executors.newSingleThreadExecutor();
+        var future=new java.util.concurrent.atomic.AtomicReference<java.util.concurrent.Future<Boolean>>();
+        var tx=new org.springframework.transaction.support.TransactionTemplate(manager);
+        try {
+            tx.executeWithoutResult(status->{
+                db.queryForObject("SELECT revision FROM law_source_version_visibility_epoch WHERE singleton_id=1 FOR UPDATE",Long.class);
+                future.set(executor.submit(()->new org.springframework.transaction.support.TransactionTemplate(manager).execute(inner->{sources.lockSourceEpoch();return true;})));
+                assertThatThrownBy(()->future.get().get(150,java.util.concurrent.TimeUnit.MILLISECONDS)).isInstanceOf(java.util.concurrent.TimeoutException.class);
+                var independent=new org.springframework.transaction.support.TransactionTemplate(manager);
+                independent.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+                independent.executeWithoutResult(inner->db.queryForObject("SELECT revision FROM law_source_version_epoch WHERE singleton_id=1 FOR UPDATE",Long.class));
+            });
+            assertThat(future.get().get(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        } finally {executor.shutdownNow();}
+    }
+    @Test void normalIndexQueuesCannotReenqueueManagedSourceAssets() {
+        long chunk=db.queryForObject("SELECT chunk_id FROM law_api_document_chunks WHERE document_id=?",Long.class,baseline);
+        assertThat(chunkMapper.findSemanticIndexCandidatesByDocumentIds("admrul",List.of(baseline),"source-test-embedding","law_shared",10)).hasSize(1);
+        assertThat(chunkMapper.findSemanticChunksByIdsForIndexing(List.of(chunk))).hasSize(1);
+        store.stage(baseline,0,source(),raw(),SHA);
+        assertThat(chunkMapper.findSemanticIndexCandidates("admrul",TITLE,"source-test-embedding","law_shared",10)).isEmpty();
+        assertThat(chunkMapper.findSemanticIndexCandidatesByDocumentIds("admrul",List.of(baseline),"source-test-embedding","law_shared",10)).isEmpty();
+        assertThat(chunkMapper.findSemanticChunksByIdsForIndexing(List.of(chunk))).isEmpty();
+    }
+    @Test void requiredSourceReferenceWithoutFidelityProofCannotCreateReadyAssets() {
+        String raw=raw().replace("\"AdmRulService\":{","\"AdmRulService\":{\"원문파일\":\"https://www.law.go.kr/required.pdf\",");
+        var candidate=store.stage(baseline,0,source(),raw,SHA);var validated=preparation.validate(candidate.id());
+        assertThat(preparation.snapshotForAssets(candidate.id()).sourceAssets()).isNotEmpty();
+        assertThatThrownBy(()->transitionService().prepare(candidate.id())).isInstanceOf(IllegalStateException.class).hasMessageContaining("reference fidelity");
+        assertThat(db.queryForObject("SELECT state FROM law_source_version_candidates WHERE candidate_id=?",String.class,candidate.id())).isEqualTo("VALIDATED");
+        assertThat(db.queryForObject("SELECT use_yn FROM law_api_documents WHERE document_id=?",String.class,validated.documentId())).isEqualTo("N");
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM law_source_version_embedding_receipts",Integer.class)).isZero();
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM law_source_version_transitions",Integer.class)).isZero();
     }
     @Test void preQWriteGuardRejectsManagedSourceBeforeCallingExternalMutation() {
         long chunk=db.queryForObject("SELECT chunk_id FROM law_api_document_chunks WHERE document_id=?",Long.class,baseline);

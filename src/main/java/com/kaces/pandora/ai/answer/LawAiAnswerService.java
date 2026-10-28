@@ -512,6 +512,21 @@ public class LawAiAnswerService {
 		RuntimeIndexIdentity indexIdentity = qdrantReady
 			? currentIndexIdentity(lawCollection, ragCollection)
 			: null;
+        if(qdrantReady && recoveryRoutingService!=null) {
+            try {
+                var captured=recoveryRoutingService.capture();
+                if(captured.sources().revision()>0) {
+                    if(recoveryReadiness==null)throw new IllegalStateException("Source readiness verifier unavailable");
+                    recoveryReadiness.verify(captured);
+                    if(indexIdentity!=null)indexIdentity=new RuntimeIndexIdentity(
+                        com.kaces.pandora.common.text.LawHashUtils.sha256Json(List.of("source-vector-revision-v1",indexIdentity.revision(),captured.cacheIdentity())),
+                        indexIdentity.lawDatabase(),indexIdentity.ragDatabase(),indexIdentity.lawQdrant(),indexIdentity.ragQdrant());
+                }
+            } catch(RuntimeException unavailable) {
+                log.warn("Source routing runtime identity unavailable failureType={}",unavailable.getClass().getSimpleName());
+                qdrantReady=false;indexIdentity=null;
+            }
+        }
 		return new LawAiRuntimeInfo(
 			lawCollection + "+" + ragCollection,
 			properties.openai().embeddingModel(),
@@ -1234,7 +1249,7 @@ public class LawAiAnswerService {
 		List<List<Double>> queryVectors = joinFuture(embeddingFuture);
 		long qdrantStart = System.nanoTime();
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		List<QdrantSearchHit> hits = routing == null || routing.replacedDocumentIds().isEmpty() ? semanticVectorSearchService.search(
+		List<QdrantSearchHit> hits = routing == null || (routing.replacedDocumentIds().isEmpty() && routing.sources().revision()==0) ? semanticVectorSearchService.search(
 			queryVectors,
 			targets,
 			VECTOR_CANDIDATE_LIMIT,

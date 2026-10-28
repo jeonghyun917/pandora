@@ -317,3 +317,58 @@ If a recovery test script is rejected by host policy, leave that branch blocked.
 Do not change ExecutionPolicy, use Bypass/IEX/inline replacement, or rerun the same
 denied operation through another engine. An administrator must provide a
 policy-compliant execution route; user approval alone does not alter host policy.
+
+## Preserved law/admin-rule source versions
+
+`/api/law-data/source-versions/**` requires the same normal ADMIN session,
+same-origin CSRF protection, and no-store responses as document recovery. Never
+extract login inputs, cookies, or tokens into automation. The server fetches the
+exact official search identity and detail itself: `law` uses MST, `admrul` uses ID.
+Detail title, effective date and any supplied serial must agree with the search
+source before group registration; a parser-generated fallback ID is not authority.
+
+The opt-in wiring flag is `pandora.source-version.workflow-enabled` (default
+false), with the existing full `pandora.rag.recovery.product-sha`. The independent
+`pandora.source-version.mutations-enabled` flag defaults false. Keep both mutation
+gates closed until actual isolated Q verification, complete baseline DB/Q health,
+source/reference fidelity, quota/network availability, and compatibility/ownership
+of **every** shared corpus/Q writer (including 18080) have been established. Do not
+stop or promote 18080 to satisfy this condition without its separate authority.
+A guarded app-dev deployment is not an actual source refresh or quality PASS.
+
+API order: `status` / `session`, POST `stage` (baselineDocumentId,
+expectedRevision, externalId), `validate` / `prepare` (candidateId), then `promote`
+(transitionId, expectedRevision). `prepare-rollback` accepts only registered
+history (groupKey, expectedRevision, restoreDocumentId); `rollback` applies that
+prepared transition. No request can supply source bytes, a readiness boolean,
+product/config hashes, forced mappings, or an arbitrary restore document.
+
+New required reference assets without genuine fidelity proof block readiness;
+their URL metadata is not file/content proof. Existing preserved baseline assets
+are bound by their full immutable snapshot, not newly declared validated files.
+INDEX_READY alone changes no serving pointer. Source/source-history body assets
+and old shared/isolated vectors remain preserved through promotion and rollback.
+The transition publishes pointer, controlled visibility and the complete lexical
+namespace with exact source/global-corpus CAS in one DB transaction.
+
+Serving holds a bounded shared visibility lease through sync/async completion in
+a separate lazy 16-connection pool. Lock order is visibility (shared for corpus
+capture, exclusive for activation), source registration, then RAG routing. External
+model/Q work is outside activation locks. Full rebuild, RAG preparation/rollback,
+title/keyword/context/cache/vector/answer paths retain captured source routing.
+Normal index queues exclude managed source groups; all shared law point writes
+also require the pre-Q source fence. Legacy runtimes without that fence are not
+compatible writers merely because DB triggers reject their later status update.
+
+Runtime index identity includes activated source routing/asset receipts and fails
+closed on missing source readiness. Legacy DB/Q count fields still describe their
+named shared collections, not a silently summed isolated count. The law integrity
+audit keeps source rows in its scanned membership, verifies registered source
+namespaces and immutable body/embedding receipts, and rejects missing/drifting
+proof and leaked shared points; it does not invent shared embedding rows or suppress
+unqualified candidates. A qualified inactive INDEX_READY namespace is audited as
+inactive (with its READY receipt), not silently marked serving or APPLIED.
+Once sources are active, keep workflow verification wiring available even when
+mutations are disabled. Do not manually alter epochs, READY/APPLIED states, hashes,
+or preparation receipts. Existing terminal failed evaluation checkpoints remain
+non-replayable, and source freshness alone does not prove broader legal scope.

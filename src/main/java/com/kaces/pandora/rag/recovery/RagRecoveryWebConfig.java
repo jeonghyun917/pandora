@@ -8,6 +8,6 @@ public class RagRecoveryWebConfig implements WebMvcConfigurer {
     private final RagRecoveryAccessInterceptor access;
     public RagRecoveryWebConfig(RagRecoveryAccessInterceptor access) { this.access=access; }
     @Override public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(access).addPathPatterns("/api/law-data/rag-recovery/**");
+        registry.addInterceptor(access).addPathPatterns("/api/law-data/rag-recovery/**","/api/law-data/source-versions/**");
     }
 }

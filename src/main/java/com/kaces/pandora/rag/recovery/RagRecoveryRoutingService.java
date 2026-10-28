@@ -30,7 +30,7 @@ public class RagRecoveryRoutingService {
             throw new IllegalStateException("Recovery routing unavailable",unavailable);
         }
     }
-    RecoveryRoutingSnapshot captureInTransaction() {
+    public RecoveryRoutingSnapshot captureInTransaction() {
         if(!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
             throw new IllegalStateException("Routing capture requires a transaction");
         return readSnapshot();

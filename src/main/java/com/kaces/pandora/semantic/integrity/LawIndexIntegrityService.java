@@ -23,6 +23,9 @@ public class LawIndexIntegrityService {
 	private final PointLookup pointLookup;
 	private final String model;
 	private final String vectorStore;
+    private com.kaces.pandora.lawdata.sync.SourceVersionIntegrityVerifier sourceIntegrity;
+    @Autowired
+    public void configureSourceVersionIntegrity(com.kaces.pandora.lawdata.sync.SourceVersionIntegrityVerifier verifier) {sourceIntegrity=Objects.requireNonNull(verifier);}
 
 	@Autowired
 	public LawIndexIntegrityService(
@@ -60,9 +63,11 @@ public class LawIndexIntegrityService {
 		List<LawIndexIntegrityRow> rows = lawChunkMapper.findLawIndexIntegrityRows(
 			normalizeTarget(target), model, vectorStore, safeLimit, safeAfterChunkId
 		);
-		Set<Long> existingPointIds = findExistingPointIds(rows);
+		var verifiedSources=sourceIntegrity==null?java.util.Map.<Long,String>of():sourceIntegrity.verify(rows,model);
+		Set<Long> existingPointIds = findExistingPointIds(rows.stream().filter(row->!verifiedSources.containsKey(row.chunkId())).toList());
 		List<LawIndexIntegrityIssue> issues = new ArrayList<>();
 		for (LawIndexIntegrityRow row : rows) {
+			if(verifiedSources.containsKey(row.chunkId()))continue;
 			classify(row, existingPointIds).ifPresent(issues::add);
 		}
 		long lastScannedChunkId = rows.isEmpty() ? safeAfterChunkId : rows.get(rows.size() - 1).chunkId();
@@ -81,9 +86,11 @@ public class LawIndexIntegrityService {
 		List<LawIndexIntegrityRow> rows = lawChunkMapper.findLawIndexIntegrityRowsByIds(
 			normalizedTarget, model, vectorStore, safeChunkIds
 		);
-		Set<Long> existingPointIds = findExistingPointIds(rows);
+		var verifiedSources=sourceIntegrity==null?java.util.Map.<Long,String>of():sourceIntegrity.verify(rows,model);
+		Set<Long> existingPointIds = findExistingPointIds(rows.stream().filter(row->!verifiedSources.containsKey(row.chunkId())).toList());
 		List<LawIndexIntegrityIssue> issues = new ArrayList<>();
 		for (LawIndexIntegrityRow row : rows) {
+			if(verifiedSources.containsKey(row.chunkId()))continue;
 			classify(row, existingPointIds).ifPresent(issues::add);
 		}
 		long lastScannedChunkId = rows.stream().mapToLong(LawIndexIntegrityRow::chunkId).max().orElse(0L);

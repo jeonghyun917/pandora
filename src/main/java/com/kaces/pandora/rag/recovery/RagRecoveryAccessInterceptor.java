@@ -27,7 +27,7 @@ public class RagRecoveryAccessInterceptor implements HandlerInterceptor {
         }
         response.setHeader("Cache-Control","no-store");return true;
     }
-    static String csrfToken(HttpServletRequest request) {
+    public static String csrfToken(HttpServletRequest request) {
         var admin=AdminSessionSupport.current(request);
         if(admin==null || !"ADMIN".equals(admin.role()))throw new IllegalStateException("Administrator session required");
         var session=request.getSession(false);

@@ -58,6 +58,10 @@ public final class SourceVersionPreparationService {
         if(id==null || !id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))throw new IllegalArgumentException("Candidate UUID required");
         return tx.execute(status->assetSnapshot(id,recheckReadableContent(id),true));
     }
+    AssetSnapshot snapshotForTransition(String id) {
+        var validation=recheckReadableContent(id);
+        return assetSnapshot(id,validation,!"VALIDATED".equals(validation.state()));
+    }
     private AssetSnapshot assetSnapshot(String id,Validation validation,boolean registered) {
             var candidate=db.queryForMap("SELECT * FROM law_source_version_candidates WHERE candidate_id=?",id);
             var source=json.readValue((String)candidate.get("metadata_json"),SearchDocument.class);

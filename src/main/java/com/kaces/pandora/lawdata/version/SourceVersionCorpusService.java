@@ -15,6 +15,9 @@ public class SourceVersionCorpusService {
     public SourceVersionCorpusService(JdbcTemplate db,SourceVersionCandidateStore store) {this.db=db;this.store=store;}
     public void lockSourceEpoch() {
         requireTransaction();
+        // SERIALIZABLE routing reads also lock visibility. Take that shared lock first,
+        // matching the exclusive visibility -> source -> RAG order used by activation.
+        db.queryForObject("SELECT revision FROM law_source_version_visibility_epoch WHERE singleton_id=1 LOCK IN SHARE MODE",Long.class);
         db.queryForObject("SELECT revision FROM law_source_version_epoch WHERE singleton_id=1 FOR UPDATE",Long.class);
     }
     public RecoveryCorpus overlay(RecoveryCorpus corpus,SourceVersionRoutingSnapshot sources) {

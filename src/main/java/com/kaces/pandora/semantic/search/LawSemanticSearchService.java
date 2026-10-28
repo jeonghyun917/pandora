@@ -54,7 +54,7 @@ public class LawSemanticSearchService {
 		List<Double> queryVector = embeddingClient.embed(List.of(normalized.query())).get(0);
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 		List<String> targets = searchTargets(normalized.target());
-		List<QdrantSearchHit> hits = routing.replacedDocumentIds().isEmpty()
+		List<QdrantSearchHit> hits = routing.replacedDocumentIds().isEmpty() && routing.sources().revision()==0
 			? qdrantClient.search(queryVector, targets, normalized.display())
 			: qdrantClient.searchBalanced(queryVector, targets, normalized.display(), normalized.display(), routing);
 		if (hits.isEmpty()) {

@@ -64,7 +64,7 @@ public final class RuntimeConfigurationIdentity {
 		return sha256(properties, lexical, rrf, coverage, documentExpansion, disabledLexicalVariant());
 	}
 
-	static String sha256(
+	public static String sha256(
 		LawAiProperties properties,
 		LawAiLexicalProperties lexical,
 		LawAiRrfProperties rrf,

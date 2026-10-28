@@ -29,16 +29,16 @@ public final class SourceVersionVectorPreparation {
     }
     public VectorReceipt prepare(String id) {
         var source=preparation.snapshotForAssets(id);
-        var baseline=List.copyOf(chunks.findSourceVersionBaselineChunks(id));
-        if(baseline.isEmpty() || baseline.size()>10000)throw new IllegalStateException("Complete preserved baseline required");
-        String preserved=qdrant.baselineLawFingerprint(baseline);
+        var ownership=db.queryForMap("SELECT group_key,baseline_document_id FROM law_source_version_candidates WHERE candidate_id=?",id);
+        String group=(String)ownership.get("group_key");long baseline=((Number)ownership.get("baseline_document_id")).longValue();
+        String preserved=verifyPreserved(group,baseline);
         var existing=find(id);
         if(existing!=null) {
             requireIdentity(source,existing,preserved);
             var vectors=embeddings.load(id);
             if(!existing.vectorFingerprint().equals(qdrant.verifyLawSourceVersionCollection(id,model,source.validation().manifest(),source.chunks(),ordered(source,vectors))))
                 throw new IllegalStateException("Prepared source vectors changed");
-            if(!preserved.equals(qdrant.baselineLawFingerprint(baseline)))throw new IllegalStateException("Preserved baseline vectors changed during readback");
+            if(!preserved.equals(verifyPreserved(group,baseline)))throw new IllegalStateException("Preserved baseline vectors changed during readback");
             return existing;
         }
         if(db.queryForObject("SELECT COUNT(*) FROM law_source_version_embedding_receipts WHERE candidate_id=?",Integer.class,id)==0) {
@@ -61,7 +61,7 @@ public final class SourceVersionVectorPreparation {
             if(!missing.isEmpty())qdrant.upsertLawSourceVersion(id,model,source.validation().manifest(),missing,missing.stream().map(row->vectors.get(row.chunkId())).toList());
         }
         String fingerprint=qdrant.verifyLawSourceVersionCollection(id,model,source.validation().manifest(),source.chunks(),ordered(source,vectors));
-        if(!preserved.equals(qdrant.baselineLawFingerprint(baseline)))throw new IllegalStateException("Preserved baseline vectors changed");
+        if(!preserved.equals(verifyPreserved(group,baseline)))throw new IllegalStateException("Preserved baseline vectors changed");
         var receipt=new VectorReceipt(id,source.validation().manifest(),qdrant.lawSourceVersionCollection(id),fingerprint,preserved,model,source.chunks().size());
         requireIdentity(source,receipt,preserved);
         return tx.execute(status->{
@@ -73,6 +73,35 @@ public final class SourceVersionVectorPreparation {
                 throw new IllegalStateException("Source vector receipt conflict");
             return receipt;
         });
+    }
+    /** Read-only external verification after INDEX_READY; never re-embeds or grants readiness. */
+    public VectorReceipt verifyPrepared(String id) {
+        var receipt=verifyTarget(id);
+        var ownership=db.queryForMap("SELECT group_key,baseline_document_id FROM law_source_version_candidates WHERE candidate_id=?",id);
+        if(!receipt.baselineFingerprint().equals(verifyPreserved((String)ownership.get("group_key"),((Number)ownership.get("baseline_document_id")).longValue())))
+            throw new IllegalStateException("Preserved baseline vectors changed");
+        return receipt;
+    }
+    public String verifyPreserved(String group,long document) {
+        if(group==null || !group.matches("[0-9a-f]{64}") || document<=0)throw new IllegalArgumentException("Registered source identity required");
+        var owned=db.queryForList("SELECT source_candidate_id FROM law_source_version_history WHERE group_key=? AND document_id=?",group,document);
+        if(owned.size()!=1)throw new IllegalStateException("Preserved source vector ownership missing");
+        String candidate=(String)owned.get(0).get("source_candidate_id");
+        if(candidate!=null)return verifyTarget(candidate).vectorFingerprint();
+        var baseline=List.copyOf(chunks.findPreservedSourceVersionChunks(group,document));
+        if(baseline.isEmpty() || baseline.size()>10000)throw new IllegalStateException("Complete preserved baseline required");
+        return qdrant.baselineLawFingerprint(baseline);
+    }
+    private VectorReceipt verifyTarget(String id) {
+        var receipt=find(id);if(receipt==null)throw new IllegalStateException("Prepared source vector receipt missing");
+        String state=db.queryForObject("SELECT state FROM law_source_version_candidates WHERE candidate_id=?",String.class,id);
+        var source="VALIDATED".equals(state)?preparation.snapshotForAssets(id):preparation.snapshotForRegisteredAssets(id);
+        requireIdentity(source,receipt,receipt.baselineFingerprint());
+        if(!receipt.vectorFingerprint().equals(qdrant.verifyLawSourceVersionCollection(id,model,source.validation().manifest(),source.chunks(),ordered(source,embeddings.load(id)))))
+            throw new IllegalStateException("Prepared source vectors changed");
+        if(!qdrant.findExistingLawPointIds(source.chunks().stream().map(com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow::chunkId).toList()).isEmpty())
+            throw new IllegalStateException("Isolated source points leaked into the shared law collection");
+        return receipt;
     }
     private List<List<Double>> ordered(SourceVersionPreparationService.AssetSnapshot source,Map<Long,List<Double>> vectors) {
         if(!vectors.keySet().equals(source.chunks().stream().map(com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow::chunkId).collect(java.util.stream.Collectors.toSet())))

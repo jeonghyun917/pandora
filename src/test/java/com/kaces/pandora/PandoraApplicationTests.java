@@ -28,9 +28,13 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 		"spring.datasource.url=jdbc:mariadb://127.0.0.1:1/pandora_smoke_test",
 		"spring.datasource.hikari.connection-timeout=250",
 		"spring.datasource.hikari.validation-timeout=250"
+		,"pandora.source-version.workflow-enabled=true"
+		,"pandora.rag.recovery.product-sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	}
 )
 class PandoraApplicationTests {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.kaces.pandora.lawdata.sync.SourceVersionTransitionService> sourceTransitions;
 
 	@MockitoBean
 	private DataSource dataSource;
@@ -74,6 +78,7 @@ class PandoraApplicationTests {
 	@Test
 	// 메소드 설명: contextLoads 처리 흐름을 수행합니다.
 	void contextLoadsWithoutRequestingADatasourceConnection() {
+		org.assertj.core.api.Assertions.assertThat(sourceTransitions.getIfAvailable()).isNotNull();
 		verifyNoInteractions(dataSource);
 	}
 
