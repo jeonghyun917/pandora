@@ -18,6 +18,13 @@
     FROM law_api_document_details d
     JOIN law_api_documents doc ON doc.document_id = d.document_id
     WHERE d.document_id = #{documentId}
+      AND (NOT EXISTS (SELECT 1 FROM law_source_version_candidates c WHERE c.candidate_document_id=doc.document_id)
+        OR (doc.use_yn='Y' AND EXISTS (
+          SELECT 1 FROM law_source_version_candidates c
+          JOIN law_source_version_history h ON h.source_candidate_id=c.candidate_id AND h.document_id=doc.document_id
+          JOIN law_source_version_transitions t ON t.source_candidate_id=c.candidate_id AND t.target_document_id=doc.document_id AND t.group_key=c.group_key AND t.kind='PROMOTE' AND t.state='APPLIED'
+          WHERE c.candidate_document_id=doc.document_id AND c.state IN ('ACTIVE','RETIRED')
+        )))
   </select>
   <!-- 문서별 상세 원문을 신규 저장하거나 기존 상세 레코드를 최신 값으로 갱신합니다. -->
   <insert id="upsertDetail">

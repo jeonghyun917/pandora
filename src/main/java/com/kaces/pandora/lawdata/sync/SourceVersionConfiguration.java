@@ -33,7 +33,7 @@ public class SourceVersionConfiguration {
     public SourceVersionVectorPreparation sourceVersionVectorPreparation(JdbcTemplate db,SourceVersionPreparationService preparation,
             SourceVersionEmbeddingReceipts receipts,LawChunkMapper chunks,OpenAiEmbeddingClient openai,QdrantClient qdrant,
             PlatformTransactionManager manager,LawAiProperties properties) {
-        return new SourceVersionVectorPreparation(db,preparation,receipts,chunks,openai,qdrant,manager,properties.openai().embeddingModel());
+        return new SourceVersionVectorPreparation(db,preparation,receipts,chunks,openai,qdrant,manager,properties.openai().embeddingModel(),properties.qdrant().collection());
     }
     @Bean
     public SourceVersionTransitionService sourceVersionTransitions(JdbcTemplate db,SourceVersionCandidateStore store,

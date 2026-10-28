@@ -65,6 +65,7 @@ public class LawDocumentWriter {
 	// 메소드 설명: upsertDocument 처리 흐름을 수행합니다.
 	@Transactional
 	public long upsertDocument(SearchDocument document) {
+		if(lawVersionStatusService!=null)lawVersionStatusService.lockSourceWrites();
 		if(corpusGuard!=null)corpusGuard.markCorpusChanged();
 		
 		SearchDocument normalized = new SearchDocument(

@@ -20,26 +20,28 @@
 Files: new lawdata/version source lifecycle records/repository/service; schema.sql; LawVersionStatusService and LawDocumentWriter guards; tests under lawdata/version.
 Interfaces: SourceVersionPolicy validates baseline/candidate identities and transitions; source group points to one active document/revision; candidate binds exact source payload and baseline. Repository is the only authority for persisted state, transaction boundaries belong to the service.
 
-- [ ] RED: valid distinct newer same-group version can stage, while invalid/future/same-or-older date, same external identity, wrong group, bad hashes and stale revision reject.
-- [ ] RED: ordinary refresh/update cannot auto-select a staged document or displace a managed active source; repeated identical stage is idempotent and changed payload conflicts.
-- [ ] Implement additive schema and transactional stage that never calls ordinary current-selection or active replacement.
-- [ ] Focused identity/storage/legacy regressions; isolated DB confirms baseline byte/state equality and rollback on mid-write failure. Commit verified slice; keep mutation gate closed until all tasks finish.
+- [x] RED: valid distinct newer same-group version can stage, while invalid/future/same-or-older date, same external identity, wrong group, bad hashes and stale revision reject.
+- [x] RED: ordinary refresh/update cannot auto-select a staged document or displace a managed active source; repeated identical stage is idempotent and changed payload conflicts.
+- [x] Implement additive schema and transactional stage that never calls ordinary current-selection or active replacement.
+- [x] Focused identity/storage/legacy regressions; isolated DB confirms baseline byte/state equality and rollback on mid-write failure. Commit verified slice; keep mutation gate closed until all tasks finish.
 
 ## Task2: Exact asset readiness and atomic promotion/rollback
 
 Consumes Task1 immutable identities; produces prepare/status/promote/rollback service methods and admin-protected API. Reuse source parser/chunk planner and existing recovery lexical/corpus index verification; candidate vectors remain isolated.
 
-- [ ] RED: missing/changed source coverage, baseline, embedding receipt, Qdrant point/hash/cardinality, lexical readback, product/config/corpus identity reject readiness.
-- [ ] RED: source switch writes all visibility/pointer/epoch state atomically; stale CAS, concurrent preparation and injected write failures preserve baseline.
-- [ ] RED: registered retired version rollback uses fresh verified assets and revision; arbitrary/unprepared version rejected; old assets remain.
+- [x] RED: missing/changed source coverage, baseline, embedding receipt, Qdrant point/hash/cardinality, lexical readback, product/config/corpus identity reject readiness (Q HTTP contracts; not real-Q approval).
+- [x] RED: source switch writes all visibility/pointer/epoch state atomically; stale CAS, concurrent preparation and injected write failures preserve baseline.
+- [x] RED: registered retired version rollback uses fresh verified assets and revision; arbitrary/unprepared version rejected; old assets remain.
 - [ ] Implement exact receipts and transitions; isolated DB+Q tests (no bypass of denied scripts).
 
 ## Task3: Request boundary, delivery and qualified actual refresh
 
 Consumes Task2 transition locks/epoch; produces mixed-generation prevention for search, title/keyword/vector/context/cache/answer and streaming, including async cleanup. Lock/snapshot mechanism must be recorded before implementation.
 
-- [ ] RED: request spanning attempted switch cannot return mixed source versions; sync/async/error/timeout release; bounded admission fails closed.
-- [ ] Admin/CSRF/mutation-disabled tests; focused suites and stable full suite once; one scoped independent review/fix pass.
+- [x] RED: request spanning attempted switch cannot return mixed source versions; sync/async/error/timeout release; bounded admission fails closed.
+- [x] Admin/CSRF/mutation-disabled tests; focused suites and stable full suite once; one scoped independent review/fix pass (1930/f0/e0/skip26; real-Q still excluded).
 - [ ] Commit/push approved branch; official stage/8080stop/deploy/health; no tests repeated solely for transport.
 - [ ] Only if safety gates pass: exact current guideline stage→validate→prepare→promote and rollback-readiness check, baseline retained; provenance/DB-Q/consumer health verification. Do not touch18080 ownership or infer that a refreshed Article18 proves general applicability.
 - [ ] Only cause-supported new penalty checkpoint after actual prerequisites; then unique12→57→1003 upon actual PASS. Otherwise preserve exact blocker without replay.
+
+2026-10-29 checkpoint: implementation and one independent review/Important fix pass completed locally; final changed-tree regression in progress (see progress.md exact run IDs). Real-Q execution, official delivery and qualified actual refresh remain unchecked until their own evidence exists. New required-reference fidelity remains fail-closed/unavailable, and no live source group is authorized before all-writer compatibility including18080 is proven. This checklist is not a measured percentage or whole RAG-quality completion claim.

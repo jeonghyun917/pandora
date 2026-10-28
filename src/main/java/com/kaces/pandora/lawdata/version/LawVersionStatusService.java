@@ -62,7 +62,7 @@ public class LawVersionStatusService implements ApplicationRunner {
 	@Transactional
 	public void refreshAllStatuses() {
 		ensureSchema();
-        jdbcTemplate.queryForObject("SELECT revision FROM law_source_version_epoch WHERE singleton_id=1 FOR UPDATE",Long.class);
+        lockSourceWrites();
 		List<Map<String, Object>> rows = jdbcTemplate.queryForList(
 			"""
 			SELECT document_id, target, title, source_date
@@ -86,7 +86,7 @@ public class LawVersionStatusService implements ApplicationRunner {
 			return;
 		}
 		ensureSchema();
-        jdbcTemplate.queryForObject("SELECT revision FROM law_source_version_epoch WHERE singleton_id=1 FOR UPDATE",Long.class);
+        lockSourceWrites();
         Integer managed=jdbcTemplate.queryForObject("SELECT COUNT(*) FROM law_source_version_groups WHERE target=? AND canonical_key=?",Integer.class,target,canonicalKey);
         if(managed!=null && managed>0)return;
 		List<Map<String, Object>> rows = jdbcTemplate.queryForList(
@@ -99,6 +99,13 @@ public class LawVersionStatusService implements ApplicationRunner {
 		}
 		refreshVersionGroup(target, canonicalKey);
 	}
+
+    /** Must precede RAG epoch and document locks in normal law-write transactions. */
+    @Transactional
+    public void lockSourceWrites() {
+        jdbcTemplate.queryForObject("SELECT revision FROM law_source_version_visibility_epoch WHERE singleton_id=1 LOCK IN SHARE MODE",Long.class);
+        jdbcTemplate.queryForObject("SELECT revision FROM law_source_version_epoch WHERE singleton_id=1 FOR UPDATE",Long.class);
+    }
 
 	private void addColumnIfMissing(String columnName, String definition) {
 		Integer count = jdbcTemplate.queryForObject("""

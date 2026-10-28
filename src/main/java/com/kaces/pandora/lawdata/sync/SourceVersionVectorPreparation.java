@@ -19,11 +19,12 @@ public final class SourceVersionVectorPreparation {
     private final OpenAiEmbeddingClient openai;
     private final QdrantClient qdrant;
     private final TransactionTemplate tx;
-    private final String model;
+    private final String model,collection;
     public SourceVersionVectorPreparation(JdbcTemplate db,SourceVersionPreparationService preparation,SourceVersionEmbeddingReceipts embeddings,
-            LawChunkMapper chunks,OpenAiEmbeddingClient openai,QdrantClient qdrant,PlatformTransactionManager manager,String model) {
+            LawChunkMapper chunks,OpenAiEmbeddingClient openai,QdrantClient qdrant,PlatformTransactionManager manager,String model,String collection) {
         if(model==null || model.isBlank() || model.length()>200)throw new IllegalArgumentException("Server embedding model required");
-        this.db=db;this.preparation=preparation;this.embeddings=embeddings;this.chunks=chunks;this.openai=openai;this.qdrant=qdrant;this.model=model;
+        if(collection==null || collection.isBlank() || collection.length()>100)throw new IllegalArgumentException("Server baseline collection required");
+        this.db=db;this.preparation=preparation;this.embeddings=embeddings;this.chunks=chunks;this.openai=openai;this.qdrant=qdrant;this.model=model;this.collection=collection;
         tx=new TransactionTemplate(manager);tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         tx.setIsolationLevel(TransactionDefinition.ISOLATION_SERIALIZABLE);tx.setTimeout(30);
     }
@@ -84,14 +85,31 @@ public final class SourceVersionVectorPreparation {
     }
     public String verifyPreserved(String group,long document) {
         if(group==null || !group.matches("[0-9a-f]{64}") || document<=0)throw new IllegalArgumentException("Registered source identity required");
+        var before=tx.execute(status->preservedSnapshot(group,document));
+        if(before.candidate()!=null)return verifyTarget(before.candidate()).vectorFingerprint();
+        String fingerprint=qdrant.baselineLawFingerprint(before.chunks());
+        if(!before.equals(tx.execute(status->preservedSnapshot(group,document))))throw new IllegalStateException("Preserved baseline embedding link changed");
+        return fingerprint;
+    }
+    private PreservedSnapshot preservedSnapshot(String group,long document) {
+        db.queryForObject("SELECT revision FROM law_source_version_epoch WHERE singleton_id=1 FOR UPDATE",Long.class);
         var owned=db.queryForList("SELECT source_candidate_id FROM law_source_version_history WHERE group_key=? AND document_id=?",group,document);
         if(owned.size()!=1)throw new IllegalStateException("Preserved source vector ownership missing");
         String candidate=(String)owned.get(0).get("source_candidate_id");
-        if(candidate!=null)return verifyTarget(candidate).vectorFingerprint();
+        if(candidate!=null)return new PreservedSnapshot(candidate,List.of());
         var baseline=List.copyOf(chunks.findPreservedSourceVersionChunks(group,document));
         if(baseline.isEmpty() || baseline.size()>10000)throw new IllegalStateException("Complete preserved baseline required");
-        return qdrant.baselineLawFingerprint(baseline);
+        var links=db.queryForList("SELECT e.* FROM law_api_chunk_embeddings e JOIN law_api_document_chunks c ON c.chunk_id=e.chunk_id WHERE c.document_id=?",document);
+        for(var row:baseline) {
+            long matches=links.stream().filter(e->e.get("chunk_id") instanceof Number id && id.longValue()==row.chunkId()
+                && model.equals(e.get("embedding_model")) && collection.equals(e.get("vector_store")) && "INDEXED".equals(e.get("status"))
+                && row.contentHash()!=null && row.contentHash().equals(e.get("content_hash"))
+                && String.valueOf(row.chunkId()).equals(String.valueOf(e.get("vector_point_id")))).count();
+            if(matches!=1)throw new IllegalStateException("Preserved baseline embedding link unavailable");
+        }
+        return new PreservedSnapshot(null,baseline);
     }
+    private record PreservedSnapshot(String candidate,List<com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow> chunks) { }
     private VectorReceipt verifyTarget(String id) {
         var receipt=find(id);if(receipt==null)throw new IllegalStateException("Prepared source vector receipt missing");
         String state=db.queryForObject("SELECT state FROM law_source_version_candidates WHERE candidate_id=?",String.class,id);

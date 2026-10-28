@@ -372,3 +372,12 @@ Once sources are active, keep workflow verification wiring available even when
 mutations are disabled. Do not manually alter epochs, READY/APPLIED states, hashes,
 or preparation receipts. Existing terminal failed evaluation checkpoints remain
 non-replayable, and source freshness alone does not prove broader legal scope.
+
+Public DB detail reads hide constructed source candidates until a registered
+ACTIVE/RETIRED version has an APPLIED promotion origin and retained Y visibility.
+Legacy baseline vector preservation also requires exact INDEXED embedding linkage
+for the configured model and shared collection, content hash and raw point ID;
+the linkage is checked under the source lock before and after Q readback.
+An already constructed official external ID cannot currently be revalidated under
+a different product identity: document uniqueness fails closed. Do not force reuse
+or relabel its product/manifest; cross-product revalidation is separate work.
