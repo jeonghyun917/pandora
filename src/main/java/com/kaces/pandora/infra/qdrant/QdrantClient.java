@@ -48,6 +48,16 @@ public class QdrantClient {
 	private final ExecutorService searchExecutor;
 	private final ObjectMapper objectMapper;
 	private final AtomicLong searchFailureCount = new AtomicLong();
+    private com.kaces.pandora.lawdata.version.SourceVersionWriteGuard sourceVersionWriteGuard;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void configureSourceVersionWriteGuard(com.kaces.pandora.lawdata.version.SourceVersionWriteGuard guard) {
+        sourceVersionWriteGuard=java.util.Objects.requireNonNull(guard);
+    }
+    private void mutateLawPoints(List<Long> ids,Runnable mutation) {
+        if(sourceVersionWriteGuard==null)mutation.run(); // Manually constructed transport-test clients only.
+        else sourceVersionWriteGuard.mutatePoints(ids,mutation);
+    }
 
 	// 메소드 설명: QdrantClient 처리 흐름을 수행합니다.
 	public QdrantClient(LawAiProperties properties, ObjectMapper objectMapper) {
@@ -88,6 +98,9 @@ public class QdrantClient {
 	}
 
 	public void promoteLawCandidatePoints(List<Long> pointIds) {
+        mutateLawPoints(pointIds,()->promoteUnmanagedLawCandidatePoints(pointIds));
+    }
+    private void promoteUnmanagedLawCandidatePoints(List<Long> pointIds) {
 		List<Long> ids = pointIds == null ? List.of() : pointIds.stream().filter(id -> id != null && id > 0).distinct().toList();
 		if (ids.isEmpty()) {
 			throw new IllegalArgumentException("Candidate point promotion requires at least one point.");
@@ -129,6 +142,9 @@ public class QdrantClient {
 
 	/** Restores only payload metadata; existing vectors and database activation are untouched. */
 	public void restoreActiveLawPayloadsFromCandidate(List<Long> pointIds, long documentId, int version) {
+        mutateLawPoints(pointIds,()->restoreUnmanagedLawPayloads(pointIds,documentId,version));
+    }
+    private void restoreUnmanagedLawPayloads(List<Long> pointIds,long documentId,int version) {
 		if (documentId <= 0 || version <= 0 || pointIds == null || pointIds.isEmpty() || pointIds.size() > 256
 			|| pointIds.stream().anyMatch(id -> id == null || id <= 0) || new LinkedHashSet<>(pointIds).size() != pointIds.size()) {
 			throw new IllegalArgumentException("Active payload repair requires a bounded, unique owned point set.");
@@ -225,6 +241,9 @@ public class QdrantClient {
 	}
 
 	private void setLawPointActivationStatus(List<Long> pointIds, String status) {
+        mutateLawPoints(pointIds,()->setUnmanagedLawPointActivationStatus(pointIds,status));
+    }
+    private void setUnmanagedLawPointActivationStatus(List<Long> pointIds,String status) {
 		List<Long> ids = pointIds == null ? List.of() : pointIds.stream().filter(id -> id != null && id > 0).distinct().toList();
 		if (ids.isEmpty()) {
 			return;
@@ -523,8 +542,10 @@ public class QdrantClient {
 	}
 
 	public void upsertLawCandidates(List<LawSemanticChunkRow> chunks, List<List<Double>> vectors) {
-		ensureCollection(lawCandidateCollection());
-		upsert(chunks, vectors, false, lawCandidateCollection(), "CANDIDATE");
+        mutateLawPoints(chunks.stream().map(LawSemanticChunkRow::chunkId).toList(),()->{
+            ensureCollection(lawCandidateCollection());
+            upsertUnmanaged(chunks,vectors,false,lawCandidateCollection(),"CANDIDATE");
+        });
 	}
 
 	// 메소드 설명: upsertRag 처리 흐름을 수행합니다.
@@ -846,6 +867,10 @@ public class QdrantClient {
 	}
 
 	private void upsert(List<LawSemanticChunkRow> chunks, List<List<Double>> vectors, boolean stringPointId, String collection, String activationStatus) {
+        if(stringPointId)upsertUnmanaged(chunks,vectors,true,collection,activationStatus);
+        else mutateLawPoints(chunks.stream().map(LawSemanticChunkRow::chunkId).toList(),()->upsertUnmanaged(chunks,vectors,false,collection,activationStatus));
+    }
+    private void upsertUnmanaged(List<LawSemanticChunkRow> chunks,List<List<Double>> vectors,boolean stringPointId,String collection,String activationStatus) {
 		if (chunks.size() != vectors.size()) {
 			throw new IllegalArgumentException("Chunk and vector counts must match.");
 		}
@@ -919,11 +944,11 @@ public class QdrantClient {
 	}
 
 	public void deleteLawPoints(List<Long> chunkIds) {
-		deletePoints(chunkIds);
+        mutateLawPoints(chunkIds,()->deletePoints(chunkIds));
 	}
 
 	public void deleteLawPointsBestEffort(List<Long> chunkIds) {
-		deletePointsBestEffort(chunkIds, "law");
+        mutateLawPoints(chunkIds,()->deletePointsBestEffort(chunkIds, "law"));
 	}
 
 	public void deleteRagPointsBestEffort(List<Long> chunkIds) {
@@ -1029,12 +1054,20 @@ public class QdrantClient {
             var state=indexSnapshot(asset.vectorCollection()).orElseThrow(()->new IllegalStateException("Active recovery collection unavailable"));
             if(!state.isStable() || state.exactPointCount()!=asset.chunkCount())throw new IllegalStateException("Active recovery collection parity mismatch");
         }
+        for(var route:routing.sources().routes().values()) {
+            if(!properties.openai().embeddingModel().equals(route.model()))throw new IllegalStateException("Active source embedding model changed");
+            String collection=route.candidateId()==null?properties.qdrant().collection():lawSourceVersionCollection(route.candidateId());
+            var state=indexSnapshot(collection).orElseThrow(()->new IllegalStateException("Active source collection unavailable"));
+            if(!state.isStable() || state.vectorSize()!=properties.qdrant().vectorSize()
+                    || (route.candidateId()!=null?state.exactPointCount():baselineDocumentCount(collection,route.activeDocumentId()))!=route.chunkCount())
+                throw new IllegalStateException("Active source collection parity mismatch");
+        }
     }
 	public List<QdrantSearchHit> searchBalanced(List<Double> vector,List<String> targets,int perTargetLimit,int maxTotalLimit,
 			com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
 		if(routing==null)throw new IllegalArgumentException("Captured recovery routing required");
         assertRecoveryReady(routing);
-		if(routing.replacedDocumentIds().isEmpty())return searchBalanced(vector,targets,perTargetLimit,maxTotalLimit);
+		if(routing.replacedDocumentIds().isEmpty() && routing.sources().revision()==0)return searchBalanced(vector,targets,perTargetLimit,maxTotalLimit);
 		var normalized=targets==null?List.<String>of():targets.stream().filter(t->t!=null && !t.isBlank()).distinct().toList();
 		int per=Math.max(1,perTargetLimit),total=Math.max(per,maxTotalLimit);
 		if(normalized.isEmpty())return searchBalanced(vector,targets,perTargetLimit,maxTotalLimit);
@@ -1042,7 +1075,15 @@ public class QdrantClient {
 		try {
 			for(String target:normalized) {
 				int limit=normalized.size()==1?total:per;
-				if(!isRagTarget(target)) { hits.addAll(searchSingleTarget(vector,target,limit)); continue; }
+				if(!isRagTarget(target)) {
+                    if(routing.sources().revision()==0)hits.addAll(searchSingleTarget(vector,target,limit));
+                    else hits.addAll(searchSourceVersionRoutes(vector,target,limit,routing));
+                    continue;
+                }
+				if(routing.replacedDocumentIds().isEmpty()) {
+					hits.addAll(searchSingleTarget(vector,target,limit));
+					continue;
+				}
 				var excluded=List.of(Map.of("key","activationStatus","match",Map.of("any",List.of("CANDIDATE","RETIRED"))),
 					Map.of("key","documentId","match",Map.of("any",routing.replacedDocumentIds().stream().sorted().toList())));
 				var filter=Map.of("must",List.of(Map.of("key","target","match",Map.of("value",target))),"must_not",excluded);
@@ -1073,16 +1114,48 @@ public class QdrantClient {
 
 	private List<QdrantSearchHit> searchRecoveryRoute(List<Double> vector,String target,int limit,String collection,Map<String,?> filter,
 			com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing,Long documentId,com.kaces.pandora.rag.recovery.RecoveryAssets assets) {
+        return searchBoundRoute(vector,target,limit,collection,filter,routing,documentId,assets,null);
+    }
+    private List<QdrantSearchHit> searchSourceVersionRoutes(List<Double> vector,String target,int limit,
+            com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing) {
+        var excluded=new ArrayList<Map<String,Object>>();
+        excluded.add(Map.of("key","activationStatus","match",Map.of("any",List.of("CANDIDATE","RETIRED"))));
+        if(!routing.sources().excludedDocumentIds().isEmpty())excluded.add(Map.of("key","documentId","match",Map.of("any",routing.sources().excludedDocumentIds().stream().sorted().toList())));
+        var filter=Map.of("must",List.of(Map.of("key","target","match",Map.of("value",target))),"must_not",excluded);
+        var hits=new ArrayList<>(searchBoundRoute(vector,target,limit,properties.qdrant().collection(),filter,routing,null,null,null));
+        for(var route:new java.util.TreeMap<>(routing.sources().activeVectors()).values()) {
+            if(!target.equals(route.target()))continue;
+            var must=List.of(Map.of("key","target","match",Map.of("value",target)),
+                Map.of("key","documentId","match",Map.of("value",route.activeDocumentId())),
+                Map.of("key","generationId","match",Map.of("value",route.candidateId())),
+                Map.of("key","manifest","match",Map.of("value",route.manifest())),
+                Map.of("key","chunkVersion","match",Map.of("value",route.chunkVersion())),
+                Map.of("key","qualityStatus","match",Map.of("value","PASS")));
+            hits.addAll(searchBoundRoute(vector,target,limit,route.vectorCollection(),Map.of("must",must),routing,route.activeDocumentId(),null,route));
+        }
+        return hits;
+    }
+    private List<QdrantSearchHit> searchBoundRoute(List<Double> vector,String target,int limit,String collection,Map<String,?> filter,
+            com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot routing,Long documentId,com.kaces.pandora.rag.recovery.RecoveryAssets assets,
+            com.kaces.pandora.lawdata.version.SourceVersionRoutingSnapshot.Route source) {
 		var response=qdrantPostForMapOnce("/collections/{collection}/points/search",collection,Map.of("vector",vector,"limit",limit,
-			"with_payload",List.of("target","chunkId","documentId","generationId","manifest","qualityStatus","activationStatus","contentHash","embeddingModel"),"with_vector",false,"filter",filter));
+			"with_payload",List.of("target","chunkId","documentId","generationId","manifest","qualityStatus","activationStatus","contentHash","embeddingModel","chunkVersion"),"with_vector",false,"filter",filter));
 		var hits=new ArrayList<QdrantSearchHit>();
 		for(var item:(List<?>)response.get("result")) {
 			var payload=(Map<?,?>)((Map<?,?>)item).get("payload");
 			long foundDocument=strictPositivePointId(payload.get("documentId"));
 			var hit=toHit(item);
 			if(!target.equals(hit.target()) || !Double.isFinite(hit.score()) || hit.chunkId()<=0)throw new IllegalStateException("Malformed recovery search hit");
-			if(assets==null) {
-				if(routing.replacedDocumentIds().contains(foundDocument) || Set.of("CANDIDATE","RETIRED").contains(String.valueOf(payload.get("activationStatus")))) {
+            if(source!=null) {
+                if(foundDocument!=source.activeDocumentId() || !source.candidateId().equals(payload.get("generationId"))
+                        || !source.manifest().equals(payload.get("manifest")) || !"PASS".equals(payload.get("qualityStatus"))
+                        || strictPositivePointId(payload.get("chunkVersion"))!=source.chunkVersion()
+                        || !source.model().equals(payload.get("embeddingModel")) || strictPositivePointId(((Map<?,?>)item).get("id"))!=hit.chunkId()
+                        || !(payload.get("contentHash") instanceof String hash) || !hash.matches("[0-9a-f]{64}"))
+                    throw new IllegalStateException("Source search crossed version boundary");
+                hit=new QdrantSearchHit(hit.target(),hit.chunkId(),hit.score(),(String)payload.get("contentHash"));
+            } else if(assets==null) {
+				if((isRagTarget(target)?routing.replacedDocumentIds():routing.sources().excludedDocumentIds()).contains(foundDocument) || Set.of("CANDIDATE","RETIRED").contains(String.valueOf(payload.get("activationStatus")))) {
 					throw new IllegalStateException("Baseline search ignored recovery exclusion");
 				}
 			} else if(foundDocument!=documentId || !assets.generationId().equals(payload.get("generationId"))

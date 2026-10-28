@@ -14,6 +14,12 @@ public class RagRecoveryCorpusRefreshService {
     private final RagRecoveryRoutingService routing;
     private final SemanticLexicalIndexService index;
     private final TransactionTemplate transaction;
+    private com.kaces.pandora.lawdata.version.SourceVersionCorpusService sources;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void configureSourceVersions(com.kaces.pandora.lawdata.version.SourceVersionCorpusService sources,
+            com.kaces.pandora.lawdata.version.SourceVersionRoutingReader reader) {
+        this.sources=Objects.requireNonNull(sources);routing.configureSourceVersionRouting(reader);
+    }
     public RagRecoveryCorpusRefreshService(RagRecoveryMapper recovery,SemanticLexicalMapper lexical,
             RagRecoveryRoutingService routing,SemanticLexicalIndexService index,PlatformTransactionManager manager) {
         this.recovery=recovery;this.lexical=lexical;this.routing=routing;this.index=index;
@@ -40,14 +46,16 @@ public class RagRecoveryCorpusRefreshService {
         return result;
     }
     private Snapshot capture() {
+        if(sources!=null)sources.lockSourceEpoch();
         var epoch=recovery.lockRoutingEpoch();
         Long revision=recovery.findCorpusRevision();
         if(epoch==null || epoch.revision()<=0 || revision==null || revision<0)throw new IllegalStateException("Recovery corpus unavailable");
         var captured=routing.captureForRebuildInTransaction();
         var replacements=new TreeMap<Long,List<LexicalChunkDocument>>();
         for(var id:captured.replacedDocumentIds())replacements.put(id,recovery.findGenerationLexicalChunks(captured.documents().get(id).activeGeneration()));
-        return new Snapshot(epoch.revision(),revision,captured.cacheIdentity(),
-            RecoveryCorpus.overlay(epoch.revision(),lexical.findActiveSearchableChunks(),replacements));
+        var corpus=RecoveryCorpus.overlay(epoch.revision(),lexical.findActiveSearchableChunks(),replacements);
+        if(sources!=null)corpus=sources.overlay(corpus,captured.sources());
+        return new Snapshot(epoch.revision(),revision,captured.cacheIdentity(),corpus);
     }
     private record Snapshot(long routingRevision,long corpusRevision,String routingIdentity,RecoveryCorpus corpus) { }
 }

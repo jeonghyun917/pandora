@@ -28,7 +28,7 @@ public final class SourceVersionEmbeddingReceipts {
         if(vectors==null || vectors.isEmpty() || vectors.size()>10000)throw new IllegalArgumentException("Complete bounded vectors required");
         var copied=new TreeMap<Long,List<Double>>();
         vectors.forEach((key,value)->{if(key==null || key<=0)throw new IllegalArgumentException("Chunk identity required");copied.put(key,checked(value));});
-        locked(id,context->{
+        locked(id,true,context->{
             if(!copied.keySet().equals(context.chunks.keySet()))throw new IllegalArgumentException("Source embedding membership mismatch");
             var stored=rows(id);
             if(!stored.isEmpty()) {
@@ -44,7 +44,7 @@ public final class SourceVersionEmbeddingReceipts {
             return null;
         });
     }
-    public Map<Long,List<Double>> load(String id) {return locked(id,context->read(id,context,rows(id)));}
+    public Map<Long,List<Double>> load(String id) {return locked(id,false,context->read(id,context,rows(id)));}
     private Map<Long,List<Double>> read(String id,Context context,List<Map<String,Object>> rows) {
         if(rows.size()!=context.chunks.size())throw new IllegalStateException("Source embedding receipts incomplete");
         var result=new TreeMap<Long,List<Double>>();
@@ -64,10 +64,10 @@ public final class SourceVersionEmbeddingReceipts {
         }
         return Collections.unmodifiableMap(result);
     }
-    private <T> T locked(String id,Function<Context,T> action) {
+    private <T> T locked(String id,boolean writing,Function<Context,T> action) {
         if(id==null || !id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))throw new IllegalArgumentException("Candidate UUID required");
         return tx.execute(status->{
-            var validation=preparation.recheckForEmbeddings(id);
+            var validation=writing?preparation.recheckForEmbeddings(id):preparation.recheckReadableContent(id);
             var chunks=new TreeMap<Long,List<String>>();
             for(var row:db.queryForList("SELECT chunk_id,content_hash,embedding_text FROM law_api_document_chunks WHERE document_id=? ORDER BY chunk_id LIMIT 10001",validation.documentId()))
                 chunks.put(((Number)row.get("chunk_id")).longValue(),List.of(Objects.toString(row.get("content_hash"),""),Objects.toString(row.get("embedding_text"),"")));

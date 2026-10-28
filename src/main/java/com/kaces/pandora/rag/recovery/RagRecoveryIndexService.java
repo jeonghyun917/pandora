@@ -29,6 +29,12 @@ public class RagRecoveryIndexService {
     private final RagRecoveryRoutingService routing;
     private final String model;
     private final String productSha;
+    private com.kaces.pandora.lawdata.version.SourceVersionCorpusService sources;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void configureSourceVersions(com.kaces.pandora.lawdata.version.SourceVersionCorpusService sources,
+            com.kaces.pandora.lawdata.version.SourceVersionRoutingReader reader) {
+        this.sources=Objects.requireNonNull(sources);routing.configureSourceVersionRouting(reader);
+    }
 
     public RagRecoveryIndexService(RagDocumentMapper documents, RagRecoveryMapper recovery,
             RagRecoveryCandidateService candidates, RagRecoveryReceiptService receipts, OpenAiEmbeddingClient embeddings,
@@ -48,6 +54,7 @@ public class RagRecoveryIndexService {
         try { return prepareBound(generationId); }
         catch(RecoveryStaleException stale) {
             transaction.executeWithoutResult(status->{
+                if(sources!=null)sources.lockSourceEpoch();
                 recovery.lockRoutingEpoch();
                 var generation=recovery.findGeneration(generationId,true);
                 if(generation!=null && productSha.equals(generation.productSha()) && Set.of("VALIDATED","INDEX_READY").contains(generation.state()))
@@ -159,6 +166,7 @@ public class RagRecoveryIndexService {
     private Snapshot captureLocked(String id,boolean checkOriginal) {
         if(id==null || !id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
                 || productSha==null || !productSha.matches("[0-9a-f]{40}"))throw new IllegalArgumentException("Verified generation/product required");
+        if(sources!=null)sources.lockSourceEpoch();
         if(recovery.lockRoutingEpoch()==null)throw new IllegalStateException("Routing epoch unavailable");
         var captured=routing.captureInTransaction();
         var initial=recovery.findGeneration(id,false);
@@ -197,6 +205,7 @@ public class RagRecoveryIndexService {
         }
         replacements.put(generation.documentId(),replacement);
         var corpus=RecoveryCorpus.overlay(captured.revision(),lexical.findActiveSearchableChunks(),replacements);
+        if(sources!=null)corpus=sources.overlay(corpus,captured.sources());
         var preparation=new RecoveryPreparationReceipt(id,generation.manifest(),captured.revision(),captured.cacheIdentity(),corpus.fingerprint());
         var existing=recovery.findPreparation(id);
         if(existing!=null && !existing.equals(preparation))throw new RecoveryStaleException("Recovery preparation is stale or changed");

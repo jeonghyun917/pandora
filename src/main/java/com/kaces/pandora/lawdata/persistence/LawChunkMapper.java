@@ -18,6 +18,7 @@ import org.apache.ibatis.annotations.Param;
 public interface LawChunkMapper {
 
     List<LawSemanticChunkRow> findSourceVersionChunks(@Param("candidateId") String candidateId);
+    List<LawSemanticChunkRow> findRegisteredSourceVersionChunks(@Param("candidateId") String candidateId);
     List<LawSemanticChunkRow> findSourceVersionBaselineChunks(@Param("candidateId") String candidateId);
 	
 	List<Long> findChunkIdsByDocumentId(@Param("documentId") long documentId);

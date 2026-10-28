@@ -30,7 +30,10 @@ public final class SourceVersionServingInterceptor implements AsyncHandlerInterc
             @Override public void onComplete(AsyncEvent event) {holder.close();}
             @Override public void onError(AsyncEvent event) {terminate(event);}
             @Override public void onTimeout(AsyncEvent event) {terminate(event);}
-            @Override public void onStartAsync(AsyncEvent event) {event.getAsyncContext().addListener(this);}
+            @Override public void onStartAsync(AsyncEvent event) {
+                try {event.getAsyncContext().addListener(this);}
+                catch(IllegalStateException alreadyCompleted) {holder.close();}
+            }
             private void terminate(AsyncEvent event) {
                 try {
                     if(!response.isCommitted())response.setStatus(503);

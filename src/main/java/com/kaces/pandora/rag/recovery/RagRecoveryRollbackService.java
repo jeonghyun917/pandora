@@ -18,6 +18,12 @@ public class RagRecoveryRollbackService {
     private final SemanticLexicalMapper lexical;
     private final SemanticLexicalIndexService lexicalIndex;
     private final TransactionTemplate transaction;
+    private com.kaces.pandora.lawdata.version.SourceVersionCorpusService sources;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void configureSourceVersions(com.kaces.pandora.lawdata.version.SourceVersionCorpusService sources,
+            com.kaces.pandora.lawdata.version.SourceVersionRoutingReader reader) {
+        this.sources=Objects.requireNonNull(sources);routing.configureSourceVersionRouting(reader);
+    }
     public RagRecoveryRollbackService(RagRecoveryMapper recovery,RagDocumentMapper documents,RagRecoveryRoutingService routing,
             RagRecoveryBaselineService baseline,SemanticLexicalMapper lexical,SemanticLexicalIndexService lexicalIndex,PlatformTransactionManager manager) {
         this.recovery=recovery;this.routing=routing;this.baseline=baseline;this.lexical=lexical;this.lexicalIndex=lexicalIndex;
@@ -67,6 +73,7 @@ public class RagRecoveryRollbackService {
         });
     }
     private Snapshot capture(long documentId,String active,long revision,String restore,RecoveryBaselineAssets preserved) {
+        if(sources!=null)sources.lockSourceEpoch();
         if(recovery.lockRoutingEpoch()==null)throw new IllegalStateException("Routing epoch unavailable");
         baseline.recheckStored(documentId,preserved);
         var captured=routing.captureInTransaction();
@@ -84,6 +91,7 @@ public class RagRecoveryRollbackService {
         }
         if(!replacements.containsKey(documentId))throw new IllegalStateException("Rollback source is not a replacement");
         var corpus=RecoveryCorpus.overlay(captured.revision(),lexical.findActiveSearchableChunks(),replacements);
+        if(sources!=null)corpus=sources.overlay(corpus,captured.sources());
         String identity=LawHashUtils.sha256(new ObjectMapper().writeValueAsString(
             List.of(documentId,active,revision,restore,preserved,captured.cacheIdentity(),corpus.fingerprint())));
         var intent=recovery.findRollbackByInput(identity);

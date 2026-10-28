@@ -48,4 +48,20 @@ public final class SourceVersionCorpus {
         for(var row:rows)if(!identities.add(row.target()+":"+row.chunkId()))throw new IllegalArgumentException("Duplicate source corpus chunk");
         return new RecoveryCorpus(revision,rows,LawHashUtils.sha256Json(List.of(revision,rows)));
     }
+    /** Rebuild's physical baseline already contains active rows; replace them only by exact registered ownership. */
+    public static RecoveryCorpus overlayCurrent(long revision,List<LexicalChunkDocument> baseline,List<Replacement> replacements) {
+        if(baseline==null || replacements==null)throw new IllegalArgumentException("Source corpus required");
+        var active=new HashMap<Long,Replacement>();
+        for(var replacement:replacements)if(active.put(replacement.activeDocumentId(),replacement)!=null)throw new IllegalArgumentException("Duplicate active source");
+        var physical=new ArrayList<LexicalChunkDocument>();
+        for(var row:baseline) {
+            if(row==null)throw new IllegalArgumentException("Null source corpus row");
+            var replacement=active.get(row.documentId());
+            if(replacement!=null && Set.of("law","admrul").contains(row.target())) {
+                if(!replacement.target().equals(row.target()) || !replacement.canonicalKey().equals(LawVersionUtils.canonicalKey(row.target(),row.documentTitle())))
+                    throw new IllegalArgumentException("Current source corpus scope mismatch");
+            } else physical.add(row);
+        }
+        return overlay(revision,physical,replacements);
+    }
 }

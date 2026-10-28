@@ -26,4 +26,10 @@ class SourceVersionCorpusTests {
         assertThatThrownBy(()->SourceVersionCorpus.overlay(0,List.of(old),List.of(replacement,replacement))).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(()->SourceVersionCorpus.overlay(0,List.of(old,current),List.of(replacement))).isInstanceOf(IllegalArgumentException.class);
     }
+    @Test void fullCorpusRebuildReplacesRegisteredCurrentRowsWithoutDuplicatesOrRagLoss() {
+        var old=row("admrul",1,10,"성과 지침");var current=row("admrul",5,20,"성과 지침");var rag=row("official_doc",4,20,"자료");
+        var replacement=new SourceVersionCorpus.Replacement("admrul","admrul:성과지침",Set.of(10L),20,List.of(current));
+        assertThat(SourceVersionCorpus.overlayCurrent(2,List.of(old,current,rag),List.of(replacement)).chunks()).containsExactly(current,rag);
+        assertThatThrownBy(()->SourceVersionCorpus.overlayCurrent(2,List.of(old,row("admrul",5,20,"다른 지침"),rag),List.of(replacement))).isInstanceOf(IllegalArgumentException.class);
+    }
 }

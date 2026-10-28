@@ -6,7 +6,13 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Captured once by the server and passed explicitly to every retrieval path. */
 public record RecoveryRoutingSnapshot(long revision, Map<Long,RecoverySnapshot> documents,
-        Map<String,RecoveryAssets> assets, Set<String> baselineGenerations, String lexicalRevision, String lexicalNamespace) {
+        Map<String,RecoveryAssets> assets, Set<String> baselineGenerations, String lexicalRevision, String lexicalNamespace,
+        com.kaces.pandora.lawdata.version.SourceVersionRoutingSnapshot sources) {
+    public RecoveryRoutingSnapshot(long revision,Map<Long,RecoverySnapshot> documents,Map<String,RecoveryAssets> assets,
+            Set<String> baselineGenerations,String lexicalRevision,String lexicalNamespace) {
+        this(revision,documents,assets,baselineGenerations,lexicalRevision,lexicalNamespace,
+            com.kaces.pandora.lawdata.version.SourceVersionRoutingSnapshot.empty());
+    }
     public RecoveryRoutingSnapshot {
         documents=Map.copyOf(documents); assets=Map.copyOf(assets); baselineGenerations=Set.copyOf(baselineGenerations);
         if(revision<0 || documents.size()>10000 || (lexicalRevision!=null && !lexicalRevision.matches("[0-9a-f]{64}"))) {
@@ -15,6 +21,8 @@ public record RecoveryRoutingSnapshot(long revision, Map<Long,RecoverySnapshot> 
         if(lexicalNamespace!=null && (lexicalRevision==null || !lexicalNamespace.matches("recovery_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))) {
             throw new IllegalArgumentException("Bound lexical namespace required");
         }
+        if(sources==null || sources.revision()>revision || (sources.revision()>0 && (lexicalRevision==null || lexicalNamespace==null)))
+            throw new IllegalStateException("Activated source routing requires published lexical assets");
         var active=new HashSet<String>();
         for(var entry:documents.entrySet()) {
             var pointer=entry.getValue();
@@ -44,7 +52,9 @@ public record RecoveryRoutingSnapshot(long revision, Map<Long,RecoverySnapshot> 
         return Collections.unmodifiableSet(ids);
     }
     public String cacheIdentity() {
-        return LawHashUtils.sha256(new ObjectMapper().writeValueAsString(Arrays.asList(revision,new TreeMap<>(documents),
-            new TreeMap<>(assets),new TreeSet<>(baselineGenerations),lexicalRevision,lexicalNamespace)));
+        var identity=new ArrayList<Object>(Arrays.asList(revision,new TreeMap<>(documents),new TreeMap<>(assets),
+            new TreeSet<>(baselineGenerations),lexicalRevision,lexicalNamespace));
+        if(sources.revision()>0)identity.add(sources.cacheIdentity());
+        return LawHashUtils.sha256(new ObjectMapper().writeValueAsString(identity));
     }
 }

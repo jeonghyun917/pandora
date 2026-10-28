@@ -29,6 +29,63 @@ import tools.jackson.databind.DatabindException;
 import tools.jackson.databind.ObjectMapper;
 
 class QdrantClientTests {
+    @Test void lawSourceActivationDoesNotChangeUnmanagedRagSearchContract() throws Exception {
+        String id="c87a26f6-cc34-4303-bdc2-929657369db3",namespace="law_source_"+id.replace("-","");
+        server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/collections",exchange->{
+            String path=exchange.getRequestURI().getPath();
+            if(path.endsWith("/points/count")){respond(exchange,200,"{\"result\":{\"count\":1}}");return;}
+            if(path.endsWith("/points/search")) {respond(exchange,200,"{\"result\":[{\"id\":9000000000000017,\"score\":0.7,\"payload\":{\"target\":\"official_doc\",\"chunkId\":17}}]}");return;}
+            respond(exchange,200,collectionWithQueue("green",1536,1,0,1,1));
+        });server.start();client=client();
+        var source=new com.kaces.pandora.lawdata.version.SourceVersionRoutingSnapshot(1,java.util.Map.of("a".repeat(64),new com.kaces.pandora.lawdata.version.SourceVersionRoutingSnapshot.Route(
+            "a".repeat(64),1,"admrul","admrul:지침",10,42,java.util.Set.of(10L,42L),id,"b".repeat(64),namespace,"d".repeat(64),"c".repeat(64),"text-embedding-3-small",1,2)));
+        var routing=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(1,java.util.Map.of(),java.util.Map.of(),java.util.Set.of(),"f".repeat(64),"recovery_"+id,source);
+        assertThat(client.searchBalanced(java.util.Collections.nCopies(1536,.1),java.util.List.of("official_doc"),2,2,routing)).extracting(QdrantSearchHit::chunkId).containsExactly(17L);
+    }
+    @Test void activeLawSourceRouteExcludesOldRawDocumentsBeforeTopKAndRejectsWrongGeneration() throws Exception {
+        String id="c87a26f6-cc34-4303-bdc2-929657369db3",namespace="law_source_"+id.replace("-","");
+        var mode=new AtomicInteger();var baselineBody=new AtomicReference<String>();
+        server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/collections",exchange->{
+            String path=exchange.getRequestURI().getPath();String body=new String(exchange.getRequestBody().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
+            if(path.endsWith("/points/count")){respond(exchange,200,"{\"result\":{\"count\":1}}");return;}
+            if(path.endsWith("/points/search")) {
+                if(path.contains(namespace)) {
+                    var payload=java.util.Map.of("target","admrul","chunkId",200,"documentId",42,"generationId",id,"manifest",(mode.get()==1?"e":"b").repeat(64),"qualityStatus","PASS","contentHash","a".repeat(64),"embeddingModel","text-embedding-3-small","chunkVersion",mode.get()==3?3:2);
+                    respond(exchange,200,new ObjectMapper().writeValueAsString(java.util.Map.of("result",java.util.List.of(java.util.Map.of("id",200,"score",.8,"payload",payload)))));
+                } else {
+                    baselineBody.set(body);respond(exchange,200,"{\"result\":[{\"id\":11,\"score\":0.6,\"payload\":{\"target\":\"admrul\",\"chunkId\":11,\"documentId\":"+(mode.get()==2?10:77)+",\"activationStatus\":\"ACTIVE\"}}]}");
+                }return;
+            }
+            respond(exchange,200,collectionWithQueue("green",1536,1,0,1,1));
+        });server.start();client=client();
+        var source=new com.kaces.pandora.lawdata.version.SourceVersionRoutingSnapshot(1,java.util.Map.of("a".repeat(64),new com.kaces.pandora.lawdata.version.SourceVersionRoutingSnapshot.Route(
+            "a".repeat(64),1,"admrul","admrul:지침",10,42,java.util.Set.of(10L,42L),id,"b".repeat(64),namespace,"d".repeat(64),"c".repeat(64),"text-embedding-3-small",1,2)));
+        var routing=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(1,java.util.Map.of(),java.util.Map.of(),java.util.Set.of(),"f".repeat(64),"recovery_"+id,source);
+        assertThat(client.searchBalanced(java.util.Collections.nCopies(1536,.1),java.util.List.of("admrul"),2,2,routing)).extracting(QdrantSearchHit::chunkId).containsExactly(200L,11L);
+        assertThat(baselineBody.get()).contains("must_not","documentId","10","42");
+        for(int bad:new int[]{1,2,3}) {mode.set(bad);assertThatThrownBy(()->client.searchBalanced(java.util.Collections.nCopies(1536,.1),java.util.List.of("admrul"),2,2,routing)).isInstanceOf(IllegalStateException.class);}
+    }
+    @Test void managedLawMutationsAreRejectedBeforeAnyQdrantRequest() throws Exception {
+        var requests=new AtomicInteger();server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/collections",exchange->{requests.incrementAndGet();respond(exchange,200,"{}");});server.start();client=client();
+        var guard=mock(com.kaces.pandora.lawdata.version.SourceVersionWriteGuard.class);
+        org.mockito.Mockito.doThrow(new IllegalStateException("managed source")).when(guard).mutatePoints(org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.any(Runnable.class));
+        client.configureSourceVersionWriteGuard(guard);
+        var actions=java.util.List.<Runnable>of(
+            ()->client.upsert(java.util.List.of(sourceVersionRow()),java.util.List.of(java.util.Collections.nCopies(1536,.1))),
+            ()->client.upsertLawCandidates(java.util.List.of(sourceVersionRow()),java.util.List.of(java.util.Collections.nCopies(1536,.1))),
+            ()->client.promoteLawCandidatePoints(java.util.List.of(200L)),
+            ()->client.markLawPointsActive(java.util.List.of(200L)),
+            ()->client.markLawPointsRetired(java.util.List.of(200L)),
+            ()->client.markLawPointsCandidate(java.util.List.of(200L)),
+            ()->client.restoreActiveLawPayloadsFromCandidate(java.util.List.of(200L),42,2),
+            ()->client.deleteLawPoints(java.util.List.of(200L)),
+            ()->client.deleteLawPointsBestEffort(java.util.List.of(200L)));
+        for(var action:actions)assertThatThrownBy(action::run).isInstanceOf(IllegalStateException.class);
+        assertThat(requests).hasValue(0);
+    }
     @Test void preservedLawBaselineBindsOriginalPointIdsPayloadAndVectorWithoutRewriting() throws Exception {
         var mode=new AtomicInteger();
         server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);

@@ -51,14 +51,21 @@ public final class SourceVersionPreparationService {
         if(id==null || !id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))throw new IllegalArgumentException("Candidate UUID required");
         return tx.execute(status->{
             var validation=recheckForEmbeddings(id);
+            return assetSnapshot(id,validation,false);
+        });
+    }
+    public AssetSnapshot snapshotForRegisteredAssets(String id) {
+        if(id==null || !id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))throw new IllegalArgumentException("Candidate UUID required");
+        return tx.execute(status->assetSnapshot(id,recheckReadableContent(id),true));
+    }
+    private AssetSnapshot assetSnapshot(String id,Validation validation,boolean registered) {
             var candidate=db.queryForMap("SELECT * FROM law_source_version_candidates WHERE candidate_id=?",id);
             var source=json.readValue((String)candidate.get("metadata_json"),SearchDocument.class);
-            var rows=List.copyOf(chunks.findSourceVersionChunks(id));
+            var rows=List.copyOf(registered?chunks.findRegisteredSourceVersionChunks(id):chunks.findSourceVersionChunks(id));
             if(rows.size()!=validation.chunkCount() || rows.isEmpty() || rows.size()>10000 || rows.stream().anyMatch(row->row.documentId()!=validation.documentId()))
                 throw new IllegalStateException("Inactive source membership unavailable");
             return new AssetSnapshot(id,(String)candidate.get("input_hash"),(String)candidate.get("raw_hash"),validation,rows,
                 parser.parseDetailDocument((String)candidate.get("raw_detail_json"),source.title()).assets());
-        });
     }
     private Validation validateLocked(String id) {
         lockEpoch();
@@ -75,26 +82,10 @@ public final class SourceVersionPreparationService {
                 || !Objects.equals(store.snapshotHash(baseline),c.get("baseline_hash"))
                 || !"Y".equals(original.get("use_yn")) || !"CURRENT".equals(original.get("effective_status")))
             throw new IllegalStateException("Preserved baseline changed");
-        String raw=(String)c.get("raw_detail_json");
-        if(raw==null || raw.length()>4_000_000 || !LawHashUtils.sha256(raw).equals(c.get("raw_hash")))
-            throw new IllegalStateException("Candidate source changed");
-        SearchDocument source=json.readValue((String)c.get("metadata_json"),SearchDocument.class);
-        var policy=SourceVersionPolicy.stage(new SourceVersionPolicy.Baseline(baseline,number(c,"baseline_revision"),
-                (String)original.get("target"),(String)original.get("canonical_key"),(String)original.get("external_id"),
-                (String)original.get("effective_date"),(String)c.get("baseline_hash")),
-                new SourceVersionPolicy.Source(source.target(),source.title(),source.externalId(),source.effectiveDate(),LawHashUtils.sha256(raw)),
-                productSha,LocalDate.now(ZoneId.of("Asia/Seoul")));
-        String input=LawHashUtils.sha256Json(List.of(policy.inputHash(),source));
-        if(!input.equals(c.get("input_hash")) || !source.externalId().equals(c.get("external_id"))
-                || !source.effectiveDate().equals(c.get("effective_date")))throw new IllegalStateException("Candidate identity changed");
+        SearchDocument source=checkedIdentity(c,original,productSha);
+        String raw=(String)c.get("raw_detail_json"),input=(String)c.get("input_hash");
         if("VALIDATED".equals(state)) {
-            long document=number(c,"candidate_document_id");
-            var plan=new SourceVersionTextPlan(parser).plan(source.target(),document,source.title(),raw);
-            String manifest=manifest(input,plan,document);
-            int count=db.queryForObject("SELECT COUNT(*) FROM law_api_document_chunks WHERE document_id=?",Integer.class,document);
-            if(!manifest.equals(c.get("validation_manifest")) || count!=number(c,"validated_chunk_count"))
-                throw new IllegalStateException("Validated source assets changed");
-            return new Validation(state,document,count,manifest);
+            return checkedStoredContent(c,source);
         }
         db.update("INSERT INTO law_api_documents(target,external_id,title,agency_name,category_name,source_date,canonical_key,effective_date,effective_status,detail_link,raw_json,content_hash,use_yn) VALUES(?,?,?,?,?,?,?,?,'PAST',?,?,?,'N')",
             source.target(),source.externalId(),source.title(),source.agencyName(),source.categoryName(),source.sourceDate(),
@@ -128,6 +119,39 @@ public final class SourceVersionPreparationService {
             throw new IllegalStateException("Source is not preparable");
         return validateLocked(id);
     }
+    Validation recheckReadableContent(String id) {
+        if(!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())throw new IllegalStateException("Source asset transaction required");
+        lockEpoch();
+        var c=db.queryForMap("SELECT * FROM law_source_version_candidates WHERE candidate_id=? FOR UPDATE",id);
+        String state=(String)c.get("state");
+        if("VALIDATED".equals(state))return validateLocked(id);
+        if(!Set.of("INDEX_READY","ACTIVE","RETIRED").contains(state))throw new IllegalStateException("Registered source is not readable");
+        var registered=db.queryForList("SELECT document_id FROM law_source_version_history WHERE group_key=? AND source_candidate_id=? AND document_id=? FOR UPDATE",
+            c.get("group_key"),id,c.get("candidate_document_id"));
+        if(registered.size()!=1)throw new IllegalStateException("Registered source content receipt missing");
+        store.recheckPreserved((String)c.get("group_key"));
+        var original=db.queryForMap("SELECT * FROM law_api_documents WHERE document_id=? FOR UPDATE",c.get("baseline_document_id"));
+        return checkedStoredContent(c,checkedIdentity(c,original,(String)c.get("product_sha")));
+    }
+    private SearchDocument checkedIdentity(Map<String,Object> c,Map<String,Object> original,String frozenProduct) {
+        String raw=(String)c.get("raw_detail_json");
+        if(raw==null || raw.length()>4_000_000 || !LawHashUtils.sha256(raw).equals(c.get("raw_hash")))throw new IllegalStateException("Candidate source changed");
+        SearchDocument source=json.readValue((String)c.get("metadata_json"),SearchDocument.class);
+        var policy=SourceVersionPolicy.stage(new SourceVersionPolicy.Baseline(number(c,"baseline_document_id"),number(c,"baseline_revision"),
+            (String)original.get("target"),(String)original.get("canonical_key"),(String)original.get("external_id"),(String)original.get("effective_date"),(String)c.get("baseline_hash")),
+            new SourceVersionPolicy.Source(source.target(),source.title(),source.externalId(),source.effectiveDate(),LawHashUtils.sha256(raw)),frozenProduct,LocalDate.now(ZoneId.of("Asia/Seoul")));
+        String input=LawHashUtils.sha256Json(List.of(policy.inputHash(),source));
+        if(!input.equals(c.get("input_hash")) || !source.externalId().equals(c.get("external_id")) || !source.effectiveDate().equals(c.get("effective_date")))throw new IllegalStateException("Candidate identity changed");
+        return source;
+    }
+    private Validation checkedStoredContent(Map<String,Object> c,SearchDocument source) {
+        long document=number(c,"candidate_document_id");
+        var plan=new SourceVersionTextPlan(parser).plan(source.target(),document,source.title(),(String)c.get("raw_detail_json"));
+        String manifest=manifest((String)c.get("input_hash"),plan,document);
+        int count=db.queryForObject("SELECT COUNT(*) FROM law_api_document_chunks WHERE document_id=?",Integer.class,document);
+        if(!manifest.equals(c.get("validation_manifest")) || count!=number(c,"validated_chunk_count"))throw new IllegalStateException("Validated source assets changed");
+        return new Validation((String)c.get("state"),document,count,manifest);
+    }
     private long number(Map<String,Object> row,String key) {return ((Number)row.get(key)).longValue();}
     private String manifest(String input,SourceVersionTextPlan.Plan plan,long document) {
         var snapshot=new LinkedHashMap<String,Object>();
@@ -135,9 +159,11 @@ public final class SourceVersionPreparationService {
             String order=switch(table) {case "law_api_document_details"->"detail_id";case "law_api_document_chunks"->"chunk_id";case "law_api_document_chunk_versions"->"chunk_version";case "law_api_assets"->"asset_id";default->"document_id";};
             var rows=db.queryForList("SELECT * FROM "+table+" WHERE document_id=? ORDER BY "+order+" LIMIT 10001",document);
             if(rows.size()>10000)throw new IllegalStateException("Source membership bound exceeded");
-            snapshot.put(table,rows.stream().map(row->{var values=new TreeMap<String,String>();row.forEach((k,v)->values.put(k,v==null?null:v.toString()));return values;}).toList());
+            snapshot.put(table,rows.stream().map(row->{var values=new TreeMap<String,String>();row.forEach((k,v)->values.put(k,v==null?null:v.toString()));
+                if(table.equals("law_api_documents")) {values.remove("use_yn");values.remove("effective_status");values.remove("updated_at");}
+                return values;}).toList());
         }
-        return LawHashUtils.sha256Json(List.of(input,plan.manifest(),snapshot));
+        return LawHashUtils.sha256Json(List.of("source-content-v1",input,plan.manifest(),snapshot));
     }
     private static final class TextRejection extends RuntimeException {
         final String inputHash;

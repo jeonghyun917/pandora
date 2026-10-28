@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS law_source_version_candidates (
     metadata_json LONGTEXT NOT NULL CHECK(JSON_VALID(metadata_json)),
     raw_detail_json LONGTEXT NOT NULL CHECK(JSON_VALID(raw_detail_json)),
     candidate_document_id BIGINT NULL,
+    prepared_id CHAR(36) NULL,
     validation_manifest CHAR(64) NULL,
     validated_chunk_version INT NULL,
     validated_chunk_count INT NULL,
@@ -132,6 +133,37 @@ CREATE TABLE IF NOT EXISTS law_source_version_vector_receipts (
     chunk_count INT NOT NULL,
     CONSTRAINT fk_law_source_vector_candidate FOREIGN KEY(candidate_id) REFERENCES law_source_version_candidates(candidate_id),
     CONSTRAINT chk_law_source_vector_count CHECK(chunk_count>0 AND chunk_count<=10000)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE law_source_version_candidates ADD COLUMN IF NOT EXISTS prepared_id CHAR(36) NULL;
+CREATE TABLE IF NOT EXISTS law_source_version_transitions (
+    transition_id CHAR(36) NOT NULL PRIMARY KEY,
+    input_hash CHAR(64) NOT NULL UNIQUE,
+    group_key CHAR(64) NOT NULL,
+    kind VARCHAR(20) NOT NULL,
+    source_candidate_id CHAR(36) NULL,
+    target_document_id BIGINT NOT NULL,
+    manifest CHAR(64) NOT NULL,
+    expected_active_document_id BIGINT NOT NULL,
+    expected_group_revision BIGINT NOT NULL,
+    base_source_revision BIGINT NOT NULL,
+    base_rag_revision BIGINT NOT NULL,
+    base_corpus_revision BIGINT NOT NULL,
+    routing_identity CHAR(64) NOT NULL,
+    corpus_fingerprint CHAR(64) NOT NULL,
+    config_fingerprint CHAR(64) NOT NULL,
+    reference_fingerprint CHAR(64) NOT NULL,
+    vector_fingerprint CHAR(64) NOT NULL,
+    baseline_vector_fingerprint CHAR(64) NOT NULL,
+    lexical_fingerprint CHAR(64) NULL,
+    state VARCHAR(20) NOT NULL DEFAULT 'PREPARING',
+    CONSTRAINT fk_law_source_transition_group FOREIGN KEY(group_key) REFERENCES law_source_version_groups(group_key),
+    CONSTRAINT fk_law_source_transition_candidate FOREIGN KEY(source_candidate_id) REFERENCES law_source_version_candidates(candidate_id),
+    CONSTRAINT fk_law_source_transition_target FOREIGN KEY(target_document_id) REFERENCES law_api_documents(document_id),
+    CONSTRAINT fk_law_source_transition_active FOREIGN KEY(expected_active_document_id) REFERENCES law_api_documents(document_id),
+    CONSTRAINT chk_law_source_transition_kind CHECK(kind IN ('PROMOTE','ROLLBACK')),
+    CONSTRAINT chk_law_source_transition_state CHECK(state IN ('PREPARING','READY','APPLIED','STALE')),
+    CONSTRAINT chk_law_source_transition_revisions CHECK(expected_group_revision>=0 AND base_source_revision>=0 AND base_rag_revision>=0 AND base_corpus_revision>=0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS law_api_document_details (

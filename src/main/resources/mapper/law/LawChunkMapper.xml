@@ -494,6 +494,21 @@
     ORDER BY c.sort_order,c.chunk_id LIMIT 10001
   </select>
 
+  <select id="findRegisteredSourceVersionChunks" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    SELECT <include refid="sourceVersionChunkProjection"/>
+    FROM law_source_version_candidates v
+    JOIN law_source_version_history h ON h.source_candidate_id=v.candidate_id AND h.group_key=v.group_key AND h.document_id=v.candidate_document_id
+    JOIN law_source_version_groups g ON g.group_key=v.group_key
+    JOIN law_api_documents doc ON doc.document_id=h.document_id
+    JOIN law_api_document_chunks c ON c.document_id=doc.document_id AND c.chunk_version=v.validated_chunk_version
+    WHERE v.candidate_id=#{candidateId} AND doc.target=g.target AND doc.canonical_key=g.canonical_key
+      AND ((v.state='INDEX_READY' AND doc.use_yn='N' AND doc.effective_status='PAST' AND g.active_document_id!=doc.document_id)
+        OR (v.state='ACTIVE' AND doc.use_yn='Y' AND doc.effective_status='CURRENT' AND g.active_document_id=doc.document_id)
+        OR (v.state='RETIRED' AND doc.use_yn='Y' AND doc.effective_status='PAST' AND g.active_document_id!=doc.document_id))
+      AND c.use_yn='Y' AND c.activation_status='ACTIVE' AND c.quality_status IN ('PASS','CONTEXT_ONLY')
+    ORDER BY c.sort_order,c.chunk_id LIMIT 10001
+  </select>
+
   <select id="findSemanticIndexCandidatesByDocumentIdAndVersion" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
     SELECT c.chunk_id AS chunkId, c.document_id AS documentId, doc.target AS target,
       doc.external_id AS externalId, doc.title AS title, doc.agency_name AS agencyName,
