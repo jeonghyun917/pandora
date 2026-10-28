@@ -45,6 +45,7 @@ public class SourceVersionCandidateStore {
             if(groups.isEmpty()) {
                 if(expectedRevision!=0)throw new IllegalStateException("Stale baseline revision");
                 jdbc.update("INSERT INTO law_source_version_groups(group_key,target,canonical_key,active_document_id,baseline_document_id,revision,baseline_hash) VALUES(?,?,?,?,?,0,?)",groupKey,target,key,baselineId,baselineId,snapshot);
+                registerPreserved(groupKey,baselineId,null);
             } else {
                 var group=groups.get(0);
                 if(!target.equals(group.get("target")) || !key.equals(group.get("canonical_key"))
@@ -70,10 +71,17 @@ public class SourceVersionCandidateStore {
     }
     /** Called under the source epoch/document locks; all persisted baseline assets contribute. */
     public String snapshotHash(long documentId) {
+        return snapshotHash(documentId,false);
+    }
+    private String snapshotHash(long documentId,boolean preservedContent) {
         if(!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
             throw new IllegalStateException("Locked source transaction required");
         var tables=new LinkedHashMap<String,List<Map<String,String>>>();
         tables.put("document",snapshot("SELECT * FROM law_api_documents WHERE document_id=?",documentId));
+        if(preservedContent)for(var row:tables.get("document")) {
+            // These three fields are controlled by the atomic visibility transition, not source content.
+            row.remove("use_yn");row.remove("effective_status");row.remove("updated_at");
+        }
         tables.put("details",snapshot("SELECT * FROM law_api_document_details WHERE document_id=? ORDER BY detail_id LIMIT 10001",documentId));
         tables.put("chunks",snapshot("SELECT * FROM law_api_document_chunks WHERE document_id=? ORDER BY chunk_id LIMIT 10001",documentId));
         tables.put("versions",snapshot("SELECT * FROM law_api_document_chunk_versions WHERE document_id=? ORDER BY chunk_version LIMIT 10001",documentId));
@@ -82,6 +90,37 @@ public class SourceVersionCandidateStore {
         String serialized=json.writeValueAsString(tables);
         if(serialized.length()>64_000_000)throw new IllegalStateException("Baseline snapshot bound exceeded");
         return LawHashUtils.sha256(serialized);
+    }
+    public void registerPreserved(String groupKey,long documentId,String candidateId) {
+        if(!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
+            throw new IllegalStateException("Locked source transaction required");
+        var group=jdbc.queryForMap("SELECT * FROM law_source_version_groups WHERE group_key=? FOR UPDATE",groupKey);
+        var document=jdbc.queryForMap("SELECT * FROM law_api_documents WHERE document_id=? FOR UPDATE",documentId);
+        if(!Objects.equals(group.get("target"),document.get("target")) || !Objects.equals(group.get("canonical_key"),document.get("canonical_key")))
+            throw new IllegalStateException("Preserved source group mismatch");
+        if(candidateId==null) {
+            if(((Number)group.get("baseline_document_id")).longValue()!=documentId || ((Number)group.get("active_document_id")).longValue()!=documentId
+                    || ((Number)group.get("revision")).longValue()!=0 || !"Y".equals(document.get("use_yn")) || !"CURRENT".equals(document.get("effective_status")))
+                throw new IllegalStateException("Initial preserved baseline required");
+        } else {
+            var candidate=jdbc.queryForMap("SELECT * FROM law_source_version_candidates WHERE candidate_id=? FOR UPDATE",candidateId);
+            if(!groupKey.equals(candidate.get("group_key")) || !(candidate.get("candidate_document_id") instanceof Number owned) || owned.longValue()!=documentId
+                    || !"INDEX_READY".equals(candidate.get("state")) || !"N".equals(document.get("use_yn")) || !"PAST".equals(document.get("effective_status")))
+                throw new IllegalStateException("Only fully prepared inactive sources can be preserved");
+        }
+        String hash=snapshotHash(documentId,true);
+        var existing=jdbc.queryForList("SELECT * FROM law_source_version_history WHERE group_key=? AND document_id=? FOR UPDATE",groupKey,documentId);
+        if(existing.isEmpty())jdbc.update("INSERT INTO law_source_version_history(group_key,document_id,source_candidate_id,content_snapshot_hash) VALUES(?,?,?,?)",groupKey,documentId,candidateId,hash);
+        else if(existing.size()!=1 || !Objects.equals(existing.get(0).get("source_candidate_id"),candidateId) || !hash.equals(existing.get(0).get("content_snapshot_hash")))
+            throw new IllegalStateException("Preserved source receipt conflict");
+    }
+    public void recheckPreserved(String groupKey) {
+        if(!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
+            throw new IllegalStateException("Locked source transaction required");
+        var rows=jdbc.queryForList("SELECT * FROM law_source_version_history WHERE group_key=? ORDER BY document_id LIMIT 10001 FOR UPDATE",groupKey);
+        if(rows.isEmpty() || rows.size()>10000)throw new IllegalStateException("Preserved source membership unavailable");
+        for(var row:rows)if(!snapshotHash(((Number)row.get("document_id")).longValue(),true).equals(row.get("content_snapshot_hash")))
+            throw new IllegalStateException("Preserved source content changed");
     }
     private List<Map<String,String>> snapshot(String sql,long id) {
         var rows=jdbc.queryForList(sql,id);if(rows.size()>10000)throw new IllegalStateException("Baseline membership bound exceeded");

@@ -21,7 +21,7 @@ class SourceVersionStorageTests {
         assertThat(db.queryForObject("SELECT DATABASE()",String.class)).isEqualTo("pandora_source_version_test");
         assertThat(Path.of(db.queryForObject("SELECT @@datadir",String.class)).toRealPath()).isEqualTo(Path.of(System.getenv("PANDORA_SOURCE_VERSION_TEST_DATADIR")).toRealPath());
         new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(new org.springframework.core.io.ClassPathResource("schema.sql")).execute(ds);
-        db.update("DELETE FROM law_source_version_embedding_receipts");db.update("DELETE FROM law_source_version_candidates");db.update("DELETE FROM law_source_version_groups");
+        db.update("DELETE FROM law_source_version_vector_receipts");db.update("DELETE FROM law_source_version_history");db.update("DELETE FROM law_source_version_embedding_receipts");db.update("DELETE FROM law_source_version_candidates");db.update("DELETE FROM law_source_version_groups");
         db.update("DELETE FROM law_api_documents WHERE external_id IN ('source-test-old','source-test-new')");
         db.update("INSERT INTO law_api_documents(target,external_id,title,source_date,canonical_key,effective_date,effective_status,raw_json,content_hash) VALUES('admrul','source-test-old','원문 버전 테스트 지침','20250101','admrul:원문버전테스트지침','20250101','CURRENT','{}',?)","a".repeat(64));
         baseline=db.queryForObject("SELECT document_id FROM law_api_documents WHERE external_id='source-test-old'",Long.class);

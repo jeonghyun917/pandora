@@ -648,16 +648,23 @@ public class QdrantClient {
 
     /** Preservation receipt for legacy points; does not invent missing content/model payload tags. */
     public String baselineRagFingerprint(List<LawSemanticChunkRow> chunks) {
+        return baselineFingerprint(chunks,true);
+    }
+    public String baselineLawFingerprint(List<LawSemanticChunkRow> chunks) {
+        return baselineFingerprint(chunks,false);
+    }
+    private String baselineFingerprint(List<LawSemanticChunkRow> chunks,boolean rag) {
         if(chunks==null || chunks.isEmpty() || chunks.size()>10000 || chunks.stream().anyMatch(java.util.Objects::isNull))throw new IllegalArgumentException("Bounded baseline required");
         var rows=chunks.stream().sorted(java.util.Comparator.comparingLong(LawSemanticChunkRow::chunkId)).toList();
         var ids=new java.util.HashSet<Long>();long documentId=rows.get(0).documentId();
         for(var row:rows) {
-            if(documentId<=0 || row.documentId()!=documentId || row.chunkId()<=0 || row.chunkId()>Long.MAX_VALUE-RAG_POINT_ID_OFFSET
-                    || !ids.add(row.chunkId()) || !Set.of("official_doc","internal_doc","reference_doc").contains(row.target())
-                    || chunkVersion(row)!=4 || row.contentHash()==null || !row.contentHash().matches("[0-9a-f]{64}"))
+            if(documentId<=0 || row.documentId()!=documentId || row.chunkId()<=0 || (rag && row.chunkId()>Long.MAX_VALUE-RAG_POINT_ID_OFFSET)
+                    || !ids.add(row.chunkId()) || row.target()==null || !(rag?Set.of("official_doc","internal_doc","reference_doc"):Set.of("law","admrul")).contains(row.target())
+                    || (rag ? chunkVersion(row)!=4 : row.chunkVersion()==null || row.chunkVersion()<1)
+                    || row.contentHash()==null || !row.contentHash().matches("[0-9a-f]{64}"))
                 throw new IllegalArgumentException("Invalid baseline identity");
         }
-        String collection=ragCollection();
+        String collection=rag?ragCollection():properties.qdrant().collection();
         var before=indexSnapshot(collection).orElseThrow(()->new IllegalStateException("Baseline collection unavailable"));
         if(!before.isStable() || baselineDocumentCount(collection,documentId)!=rows.size())
             throw new IllegalStateException("Baseline document parity mismatch");
@@ -665,7 +672,7 @@ public class QdrantClient {
         for(int start=0;start<rows.size();start+=128) {
             var batch=rows.subList(start,Math.min(start+128,rows.size()));
             var expected=new java.util.TreeMap<Long,LawSemanticChunkRow>();
-            batch.forEach(row->expected.put(ragPointId(row.chunkId()),row));
+            batch.forEach(row->expected.put(rag?ragPointId(row.chunkId()):row.chunkId(),row));
             var response=restClient.post().uri("/collections/{collection}/points",collection)
                 .body(Map.of("ids",List.copyOf(expected.keySet()),"with_payload",true,"with_vector",true)).retrieve().body(Map.class);
             if(response==null || !(response.get("result") instanceof List<?> points) || points.size()!=batch.size())
@@ -681,7 +688,7 @@ public class QdrantClient {
                 boolean legacyUntagged=!payload.containsKey("activationStatus")
                     && !payload.containsKey("generationId") && !payload.containsKey("manifest");
                 if(row==null || canonical.containsKey(pointId) || strictPositivePointId(payload.get("chunkId"))!=row.chunkId()
-                        || strictPositivePointId(payload.get("documentId"))!=documentId || strictPositivePointId(payload.get("chunkVersion"))!=4
+                        || strictPositivePointId(payload.get("documentId"))!=documentId || strictPositivePointId(payload.get("chunkVersion"))!=chunkVersion(row)
                         || !row.target().equals(payload.get("target")) || !(legacyUntagged || "ACTIVE".equals(payload.get("activationStatus")))
                         || payload.containsKey("generationId") || payload.containsKey("manifest")
                         || !blankIfNull(row.sourcePath()).equals(payload.get("sourcePath")))throw new IllegalStateException("Baseline point identity mismatch");

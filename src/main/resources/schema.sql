@@ -98,6 +98,17 @@ CREATE TABLE IF NOT EXISTS law_source_version_candidates (
     CONSTRAINT chk_law_source_candidate_state CHECK(state IN ('STAGED','VALIDATED','INDEX_READY','ACTIVE','RETIRED','REJECTED'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS law_source_version_history (
+    group_key CHAR(64) NOT NULL,
+    document_id BIGINT NOT NULL,
+    source_candidate_id CHAR(36) NULL,
+    content_snapshot_hash CHAR(64) NOT NULL,
+    PRIMARY KEY(group_key,document_id),
+    CONSTRAINT fk_law_source_history_group FOREIGN KEY(group_key) REFERENCES law_source_version_groups(group_key),
+    CONSTRAINT fk_law_source_history_document FOREIGN KEY(document_id) REFERENCES law_api_documents(document_id),
+    CONSTRAINT fk_law_source_history_candidate FOREIGN KEY(source_candidate_id) REFERENCES law_source_version_candidates(candidate_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS law_source_version_embedding_receipts (
     candidate_id CHAR(36) NOT NULL,
     chunk_id BIGINT NOT NULL,
@@ -109,6 +120,18 @@ CREATE TABLE IF NOT EXISTS law_source_version_embedding_receipts (
     PRIMARY KEY(candidate_id,chunk_id),
     CONSTRAINT fk_law_source_embedding_candidate FOREIGN KEY(candidate_id) REFERENCES law_source_version_candidates(candidate_id),
     CONSTRAINT chk_law_source_embedding_dimensions CHECK(vector_dimensions > 0 AND vector_dimensions <= 65536)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS law_source_version_vector_receipts (
+    candidate_id CHAR(36) NOT NULL PRIMARY KEY,
+    validation_manifest CHAR(64) NOT NULL,
+    vector_collection VARCHAR(100) NOT NULL,
+    vector_fingerprint CHAR(64) NOT NULL,
+    baseline_vector_fingerprint CHAR(64) NOT NULL,
+    embedding_model VARCHAR(200) NOT NULL,
+    chunk_count INT NOT NULL,
+    CONSTRAINT fk_law_source_vector_candidate FOREIGN KEY(candidate_id) REFERENCES law_source_version_candidates(candidate_id),
+    CONSTRAINT chk_law_source_vector_count CHECK(chunk_count>0 AND chunk_count<=10000)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS law_api_document_details (

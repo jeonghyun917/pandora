@@ -29,6 +29,29 @@ import tools.jackson.databind.DatabindException;
 import tools.jackson.databind.ObjectMapper;
 
 class QdrantClientTests {
+    @Test void preservedLawBaselineBindsOriginalPointIdsPayloadAndVectorWithoutRewriting() throws Exception {
+        var mode=new AtomicInteger();
+        server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/collections",exchange->{
+            String path=exchange.getRequestURI().getPath();
+            assertThat(exchange.getRequestMethod()).isIn("GET","POST");
+            assertThat(path).startsWith("/collections/law");
+            if(path.endsWith("/points/count")){respond(exchange,200,"{\"result\":{\"count\":1}}");return;}
+            if(path.endsWith("/points")) {
+                var payload=new java.util.HashMap<String,Object>(java.util.Map.of("chunkId",200,"documentId",42,"target","admrul","chunkVersion",2,
+                    "activationStatus","ACTIVE","sourcePath","$.AdmRulService.조문내용"));
+                if(mode.get()==1)payload.put("documentId",43);
+                if(mode.get()==2)payload.put("generationId","foreign");
+                var vector=java.util.Collections.nCopies(1536,mode.get()==3?.2:.1);
+                respond(exchange,200,new ObjectMapper().writeValueAsString(java.util.Map.of("result",java.util.List.of(java.util.Map.of("id",200,"payload",payload,"vector",vector)))));return;
+            }
+            respond(exchange,200,collectionWithQueue("green",1536,1,0,1,1));
+        });server.start();client=client();
+        String first=client.baselineLawFingerprint(java.util.List.of(sourceVersionRow()));
+        assertThat(first).matches("[0-9a-f]{64}");
+        for(int bad:new int[]{1,2}) {mode.set(bad);assertThatThrownBy(()->client.baselineLawFingerprint(java.util.List.of(sourceVersionRow()))).isInstanceOf(IllegalStateException.class);}
+        mode.set(3);assertThat(client.baselineLawFingerprint(java.util.List.of(sourceVersionRow()))).isNotEqualTo(first);
+    }
     private static LawSemanticChunkRow sourceVersionRow() {
         return new LawSemanticChunkRow(200,42,"admrul","source-42","지침",null,null,"20261019","PAST","제1조","시정","본문",null,"$.AdmRulService.조문내용",null,0,"a".repeat(64),null,"article","PASS","본문",null,2);
     }

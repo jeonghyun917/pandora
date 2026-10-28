@@ -20,7 +20,8 @@ public class SourceVersionSchemaMaintenance implements ApplicationRunner {
         String immutable=List.of("target","external_id","title","agency_name","category_name","source_date","canonical_key","effective_date","detail_link","raw_json","content_hash","sync_status","last_error_message","fetched_at","created_at").stream()
             .map(column->"(NEW."+column+" <=> OLD."+column+")").collect(java.util.stream.Collectors.joining(" AND "));
         String active="EXISTS (SELECT 1 FROM law_source_version_groups g WHERE g.target=OLD.target AND g.canonical_key=OLD.canonical_key AND g.active_document_id=OLD.document_id)";
-        install("srcver_doc_bu","law_api_documents","UPDATE","BEGIN IF ("+oldGroup+" OR "+newGroup+") THEN IF NOT ("+immutable+") THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Managed source metadata is immutable'; END IF; IF NOT (("+active+" AND NEW.use_yn='Y' AND NEW.effective_status='CURRENT') OR (NOT "+active+" AND NEW.use_yn='N' AND NEW.effective_status='PAST')) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Managed source visibility must follow registered pointer'; END IF; END IF; END");
+        String preserved="EXISTS (SELECT 1 FROM law_source_version_history h JOIN law_source_version_groups g ON g.group_key=h.group_key WHERE h.document_id=OLD.document_id AND g.target=OLD.target AND g.canonical_key=OLD.canonical_key AND (h.source_candidate_id IS NULL OR EXISTS (SELECT 1 FROM law_source_version_candidates v WHERE v.candidate_id=h.source_candidate_id AND v.candidate_document_id=OLD.document_id AND v.state='RETIRED')))";
+        install("srcver_doc_bu","law_api_documents","UPDATE","BEGIN IF ("+oldGroup+" OR "+newGroup+") THEN IF NOT ("+immutable+") THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Managed source metadata is immutable'; END IF; IF NOT (("+active+" AND NEW.use_yn='Y' AND NEW.effective_status='CURRENT') OR (NOT "+active+" AND NEW.effective_status='PAST' AND (NEW.use_yn='N' OR (NEW.use_yn='Y' AND "+preserved+")))) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Managed source visibility must follow registered pointer'; END IF; END IF; END");
         install("srcver_doc_bd","law_api_documents","DELETE","BEGIN IF "+oldGroup+" THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Managed source must be preserved'; END IF; END");
         child("chunks","law_api_document_chunks",false,false);
         child("details","law_api_document_details",false,false);
@@ -28,6 +29,8 @@ public class SourceVersionSchemaMaintenance implements ApplicationRunner {
         child("versions","law_api_document_chunk_versions",false,false);
         child("operations","law_api_document_activation_operations",false,false);
         child("embeddings","law_api_chunk_embeddings",true,true);
+        install("srcver_history_bu","law_source_version_history","UPDATE","SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Preserved source receipts are immutable'");
+        install("srcver_history_bd","law_source_version_history","DELETE","SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Preserved source receipts must remain'");
     }
     private void child(String name,String table,boolean byChunk,boolean embeddings) {
         for(String event:List.of("INSERT","UPDATE","DELETE")) {

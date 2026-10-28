@@ -17,6 +17,8 @@ class SourceVersionPreparationDatabaseTests {
     private SourceVersionCandidateStore store;
     private SourceVersionPreparationService preparation;
     private SourceVersionEmbeddingReceipts receipts;
+    private org.springframework.transaction.PlatformTransactionManager manager;
+    private LawChunkMapper chunkMapper;
     private long baseline;
     private static final String SHA="c".repeat(40),TITLE="원문 준비 테스트 지침",KEY="admrul:원문준비테스트지침";
     @BeforeEach void setup() throws Exception {
@@ -28,15 +30,17 @@ class SourceVersionPreparationDatabaseTests {
         assertThat(path).isEqualTo(Path.of(System.getenv("PANDORA_SOURCE_VERSION_TEST_DATADIR")).toRealPath());
         assertThat(path.getFileName().toString()).startsWith("pandora-import-tx-test-source-");
         new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(new org.springframework.core.io.ClassPathResource("schema.sql")).execute(ds);
-        db.update("DELETE FROM law_source_version_embedding_receipts");db.update("DELETE FROM law_source_version_candidates");db.update("DELETE FROM law_source_version_groups");
+        db.update("DELETE FROM law_source_version_vector_receipts");db.update("DELETE FROM law_source_version_history");db.update("DELETE FROM law_source_version_embedding_receipts");db.update("DELETE FROM law_source_version_candidates");db.update("DELETE FROM law_source_version_groups");
         db.update("DELETE FROM law_api_documents WHERE external_id IN ('source-prep-test-old','source-prep-test-new')");
         db.update("INSERT INTO law_api_documents(target,external_id,title,source_date,canonical_key,effective_date,effective_status,raw_json,content_hash) VALUES('admrul','source-prep-test-old',?,'20250101',?,'20250101','CURRENT','{}',?)",TITLE,KEY,"a".repeat(64));
         baseline=db.queryForObject("SELECT document_id FROM law_api_documents WHERE external_id='source-prep-test-old'",Long.class);
-        var manager=new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds);
+        db.update("INSERT INTO law_api_document_chunks(document_id,chunk_type,chunk_text,embedding_text,content_hash) VALUES(?,'article','보존할 기존 본문','보존할 기존 본문',?)",baseline,"e".repeat(64));
+        manager=new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds);
         store=new SourceVersionCandidateStore(db,manager);
         var factory=new org.mybatis.spring.SqlSessionFactoryBean();factory.setDataSource(ds);
         factory.setMapperLocations(new org.springframework.core.io.ClassPathResource("mapper/law/LawChunkMapper.xml"),new org.springframework.core.io.ClassPathResource("mapper/law/LawDetailMapper.xml"),new org.springframework.core.io.ClassPathResource("mapper/law/LawAssetMapper.xml"));
         var session=new org.mybatis.spring.SqlSessionTemplate(factory.getObject());var chunks=session.getMapper(LawChunkMapper.class);
+        chunkMapper=chunks;
         var json=new ObjectMapper();
         var writer=new LawDocumentWriter(null,session.getMapper(LawDetailMapper.class),chunks,session.getMapper(LawAssetMapper.class),new LawJsonWriter(json),null,null,null);
         preparation=new SourceVersionPreparationService(db,store,writer,chunks,new LawOpenApiPayloadParser(json,new LawJsonWriter(json)),manager,SHA);
@@ -179,5 +183,50 @@ class SourceVersionPreparationDatabaseTests {
         for(var listener:List.copyOf(async.getListeners()))listener.onTimeout(new jakarta.servlet.AsyncEvent(async,request,response));
         assertThat(response.getStatus()).isEqualTo(503);
         try(var next=leases.acquire()) {assertThat(next.revision()).isNotNegative();}
+    }
+    @Test void preservedVersionsPermitOnlyControlledVisibilityChangesWithoutContentMutation() {
+        var candidate=store.stage(baseline,0,source(),raw(),SHA);var result=preparation.validate(candidate.id());
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM law_source_version_history",Integer.class)).isEqualTo(1);
+        assertThatThrownBy(()->db.update("UPDATE law_api_documents SET use_yn='Y' WHERE document_id=?",result.documentId())).isInstanceOf(RuntimeException.class);
+        var tx=new org.springframework.transaction.support.TransactionTemplate(new org.springframework.jdbc.datasource.DataSourceTransactionManager(db.getDataSource()));
+        tx.executeWithoutResult(status->{
+            db.queryForObject("SELECT revision FROM law_source_version_visibility_epoch WHERE singleton_id=1 FOR UPDATE",Long.class);
+            // Characterize native visibility guards, not the external INDEX_READY qualification service.
+            db.update("UPDATE law_source_version_candidates SET state='INDEX_READY' WHERE candidate_id=?",candidate.id());
+            store.registerPreserved(candidate.groupKey(),result.documentId(),candidate.id());
+            assertThat(db.queryForObject("SELECT COUNT(*) FROM law_source_version_history",Integer.class)).isEqualTo(2);
+            store.recheckPreserved(candidate.groupKey());
+            db.update("UPDATE law_source_version_candidates SET state='ACTIVE' WHERE candidate_id=?",candidate.id());
+            db.update("UPDATE law_source_version_groups SET active_document_id=?,revision=revision+1 WHERE group_key=?",result.documentId(),candidate.groupKey());
+            db.update("UPDATE law_api_documents SET effective_status='PAST' WHERE document_id=?",baseline);
+            db.update("UPDATE law_api_documents SET use_yn='Y',effective_status='CURRENT' WHERE document_id=?",result.documentId());
+            store.recheckPreserved(candidate.groupKey());
+        });
+        assertThat(db.queryForObject("SELECT use_yn FROM law_api_documents WHERE document_id=?",String.class,baseline)).isEqualTo("Y");
+        assertThat(db.queryForObject("SELECT chunk_text FROM law_api_document_chunks WHERE document_id=?",String.class,result.documentId())).contains("요구할 수 있다");
+        assertThatThrownBy(()->db.update("UPDATE law_source_version_history SET content_snapshot_hash=? WHERE document_id=?","f".repeat(64),baseline)).isInstanceOf(RuntimeException.class);
+    }
+    @Test void vectorPreparationPersistsExactReceiptWithoutGrantingIndexReadiness() {
+        var candidate=store.stage(baseline,0,source(),raw(),SHA);preparation.validate(candidate.id());
+        var embedding=org.mockito.Mockito.mock(com.kaces.pandora.infra.openai.OpenAiEmbeddingClient.class);
+        var qdrant=org.mockito.Mockito.mock(com.kaces.pandora.infra.qdrant.QdrantClient.class);
+        var calls=new java.util.concurrent.atomic.AtomicInteger();
+        org.mockito.Mockito.when(embedding.embed(org.mockito.ArgumentMatchers.anyList())).thenAnswer(invocation->{
+            if(calls.incrementAndGet()>1)throw new IllegalStateException("duplicate external embedding");return List.of(List.of(1.0,2.0,3.0));
+        });
+        String collection="law_source_"+candidate.id().replace("-","");
+        org.mockito.Mockito.when(qdrant.lawSourceVersionCollection(candidate.id())).thenReturn(collection);
+        org.mockito.Mockito.when(qdrant.baselineLawFingerprint(org.mockito.ArgumentMatchers.anyList())).thenReturn("a".repeat(64));
+        long chunk=db.queryForObject("SELECT c.chunk_id FROM law_api_document_chunks c JOIN law_source_version_candidates v ON v.candidate_document_id=c.document_id WHERE v.candidate_id=?",Long.class,candidate.id());
+        org.mockito.Mockito.when(qdrant.inspectLawSourceVersionPoints(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyList()))
+            .thenReturn(new com.kaces.pandora.infra.qdrant.QdrantClient.RecoveryPointInspection(null,Set.of(chunk)));
+        org.mockito.Mockito.when(qdrant.verifyLawSourceVersionCollection(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyList())).thenReturn("d".repeat(64));
+        var service=new SourceVersionVectorPreparation(db,preparation,receipts,chunkMapper,embedding,qdrant,manager,"source-test-embedding");
+        var receipt=service.prepare(candidate.id());
+        assertThat(receipt.vectorCollection()).isEqualTo(collection);assertThat(receipt.chunkCount()).isEqualTo(1);
+        assertThat(service.prepare(candidate.id())).isEqualTo(receipt);
+        assertThat(db.queryForObject("SELECT state FROM law_source_version_candidates WHERE candidate_id=?",String.class,candidate.id())).isEqualTo("VALIDATED");
+        org.mockito.Mockito.when(qdrant.baselineLawFingerprint(org.mockito.ArgumentMatchers.anyList())).thenReturn("a".repeat(64),"b".repeat(64));
+        assertThatThrownBy(()->service.prepare(candidate.id())).isInstanceOf(IllegalStateException.class);
     }
 }
