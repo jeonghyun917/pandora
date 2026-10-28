@@ -62,6 +62,7 @@ public class LawVersionStatusService implements ApplicationRunner {
 	@Transactional
 	public void refreshAllStatuses() {
 		ensureSchema();
+        jdbcTemplate.queryForObject("SELECT revision FROM law_source_version_epoch WHERE singleton_id=1 FOR UPDATE",Long.class);
 		List<Map<String, Object>> rows = jdbcTemplate.queryForList(
 			"""
 			SELECT document_id, target, title, source_date
@@ -85,6 +86,9 @@ public class LawVersionStatusService implements ApplicationRunner {
 			return;
 		}
 		ensureSchema();
+        jdbcTemplate.queryForObject("SELECT revision FROM law_source_version_epoch WHERE singleton_id=1 FOR UPDATE",Long.class);
+        Integer managed=jdbcTemplate.queryForObject("SELECT COUNT(*) FROM law_source_version_groups WHERE target=? AND canonical_key=?",Integer.class,target,canonicalKey);
+        if(managed!=null && managed>0)return;
 		List<Map<String, Object>> rows = jdbcTemplate.queryForList(
 			"SELECT document_id, target, title, source_date FROM law_api_documents WHERE target = ? AND canonical_key = ?",
 			target,
@@ -132,6 +136,8 @@ public class LawVersionStatusService implements ApplicationRunner {
 		String title = stringValue(row.get("title"));
 		String sourceDate = stringValue(row.get("source_date"));
 		String canonicalKey = LawVersionUtils.canonicalKey(target, title);
+        Integer managed=jdbcTemplate.queryForObject("SELECT COUNT(*) FROM law_source_version_groups WHERE target=? AND canonical_key=?",Integer.class,target,canonicalKey);
+        if(managed!=null && managed>0)return;
 		String effectiveDate = LawVersionUtils.normalizeEffectiveDate(sourceDate);
 		String status = LawVersionUtils.initialStatus(target, effectiveDate, clock);
 		jdbcTemplate.update(
@@ -141,6 +147,8 @@ public class LawVersionStatusService implements ApplicationRunner {
 			    effective_date = ?,
 			    effective_status = ?
 			WHERE document_id = ?
+              AND NOT EXISTS (SELECT 1 FROM law_source_version_groups g
+                WHERE g.target=law_api_documents.target AND g.canonical_key=law_api_documents.canonical_key)
 			""",
 			canonicalKey,
 			effectiveDate,
@@ -160,6 +168,8 @@ public class LawVersionStatusService implements ApplicationRunner {
 			END
 			WHERE target IN ('law', 'admrul')
 			  AND canonical_key IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM law_source_version_groups g
+                WHERE g.target=law_api_documents.target AND g.canonical_key=law_api_documents.canonical_key)
 			""", today);
 		jdbcTemplate.update("""
 			UPDATE law_api_documents doc
@@ -171,6 +181,8 @@ public class LawVersionStatusService implements ApplicationRunner {
 			    AND canonical_key IS NOT NULL
 			    AND effective_date IS NOT NULL
 			    AND effective_date <= ?
+                AND NOT EXISTS (SELECT 1 FROM law_source_version_groups g
+                  WHERE g.target=law_api_documents.target AND g.canonical_key=law_api_documents.canonical_key)
 			  GROUP BY target, canonical_key
 			) latest
 			  ON latest.target = doc.target
@@ -178,6 +190,8 @@ public class LawVersionStatusService implements ApplicationRunner {
 			 AND latest.max_effective_date = doc.effective_date
 			SET doc.effective_status = 'CURRENT'
 			WHERE doc.use_yn = 'Y'
+              AND NOT EXISTS (SELECT 1 FROM law_source_version_groups g
+                WHERE g.target=doc.target AND g.canonical_key=doc.canonical_key)
 			""", today);
 		jdbcTemplate.update("""
 			UPDATE law_api_documents

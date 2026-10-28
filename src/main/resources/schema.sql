@@ -42,6 +42,52 @@ CREATE TABLE IF NOT EXISTS law_api_documents (
     CONSTRAINT chk_law_api_documents_effective_status CHECK (effective_status IN ('CURRENT', 'FUTURE', 'PAST', 'UNKNOWN'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS law_source_version_epoch (
+    singleton_id INT NOT NULL PRIMARY KEY,
+    revision BIGINT NOT NULL DEFAULT 0,
+    CONSTRAINT chk_law_source_epoch CHECK (singleton_id = 1 AND revision >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+INSERT IGNORE INTO law_source_version_epoch(singleton_id, revision) VALUES(1,0);
+
+CREATE TABLE IF NOT EXISTS law_source_version_groups (
+    group_key CHAR(64) NOT NULL PRIMARY KEY,
+    target VARCHAR(30) NOT NULL,
+    canonical_key VARCHAR(600) NOT NULL,
+    active_document_id BIGINT NOT NULL,
+    baseline_document_id BIGINT NOT NULL,
+    revision BIGINT NOT NULL DEFAULT 0,
+    baseline_hash CHAR(64) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_law_source_group_active FOREIGN KEY(active_document_id) REFERENCES law_api_documents(document_id),
+    CONSTRAINT fk_law_source_group_baseline FOREIGN KEY(baseline_document_id) REFERENCES law_api_documents(document_id),
+    CONSTRAINT chk_law_source_group CHECK (target IN ('law','admrul') AND revision >= 0),
+    KEY idx_law_source_group_identity(target,canonical_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS law_source_version_candidates (
+    candidate_id CHAR(36) NOT NULL PRIMARY KEY,
+    group_key CHAR(64) NOT NULL,
+    input_hash CHAR(64) NOT NULL,
+    baseline_document_id BIGINT NOT NULL,
+    baseline_revision BIGINT NOT NULL,
+    baseline_hash CHAR(64) NOT NULL,
+    external_id VARCHAR(100) NOT NULL,
+    effective_date CHAR(8) NOT NULL,
+    raw_hash CHAR(64) NOT NULL,
+    product_sha CHAR(40) NOT NULL,
+    state VARCHAR(30) NOT NULL DEFAULT 'STAGED',
+    metadata_json LONGTEXT NOT NULL CHECK(JSON_VALID(metadata_json)),
+    raw_detail_json LONGTEXT NOT NULL CHECK(JSON_VALID(raw_detail_json)),
+    candidate_document_id BIGINT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_law_source_candidate_input(input_hash),
+    KEY idx_law_source_candidate_external(group_key,external_id),
+    CONSTRAINT fk_law_source_candidate_group FOREIGN KEY(group_key) REFERENCES law_source_version_groups(group_key),
+    CONSTRAINT fk_law_source_candidate_baseline FOREIGN KEY(baseline_document_id) REFERENCES law_api_documents(document_id),
+    CONSTRAINT fk_law_source_candidate_document FOREIGN KEY(candidate_document_id) REFERENCES law_api_documents(document_id),
+    CONSTRAINT chk_law_source_candidate_state CHECK(state IN ('STAGED','VALIDATED','INDEX_READY','ACTIVE','RETIRED'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS law_api_document_details (
     detail_id BIGINT NOT NULL AUTO_INCREMENT COMMENT '상세 정보 내부 식별자',
     document_id BIGINT NOT NULL COMMENT '연결된 문서 식별자',

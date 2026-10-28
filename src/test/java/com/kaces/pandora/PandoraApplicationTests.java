@@ -9,6 +9,7 @@ import com.kaces.pandora.app.auth.AdminAuthService;
 import com.kaces.pandora.lawdata.persistence.LawApiSchemaMaintenance;
 import com.kaces.pandora.lawdata.sync.LawOpenApiSyncStartupRunner;
 import com.kaces.pandora.lawdata.version.LawVersionStatusService;
+import com.kaces.pandora.lawdata.version.SourceVersionSchemaMaintenance;
 import com.kaces.pandora.rag.persistence.RagChunkQualitySchemaMaintenance;
 import com.kaces.pandora.rag.persistence.RagObjectStorageSchemaMaintenance;
 import com.kaces.pandora.rag.search.RagChunkSearchIndexSchemaMaintenance;
@@ -51,6 +52,9 @@ class PandoraApplicationTests {
 
 	@MockitoBean
 	private LawVersionStatusService lawVersionStatusService;
+
+    @MockitoBean
+    private SourceVersionSchemaMaintenance sourceVersionSchemaMaintenance;
 
 	@MockitoBean
 	private RagChunkQualitySchemaMaintenance ragChunkQualitySchemaMaintenance;
