@@ -592,6 +592,9 @@ public class QdrantClient {
             List<com.kaces.pandora.rag.document.RagDocumentChunkRow> chunks,List<List<Double>> vectors) {
         String collection=ragRecoveryCollection(generationId);
         var expected=recoveryPoints(generationId,embeddingModel,manifest,chunks,vectors);
+        return inspectPreparedPoints(collection,expected);
+    }
+    private RecoveryPointInspection inspectPreparedPoints(String collection,List<Map<String,Object>> expected) {
         var byId=new LinkedHashMap<Long,Map<String,Object>>();
         for(var point:expected)byId.put((Long)point.get("id"),point);
         Map<?,?> response;
@@ -600,7 +603,7 @@ public class QdrantClient {
         } catch(org.springframework.web.client.HttpClientErrorException.NotFound missing) {
             try { restClient.get().uri("/collections/{collection}",collection).retrieve().toBodilessEntity(); }
             catch(org.springframework.web.client.HttpClientErrorException.NotFound confirmed) {
-                return new RecoveryPointInspection(null,chunks.stream().map(com.kaces.pandora.rag.document.RagDocumentChunkRow::chunkId).collect(java.util.stream.Collectors.toSet()));
+                return new RecoveryPointInspection(null,expected.stream().map(point->((Number)((Map<?,?>)point.get("payload")).get("chunkId")).longValue()).collect(java.util.stream.Collectors.toSet()));
             }
             throw new IllegalStateException("Recovery point lookup unavailable",missing);
         }
@@ -755,6 +758,75 @@ public class QdrantClient {
         if(collection.equals(properties.qdrant().collection()) || collection.equals(ragCollection())
                 || collection.equals(lawCandidateCollection()))throw new IllegalArgumentException("Recovery collection collides with shared collection");
         return collection;
+    }
+
+    public String lawSourceVersionCollection(String candidateId) {
+        if(candidateId==null || !candidateId.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))
+            throw new IllegalArgumentException("Source candidate UUID required");
+        String collection="law_source_"+candidateId.replace("-","");
+        if(collection.equals(properties.qdrant().collection()) || collection.equals(ragCollection()) || collection.equals(lawCandidateCollection()))
+            throw new IllegalArgumentException("Source namespace collides with shared collection");
+        return collection;
+    }
+    public void upsertLawSourceVersion(String candidateId,String model,String manifest,List<LawSemanticChunkRow> chunks,List<List<Double>> vectors) {
+        String collection=lawSourceVersionCollection(candidateId);
+        var points=sourceVersionPoints(candidateId,model,manifest,chunks,vectors);
+        ensureCollection(collection);
+        restClient.put().uri("/collections/{collection}/points?wait=true",collection).body(Map.of("points",points)).retrieve().toBodilessEntity();
+    }
+    public RecoveryPointInspection inspectLawSourceVersionPoints(String candidateId,String model,String manifest,List<LawSemanticChunkRow> chunks,List<List<Double>> vectors) {
+        return inspectPreparedPoints(lawSourceVersionCollection(candidateId),sourceVersionPoints(candidateId,model,manifest,chunks,vectors));
+    }
+    private List<Map<String,Object>> sourceVersionPoints(String candidateId,String model,String manifest,List<LawSemanticChunkRow> chunks,List<List<Double>> vectors) {
+        lawSourceVersionCollection(candidateId);
+        if(model==null || !model.equals(properties.openai().embeddingModel()) || manifest==null || !manifest.matches("[0-9a-f]{64}")
+                || chunks==null || vectors==null || chunks.isEmpty() || chunks.size()>128 || chunks.size()!=vectors.size())
+            throw new IllegalArgumentException("Bounded source/model/manifest/vectors required");
+        var points=new ArrayList<Map<String,Object>>();var ids=new java.util.HashSet<Long>();
+        Long document=null;String target=null;
+        for(int n=0;n<chunks.size();n++) {
+            var row=chunks.get(n);var vector=vectors.get(n);
+            if(row==null || row.chunkId()<=0 || row.documentId()<=0 || row.chunkVersion()==null || row.chunkVersion()<1
+                    || !Set.of("law","admrul").contains(row.target()) || !Set.of("PASS","CONTEXT_ONLY").contains(row.qualityStatus())
+                    || row.contentHash()==null || !row.contentHash().matches("[0-9a-f]{64}") || !ids.add(row.chunkId())
+                    || vector==null || vector.size()!=properties.qdrant().vectorSize()
+                    || vector.stream().anyMatch(v->v==null || !Double.isFinite(v) || !Float.isFinite(v.floatValue())))
+                throw new IllegalArgumentException("Invalid immutable law source point");
+            double norm=vector.stream().mapToDouble(v->v*v).sum();
+            if(norm<=0 || !Float.isFinite((float)norm))throw new IllegalArgumentException("Finite nonzero source vector required");
+            if(document!=null && (document!=row.documentId() || !target.equals(row.target())))throw new IllegalArgumentException("One source document and target required");
+            document=row.documentId();target=row.target();
+            points.add(Map.of("id",row.chunkId(),"vector",List.copyOf(vector),"payload",Map.of(
+                "chunkId",row.chunkId(),"documentId",row.documentId(),"chunkVersion",row.chunkVersion(),"target",row.target(),
+                "activationStatus","CANDIDATE","generationId",candidateId,"contentHash",row.contentHash(),"embeddingModel",model,"manifest",manifest,"qualityStatus",row.qualityStatus())));
+        }
+        return List.copyOf(points);
+    }
+    public String verifyLawSourceVersionCollection(String candidateId,String model,String manifest,List<LawSemanticChunkRow> chunks,List<List<Double>> vectors) {
+        String collection=lawSourceVersionCollection(candidateId);
+        if(chunks==null || vectors==null || chunks.isEmpty() || chunks.size()>10000 || chunks.size()!=vectors.size())
+            throw new IllegalArgumentException("Complete bounded source namespace required");
+        var rows=List.copyOf(chunks);var copied=vectors.stream().map(List::copyOf).toList();
+        var ids=new java.util.HashSet<Long>();long document=rows.get(0).documentId();String target=rows.get(0).target();
+        for(int start=0;start<rows.size();start+=128) {
+            int end=Math.min(start+128,rows.size());sourceVersionPoints(candidateId,model,manifest,rows.subList(start,end),copied.subList(start,end));
+            for(var row:rows.subList(start,end))if(!ids.add(row.chunkId()) || row.documentId()!=document || !target.equals(row.target()))
+                throw new IllegalArgumentException("Source namespace membership mismatch");
+        }
+        var before=indexSnapshot(collection).orElseThrow(()->new IllegalStateException("Source namespace unavailable"));
+        if(!before.isStable() || before.exactPointCount()!=rows.size())throw new IllegalStateException("Source namespace parity mismatch");
+        var order=java.util.stream.IntStream.range(0,rows.size()).boxed().sorted(java.util.Comparator.comparingLong(n->rows.get(n).chunkId())).toList();
+        var receipts=new ArrayList<String>();
+        for(int start=0;start<order.size();start+=128) {
+            var batch=order.subList(start,Math.min(start+128,order.size()));
+            var observed=inspectLawSourceVersionPoints(candidateId,model,manifest,batch.stream().map(rows::get).toList(),batch.stream().map(copied::get).toList());
+            if(!observed.missingChunkIds().isEmpty())throw new IllegalStateException("Source namespace points missing");
+            receipts.add(observed.fingerprint());
+        }
+        var after=indexSnapshot(collection).orElseThrow(()->new IllegalStateException("Source namespace disappeared"));
+        if(!after.isStable() || after.exactPointCount()!=rows.size() || before.vectorSize()!=after.vectorSize() || !before.distance().equals(after.distance()))
+            throw new IllegalStateException("Source namespace changed during readback");
+        return com.kaces.pandora.common.text.LawHashUtils.sha256Json(List.of(candidateId,model,manifest,rows.size(),before.vectorSize(),before.distance(),receipts));
     }
 
 	// 메소드 설명: upsert 처리 흐름을 수행합니다.

@@ -16,7 +16,7 @@ The serving8080 runtime must protect search/answer/streaming from a source switc
 
 Group identity is target+canonical title. The initial current document is explicit, singular and immutable as a baseline. Each candidate identifies baseline document/revision, distinct official external ID, effective date, exact raw-detail hash and parsed-content manifest. Date must be a valid nonfutureyyyyMMdd and later than the baseline for forward promotion; rollback restores a registered preserved version, not an arbitrary ID.
 
-Candidate states: STAGED→VALIDATED→INDEX_READY→ACTIVE→RETIRED. Source candidates are excluded using document visibility and are never eligible for ordinary version auto-selection. Legacy metadata/sync paths must reject managed candidate/current mutation rather than re-enable it. Schema defaults preserve existing unmanaged behavior.
+Candidate states: STAGED→VALIDATED→INDEX_READY→ACTIVE→RETIRED; a terminal source-fidelity rejection is REJECTED and cannot be blindly retried. Source candidates are excluded using document visibility and are never eligible for ordinary version auto-selection. Legacy metadata/sync paths must reject managed candidate/current mutation rather than re-enable it. Schema defaults preserve existing unmanaged behavior.
 
 Preparation requires complete source/text coverage, source-linked chunks, nonempty bounded membership, quality gates, current embedding hashes and exact Qdrant readback, full lexical overlay verification, baseline preservation, product/config/source/epoch identity and durable receipts. No request-supplied boolean can certify readiness. Failed preparation remains inactive and resumable only with immutable matching identity, never blind replay of terminal quality failures.
 

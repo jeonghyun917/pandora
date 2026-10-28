@@ -21,7 +21,7 @@ class SourceVersionStorageTests {
         assertThat(db.queryForObject("SELECT DATABASE()",String.class)).isEqualTo("pandora_source_version_test");
         assertThat(Path.of(db.queryForObject("SELECT @@datadir",String.class)).toRealPath()).isEqualTo(Path.of(System.getenv("PANDORA_SOURCE_VERSION_TEST_DATADIR")).toRealPath());
         new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(new org.springframework.core.io.ClassPathResource("schema.sql")).execute(ds);
-        db.update("DELETE FROM law_source_version_candidates");db.update("DELETE FROM law_source_version_groups");
+        db.update("DELETE FROM law_source_version_embedding_receipts");db.update("DELETE FROM law_source_version_candidates");db.update("DELETE FROM law_source_version_groups");
         db.update("DELETE FROM law_api_documents WHERE external_id IN ('source-test-old','source-test-new')");
         db.update("INSERT INTO law_api_documents(target,external_id,title,source_date,canonical_key,effective_date,effective_status,raw_json,content_hash) VALUES('admrul','source-test-old','원문 버전 테스트 지침','20250101','admrul:원문버전테스트지침','20250101','CURRENT','{}',?)","a".repeat(64));
         baseline=db.queryForObject("SELECT document_id FROM law_api_documents WHERE external_id='source-test-old'",Long.class);
@@ -113,7 +113,7 @@ class SourceVersionStorageTests {
         db.update("INSERT INTO law_api_document_chunks(document_id,chunk_type,chunk_text) VALUES(?,'article','후보 본문')",inactive);
         db.update("UPDATE law_source_version_candidates SET state='INDEX_READY' WHERE candidate_id=?",candidate.id());
         assertThatThrownBy(()->db.update("UPDATE law_api_document_chunks SET chunk_text='준비 후 변조' WHERE document_id=?",inactive)).isInstanceOf(org.springframework.dao.DataAccessException.class);
-        assertThat(db.queryForObject("SELECT COUNT(*) FROM law_api_documents WHERE use_yn='Y' AND effective_status='CURRENT'",Integer.class)).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM law_api_documents WHERE canonical_key='admrul:원문버전테스트지침' AND use_yn='Y' AND effective_status='CURRENT'",Integer.class)).isEqualTo(1);
     }
     @Test void permissiveExistingDatabaseGuardIsNotSilentlyTrusted() {
         db.execute("CREATE TRIGGER srcver_doc_bu BEFORE UPDATE ON law_api_documents FOR EACH ROW SET NEW.title=NEW.title");

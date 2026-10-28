@@ -460,6 +460,25 @@
     LIMIT #{limit}
   </select>
 
+  <select id="findSourceVersionChunks" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
+    SELECT c.chunk_id AS chunkId, c.document_id AS documentId, doc.target AS target,
+      doc.external_id AS externalId, doc.title AS title, doc.agency_name AS agencyName,
+      doc.category_name AS categoryName, doc.source_date AS sourceDate,
+      doc.effective_status AS effectiveStatus, c.chunk_no AS chunkNo, c.chunk_title AS chunkTitle,
+      c.chunk_text AS chunkText, CAST(NULL AS SIGNED) AS pageNo, c.source_path AS sourcePath,
+      c.source_url AS sourceUrl, c.sort_order AS sortOrder, c.content_hash AS contentHash,
+      <include refid="parentSectionTitleExpression"/> AS parentSectionTitle,
+      <include refid="sectionTypeExpression"/> AS sectionType, c.quality_status AS qualityStatus,
+      c.embedding_text AS embeddingText, c.parent_key AS parentKey, c.chunk_version AS chunkVersion
+    FROM law_source_version_candidates v
+    JOIN law_api_documents doc ON doc.document_id=v.candidate_document_id
+    JOIN law_api_document_chunks c ON c.document_id=doc.document_id AND c.chunk_version=v.validated_chunk_version
+    WHERE v.candidate_id=#{candidateId} AND v.state IN ('VALIDATED','INDEX_READY')
+      AND doc.use_yn='N' AND doc.effective_status='PAST' AND doc.target IN ('law','admrul')
+      AND c.use_yn='Y' AND c.activation_status='ACTIVE' AND c.quality_status IN ('PASS','CONTEXT_ONLY')
+    ORDER BY c.sort_order,c.chunk_id LIMIT 10001
+  </select>
+
   <select id="findSemanticIndexCandidatesByDocumentIdAndVersion" resultType="com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow">
     SELECT c.chunk_id AS chunkId, c.document_id AS documentId, doc.target AS target,
       doc.external_id AS externalId, doc.title AS title, doc.agency_name AS agencyName,

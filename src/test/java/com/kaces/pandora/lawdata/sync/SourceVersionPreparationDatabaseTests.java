@@ -1,0 +1,183 @@
+package com.kaces.pandora.lawdata.sync;
+
+import static org.assertj.core.api.Assertions.*;
+import java.nio.file.Path;
+import java.util.*;
+import com.kaces.pandora.lawdata.version.*;
+import com.kaces.pandora.lawdata.persistence.*;
+import com.kaces.pandora.common.json.LawJsonWriter;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.jdbc.core.JdbcTemplate;
+import tools.jackson.databind.ObjectMapper;
+
+@EnabledIfEnvironmentVariable(named="PANDORA_SOURCE_VERSION_TEST_URL",matches="jdbc:mariadb://127[.]0[.]0[.]1:23306/pandora_source_version_test(?:[?].*)?")
+class SourceVersionPreparationDatabaseTests {
+    private JdbcTemplate db;
+    private SourceVersionCandidateStore store;
+    private SourceVersionPreparationService preparation;
+    private SourceVersionEmbeddingReceipts receipts;
+    private long baseline;
+    private static final String SHA="c".repeat(40),TITLE="원문 준비 테스트 지침",KEY="admrul:원문준비테스트지침";
+    @BeforeEach void setup() throws Exception {
+        var ds=new org.mariadb.jdbc.MariaDbDataSource();ds.setUrl(System.getenv("PANDORA_SOURCE_VERSION_TEST_URL"));
+        ds.setUser("root");ds.setPassword(System.getenv("PANDORA_SOURCE_VERSION_TEST_PASSWORD"));db=new JdbcTemplate(ds);
+        assertThat(db.queryForObject("SELECT @@port",Integer.class)).isEqualTo(23306);
+        assertThat(db.queryForObject("SELECT DATABASE()",String.class)).isEqualTo("pandora_source_version_test");
+        var path=Path.of(db.queryForObject("SELECT @@datadir",String.class)).toRealPath();
+        assertThat(path).isEqualTo(Path.of(System.getenv("PANDORA_SOURCE_VERSION_TEST_DATADIR")).toRealPath());
+        assertThat(path.getFileName().toString()).startsWith("pandora-import-tx-test-source-");
+        new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(new org.springframework.core.io.ClassPathResource("schema.sql")).execute(ds);
+        db.update("DELETE FROM law_source_version_embedding_receipts");db.update("DELETE FROM law_source_version_candidates");db.update("DELETE FROM law_source_version_groups");
+        db.update("DELETE FROM law_api_documents WHERE external_id IN ('source-prep-test-old','source-prep-test-new')");
+        db.update("INSERT INTO law_api_documents(target,external_id,title,source_date,canonical_key,effective_date,effective_status,raw_json,content_hash) VALUES('admrul','source-prep-test-old',?,'20250101',?,'20250101','CURRENT','{}',?)",TITLE,KEY,"a".repeat(64));
+        baseline=db.queryForObject("SELECT document_id FROM law_api_documents WHERE external_id='source-prep-test-old'",Long.class);
+        var manager=new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds);
+        store=new SourceVersionCandidateStore(db,manager);
+        var factory=new org.mybatis.spring.SqlSessionFactoryBean();factory.setDataSource(ds);
+        factory.setMapperLocations(new org.springframework.core.io.ClassPathResource("mapper/law/LawChunkMapper.xml"),new org.springframework.core.io.ClassPathResource("mapper/law/LawDetailMapper.xml"),new org.springframework.core.io.ClassPathResource("mapper/law/LawAssetMapper.xml"));
+        var session=new org.mybatis.spring.SqlSessionTemplate(factory.getObject());var chunks=session.getMapper(LawChunkMapper.class);
+        var json=new ObjectMapper();
+        var writer=new LawDocumentWriter(null,session.getMapper(LawDetailMapper.class),chunks,session.getMapper(LawAssetMapper.class),new LawJsonWriter(json),null,null,null);
+        preparation=new SourceVersionPreparationService(db,store,writer,chunks,new LawOpenApiPayloadParser(json,new LawJsonWriter(json)),manager,SHA);
+        receipts=new SourceVersionEmbeddingReceipts(db,preparation,manager,"source-test-embedding",3);
+        new SourceVersionSchemaMaintenance(db).run(null);
+    }
+    @AfterEach void cleanupTriggers() {
+        if(db==null)return;
+        for(String name:db.queryForList("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=DATABASE() AND (TRIGGER_NAME LIKE 'srcver\\_%' OR TRIGGER_NAME='fail_source_preparation')",String.class)) {
+            if(!name.matches("srcver_[a-z_]+|fail_source_preparation"))throw new IllegalStateException("Unexpected isolated trigger");db.execute("DROP TRIGGER "+name);
+        }
+    }
+    private SearchDocument source() {return new SearchDocument("admrul","source-prep-test-new",TITLE,"","","20261019",KEY,"20261019","CURRENT","/DRF/lawService.do?target=admrul&ID=source-prep-test-new&type=JSON","{}");}
+    private String raw() {return "{\"AdmRulService\":{\"조문내용\":\"제1조(시정) 협의기관의 장은 사전협의 미이행 시 신청기관에 시정을 요구할 수 있다.\"}}";}
+    @Test void validatesOnlyIntoANewInactiveDocumentAndPreservesBaseline() {
+        var before=db.queryForMap("SELECT * FROM law_api_documents WHERE document_id=?",baseline);
+        var candidate=store.stage(baseline,0,source(),raw(),SHA);
+        var result=preparation.validate(candidate.id());
+        assertThat(result.state()).isEqualTo("VALIDATED");assertThat(result.documentId()).isNotEqualTo(baseline);assertThat(result.chunkCount()).isPositive();
+        assertThat(result.manifest()).matches("[0-9a-f]{64}");
+        assertThat(db.queryForMap("SELECT * FROM law_api_documents WHERE document_id=?",baseline)).isEqualTo(before);
+        assertThat(db.queryForObject("SELECT use_yn FROM law_api_documents WHERE document_id=?",String.class,result.documentId())).isEqualTo("N");
+        assertThat(db.queryForObject("SELECT effective_status FROM law_api_documents WHERE document_id=?",String.class,result.documentId())).isEqualTo("PAST");
+        assertThat(db.queryForObject("SELECT chunk_text FROM law_api_document_chunks WHERE document_id=?",String.class,result.documentId())).contains("사전협의 미이행 시","요구할 수 있다");
+        assertThat(preparation.validate(candidate.id())).isEqualTo(result);
+        var snapshot=preparation.snapshotForAssets(candidate.id());
+        assertThat(snapshot.chunks()).extracting(com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow::documentId).containsOnly(result.documentId());
+        assertThat(snapshot.chunks()).extracting(com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow::target).containsOnly("admrul");
+        assertThat(snapshot.chunks()).extracting(com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow::effectiveStatus).containsOnly("PAST");
+        assertThat(snapshot.validation()).isEqualTo(result);
+    }
+    @Test void lostSourceStructureIsTerminallyRejectedWithoutLeavingPartialDocument() {
+        String raw="{\"AdmRulService\":{\"조문내용\":[\"제1장 총칙\",\"제1조(시정) 담당청은 기준을 적용하여야 한다.\"]}}";
+        var candidate=store.stage(baseline,0,source(),raw,SHA);
+        assertThatThrownBy(()->preparation.validate(candidate.id())).isInstanceOf(IllegalStateException.class);
+        assertThat(db.queryForObject("SELECT state FROM law_source_version_candidates WHERE candidate_id=?",String.class,candidate.id())).isEqualTo("REJECTED");
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM law_api_documents WHERE external_id='source-prep-test-new'",Integer.class)).isZero();
+        assertThat(db.queryForObject("SELECT effective_status FROM law_api_documents WHERE document_id=?",String.class,baseline)).isEqualTo("CURRENT");
+    }
+    @Test void databaseFailureRollsBackInactiveDocumentAndKeepsCandidateUnvalidated() {
+        var candidate=store.stage(baseline,0,source(),raw(),SHA);
+        db.execute("CREATE TRIGGER fail_source_preparation BEFORE INSERT ON law_api_document_chunks FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected source preparation failure'");
+        assertThatThrownBy(()->preparation.validate(candidate.id())).isInstanceOf(RuntimeException.class);
+        assertThat(db.queryForObject("SELECT candidate_document_id FROM law_source_version_candidates WHERE candidate_id=?",Long.class,candidate.id())).isNull();
+        assertThat(db.queryForObject("SELECT state FROM law_source_version_candidates WHERE candidate_id=?",String.class,candidate.id())).isEqualTo("STAGED");
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM law_api_documents WHERE external_id='source-prep-test-new'",Integer.class)).isZero();
+    }
+    @Test void changedPayloadCannotReuseAValidatedManifest() {
+        var candidate=store.stage(baseline,0,source(),raw(),SHA);preparation.validate(candidate.id());
+        db.update("UPDATE law_source_version_candidates SET raw_detail_json='{}' WHERE candidate_id=?",candidate.id());
+        assertThatThrownBy(()->preparation.validate(candidate.id())).isInstanceOf(IllegalStateException.class);
+    }
+    @Test void candidateIdentityDriftIsRejectedBeforeAnyDocumentIsCreated() {
+        var candidate=store.stage(baseline,0,source(),raw(),SHA);
+        db.update("UPDATE law_source_version_candidates SET effective_date='20261020' WHERE candidate_id=?",candidate.id());
+        assertThatThrownBy(()->preparation.validate(candidate.id())).isInstanceOf(IllegalStateException.class);
+        assertThat(db.queryForObject("SELECT candidate_document_id FROM law_source_version_candidates WHERE candidate_id=?",Long.class,candidate.id())).isNull();
+    }
+    @Test void constructedSourceIsImmutableAndCannotBeAutoSelectedByLegacyRefresh() {
+        var candidate=store.stage(baseline,0,source(),raw(),SHA);var result=preparation.validate(candidate.id());
+        assertThatThrownBy(()->db.update("UPDATE law_api_document_chunks SET chunk_text='changed' WHERE document_id=?",result.documentId())).isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(()->db.update("UPDATE law_api_documents SET use_yn='Y',effective_status='CURRENT' WHERE document_id=?",result.documentId())).isInstanceOf(RuntimeException.class);
+        new LawVersionStatusService(db,false).refreshAllStatuses();
+        assertThat(db.queryForObject("SELECT effective_status FROM law_api_documents WHERE document_id=?",String.class,baseline)).isEqualTo("CURRENT");
+        assertThat(preparation.validate(candidate.id())).isEqualTo(result);
+    }
+    @Test void embeddingReceiptsAreCompleteDurableAndImmutable() {
+        var candidate=store.stage(baseline,0,source(),raw(),SHA);var result=preparation.validate(candidate.id());
+        long chunk=db.queryForObject("SELECT chunk_id FROM law_api_document_chunks WHERE document_id=?",Long.class,result.documentId());
+        var vector=Map.of(chunk,List.of(0.25,0.5,0.75));
+        receipts.save(candidate.id(),vector);receipts.save(candidate.id(),vector);
+        assertThat(receipts.load(candidate.id())).isEqualTo(vector);
+        assertThatThrownBy(()->receipts.save(candidate.id(),Map.of(chunk,List.of(0.5,0.5,0.75)))).isInstanceOf(IllegalStateException.class);
+        assertThat(receipts.load(candidate.id())).isEqualTo(vector);
+        assertThat(db.queryForObject("SELECT state FROM law_source_version_candidates WHERE candidate_id=?",String.class,candidate.id())).isEqualTo("VALIDATED");
+    }
+    @Test void malformedEmbeddingCannotCreatePartialReceipts() {
+        var candidate=store.stage(baseline,0,source(),raw(),SHA);var result=preparation.validate(candidate.id());
+        long chunk=db.queryForObject("SELECT chunk_id FROM law_api_document_chunks WHERE document_id=?",Long.class,result.documentId());
+        for(var vector:List.of(List.of(0.0,0.0,0.0),List.of(1.0,2.0),List.of(Double.NaN,1.0,2.0)))
+            assertThatThrownBy(()->receipts.save(candidate.id(),Map.of(chunk,vector))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(()->receipts.save(candidate.id(),Map.of(chunk+1,List.of(1.0,2.0,3.0)))).isInstanceOf(IllegalArgumentException.class);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM law_source_version_embedding_receipts",Integer.class)).isZero();
+    }
+    @Test void receiptReadbackRejectsChangedVectorOrModel() {
+        var candidate=store.stage(baseline,0,source(),raw(),SHA);var result=preparation.validate(candidate.id());
+        long chunk=db.queryForObject("SELECT chunk_id FROM law_api_document_chunks WHERE document_id=?",Long.class,result.documentId());
+        receipts.save(candidate.id(),Map.of(chunk,List.of(1.0,2.0,3.0)));
+        db.update("UPDATE law_source_version_embedding_receipts SET vector_json='[1.0,2.0,4.0]' WHERE candidate_id=?",candidate.id());
+        assertThatThrownBy(()->receipts.load(candidate.id())).isInstanceOf(IllegalStateException.class);
+    }
+    @Test void servingReadLeaseHoldsOffAtomicSwitchAndReleasesExactlyOnce() throws Exception {
+        var leases=new SourceVersionReadLeases(db.getDataSource(),2,java.time.Duration.ofMillis(100));
+        var first=leases.acquire();var second=leases.acquire();
+        var started=new java.util.concurrent.CountDownLatch(1);
+        var executor=java.util.concurrent.Executors.newSingleThreadExecutor();
+        var transition=executor.submit(()->{started.countDown();return db.update("UPDATE law_source_version_visibility_epoch SET revision=revision+1 WHERE singleton_id=1");});
+        try {
+            assertThat(started.await(2,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(()->transition.get(150,java.util.concurrent.TimeUnit.MILLISECONDS)).isInstanceOf(java.util.concurrent.TimeoutException.class);
+            first.close();first.close();
+            assertThatThrownBy(()->transition.get(150,java.util.concurrent.TimeUnit.MILLISECONDS)).isInstanceOf(java.util.concurrent.TimeoutException.class);
+            long revision=second.revision();second.close();
+            assertThat(transition.get(3,java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(1);
+            try(var next=leases.acquire()) {assertThat(next.revision()).isEqualTo(revision+1);}
+        } finally {first.close();second.close();executor.shutdownNow();}
+    }
+    @Test void servingReadLeaseRejectsCapacityExhaustionAndRecoversAfterRelease() {
+        var leases=new SourceVersionReadLeases(db.getDataSource(),1,java.time.Duration.ofMillis(50));
+        try(var first=leases.acquire()) {assertThatThrownBy(leases::acquire).isInstanceOf(IllegalStateException.class);}
+        try(var next=leases.acquire()) {assertThat(next.revision()).isNotNegative();}
+    }
+    @Test void servingInterceptorReusesRequestLeaseAndReleasesAtSyncOrAsyncCompletion() throws Exception {
+        var leases=new SourceVersionReadLeases(db.getDataSource(),1,java.time.Duration.ofMillis(50));
+        var interceptor=new SourceVersionServingInterceptor(leases);
+        var request=new org.springframework.mock.web.MockHttpServletRequest();var response=new org.springframework.mock.web.MockHttpServletResponse();
+        assertThat(interceptor.preHandle(request,response,this)).isTrue();
+        assertThat(interceptor.preHandle(request,response,this)).isTrue();
+        interceptor.afterCompletion(request,response,this,null);
+        try(var next=leases.acquire()) {assertThat(next.revision()).isNotNegative();}
+        request=new org.springframework.mock.web.MockHttpServletRequest();request.setAsyncSupported(true);
+        assertThat(interceptor.preHandle(request,response,this)).isTrue();
+        var async=(org.springframework.mock.web.MockAsyncContext)request.startAsync(request,response);
+        interceptor.afterConcurrentHandlingStarted(request,response,this);
+        assertThatThrownBy(leases::acquire).isInstanceOf(IllegalStateException.class);
+        async.complete();interceptor.afterCompletion(request,response,this,null);
+        try(var next=leases.acquire()) {assertThat(next.revision()).isNotNegative();}
+    }
+    @Test void servingTimeoutTerminatesResponseBeforeLeaseReleaseAndCapacityFailsClosed() throws Exception {
+        var leases=new SourceVersionReadLeases(db.getDataSource(),1,java.time.Duration.ofMillis(50));
+        var interceptor=new SourceVersionServingInterceptor(leases);
+        var request=new org.springframework.mock.web.MockHttpServletRequest();request.setAsyncSupported(true);
+        var response=new org.springframework.mock.web.MockHttpServletResponse();
+        assertThat(interceptor.preHandle(request,response,this)).isTrue();
+        var denied=new org.springframework.mock.web.MockHttpServletResponse();
+        assertThat(interceptor.preHandle(new org.springframework.mock.web.MockHttpServletRequest(),denied,this)).isFalse();
+        assertThat(denied.getStatus()).isEqualTo(503);
+        var async=(org.springframework.mock.web.MockAsyncContext)request.startAsync(request,response);
+        interceptor.afterConcurrentHandlingStarted(request,response,this);
+        for(var listener:List.copyOf(async.getListeners()))listener.onTimeout(new jakarta.servlet.AsyncEvent(async,request,response));
+        assertThat(response.getStatus()).isEqualTo(503);
+        try(var next=leases.acquire()) {assertThat(next.revision()).isNotNegative();}
+    }
+}

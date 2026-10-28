@@ -49,6 +49,13 @@ CREATE TABLE IF NOT EXISTS law_source_version_epoch (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 INSERT IGNORE INTO law_source_version_epoch(singleton_id, revision) VALUES(1,0);
 
+CREATE TABLE IF NOT EXISTS law_source_version_visibility_epoch (
+    singleton_id INT NOT NULL PRIMARY KEY,
+    revision BIGINT NOT NULL DEFAULT 0,
+    CONSTRAINT chk_law_source_visibility_epoch CHECK(singleton_id=1 AND revision>=0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+INSERT IGNORE INTO law_source_version_visibility_epoch(singleton_id,revision) VALUES(1,0);
+
 CREATE TABLE IF NOT EXISTS law_source_version_groups (
     group_key CHAR(64) NOT NULL PRIMARY KEY,
     target VARCHAR(30) NOT NULL,
@@ -79,13 +86,29 @@ CREATE TABLE IF NOT EXISTS law_source_version_candidates (
     metadata_json LONGTEXT NOT NULL CHECK(JSON_VALID(metadata_json)),
     raw_detail_json LONGTEXT NOT NULL CHECK(JSON_VALID(raw_detail_json)),
     candidate_document_id BIGINT NULL,
+    validation_manifest CHAR(64) NULL,
+    validated_chunk_version INT NULL,
+    validated_chunk_count INT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_law_source_candidate_input(input_hash),
     KEY idx_law_source_candidate_external(group_key,external_id),
     CONSTRAINT fk_law_source_candidate_group FOREIGN KEY(group_key) REFERENCES law_source_version_groups(group_key),
     CONSTRAINT fk_law_source_candidate_baseline FOREIGN KEY(baseline_document_id) REFERENCES law_api_documents(document_id),
     CONSTRAINT fk_law_source_candidate_document FOREIGN KEY(candidate_document_id) REFERENCES law_api_documents(document_id),
-    CONSTRAINT chk_law_source_candidate_state CHECK(state IN ('STAGED','VALIDATED','INDEX_READY','ACTIVE','RETIRED'))
+    CONSTRAINT chk_law_source_candidate_state CHECK(state IN ('STAGED','VALIDATED','INDEX_READY','ACTIVE','RETIRED','REJECTED'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS law_source_version_embedding_receipts (
+    candidate_id CHAR(36) NOT NULL,
+    chunk_id BIGINT NOT NULL,
+    validation_manifest CHAR(64) NOT NULL,
+    embedding_model VARCHAR(200) NOT NULL,
+    vector_dimensions INT NOT NULL,
+    vector_json LONGTEXT NOT NULL CHECK(JSON_VALID(vector_json)),
+    receipt_hash CHAR(64) NOT NULL,
+    PRIMARY KEY(candidate_id,chunk_id),
+    CONSTRAINT fk_law_source_embedding_candidate FOREIGN KEY(candidate_id) REFERENCES law_source_version_candidates(candidate_id),
+    CONSTRAINT chk_law_source_embedding_dimensions CHECK(vector_dimensions > 0 AND vector_dimensions <= 65536)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS law_api_document_details (

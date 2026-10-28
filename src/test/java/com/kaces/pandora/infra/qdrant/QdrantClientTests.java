@@ -29,6 +29,38 @@ import tools.jackson.databind.DatabindException;
 import tools.jackson.databind.ObjectMapper;
 
 class QdrantClientTests {
+    private static LawSemanticChunkRow sourceVersionRow() {
+        return new LawSemanticChunkRow(200,42,"admrul","source-42","지침",null,null,"20261019","PAST","제1조","시정","본문",null,"$.AdmRulService.조문내용",null,0,"a".repeat(64),null,"article","PASS","본문",null,2);
+    }
+    @Test void lawSourceVersionWritesUseOriginalLawIdentityInSeparateNamespace() throws Exception {
+        var paths=new java.util.ArrayList<String>();var point=new AtomicReference<String>();
+        server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/collections",exchange->{
+            paths.add(exchange.getRequestURI().getPath());
+            String body=new String(exchange.getRequestBody().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
+            if(exchange.getRequestURI().getPath().endsWith("/points"))point.set(body);
+            respond(exchange,200,"{\"result\":{\"status\":\"completed\"}}");
+        });server.start();client=client();
+        client.upsertLawSourceVersion("c87a26f6-cc34-4303-bdc2-929657369db3","text-embedding-3-small","b".repeat(64),java.util.List.of(sourceVersionRow()),java.util.List.of(java.util.Collections.nCopies(1536,.1)));
+        assertThat(paths).allMatch(path->path.startsWith("/collections/law_source_c87a26f6cc344303bdc2929657369db3"));
+        assertThat(point.get()).contains("\"id\":200","\"target\":\"admrul\"","\"chunkVersion\":2","\"activationStatus\":\"CANDIDATE\"");
+    }
+    @Test void lawSourceReadbackChecksCompleteNamespaceAndExactPayload() throws Exception {
+        var mode=new AtomicInteger();var vector=java.util.Collections.nCopies(1536,.1);
+        server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/collections",exchange->{
+            String path=exchange.getRequestURI().getPath();
+            if(path.endsWith("/points/count")){respond(exchange,200,"{\"result\":{\"count\":"+(mode.get()==1?2:1)+"}}");return;}
+            if(path.endsWith("/points")) {
+                var payload=java.util.Map.of("chunkId",200,"documentId",42,"chunkVersion",2,"target",mode.get()==2?"law":"admrul","activationStatus","CANDIDATE",
+                    "generationId","c87a26f6-cc34-4303-bdc2-929657369db3","contentHash","a".repeat(64),"embeddingModel","text-embedding-3-small","manifest","b".repeat(64),"qualityStatus","PASS");
+                respond(exchange,200,new ObjectMapper().writeValueAsString(java.util.Map.of("result",java.util.List.of(java.util.Map.of("id",200,"payload",payload,"vector",mode.get()==3?java.util.Collections.nCopies(1536,0.0):vector)))));return;
+            }
+            respond(exchange,200,collectionWithQueue("green",1536,1,0,1,1));
+        });server.start();client=client();
+        assertThat(client.verifyLawSourceVersionCollection("c87a26f6-cc34-4303-bdc2-929657369db3","text-embedding-3-small","b".repeat(64),java.util.List.of(sourceVersionRow()),java.util.List.of(vector))).matches("[0-9a-f]{64}");
+        for(int bad:new int[]{1,2,3}) {mode.set(bad);assertThatThrownBy(()->client.verifyLawSourceVersionCollection("c87a26f6-cc34-4303-bdc2-929657369db3","text-embedding-3-small","b".repeat(64),java.util.List.of(sourceVersionRow()),java.util.List.of(vector))).isInstanceOf(IllegalStateException.class);}
+    }
     @Test void baselineReadbackBindsExistingVectorAndRejectsMissingOrForeignPoint() throws Exception {
         var mode=new AtomicInteger();
         server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);

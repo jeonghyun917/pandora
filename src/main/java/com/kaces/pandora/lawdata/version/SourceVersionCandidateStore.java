@@ -69,7 +69,9 @@ public class SourceVersionCandidateStore {
         });
     }
     /** Called under the source epoch/document locks; all persisted baseline assets contribute. */
-    String snapshotHash(long documentId) {
+    public String snapshotHash(long documentId) {
+        if(!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
+            throw new IllegalStateException("Locked source transaction required");
         var tables=new LinkedHashMap<String,List<Map<String,String>>>();
         tables.put("document",snapshot("SELECT * FROM law_api_documents WHERE document_id=?",documentId));
         tables.put("details",snapshot("SELECT * FROM law_api_document_details WHERE document_id=? ORDER BY detail_id LIMIT 10001",documentId));
