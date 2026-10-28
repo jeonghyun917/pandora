@@ -8668,7 +8668,8 @@ public class LawAiAnswerService {
 				)
 			, routing);
 			if (!policyLawChunks.isEmpty()) {
-                if(profile.matchedPolicyIds().contains("administrative_sanction_basis")) {
+                if(profile.matchedPolicyIds().contains("administrative_sanction_basis")
+                    || profile.matchedPolicyIds().contains("pre_consultation_correction")) {
                     // General legal limits supplement, never replace, the domain consequence source.
                     chunks.addAll(policyLawChunks);
                 } else {
@@ -11052,7 +11053,15 @@ public class LawAiAnswerService {
 
     private boolean isInformationSystemCompliancePenaltyCandidate(LawSemanticChunkRow chunk) {
         return isInformationSystemCompliancePenaltyEvidence(chunk)
-            || (chunk != null && isAdministrativeSanctionBasis(chunk.target(),chunk.effectiveStatus(),chunk.chunkText()));
+            || (chunk != null && (isAdministrativeSanctionBasis(chunk.target(),chunk.effectiveStatus(),chunk.chunkText())
+                || isPreConsultationCorrectionCandidate(chunk)));
+    }
+
+    // Retrieval only: retaining this complete rule does not establish applicability to the question's business.
+    private boolean isPreConsultationCorrectionCandidate(LawSemanticChunkRow chunk) {
+        return isLawTarget(chunk.target()) && "CURRENT".equals(chunk.effectiveStatus())
+            && normalizeForMatch(chunk.chunkText()).contains(normalizeForMatch(
+                "협의기관의 장은 사전협의 미이행, 사전협의 신청 미등록, 사전협의 검토결과의 미반영, 사업산출물의 사전협의시스템 미등록 등에 대하여 신청기관에 시정을 요구할 수 있으며, 신청기관의 장은 이를 반영하고 이행결과를 협의기관의 장에게 제출하여야 한다."));
     }
 
     private boolean isAdministrativeSanctionBasis(String target,String status,String body) {

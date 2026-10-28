@@ -16,6 +16,33 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
+    @Test void explicitPreconsultationCorrectionNormIsASearchCandidateNotAutomaticGeneralScopeProof() throws Exception {
+        String norm="협의기관의 장은 사전협의 미이행, 사전협의 신청 미등록, 사전협의 검토결과의 미반영, 사업산출물의 사전협의시스템 미등록 등에 대하여 신청기관에 시정을 요구할 수 있으며, 신청기관의 장은 이를 반영하고 이행결과를 협의기관의 장에게 제출하여야 한다.";
+        var correction=chunk(99401L,"admrul","전자정부 성과관리 지침","사전협의 이행실태의 점검",norm);
+        var shortened=chunk(99402L,"admrul","전자정부 성과관리 지침","사전협의 이행실태의 점검",norm.replace("사전협의 미이행, ",""));
+        var service=service();
+        try {
+            assertThat(filterByQuestionIntent(service,List.of(correction,shortened),"정보시스템 법제도 미이행 시 시정 조치가 있나요?"))
+                .contains(correction).doesNotContain(shortened);
+            var direct=LawAiAnswerService.class.getDeclaredMethod("isIntentDirectEvidenceChunk",LawSemanticChunkRow.class,String.class);direct.setAccessible(true);
+            assertThat(direct.invoke(service,correction,"정보시스템 법제도 미이행 시 시정 조치가 있나요?")).isEqualTo(false);
+        }finally{service.shutdownExecutors();}
+    }
+    @Test void correctionPolicyRetrievesItsOfficialNormWithoutReplacingTheSoftwareRule() throws Exception {
+        String norm="협의기관의 장은 사전협의 미이행, 사전협의 신청 미등록, 사전협의 검토결과의 미반영, 사업산출물의 사전협의시스템 미등록 등에 대하여 신청기관에 시정을 요구할 수 있으며, 신청기관의 장은 이를 반영하고 이행결과를 협의기관의 장에게 제출하여야 한다.";
+        var correction=chunk(99411L,"admrul","전자정부 성과관리 지침","사전협의 이행실태의 점검",norm);
+        var domain=chunk(99412L,"law","소프트웨어 진흥법","관리감독",SourceOwnedConditionalScopeTests.SOURCE);
+        var law=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),new Class<?>[]{LawChunkMapper.class},(proxy,method,args)->{
+            if(method.getName().equals("findSemanticChunksByDocumentTitleAndText")) {
+                if(((List<?>)args[1]).contains("전자정부 성과관리 지침"))return List.of(correction);
+                if(((List<?>)args[1]).contains("소프트웨어"))return List.of(domain);
+            }return List.of();
+        });
+        var service=service(law,null);
+        try {
+            assertThat(findLexicalChunks(service,QuestionSearchPlan.from("정보시스템 법제도 미이행 시 시정 조치가 있나요?"),List.of("law","admrul"),false)).contains(correction,domain);
+        }finally{service.shutdownExecutors();}
+    }
     @Test void displayCompressionRunsBeforeTheSeparateSupportingSlot() throws Exception {
         String q="정보시스템 법제도 미준수 시 제재 범위는?";
         var direct=java.util.stream.LongStream.range(99341,99349).mapToObj(id->chunk(id,"official_doc","정보화사업 법령준수 안내","미준수 조치","정보화사업 법제도 미준수 시 보완 요구를 할 수 있다. 사업 구분 "+id)).toList();
