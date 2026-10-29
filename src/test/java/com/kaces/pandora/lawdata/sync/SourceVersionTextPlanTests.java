@@ -8,6 +8,34 @@ import com.kaces.pandora.common.json.LawJsonWriter;
 class SourceVersionTextPlanTests {
     private final ObjectMapper json=new ObjectMapper();
     private final SourceVersionTextPlan planner=new SourceVersionTextPlan(new LawOpenApiPayloadParser(json,new LawJsonWriter(json)));
+    @Test void administrativeAuxiliaryTextCannotReplaceMissingArticleBody() {
+        String raw=json.writeValueAsString(java.util.Map.of("AdmRulService",java.util.Map.of(
+            "조문내용"," ","별표",java.util.Map.of("별표단위",java.util.Map.of("별표내용","담당청은 적용 조건과 경과조치의 내용을 보존하여야 한다. ".repeat(10))))));
+        assertThatThrownBy(()->planner.plan("admrul",75,"테스트 지침",raw)).isInstanceOf(IllegalStateException.class);
+    }
+    @Test void preservesFullyParsedAuxiliaryProseWithoutGrantingReferenceReadiness() {
+        String supplement="담당청은 종전 사업의 적용 조건과 경과조치를 확인하고 해당 내용을 보존하여야 한다. ".repeat(10);
+        String raw=json.writeValueAsString(java.util.Map.of("AdmRulService",java.util.Map.of(
+            "조문내용","제1조(기준) 담당청은 정해진 기준을 준수하여야 한다.",
+            "부칙",java.util.Map.of("부칙단위",java.util.Map.of("부칙내용",supplement)))));
+        assertThat(planner.plan("admrul",75,"테스트 지침",raw).unexplainedLossSpanCount()).isZero();
+    }
+    @Test void rejectsAdministrativeAnnexTextDiscardedByTheParser() {
+        String raw=json.writeValueAsString(java.util.Map.of("AdmRulService",java.util.Map.of(
+            "조문내용","제1조(기준) 담당청은 정해진 기준을 준수하여야 한다.",
+            "별표",java.util.Map.of("별표단위",java.util.Map.of("별표내용",java.util.List.of("90% 이상 110% 미만은 4점"))))));
+        assertThatThrownBy(()->planner.plan("admrul",75,"테스트 지침",raw)).isInstanceOf(IllegalStateException.class);
+    }
+    @Test void rejectsAdministrativeSupplementTextDiscardedByTheParser() {
+        String raw=json.writeValueAsString(java.util.Map.of("AdmRulService",java.util.Map.of(
+            "조문내용","제1조(기준) 담당청은 정해진 기준을 준수하여야 한다.",
+            "부칙",java.util.Map.of("부칙단위",java.util.Map.of("부칙내용","종전 사업은 적용에서 제외한다.")))));
+        assertThatThrownBy(()->planner.plan("admrul",75,"테스트 지침",raw)).isInstanceOf(IllegalStateException.class);
+    }
+    @Test void rejectsLawAnnexTextDiscardedByTheParser() {
+        String raw="{\"법령\":{\"조문\":{\"조문단위\":[{\"조문번호\":\"1\",\"조문여부\":\"조문\",\"조문내용\":\"제1조(기준) 담당청은 정해진 기준을 준수하여야 한다.\"}]},\"별표\":{\"별표단위\":{\"별표내용\":[\"90% 이상 110% 미만은 4점\"]}}}}";
+        assertThatThrownBy(()->planner.plan("law",75,"테스트 법",raw)).isInstanceOf(IllegalStateException.class);
+    }
     @Test void plansTheNewOfficialTextWithoutComparingItToTheOldVersion() {
         String body="제1조(적용) 신청기관의 장은 대상 사업에 이 지침을 적용하여야 한다. 제2조(시정) 협의기관의 장은 사전협의 미이행 시 신청기관에 시정을 요구할 수 있다.";
         String raw=json.writeValueAsString(java.util.Map.of("AdmRulService",java.util.Map.of("조문내용",body)));

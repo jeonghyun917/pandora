@@ -381,3 +381,7 @@ the linkage is checked under the source lock before and after Q readback.
 An already constructed official external ID cannot currently be revalidated under
 a different product identity: document uniqueness fails closed. Do not force reuse
 or relabel its product/manifest; cross-product revalidation is separate work.
+New-source loss checks include administrative supplements and law/administrative
+annex text, not only main articles. Auxiliary text cannot replace a missing main
+body; missing short rows/conditions and unknown auxiliary structures fail closed.
+Passing this text check is still not proof of attachment/table relationship fidelity.

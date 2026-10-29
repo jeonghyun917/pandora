@@ -1,5 +1,7 @@
 # 실제 격리 Q 검증: 관리자에게 필요한 최소 조치
 
+> 2026-10-29 최신 확인: 과거 Restricted/NotSigned 차단을 현재 상태로 사용하지 않는다. 원래 Windows PowerShell은 이미 CurrentUser RemoteSigned이며 로컬 파일에는 Zone.Identifier가 없다. 정책 변경·서명·Unblock·우회 없이 원본 start/assert가 정상 실행됐다(74cc16/3126ad). 실제 격리 검증70b483/25583은40/f0/e0/skip0(실제Q2+HTTP38) 통과. 공유 Q도 새 명시 승인 뒤 공식 기동돼PID36912/6333+6334/green, DB=Q211658/84248이다. 이 정책 분기에는 더 이상 관리자 조치가 필요하지 않다. 실제 원문 갱신은 별도의 본문·참조 구조 손실 게이트가 미충족이며, 자세한 현재 런타임·재개점은 law-source-version progress.md를 따른다. 아래는 시점별 과거 기록이다.
+
 운영 Qdrant 기동은 에이전트가 공식 `scripts/start-qdrant.cmd`로 직접 완료했다.
 기존 데이터 경로는 `C:\dev\qdrant-storage`, PID17204, 6333/6334이다.
 law_chunks=211658, rag_chunks_v4=84248, 둘 다 green/optimizer ok이며 앱 DB 개수와 일치한다.

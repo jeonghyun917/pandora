@@ -20,12 +20,16 @@ final class SourceVersionTextPlan {
         JsonNode root=json.readTree(raw);var owned=new ArrayList<String>();
         if("admrul".equals(target)) {
             collectAdministrativeText(root.path("AdmRulService").path("조문내용"),owned);
+            if(owned.isEmpty())throw new IllegalStateException("Complete official administrative article body required");
+            collectAuxiliaryText(root.path("AdmRulService").path("부칙"),Set.of("부칙내용"),owned);
+            collectAuxiliaryText(root.path("AdmRulService").path("별표"),Set.of("별표내용"),owned);
         } else {
             JsonNode law=root.path("법령");
             if(!law.isObject())throw new IllegalStateException("Official law body root unavailable");
             collectLawText(law.path("조문"),owned);
             if(owned.isEmpty())throw new IllegalStateException("Complete official law article body required");
             collectLawText(law.path("부칙"),owned);
+            collectAuxiliaryText(law.path("별표"),Set.of("별표내용"),owned);
         }
         if(owned.isEmpty())throw new IllegalStateException("Authoritative source text unavailable");
         SyncDetailDocument detail=parser.parseDetailDocument(raw,title);
@@ -47,6 +51,17 @@ final class SourceVersionTextPlan {
         if(node.isTextual()) {if(!normalize(node.asText()).isBlank())texts.add(node.asText());return;}
         if(node.isArray()) {for(var item:node)collectAdministrativeText(item,texts);return;}
         throw new IllegalStateException("Unsupported official administrative text structure");
+    }
+    private void collectAuxiliaryText(JsonNode node,Set<String> contentFields,List<String> texts) {
+        if(node.isMissingNode() || node.isNull())return;
+        if(node.isTextual()) {collectAdministrativeText(node,texts);return;}
+        if(node.isArray()) {for(var item:node)collectAuxiliaryText(item,contentFields,texts);return;}
+        if(!node.isObject())throw new IllegalStateException("Unsupported official auxiliary body structure");
+        for(var entry:node.properties()) {
+            if(contentFields.contains(entry.getKey()))collectAdministrativeText(entry.getValue(),texts);
+            else if(entry.getKey().endsWith("내용"))throw new IllegalStateException("Unknown official auxiliary body field");
+            else if(entry.getValue().isObject() || entry.getValue().isArray())collectAuxiliaryText(entry.getValue(),contentFields,texts);
+        }
     }
     private void collectLawText(JsonNode node,List<String> texts) {
         if(node.isMissingNode() || node.isNull())return;

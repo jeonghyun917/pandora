@@ -14,18 +14,7 @@ import tools.jackson.databind.ObjectMapper;
 @EnabledIfEnvironmentVariable(named="PANDORA_RECOVERY_Q_TEST_URL",matches="http://127[.]0[.]0[.]1:26333")
 class RagRecoveryQdrantIntegrationTests {
     @Test void realNamespaceReconciliationAndParityNeverChangesBaseline() throws Exception {
-        Path root=Path.of(System.getenv("PANDORA_RECOVERY_Q_TEST_ROOT")).toRealPath();
-        assertThat(root.getFileName().toString()).startsWith("qdrant-recovery-test-");
-        assertThat(root.getParent().getFileName().toString()).isEqualTo("runtime");
-        var process=ProcessHandle.of(Long.parseLong(System.getenv("PANDORA_RECOVERY_Q_TEST_PID"))).orElseThrow();
-        assertThat(process.isAlive()).isTrue();
-        // Windows ProcessHandle commandLine is optional; use the host's actual CIM/listener ownership fence.
-        var fence=new ProcessBuilder("powershell.exe","-NoProfile","-File",Path.of("scripts/assert-recovery-test-qdrant.ps1").toAbsolutePath().toString(),
-            "-ProcessId",Long.toString(process.pid()),"-TestRoot",root.toString()).redirectErrorStream(true).start();
-        if(!fence.waitFor(30,java.util.concurrent.TimeUnit.SECONDS)) {
-            fence.destroy(); throw new IllegalStateException("Qdrant process ownership check timed out");
-        }
-        assertThat(fence.exitValue()).withFailMessage(new String(fence.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8)).isZero();
+        assertDedicatedServer();
         var properties=new LawAiProperties(null,new LawAiProperties.Qdrant(System.getenv("PANDORA_RECOVERY_Q_TEST_URL"),"test_baseline_law","test_baseline_rag",3),null,null);
         var q=new QdrantClient(properties,new ObjectMapper());
         var http=RestClient.builder().baseUrl(System.getenv("PANDORA_RECOVERY_Q_TEST_URL")).build();
@@ -55,6 +44,57 @@ class RagRecoveryQdrantIntegrationTests {
                 catch(org.springframework.web.client.HttpClientErrorException.NotFound alreadyRemoved) { }
             }
         }
+    }
+    private void assertDedicatedServer() throws Exception {
+        Path root=Path.of(System.getenv("PANDORA_RECOVERY_Q_TEST_ROOT")).toRealPath();
+        assertThat(root.getFileName().toString()).startsWith("qdrant-recovery-test-");
+        assertThat(root.getParent().getFileName().toString()).isEqualTo("runtime");
+        var process=ProcessHandle.of(Long.parseLong(System.getenv("PANDORA_RECOVERY_Q_TEST_PID"))).orElseThrow();
+        assertThat(process.isAlive()).isTrue();
+        // Windows ProcessHandle commandLine is optional; use the host's actual CIM/listener ownership fence.
+        var fence=new ProcessBuilder("powershell.exe","-NoProfile","-File",Path.of("scripts/assert-recovery-test-qdrant.ps1").toAbsolutePath().toString(),
+            "-ProcessId",Long.toString(process.pid()),"-TestRoot",root.toString()).redirectErrorStream(true).start();
+        if(!fence.waitFor(30,java.util.concurrent.TimeUnit.SECONDS)) {
+            fence.destroy(); throw new IllegalStateException("Qdrant process ownership check timed out");
+        }
+        assertThat(fence.exitValue()).withFailMessage(new String(fence.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8)).isZero();
+    }
+    @Test void realLawSourceNamespaceRejectsDriftAndPreservesLegacyBaseline() throws Exception {
+        assertDedicatedServer();
+        String baseline="test_source_baseline_"+UUID.randomUUID().toString().replace("-", "");
+        var properties=new LawAiProperties(null,new LawAiProperties.Qdrant(System.getenv("PANDORA_RECOVERY_Q_TEST_URL"),baseline,"test_baseline_rag",3),null,null);
+        var q=new QdrantClient(properties,new ObjectMapper());
+        var http=RestClient.builder().baseUrl(System.getenv("PANDORA_RECOVERY_Q_TEST_URL")).build();
+        String generation=UUID.randomUUID().toString();String collection=q.lawSourceVersionCollection(generation);
+        var a=lawChunk(200);var b=lawChunk(201);
+        List<List<Double>> vectors=List.of(List.of(1.0,0.0,0.0),List.of(0.0,1.0,0.0));
+        try {
+            http.put().uri("/collections/{name}",baseline).body(Map.of("vectors",Map.of("size",3,"distance","Cosine"))).retrieve().toBodilessEntity();
+            http.put().uri("/collections/{name}/points?wait=true",baseline).body(Map.of("points",List.of(Map.of("id",100,"vector",List.of(0,0,1),"payload",Map.of("chunkId",100,"documentId",42,"target","admrul","chunkVersion",2,"sourcePath","$.fixture","activationStatus","ACTIVE"))))).retrieve().toBodilessEntity();
+            String before=q.baselineLawFingerprint(List.of(lawChunk(100)));
+            assertThat(q.inspectLawSourceVersionPoints(generation,"text-embedding-3-small","b".repeat(64),List.of(a,b),vectors).missingChunkIds()).containsExactlyInAnyOrder(200L,201L);
+            q.upsertLawSourceVersion(generation,"text-embedding-3-small","b".repeat(64),List.of(a),List.of(vectors.get(0)));
+            assertThat(q.inspectLawSourceVersionPoints(generation,"text-embedding-3-small","b".repeat(64),List.of(a,b),vectors).missingChunkIds()).containsExactly(201L);
+            q.upsertLawSourceVersion(generation,"text-embedding-3-small","b".repeat(64),List.of(b),List.of(vectors.get(1)));
+            assertThat(q.verifyLawSourceVersionCollection(generation,"text-embedding-3-small","b".repeat(64),List.of(a,b),vectors)).matches("[0-9a-f]{64}");
+            assertThat(q.findExistingLawPointIds(List.of(200L,201L))).isEmpty();
+            http.post().uri("/collections/{name}/points/payload?wait=true",collection).body(Map.of("points",List.of(200),"payload",Map.of("embeddingModel","wrong-model"))).retrieve().toBodilessEntity();
+            assertThatThrownBy(()->q.verifyLawSourceVersionCollection(generation,"text-embedding-3-small","b".repeat(64),List.of(a,b),vectors)).isInstanceOf(IllegalStateException.class);
+            q.upsertLawSourceVersion(generation,"text-embedding-3-small","b".repeat(64),List.of(a),List.of(vectors.get(0)));
+            q.upsertLawSourceVersion(generation,"text-embedding-3-small","b".repeat(64),List.of(lawChunk(202)),List.of(List.of(0.0,0.0,1.0)));
+            assertThatThrownBy(()->q.verifyLawSourceVersionCollection(generation,"text-embedding-3-small","b".repeat(64),List.of(a,b),vectors)).isInstanceOf(IllegalStateException.class);
+            assertThat(q.baselineLawFingerprint(List.of(lawChunk(100)))).isEqualTo(before);
+            http.delete().uri("/collections/{name}",collection).retrieve().toBodilessEntity();
+            assertThatThrownBy(()->q.verifyLawSourceVersionCollection(generation,"text-embedding-3-small","b".repeat(64),List.of(a,b),vectors)).isInstanceOf(IllegalStateException.class);
+        } finally {
+            for(String name:List.of(collection,baseline)) {
+                try { http.delete().uri("/collections/{name}",name).retrieve().toBodilessEntity(); }
+                catch(org.springframework.web.client.HttpClientErrorException.NotFound alreadyRemoved) { }
+            }
+        }
+    }
+    private static com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow lawChunk(long id) {
+        return new com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow(id,42,"admrul","synthetic-source","Synthetic guideline",null,null,"20261019","PAST","1","title","synthetic body",null,"$.fixture",null,(int)id,"a".repeat(64),null,"article","PASS",null,null,2);
     }
     private static RagDocumentChunkRow chunk(long id) {
         return new RagDocumentChunkRow(id,42,4,"row",null,"test","body","Synthetic recovery fixture",null,1,"test",null,(int)id,"a".repeat(64),"PASS",null,null);
