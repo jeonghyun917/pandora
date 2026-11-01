@@ -32,7 +32,7 @@ final class SourceVersionTextPlan {
             collectAuxiliaryText(law.path("별표"),Set.of("별표내용"),owned);
         }
         if(owned.isEmpty())throw new IllegalStateException("Authoritative source text unavailable");
-        SyncDetailDocument detail=parser.parseDetailDocument(raw,title);
+        SyncDetailDocument detail=parser.parseSourceVersionDocument(raw,title);
         if(detail.sections()==null || detail.sections().isEmpty() || detail.sections().size()>10000 || detail.assets()==null || detail.assets().size()>1000)
             throw new IllegalStateException("Bounded parsed official text required");
         String parsed=detail.sections().stream().map(s->normalize(s.body())).collect(java.util.stream.Collectors.joining());
@@ -54,8 +54,10 @@ final class SourceVersionTextPlan {
     }
     private void collectAuxiliaryText(JsonNode node,Set<String> contentFields,List<String> texts) {
         if(node.isMissingNode() || node.isNull())return;
-        if(node.isTextual()) {collectAdministrativeText(node,texts);return;}
-        if(node.isArray()) {for(var item:node)collectAuxiliaryText(item,contentFields,texts);return;}
+        if(node.isTextual())throw new IllegalStateException("Owned auxiliary content field required");
+        // Parallel dates, file names and links are metadata, not authoritative body spans.
+        // Text is collected only when its owning content field is recognized below.
+        if(node.isArray()) {for(var item:node)if(item.isObject() || item.isArray())collectAuxiliaryText(item,contentFields,texts);return;}
         if(!node.isObject())throw new IllegalStateException("Unsupported official auxiliary body structure");
         for(var entry:node.properties()) {
             if(contentFields.contains(entry.getKey()))collectAdministrativeText(entry.getValue(),texts);

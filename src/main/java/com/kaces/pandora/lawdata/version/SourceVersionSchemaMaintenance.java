@@ -31,6 +31,8 @@ public class SourceVersionSchemaMaintenance implements ApplicationRunner {
         child("embeddings","law_api_chunk_embeddings",true,true);
         install("srcver_history_bu","law_source_version_history","UPDATE","SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Preserved source receipts are immutable'");
         install("srcver_history_bd","law_source_version_history","DELETE","SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Preserved source receipts must remain'");
+        install("srcver_reference_bu","law_source_version_reference_inspections","UPDATE","SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Reference inspection evidence is immutable'");
+        install("srcver_reference_bd","law_source_version_reference_inspections","DELETE","SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Reference inspection evidence must remain'");
     }
     private void child(String name,String table,boolean byChunk,boolean embeddings) {
         for(String event:List.of("INSERT","UPDATE","DELETE")) {

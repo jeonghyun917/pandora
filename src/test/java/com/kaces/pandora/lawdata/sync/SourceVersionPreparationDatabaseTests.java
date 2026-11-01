@@ -35,7 +35,7 @@ class SourceVersionPreparationDatabaseTests {
         assertThat(path).isEqualTo(Path.of(System.getenv("PANDORA_SOURCE_VERSION_TEST_DATADIR")).toRealPath());
         assertThat(path.getFileName().toString()).startsWith("pandora-import-tx-test-source-");
         new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(new org.springframework.core.io.ClassPathResource("schema.sql")).execute(ds);
-        db.update("DELETE FROM law_source_version_transitions");db.update("DELETE FROM law_source_version_vector_receipts");db.update("DELETE FROM law_source_version_history");db.update("DELETE FROM law_source_version_embedding_receipts");db.update("DELETE FROM law_source_version_candidates");db.update("DELETE FROM law_source_version_groups");
+        db.update("DELETE FROM law_source_version_transitions");db.update("DELETE FROM law_source_version_vector_receipts");db.update("DELETE FROM law_source_version_history");db.update("DELETE FROM law_source_version_embedding_receipts");db.update("DELETE FROM law_source_version_reference_inspections");db.update("DELETE FROM law_source_version_candidates");db.update("DELETE FROM law_source_version_groups");
         db.update("UPDATE law_source_version_visibility_epoch SET revision=0 WHERE singleton_id=1");
         db.update("DELETE FROM law_api_documents WHERE external_id IN ('source-prep-test-old','source-prep-test-new','source-prep-test-next')");
         db.update("INSERT INTO law_api_documents(target,external_id,title,source_date,canonical_key,effective_date,effective_status,raw_json,content_hash) VALUES('admrul','source-prep-test-old',?,'20250101',?,'20250101','CURRENT','{}',?)",TITLE,KEY,"a".repeat(64));
@@ -68,6 +68,27 @@ class SourceVersionPreparationDatabaseTests {
         }
     }
     private SearchDocument source() {return new SearchDocument("admrul","source-prep-test-new",TITLE,"","","20261019",KEY,"20261019","CURRENT","/DRF/lawService.do?target=admrul&ID=source-prep-test-new&type=JSON","{}");}
+    @Test void referenceInspectionIsBoundDurableImmutableAndCannotAuthorizePromotion() throws Exception {
+        String raw=raw().replace("}}",",\"원문파일\":\"/LSW/flDownload.do?flSeq=123\"}}");
+        var candidate=store.stage(baseline,0,source(),raw,SHA);preparation.validate(candidate.id());
+        byte[] pdf=SourceReferenceInspectorTests.hwpx();var calls=new java.util.concurrent.atomic.AtomicInteger();
+        var inspector=new SourceReferenceInspector(uri->{calls.incrementAndGet();return new SourceReferenceInspector.Download(200,"application/hwp+zip",pdf.length,new java.io.ByteArrayInputStream(pdf));});
+        var service=new SourceVersionReferenceReceipts(db,preparation,manager,inspector);
+        var report=service.inspect(candidate.id());
+        assertThat(report.fidelityReady()).isFalse();assertThat(report.status()).isEqualTo("INTEGRITY_ONLY");
+        assertThat(service.inspect(candidate.id())).isEqualTo(report);assertThat(calls.get()).isOne();
+        assertThatThrownBy(()->db.update("UPDATE law_source_version_reference_inspections SET receipt_hash=? WHERE candidate_id=?","0".repeat(64),candidate.id())).isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(()->transitionService().prepare(candidate.id())).isInstanceOf(IllegalStateException.class).hasMessageContaining("reference fidelity");
+        assertThat(db.queryForObject("SELECT effective_status FROM law_api_documents WHERE document_id=?",String.class,baseline)).isEqualTo("CURRENT");
+    }
+    @Test void candidateDriftDuringReferenceAcquisitionCannotPersistInspection() throws Exception {
+        String raw=raw().replace("}}",",\"원문파일\":\"/LSW/flDownload.do?flSeq=123\"}}");
+        var candidate=store.stage(baseline,0,source(),raw,SHA);preparation.validate(candidate.id());
+        byte[] pdf=SourceReferenceInspectorTests.hwpx();
+        var inspector=new SourceReferenceInspector(uri->{db.update("UPDATE law_source_version_candidates SET raw_hash=? WHERE candidate_id=?","0".repeat(64),candidate.id());return new SourceReferenceInspector.Download(200,"application/hwp+zip",pdf.length,new java.io.ByteArrayInputStream(pdf));});
+        assertThatThrownBy(()->new SourceVersionReferenceReceipts(db,preparation,manager,inspector).inspect(candidate.id())).isInstanceOf(IllegalStateException.class);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM law_source_version_reference_inspections",Integer.class)).isZero();
+    }
     @Test void privateCandidateDetailIsHiddenUntilPublicationAndRetiredDetailRemainsReadable() {
         var candidate=store.stage(baseline,0,source(),raw(),SHA);var validated=preparation.validate(candidate.id());
         assertThat(detailMapper.findDetail(validated.documentId())).isNull();
@@ -136,7 +157,7 @@ class SourceVersionPreparationDatabaseTests {
         assertThat(snapshot.validation()).isEqualTo(result);
     }
     @Test void lostSourceStructureIsTerminallyRejectedWithoutLeavingPartialDocument() {
-        String raw="{\"AdmRulService\":{\"조문내용\":[\"제1장 총칙\",\"제1조(시정) 담당청은 기준을 적용하여야 한다.\"]}}";
+        String raw="{\"AdmRulService\":{\"조문내용\":[\"제1장 총칙\",\"제1조(시정) 담당청은 기준을 적용하여야 한다.\"],\"별표\":{\"별표단위\":{\"별표내용\":{\"unrecognizedCell\":\"90% 이상 4점\"}}}}}";
         var candidate=store.stage(baseline,0,source(),raw,SHA);
         assertThatThrownBy(()->preparation.validate(candidate.id())).isInstanceOf(IllegalStateException.class);
         assertThat(db.queryForObject("SELECT state FROM law_source_version_candidates WHERE candidate_id=?",String.class,candidate.id())).isEqualTo("REJECTED");
@@ -521,7 +542,7 @@ class SourceVersionPreparationDatabaseTests {
         assertThat(chunkMapper.findSemanticChunksByIdsForIndexing(List.of(chunk))).isEmpty();
     }
     @Test void requiredSourceReferenceWithoutFidelityProofCannotCreateReadyAssets() {
-        String raw=raw().replace("\"AdmRulService\":{","\"AdmRulService\":{\"원문파일\":\"https://www.law.go.kr/required.pdf\",");
+        String raw=raw().replace("\"AdmRulService\":{","\"AdmRulService\":{\"원문파일\":\"https://www.law.go.kr/LSW/flDownload.do?flSeq=123\",");
         var candidate=store.stage(baseline,0,source(),raw,SHA);var validated=preparation.validate(candidate.id());
         assertThat(preparation.snapshotForAssets(candidate.id()).sourceAssets()).isNotEmpty();
         assertThatThrownBy(()->transitionService().prepare(candidate.id())).isInstanceOf(IllegalStateException.class).hasMessageContaining("reference fidelity");

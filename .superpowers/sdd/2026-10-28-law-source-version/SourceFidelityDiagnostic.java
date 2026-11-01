@@ -10,7 +10,9 @@ public class SourceFidelityDiagnostic {
         String raw=Files.readString(Path.of(args[0]));
         var json=new ObjectMapper();
         var parser=new LawOpenApiPayloadParser(json,new LawJsonWriter(json));
-        var parsed=parser.parseDetailDocument(raw,args[2]);
+        var legacy=parser.parseDetailDocument(raw,args[2]);
+        System.out.println("legacySections="+legacy.sections().size()+" legacyAssets="+legacy.assets().size());
+        var parsed=parser.parseSourceVersionDocument(raw,args[2]);
         System.out.println("parsedSections="+parsed.sections().size()+" requiredAssets="+parsed.assets().size());
         String kept=parsed.sections().stream().map(s->normalize(s.body())).collect(java.util.stream.Collectors.joining());
         var root=json.readTree(raw).path("AdmRulService");

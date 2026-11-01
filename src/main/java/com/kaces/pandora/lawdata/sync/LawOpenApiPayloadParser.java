@@ -63,10 +63,20 @@ public class LawOpenApiPayloadParser {
 	}
 	// 메소드 설명: parseDetailDocument 처리 흐름을 수행합니다.
 	public SyncDetailDocument parseDetailDocument(String detailJson, String fallbackTitle) {
+		return parseDocument(detailJson,fallbackTitle,false);
+	}
+
+	/** Lossless source-version path; legacy rebuild parsing remains unchanged. */
+	public SyncDetailDocument parseSourceVersionDocument(String detailJson,String fallbackTitle) {
+		return parseDocument(detailJson,fallbackTitle,true);
+	}
+	private SyncDetailDocument parseDocument(String detailJson,String fallbackTitle,boolean sourceVersion) {
 		try {
 			// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
 			JsonNode payload = objectMapper.readTree(detailJson);
-			return toDetailDocument(payload, fallbackTitle);
+			if(sourceVersion && (!payload.isObject() || payload.has("AdmRulService")==payload.has("법령")))
+				throw new IllegalStateException("One authoritative source root required");
+			return toDetailDocument(payload, fallbackTitle,sourceVersion);
 		} catch (Exception exception) {
 			throw new IllegalStateException("Law detail payload parsing failed.", exception);
 		}
@@ -139,25 +149,25 @@ public class LawOpenApiPayloadParser {
 		return "/DRF/lawService.do?OC=***&target=law&MST=" + externalId + "&type=HTML&mobileYn=";
 	}
 	// 메소드 설명: toDetailDocument 처리 흐름을 수행합니다.
-	private SyncDetailDocument toDetailDocument(JsonNode payload, String fallbackTitle) {
+	private SyncDetailDocument toDetailDocument(JsonNode payload, String fallbackTitle,boolean sourceVersion) {
 		String title = firstText(payload, "title", "법령명_한글", "법령명한글", "법령명", "행정규칙명");
 		if (!StringUtils.hasText(title)) {
 			title = fallbackTitle;
 		}
-		List<SyncDetailSection> sections = extractSections(payload);
-		if (sections.isEmpty()) {
+		List<SyncDetailSection> sections = extractSections(payload,sourceVersion);
+		if (!sourceVersion && sections.isEmpty()) {
 			String text = firstLongText(payload);
 			if (StringUtils.hasText(text)) {
 				sections.add(new SyncDetailSection("detail", null, "상세 내용", text));
 			}
 		}
-		return new SyncDetailDocument(title, sections, extractAssets(payload));
+		return new SyncDetailDocument(title, sections, sourceVersion ? extractSourceAssets(payload) : extractAssets(payload));
 	}
 	// 메소드 설명: extractSections 처리 흐름을 수행합니다.
-	private List<SyncDetailSection> extractSections(JsonNode payload) {
+	private List<SyncDetailSection> extractSections(JsonNode payload,boolean sourceVersion) {
 		List<SyncDetailSection> sections = new ArrayList<>();
 		JsonNode existingSections = payload.get("sections");
-		if (existingSections != null && existingSections.isArray()) {
+		if (!sourceVersion && existingSections != null && existingSections.isArray()) {
 			for (JsonNode section : existingSections) {
 				sections.add(new SyncDetailSection(
 					firstText(section, "type"),
@@ -168,16 +178,46 @@ public class LawOpenApiPayloadParser {
 			}
 			return sections;
 		}
-		collectLongTextSections(payload, "$", sections);
+		if(sourceVersion) {
+			String root=payload.has("AdmRulService")?"AdmRulService":"법령";
+			JsonNode owned=payload.get(root);
+			if(!owned.isObject())throw new IllegalStateException("Authoritative source object required");
+			if(root.equals("AdmRulService"))collectLongTextSections(owned.get("조문내용"),ADMIN_RULE_ARTICLE_CONTENT_PATH,sections,true);
+			else collectSourceLawArticles(owned.path("조문").path("조문단위"),"$.법령.조문.조문단위",sections);
+			collectSourceAuxiliary(owned.get("부칙"),"$."+root+".부칙",sections);
+			collectSourceAuxiliary(owned.get("별표"),"$."+root+".별표",sections);
+		} else collectLongTextSections(payload, "$", sections,false);
 		return sections;
 	}
+	private void collectSourceLawArticles(JsonNode node,String path,List<SyncDetailSection> sections) {
+		if(node==null || node.isNull() || node.isMissingNode())return;
+		if(node.isArray()) {for(int i=0;i<node.size();i++)collectSourceLawArticles(node.get(i),path+"["+i+"]",sections);return;}
+		if(!node.isObject())throw new IllegalStateException("Owned law article object required");
+		collectLawArticleSections(node,path,sections);
+	}
+	private void collectSourceAuxiliary(JsonNode node,String path,List<SyncDetailSection> sections) {
+		if(node==null || node.isNull())return;
+		if(node.isArray()) {for(int i=0;i<node.size();i++)if(node.get(i).isObject() || node.get(i).isArray())collectSourceAuxiliary(node.get(i),path+"["+i+"]",sections);return;}
+		if(!node.isObject())throw new IllegalStateException("Owned auxiliary content field required");
+		for(var entry:node.properties()) {
+			String next=path+"."+entry.getKey();
+			if(entry.getKey().equals("별표내용") || entry.getKey().equals("부칙내용"))collectLongTextSections(entry.getValue(),next,sections,true);
+			else if(entry.getKey().endsWith("내용"))throw new IllegalStateException("Unknown auxiliary body field");
+			else if(entry.getValue().isObject() || entry.getValue().isArray())collectSourceAuxiliary(entry.getValue(),next,sections);
+		}
+	}
 	// 메소드 설명: collectLongTextSections 처리 흐름을 수행합니다.
-	private void collectLongTextSections(JsonNode node, String path, List<SyncDetailSection> sections) {
+	private void collectLongTextSections(JsonNode node, String path, List<SyncDetailSection> sections,boolean sourceVersion) {
 		if (node == null || node.isNull()) {
 			return;
 		}
-		if (node.isArray() && ADMIN_RULE_ARTICLE_CONTENT_PATH.equals(path) && hasAdministrativeRuleArticles(node)) {
-			collectAdministrativeRuleSections(node, path, sections);
+		if(sourceVersion && (path.endsWith(".별표내용") || path.endsWith(".부칙내용"))) {
+			List<String> rows=new ArrayList<>();collectOwnedRows(node,rows);
+			addStructuredSection(sections,path.endsWith(".별표내용")?"source-table":"supplementary",null,path,String.join("\n",rows),path,0,1);
+			return;
+		}
+		if (node.isArray() && ADMIN_RULE_ARTICLE_CONTENT_PATH.equals(path) && (sourceVersion || hasAdministrativeRuleArticles(node))) {
+			collectAdministrativeRuleSections(node, path, sections,sourceVersion);
 			return;
 		}
 		if (node.isObject() && LAW_ARTICLE_NODE_PATH.matcher(path).matches()) {
@@ -198,15 +238,20 @@ public class LawOpenApiPayloadParser {
 		if (node.isArray()) {
 			int index = 0;
 			for (JsonNode item : node) {
-				collectLongTextSections(item, path + "[" + index + "]", sections);
+				collectLongTextSections(item, path + "[" + index + "]", sections,sourceVersion);
 				index++;
 			}
 			return;
 		}
 		node.properties().forEach(entry -> {
 			String nextPath = "$".equals(path) ? "$." + entry.getKey() : path + "." + entry.getKey();
-			collectLongTextSections(entry.getValue(), nextPath, sections);
+			collectLongTextSections(entry.getValue(), nextPath, sections,sourceVersion);
 		});
+	}
+	private void collectOwnedRows(JsonNode node,List<String> rows) {
+		if(node.isTextual()) {rows.add(node.asText());return;}
+		if(node.isArray()) {for(var row:node)collectOwnedRows(row,rows);return;}
+		throw new IllegalStateException("Unsupported authoritative auxiliary text structure");
 	}
 
 	private boolean hasAdministrativeRuleArticles(JsonNode node) {
@@ -219,12 +264,12 @@ public class LawOpenApiPayloadParser {
 		return false;
 	}
 
-	private void collectAdministrativeRuleSections(JsonNode node, String path, List<SyncDetailSection> sections) {
+	private void collectAdministrativeRuleSections(JsonNode node, String path, List<SyncDetailSection> sections,boolean sourceVersion) {
 		for (int index = 0; index < node.size(); index++) {
 			JsonNode item = node.get(index);
 			String itemPath = path + "[" + index + "]";
 			if (!item.isTextual()) {
-				collectLongTextSections(item, itemPath, sections);
+				collectLongTextSections(item, itemPath, sections,sourceVersion);
 				continue;
 			}
 			String body = stripHtmlTags(item.asText());
@@ -250,9 +295,11 @@ public class LawOpenApiPayloadParser {
 			}
 			var chapter = ADMIN_RULE_CHAPTER_HEADING.matcher(leading);
 			if (chapter.matches()) {
+				if(sourceVersion)addStructuredSection(sections,"structure-heading",null,leading,body,itemPath,index+1,1);
 				continue;
 			}
-			addTextSections(sections, "text", null, itemPath, body);
+			if(sourceVersion)addStructuredSection(sections,"text",null,itemPath,body,itemPath,index+1,1);
+			else addTextSections(sections, "text", null, itemPath, body);
 		}
 	}
 
@@ -415,6 +462,26 @@ public class LawOpenApiPayloadParser {
 		Map<String, SyncAsset> assets = new LinkedHashMap<>();
 		findAssetLinks(payload, assets);
 		return List.copyOf(assets.values());
+	}
+	private List<SyncAsset> extractSourceAssets(JsonNode payload) {
+		Map<String,SyncAsset> assets=new LinkedHashMap<>();
+		findDeclaredAssetLinks(payload.get(payload.has("AdmRulService")?"AdmRulService":"법령"),"",assets);
+		return List.copyOf(assets.values());
+	}
+	private void findDeclaredAssetLinks(JsonNode node,String field,Map<String,SyncAsset> assets) {
+		if(node==null || node.isNull())return;
+		boolean declared=field.endsWith("파일링크") || (field.endsWith("파일") && !(field.equals("첨부파일") && node.isObject()));
+		if(declared && !node.isTextual() && !node.isArray())throw new IllegalStateException("Unsupported reference declaration shape");
+		if(node.isTextual()) {
+			if(declared && !node.asText().isBlank()) {
+				SourceReferenceInspector.officialUri(node.asText());
+				addAsset(assets,node.asText(),"");
+			}
+		} else if(node.isArray()) {
+			for(var item:node)findDeclaredAssetLinks(item,field,assets);
+		} else if(node.isObject()) {
+			node.properties().forEach(entry->findDeclaredAssetLinks(entry.getValue(),entry.getKey(),assets));
+		}
 	}
 	// 메소드 설명: findAssetLinks 처리 흐름을 수행합니다.
 	private void findAssetLinks(JsonNode node, Map<String, SyncAsset> assets) {

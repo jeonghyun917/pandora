@@ -21,6 +21,9 @@ public class SourceVersionWorkflowService {
     private final ObjectProvider<SourceVersionTransitionService> transitions;
     private final String product;
     private final boolean configured,enabled;
+    private ObjectProvider<SourceVersionReferenceReceipts> references;
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureReferences(ObjectProvider<SourceVersionReferenceReceipts> references) {this.references=references;}
     private final tools.jackson.databind.ObjectMapper json=new tools.jackson.databind.ObjectMapper();
     public SourceVersionWorkflowService(JdbcTemplate db,SourceVersionCandidateStore store,LawOpenApiService official,LawOpenApiPayloadParser parser,
             ObjectProvider<SourceVersionPreparationService> preparation,ObjectProvider<SourceVersionTransitionService> transitions,
@@ -82,6 +85,12 @@ public class SourceVersionWorkflowService {
         } catch(RuntimeException invalid) {return false;}
     }
     public SourceVersionPreparationService.Validation validate(String candidate) {requireMutation();return preparation.getIfAvailable().validate(candidate);}
+    public SourceVersionReferenceReceipts.Report inspectReferences(String candidate) {
+        requireMutation();
+        var service=references==null?null:references.getIfAvailable();
+        if(service==null)throw new IllegalStateException("Reference inspection is unavailable");
+        return service.inspect(candidate);
+    }
     public SourceVersionTransitionService.Transition prepare(String candidate) {requireMutation();return transitions.getIfAvailable().prepare(candidate);}
     public SourceVersionTransitionService.Transition prepareRollback(String group,long revision,long restore) {requireMutation();return transitions.getIfAvailable().prepareRollback(group,revision,restore);}
     public SourceVersionTransitionService.Active promote(String transition,long revision) {requireMutation();return transitions.getIfAvailable().promote(transition,revision);}

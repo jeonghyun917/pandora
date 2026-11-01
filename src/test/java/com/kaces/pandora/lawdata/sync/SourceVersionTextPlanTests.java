@@ -8,6 +8,15 @@ import com.kaces.pandora.common.json.LawJsonWriter;
 class SourceVersionTextPlanTests {
     private final ObjectMapper json=new ObjectMapper();
     private final SourceVersionTextPlan planner=new SourceVersionTextPlan(new LawOpenApiPayloadParser(json,new LawJsonWriter(json)));
+    private final SourceVersionTextPlan lossyPlanner=new SourceVersionTextPlan(new LawOpenApiPayloadParser(json,new LawJsonWriter(json)) {
+        @Override public SyncDetailDocument parseSourceVersionDocument(String raw,String title) {return super.parseDetailDocument(raw,title);}
+    });
+    @Test void auxiliaryDateAndDownloadArraysAreMetadataNotInventedBodySpans() {
+        String raw=json.writeValueAsString(java.util.Map.of("AdmRulService",java.util.Map.of(
+            "조문내용","제1조(기준) 담당청은 정해진 기준을 준수하여야 한다.",
+            "부칙",java.util.Map.of("부칙공포일자",java.util.List.of("20261019"),"부칙내용",java.util.List.of("이 지침은 발령한 날부터 시행한다.")))));
+        assertThat(planner.plan("admrul",75,"테스트 지침",raw).unexplainedLossSpanCount()).isZero();
+    }
     @Test void administrativeAuxiliaryTextCannotReplaceMissingArticleBody() {
         String raw=json.writeValueAsString(java.util.Map.of("AdmRulService",java.util.Map.of(
             "조문내용"," ","별표",java.util.Map.of("별표단위",java.util.Map.of("별표내용","담당청은 적용 조건과 경과조치의 내용을 보존하여야 한다. ".repeat(10))))));
@@ -24,17 +33,20 @@ class SourceVersionTextPlanTests {
         String raw=json.writeValueAsString(java.util.Map.of("AdmRulService",java.util.Map.of(
             "조문내용","제1조(기준) 담당청은 정해진 기준을 준수하여야 한다.",
             "별표",java.util.Map.of("별표단위",java.util.Map.of("별표내용",java.util.List.of("90% 이상 110% 미만은 4점"))))));
-        assertThatThrownBy(()->planner.plan("admrul",75,"테스트 지침",raw)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(()->lossyPlanner.plan("admrul",75,"테스트 지침",raw)).isInstanceOf(IllegalStateException.class);
+        assertThat(planner.plan("admrul",75,"테스트 지침",raw).unexplainedLossSpanCount()).isZero();
     }
     @Test void rejectsAdministrativeSupplementTextDiscardedByTheParser() {
         String raw=json.writeValueAsString(java.util.Map.of("AdmRulService",java.util.Map.of(
             "조문내용","제1조(기준) 담당청은 정해진 기준을 준수하여야 한다.",
             "부칙",java.util.Map.of("부칙단위",java.util.Map.of("부칙내용","종전 사업은 적용에서 제외한다.")))));
-        assertThatThrownBy(()->planner.plan("admrul",75,"테스트 지침",raw)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(()->lossyPlanner.plan("admrul",75,"테스트 지침",raw)).isInstanceOf(IllegalStateException.class);
+        assertThat(planner.plan("admrul",75,"테스트 지침",raw).unexplainedLossSpanCount()).isZero();
     }
     @Test void rejectsLawAnnexTextDiscardedByTheParser() {
         String raw="{\"법령\":{\"조문\":{\"조문단위\":[{\"조문번호\":\"1\",\"조문여부\":\"조문\",\"조문내용\":\"제1조(기준) 담당청은 정해진 기준을 준수하여야 한다.\"}]},\"별표\":{\"별표단위\":{\"별표내용\":[\"90% 이상 110% 미만은 4점\"]}}}}";
-        assertThatThrownBy(()->planner.plan("law",75,"테스트 법",raw)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(()->lossyPlanner.plan("law",75,"테스트 법",raw)).isInstanceOf(IllegalStateException.class);
+        assertThat(planner.plan("law",75,"테스트 법",raw).unexplainedLossSpanCount()).isZero();
     }
     @Test void plansTheNewOfficialTextWithoutComparingItToTheOldVersion() {
         String body="제1조(적용) 신청기관의 장은 대상 사업에 이 지침을 적용하여야 한다. 제2조(시정) 협의기관의 장은 사전협의 미이행 시 신청기관에 시정을 요구할 수 있다.";
@@ -52,10 +64,10 @@ class SourceVersionTextPlanTests {
     }
     @Test void rejectsBlankTextAndParserDiscardedLegalContent() {
         assertThatThrownBy(()->planner.plan("admrul",75,"테스트 지침","{\"AdmRulService\":{\"조문내용\":\" \"}}")).isInstanceOf(IllegalStateException.class);
-        // A numbered structural heading in an article array is currently discarded by the parser.
-        // New source validation must account for it instead of claiming complete source coverage.
+        // The legacy adapter still loses a heading; the loss gate must keep rejecting it.
         String raw="{\"AdmRulService\":{\"조문내용\":[\"제1장 총칙\",\"제1조(목적) 담당청은 이 기준을 적용하여야 한다.\"]}}";
-        assertThatThrownBy(()->planner.plan("admrul",75,"테스트 지침",raw)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(()->lossyPlanner.plan("admrul",75,"테스트 지침",raw)).isInstanceOf(IllegalStateException.class);
+        assertThat(planner.plan("admrul",75,"테스트 지침",raw).unexplainedLossSpanCount()).isZero();
     }
     @Test void changedConditionOrDocumentIdentityChangesTheManifest() {
         String raw="{\"AdmRulService\":{\"조문내용\":\"담당청은 확인 결과 위반이 인정되는 경우에만 개선을 권고할 수 있다.\"}}";

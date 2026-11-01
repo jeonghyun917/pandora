@@ -19,6 +19,10 @@ import org.springframework.transaction.PlatformTransactionManager;
 @ConditionalOnProperty(name="pandora.source-version.workflow-enabled",havingValue="true")
 public class SourceVersionConfiguration {
     @Bean
+    public SourceVersionReferenceReceipts sourceVersionReferenceReceipts(JdbcTemplate db,SourceVersionPreparationService preparation,PlatformTransactionManager manager) {
+        return new SourceVersionReferenceReceipts(db,preparation,manager,new SourceReferenceInspector());
+    }
+    @Bean
     public SourceVersionPreparationService sourceVersionPreparation(JdbcTemplate db,SourceVersionCandidateStore store,
             LawDocumentWriter writer,LawChunkMapper chunks,LawOpenApiPayloadParser parser,PlatformTransactionManager manager,
             @Value("${pandora.rag.recovery.product-sha:}") String product) {

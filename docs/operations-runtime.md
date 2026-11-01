@@ -343,6 +343,15 @@ history (groupKey, expectedRevision, restoreDocumentId); `rollback` applies that
 prepared transition. No request can supply source bytes, a readiness boolean,
 product/config hashes, forced mappings, or an arbitrary restore document.
 
+`inspect-references` accepts only `candidateId` behind the same ADMIN/CSRF and
+mutation gates. It acquires only exact declared official `flDownload.do` links,
+with redirect, byte, body-timeout and HWPX expansion bounds. Its immutable
+candidate/input/manifest-bound inspection report is `INTEGRITY_ONLY` and never
+authorizes promotion. PDF native processing is rejected until resource-isolated
+processing is available; a small compressed file is not a safe extraction bound.
+HWPX native text and structural hashes likewise do not establish semantic or
+table relationship fidelity. The existing reference readiness gate remains closed.
+
 New required reference assets without genuine fidelity proof block readiness;
 their URL metadata is not file/content proof. Existing preserved baseline assets
 are bound by their full immutable snapshot, not newly declared validated files.

@@ -21,6 +21,7 @@ public class SourceVersionController {
     @GetMapping("/status") public SourceVersionWorkflowService.Status status(@RequestParam String groupKey) {return workflow.status(groupKey);}
     @PostMapping(path="/stage",consumes=MediaType.APPLICATION_JSON_VALUE) public Object stage(@RequestBody Stage request) {return workflow.stage(request.baselineDocumentId(),request.expectedRevision(),request.externalId());}
     @PostMapping(path="/validate",consumes=MediaType.APPLICATION_JSON_VALUE) public Object validate(@RequestBody Candidate request) {return workflow.validate(request.candidateId());}
+    @PostMapping(path="/inspect-references",consumes=MediaType.APPLICATION_JSON_VALUE) public Object inspectReferences(@RequestBody Candidate request) {return workflow.inspectReferences(request.candidateId());}
     @PostMapping(path="/prepare",consumes=MediaType.APPLICATION_JSON_VALUE) public Object prepare(@RequestBody Candidate request) {return workflow.prepare(request.candidateId());}
     @PostMapping(path="/prepare-rollback",consumes=MediaType.APPLICATION_JSON_VALUE) public Object prepareRollback(@RequestBody PrepareRollback request) {return workflow.prepareRollback(request.groupKey(),request.expectedRevision(),request.restoreDocumentId());}
     @PostMapping(path="/promote",consumes=MediaType.APPLICATION_JSON_VALUE) public Object promote(@RequestBody Apply request) {return workflow.promote(request.transitionId(),request.expectedRevision());}

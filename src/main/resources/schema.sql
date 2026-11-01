@@ -110,6 +110,15 @@ CREATE TABLE IF NOT EXISTS law_source_version_history (
     CONSTRAINT fk_law_source_history_candidate FOREIGN KEY(source_candidate_id) REFERENCES law_source_version_candidates(candidate_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS law_source_version_reference_inspections (
+    candidate_id CHAR(36) NOT NULL PRIMARY KEY,
+    input_hash CHAR(64) NOT NULL,
+    validation_manifest CHAR(64) NOT NULL,
+    receipt_hash CHAR(64) NOT NULL,
+    report_json LONGTEXT NOT NULL CHECK(JSON_VALID(report_json)),
+    CONSTRAINT fk_law_source_reference_candidate FOREIGN KEY(candidate_id) REFERENCES law_source_version_candidates(candidate_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS law_source_version_embedding_receipts (
     candidate_id CHAR(36) NOT NULL,
     chunk_id BIGINT NOT NULL,

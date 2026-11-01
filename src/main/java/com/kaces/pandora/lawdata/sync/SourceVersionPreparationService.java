@@ -69,7 +69,7 @@ public final class SourceVersionPreparationService {
             if(rows.size()!=validation.chunkCount() || rows.isEmpty() || rows.size()>10000 || rows.stream().anyMatch(row->row.documentId()!=validation.documentId()))
                 throw new IllegalStateException("Inactive source membership unavailable");
             return new AssetSnapshot(id,(String)candidate.get("input_hash"),(String)candidate.get("raw_hash"),validation,rows,
-                parser.parseDetailDocument((String)candidate.get("raw_detail_json"),source.title()).assets());
+                parser.parseSourceVersionDocument((String)candidate.get("raw_detail_json"),source.title()).assets());
     }
     private Validation validateLocked(String id) {
         lockEpoch();
@@ -100,7 +100,7 @@ public final class SourceVersionPreparationService {
         SourceVersionTextPlan.Plan plan;
         try {plan=new SourceVersionTextPlan(parser).plan(source.target(),document,source.title(),raw);}
         catch(IllegalStateException | IllegalArgumentException invalid) {throw new TextRejection(input,invalid);}
-        var detail=parser.parseDetailDocument(raw,source.title());
+        var detail=parser.parseSourceVersionDocument(raw,source.title());
         long detailId=writer.upsertDetail(document,detail,raw);
         var version=writer.createCandidateChunks(document,detailId,source.target(),source.title(),plan.sections(),source.detailLink(),plan.manifest(),0);
         if(version.expectedChunkCount()!=plan.chunks().size())throw new IllegalStateException("Chunk plan drift");
