@@ -44,7 +44,7 @@ After foundation6a17b9f delivery, implement a server-owned Java worker (no Power
 
 - [x] Worker TDD: nominal native PDF, malformed PDF, forced timeout and fixed launch resource bounds.
 - [x] Parent integration and receipt tests preserve all reference readiness guards.
-- [ ] Focused plus stable changed-tree full suite, reviewed scoped delivery and packaged-worker smoke.
+- [x] Focused plus stable changed-tree full suite, reviewed scoped delivery and packaged-worker smoke (2419183;1956/f0/e0/skip27;4official references integrity-only).
 
 - [ ] Stable full backend suite once on changed tree; final scoped independent review and one Critical/Important fix pass.
 - [ ] Verified commit/push, official staged package, owned8080 normal stop/deploy and health. No repeated tests for transport.
