@@ -66,19 +66,24 @@ public final class SourceReferenceInspector {
                 if(bytes.length==0 || bytes.length>MAX_BYTES || (response.declaredLength()>=0 && response.declaredLength()!=bytes.length))
                     throw new IllegalStateException("Reference size or completeness rejected");
                 String format;
-                if(bytes.length>=5 && new String(bytes,0,5,StandardCharsets.US_ASCII).equals("%PDF-"))
-                    throw new IllegalStateException("PDF native inspection requires resource isolation");
+                if(bytes.length>=5 && new String(bytes,0,5,StandardCharsets.US_ASCII).equals("%PDF-"))format="pdf";
                 else if(bytes.length>=4 && bytes[0]=='P' && bytes[1]=='K' && bytes[2]==3 && bytes[3]==4)format="hwpx";
                 else throw new IllegalStateException("Unsupported native reference format");
                 if(media.equals("application/pdf") && !format.equals("pdf"))throw new IllegalStateException("Reference media signature mismatch");
                 Path file=Files.createTempFile("pandora-source-reference-","."+format);
                 try {
                     Files.write(file,bytes);
+                    String artifact=HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+                    if(format.equals("pdf")) {
+                        var nativePdf=new SourcePdfInspection().inspect(file);
+                        if(!artifact.equals(nativePdf.artifactHash()))throw new IllegalStateException("PDF worker input identity changed");
+                        return new Inspection(source,uri.toString(),artifact,bytes.length,format,nativePdf.textHash(),nativePdf.structureHash(),"INTEGRITY_ONLY",false);
+                    }
                     preflightHwpx(file);
                     var extracted=new RagTextExtractor().extract(file);
                     String text=extracted.text();
                     if(text.isBlank() || text.length()>4_000_000 || extracted.pages().size()>1000)throw new IllegalStateException("Native reference text unavailable or oversized");
-                    return new Inspection(source,uri.toString(),HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)),bytes.length,
+                    return new Inspection(source,uri.toString(),artifact,bytes.length,
                         format,LawHashUtils.sha256(text),LawHashUtils.sha256Json(extracted.pages()),"INTEGRITY_ONLY",false);
                 } finally {Files.deleteIfExists(file);}
             }

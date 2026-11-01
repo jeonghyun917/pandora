@@ -18,10 +18,12 @@ class SourceReferenceInspectorTests {
             assertThatThrownBy(()->inspector.inspect("/flDownload.do?flSeq=123")).isInstanceOf(IllegalStateException.class));
         assertThat(closed.getCount()).isZero();
     }
-    @Test void pdfNativeProcessingCannotRunWithoutResourceIsolation() throws Exception {
+    @Test void pdfNativeProcessingUsesIsolationAndCannotAuthorizeFidelity() throws Exception {
         byte[] bytes=pdf();
-        assertThatThrownBy(()->new SourceReferenceInspector(uri->new SourceReferenceInspector.Download(200,"application/pdf",bytes.length,new ByteArrayInputStream(bytes))).inspect("/flDownload.do?flSeq=123"))
-            .isInstanceOf(IllegalStateException.class).hasRootCauseMessage("PDF native inspection requires resource isolation");
+        var proof=new SourceReferenceInspector(uri->new SourceReferenceInspector.Download(200,"application/pdf",bytes.length,new ByteArrayInputStream(bytes))).inspect("/flDownload.do?flSeq=123");
+        assertThat(proof.nativeTextHash()).matches("[0-9a-f]{64}");
+        assertThat(proof.fidelityReady()).isFalse();
+        assertThat(proof.status()).isEqualTo("INTEGRITY_ONLY");
     }
     @Test void onlyExactOfficialDownloadAddressesAreAcquired() {
         assertThat(SourceReferenceInspector.officialUri("http://law.go.kr/flDownload.do?flSeq=123"))

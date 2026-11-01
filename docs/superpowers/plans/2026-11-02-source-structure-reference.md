@@ -38,6 +38,14 @@ Files: source reference validator/receipt code, schema/config integration, tests
 
 ## Task3: Delivery and qualified continuation
 
+### Qualified continuation: bounded PDF inspection
+
+After foundation6a17b9f delivery, implement a server-owned Java worker (no PowerShell policy/engine change): fixed heap128MiB/metaspace96MiB/direct32MiB, process deadline10s, bounded native output4million characters/1000pages, fixed hash-only response. Parent kills only its own worker on deadline and bounds concurrent workers. Use the existing Java runtime and Spring Boot PropertiesLauncher for packaged classpath; never caller-supplied commands. Plain and packaged launch paths need explicit tests/smoke. Native extraction remains INTEGRITY_ONLY, not semantic/table fidelity. No live candidate or new penalty checkpoint until all remaining gates actually hold.
+
+- [x] Worker TDD: nominal native PDF, malformed PDF, forced timeout and fixed launch resource bounds.
+- [x] Parent integration and receipt tests preserve all reference readiness guards.
+- [ ] Focused plus stable changed-tree full suite, reviewed scoped delivery and packaged-worker smoke.
+
 - [ ] Stable full backend suite once on changed tree; final scoped independent review and one Critical/Important fix pass.
 - [ ] Verified commit/push, official staged package, owned8080 normal stop/deploy and health. No repeated tests for transport.
 - [ ] Actual source update only after all source/body/reference/DB-Q/writer/rollback gates hold; otherwise record the exact unsupported structure, not a stale Q/permission blocker.

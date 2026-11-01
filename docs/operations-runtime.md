@@ -347,8 +347,12 @@ product/config hashes, forced mappings, or an arbitrary restore document.
 mutation gates. It acquires only exact declared official `flDownload.do` links,
 with redirect, byte, body-timeout and HWPX expansion bounds. Its immutable
 candidate/input/manifest-bound inspection report is `INTEGRITY_ONLY` and never
-authorizes promotion. PDF native processing is rejected until resource-isolated
-processing is available; a small compressed file is not a safe extraction bound.
+authorizes promotion. PDF native processing uses an owned child JVM with fixed
+128MiB heap/96MiB metaspace/32MiB direct-memory caps, a10s parent deadline and8s
+child watchdog,2-worker capacity,1000pages and4million output-character bounds.
+Malformed, over-bound, timed-out or unbound worker responses fail closed. A small
+compressed file alone is not a safe extraction bound. The packaged launch uses
+the existing Boot PropertiesLauncher; no caller can provide commands or limits.
 HWPX native text and structural hashes likewise do not establish semantic or
 table relationship fidelity. The existing reference readiness gate remains closed.
 
