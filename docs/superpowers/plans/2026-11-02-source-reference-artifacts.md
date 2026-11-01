@@ -42,6 +42,13 @@ Do not open the transition reference gate in this slice.
 
 ## Task3: source-owned fidelity boundary
 
+Observed actual artifact boundary (stored-byte diagnostic20261102):annex HWPX
+contains8tables/21rows/98cells, no pictures or field codes. A7x4 outer table owns
+6nested tables (3x6 plus five2x6); existing flat structure retains only a separate
+1x3 row. Keep the existing nested/ancestor guards. Next implementation is a
+separate source-only hierarchical table/cell graph with exact XML owner paths,
+not a relaxation of the flat row proof or an inferred legal scope mapping.
+
 - Preserve exact reference declaration paths and native table cell/header paths
   before designing a role-specific proof. URI equality, sibling adjacency, text
   substring coverage and raw/native hashes are not table/semantic entailment.

@@ -119,6 +119,16 @@ CREATE TABLE IF NOT EXISTS law_source_version_reference_inspections (
     CONSTRAINT fk_law_source_reference_candidate FOREIGN KEY(candidate_id) REFERENCES law_source_version_candidates(candidate_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS law_source_version_reference_parts (
+    candidate_id CHAR(36) NOT NULL,
+    asset_index INT NOT NULL CHECK(asset_index >= 0 AND asset_index < 32),
+    part_index INT NOT NULL CHECK(part_index >= 0 AND part_index < 8),
+    part_hash CHAR(64) NOT NULL,
+    part_bytes MEDIUMBLOB NOT NULL CHECK(OCTET_LENGTH(part_bytes) > 0 AND OCTET_LENGTH(part_bytes) <= 1048576),
+    PRIMARY KEY(candidate_id,asset_index,part_index),
+    CONSTRAINT fk_law_source_reference_part FOREIGN KEY(candidate_id) REFERENCES law_source_version_reference_inspections(candidate_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS law_source_version_embedding_receipts (
     candidate_id CHAR(36) NOT NULL,
     chunk_id BIGINT NOT NULL,

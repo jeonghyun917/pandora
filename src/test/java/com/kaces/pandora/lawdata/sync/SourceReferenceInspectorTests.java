@@ -7,6 +7,17 @@ import java.util.*;
 import org.junit.jupiter.api.Test;
 
 class SourceReferenceInspectorTests {
+    @Test void acquiredArtifactBytesAreImmutableAndHashBoundWithoutEnteringPublicInspection() throws Exception {
+        byte[] bytes=hwpx();
+        var inspector=new SourceReferenceInspector(uri->new SourceReferenceInspector.Download(200,"application/hwp+zip",bytes.length,new ByteArrayInputStream(bytes)));
+        var acquisition=inspector.acquire("/flDownload.do?flSeq=123");
+        byte[] first=acquisition.bytes();first[0]=0;
+        assertThat(acquisition.bytes()[0]).isEqualTo((byte)'P');
+        assertThat(acquisition.inspection().byteCount()).isEqualTo(bytes.length);
+        String response=new tools.jackson.databind.ObjectMapper().writeValueAsString(acquisition.inspection());
+        assertThat(response).doesNotContain("\"bytes\"","artifactBytes");
+        assertThatThrownBy(()->new SourceReferenceInspector.Acquisition(acquisition.inspection(),new byte[]{1,2,3})).isInstanceOf(IllegalArgumentException.class);
+    }
     @Test void responseBodyHasAnIndependentDeadlineAfterHeadersArrive() {
         var closed=new java.util.concurrent.CountDownLatch(1);
         InputStream stalled=new InputStream() {
@@ -75,6 +86,19 @@ class SourceReferenceInspectorTests {
     }
     static byte[] hwpx() throws Exception {
         return zip(Map.of("mimetype","application/hwp+zip","Contents/section0.xml","<section><p><t>원문 적용 조건을 보존한다.</t></p></section>"));
+    }
+    static byte[] multipartHwpx() throws Exception {
+        var out=new ByteArrayOutputStream();
+        try(var zip=new java.util.zip.ZipOutputStream(out)) {
+            for(var entry:Map.of("mimetype","application/hwp+zip","Contents/section0.xml","<section><p><t>원문 분할 순서를 보존한다.</t></p></section>").entrySet()) {
+                zip.putNextEntry(new java.util.zip.ZipEntry(entry.getKey()));zip.write(entry.getValue().getBytes(java.nio.charset.StandardCharsets.UTF_8));zip.closeEntry();
+            }
+            byte[] padding=new byte[2*1024*1024+17];new Random(7).nextBytes(padding);
+            var entry=new java.util.zip.ZipEntry("BinData/bounded-padding.bin");entry.setMethod(java.util.zip.ZipEntry.STORED);entry.setSize(padding.length);
+            var crc=new java.util.zip.CRC32();crc.update(padding);entry.setCrc(crc.getValue());
+            zip.putNextEntry(entry);zip.write(padding);zip.closeEntry();
+        }
+        return out.toByteArray();
     }
     static byte[] pdf() throws Exception {
         try(var doc=new org.apache.pdfbox.pdmodel.PDDocument();var out=new ByteArrayOutputStream()) {

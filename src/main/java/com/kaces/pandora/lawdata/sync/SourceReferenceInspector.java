@@ -19,6 +19,19 @@ public final class SourceReferenceInspector {
     @FunctionalInterface interface Transport {Download get(URI uri) throws Exception;}
     public record Inspection(String sourceUrl,String canonicalUrl,String artifactHash,long byteCount,
             String format,String nativeTextHash,String structureHash,String status,boolean fidelityReady) { }
+    record Acquisition(Inspection inspection,byte[] bytes) {
+        Acquisition {
+            if(inspection==null || bytes==null || bytes.length<1 || bytes.length>MAX_BYTES
+                || inspection.byteCount()!=bytes.length || !inspection.artifactHash().equals(artifactHash(bytes)))
+                throw new IllegalArgumentException("Exact inspected artifact bytes required");
+            bytes=bytes.clone();
+        }
+        @Override public byte[] bytes() {return bytes.clone();}
+    }
+    static String artifactHash(byte[] bytes) {
+        try {return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));}
+        catch(java.security.NoSuchAlgorithmException unavailable) {throw new IllegalStateException("SHA-256 unavailable",unavailable);}
+    }
     private final Transport transport;
     private final long bodyTimeoutMillis;
     private static final java.util.concurrent.ScheduledThreadPoolExecutor DEADLINES=deadlines();
@@ -55,6 +68,9 @@ public final class SourceReferenceInspector {
         } catch(RuntimeException invalid) {throw new IllegalArgumentException("Exact official reference download address required");}
     }
     public Inspection inspect(String source) {
+        return acquire(source).inspection();
+    }
+    Acquisition acquire(String source) {
         URI uri=officialUri(source);
         try {
             Download response=transport.get(uri);
@@ -73,18 +89,18 @@ public final class SourceReferenceInspector {
                 Path file=Files.createTempFile("pandora-source-reference-","."+format);
                 try {
                     Files.write(file,bytes);
-                    String artifact=HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+                    String artifact=artifactHash(bytes);
                     if(format.equals("pdf")) {
                         var nativePdf=new SourcePdfInspection().inspect(file);
                         if(!artifact.equals(nativePdf.artifactHash()))throw new IllegalStateException("PDF worker input identity changed");
-                        return new Inspection(source,uri.toString(),artifact,bytes.length,format,nativePdf.textHash(),nativePdf.structureHash(),"INTEGRITY_ONLY",false);
+                        return new Acquisition(new Inspection(source,uri.toString(),artifact,bytes.length,format,nativePdf.textHash(),nativePdf.structureHash(),"INTEGRITY_ONLY",false),bytes);
                     }
                     preflightHwpx(file);
                     var extracted=new RagTextExtractor().extract(file);
                     String text=extracted.text();
                     if(text.isBlank() || text.length()>4_000_000 || extracted.pages().size()>1000)throw new IllegalStateException("Native reference text unavailable or oversized");
-                    return new Inspection(source,uri.toString(),artifact,bytes.length,
-                        format,LawHashUtils.sha256(text),LawHashUtils.sha256Json(extracted.pages()),"INTEGRITY_ONLY",false);
+                    return new Acquisition(new Inspection(source,uri.toString(),artifact,bytes.length,
+                        format,LawHashUtils.sha256(text),LawHashUtils.sha256Json(extracted.pages()),"INTEGRITY_ONLY",false),bytes);
                 } finally {Files.deleteIfExists(file);}
             }
         } catch(InterruptedException interrupted) {

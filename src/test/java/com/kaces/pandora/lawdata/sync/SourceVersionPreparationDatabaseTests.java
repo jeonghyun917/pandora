@@ -13,6 +13,7 @@ import tools.jackson.databind.ObjectMapper;
 
 @EnabledIfEnvironmentVariable(named="PANDORA_SOURCE_VERSION_TEST_URL",matches="jdbc:mariadb://127[.]0[.]0[.]1:23306/pandora_source_version_test(?:[?].*)?")
 class SourceVersionPreparationDatabaseTests {
+    @org.junit.jupiter.api.io.TempDir Path referenceRoot;
     private JdbcTemplate db;
     private SourceVersionCandidateStore store;
     private SourceVersionPreparationService preparation;
@@ -35,9 +36,10 @@ class SourceVersionPreparationDatabaseTests {
         assertThat(path).isEqualTo(Path.of(System.getenv("PANDORA_SOURCE_VERSION_TEST_DATADIR")).toRealPath());
         assertThat(path.getFileName().toString()).startsWith("pandora-import-tx-test-source-");
         new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(new org.springframework.core.io.ClassPathResource("schema.sql")).execute(ds);
+        db.update("DELETE FROM law_source_version_reference_parts");
         db.update("DELETE FROM law_source_version_transitions");db.update("DELETE FROM law_source_version_vector_receipts");db.update("DELETE FROM law_source_version_history");db.update("DELETE FROM law_source_version_embedding_receipts");db.update("DELETE FROM law_source_version_reference_inspections");db.update("DELETE FROM law_source_version_candidates");db.update("DELETE FROM law_source_version_groups");
         db.update("UPDATE law_source_version_visibility_epoch SET revision=0 WHERE singleton_id=1");
-        db.update("DELETE FROM law_api_documents WHERE external_id IN ('source-prep-test-old','source-prep-test-new','source-prep-test-next')");
+        db.update("DELETE FROM law_api_documents WHERE external_id IN ('source-prep-test-old','source-prep-test-new','source-prep-test-next','2100000287088')");
         db.update("INSERT INTO law_api_documents(target,external_id,title,source_date,canonical_key,effective_date,effective_status,raw_json,content_hash) VALUES('admrul','source-prep-test-old',?,'20250101',?,'20250101','CURRENT','{}',?)",TITLE,KEY,"a".repeat(64));
         baseline=db.queryForObject("SELECT document_id FROM law_api_documents WHERE external_id='source-prep-test-old'",Long.class);
         db.update("INSERT INTO law_api_document_chunks(document_id,chunk_type,chunk_text,embedding_text,content_hash) VALUES(?,'article','보존할 기존 본문','보존할 기존 본문',?)",baseline,"e".repeat(64));
@@ -68,6 +70,37 @@ class SourceVersionPreparationDatabaseTests {
         }
     }
     private SearchDocument source() {return new SearchDocument("admrul","source-prep-test-new",TITLE,"","","20261019",KEY,"20261019","CURRENT","/DRF/lawService.do?target=admrul&ID=source-prep-test-new&type=JSON","{}");}
+    @Test
+    @EnabledIfEnvironmentVariable(named="PANDORA_SOURCE_REFERENCE_PUBLIC_TEST",matches="true")
+    void observedOfficialArtifactsAreStoredAndStructuralAvailabilityIsDiagnosedWithoutPromotion() throws Exception {
+        // Explicit opt-in incoming-artifact diagnostic in the already verified isolated DB.
+        // This fixture does not claim real baseline semantic fidelity or authorize promotion.
+        Path file=Path.of(System.getenv("PANDORA_SOURCE_REFERENCE_PUBLIC_FILE")).toRealPath();
+        Path allowed=Path.of(".superpowers/sdd/2026-10-28-law-source-version/source-reference/official-2100000287088-diagnostic.json").toRealPath();
+        assertThat(file).isEqualTo(allowed);
+        String raw=java.nio.file.Files.readString(file);var json=new ObjectMapper();var metadata=json.readTree(raw).path("AdmRulService").path("행정규칙기본정보");
+        String title=metadata.path("행정규칙명").asText(),external=metadata.path("행정규칙일련번호").asText(),date=metadata.path("시행일자").asText();
+        assertThat(external).isEqualTo("2100000287088");String key=LawVersionUtils.canonicalKey("admrul",title);
+        db.update("UPDATE law_api_documents SET title=?,canonical_key=? WHERE document_id=?",title,key,baseline);
+        var source=new SearchDocument("admrul",external,title,"","",date,key,date,"CURRENT","/DRF/lawService.do?target=admrul&ID="+external+"&type=JSON","{}");
+        var candidate=store.stage(baseline,0,source,raw,SHA);preparation.validate(candidate.id());
+        var service=new SourceVersionReferenceReceipts(db,preparation,manager,new SourceReferenceInspector());var report=service.inspect(candidate.id());
+        assertThat(report.references()).hasSize(4);assertThat(report.fidelityReady()).isFalse();assertThat(service.inspect(candidate.id())).isEqualTo(report);
+        for(int asset=0;asset<report.references().size();asset++) {
+            var proof=report.references().get(asset);var output=new java.io.ByteArrayOutputStream();
+            for(byte[] part:db.query("SELECT part_bytes FROM law_source_version_reference_parts WHERE candidate_id=? AND asset_index=? ORDER BY part_index",(rs,row)->rs.getBytes(1),candidate.id(),asset))output.write(part);
+            byte[] bytes=output.toByteArray();assertThat(SourceReferenceInspector.artifactHash(bytes)).isEqualTo(proof.artifactHash());
+            if(proof.format().equals("hwpx")) {
+                Path nativeFile=referenceRoot.resolve("asset-"+asset+".hwpx");java.nio.file.Files.write(nativeFile,bytes);
+                var nativeDocument=new com.kaces.pandora.rag.importing.RagTextExtractor().extract(nativeFile);
+                var rows=nativeDocument.pages().stream().flatMap(page->page.tableRows().stream()).toList();
+                long cells=rows.stream().mapToLong(row->row.cells().size()).sum();
+                System.out.println("OFFICIAL_ARTIFACT asset="+asset+" format=hwpx rows="+rows.size()+" cells="+cells+" fidelityReady=false");
+            } else System.out.println("OFFICIAL_ARTIFACT asset="+asset+" format=pdf nativeHashVerified=true tableProof=UNAVAILABLE fidelityReady=false");
+        }
+        assertThatThrownBy(()->transitionService().prepare(candidate.id())).isInstanceOf(IllegalStateException.class).hasMessageContaining("reference fidelity");
+        assertThat(db.queryForObject("SELECT effective_status FROM law_api_documents WHERE document_id=?",String.class,baseline)).isEqualTo("CURRENT");
+    }
     @Test void referenceInspectionIsBoundDurableImmutableAndCannotAuthorizePromotion() throws Exception {
         String raw=raw().replace("}}",",\"원문파일\":\"/LSW/flDownload.do?flSeq=123\"}}");
         var candidate=store.stage(baseline,0,source(),raw,SHA);preparation.validate(candidate.id());
@@ -76,10 +109,63 @@ class SourceVersionPreparationDatabaseTests {
         var service=new SourceVersionReferenceReceipts(db,preparation,manager,inspector);
         var report=service.inspect(candidate.id());
         assertThat(report.fidelityReady()).isFalse();assertThat(report.status()).isEqualTo("INTEGRITY_ONLY");
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM law_source_version_reference_parts WHERE candidate_id=?",Integer.class,candidate.id())).isPositive();
         assertThat(service.inspect(candidate.id())).isEqualTo(report);assertThat(calls.get()).isOne();
         assertThatThrownBy(()->db.update("UPDATE law_source_version_reference_inspections SET receipt_hash=? WHERE candidate_id=?","0".repeat(64),candidate.id())).isInstanceOf(RuntimeException.class);
         assertThatThrownBy(()->transitionService().prepare(candidate.id())).isInstanceOf(IllegalStateException.class).hasMessageContaining("reference fidelity");
         assertThat(db.queryForObject("SELECT effective_status FROM law_api_documents WHERE document_id=?",String.class,baseline)).isEqualTo("CURRENT");
+    }
+    @Test void failedReferencePartWriteLeavesNoPartialInspection() throws Exception {
+        String raw=raw().replace("}}",",\"원문파일\":\"/LSW/flDownload.do?flSeq=123\"}}");
+        var candidate=store.stage(baseline,0,source(),raw,SHA);preparation.validate(candidate.id());
+        byte[] bytes=SourceReferenceInspectorTests.hwpx();
+        var inspector=new SourceReferenceInspector(uri->new SourceReferenceInspector.Download(200,"application/hwp+zip",bytes.length,new java.io.ByteArrayInputStream(bytes)));
+        db.execute("CREATE TRIGGER srcver_injected_part_bi BEFORE INSERT ON law_source_version_reference_parts FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected reference part failure'");
+        assertThatThrownBy(()->new SourceVersionReferenceReceipts(db,preparation,manager,inspector).inspect(candidate.id())).isInstanceOf(RuntimeException.class);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM law_source_version_reference_inspections",Integer.class)).isZero();
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM law_source_version_reference_parts",Integer.class)).isZero();
+        assertThat(db.queryForObject("SELECT effective_status FROM law_api_documents WHERE document_id=?",String.class,baseline)).isEqualTo("CURRENT");
+    }
+    @Test void multipartArtifactsPreserveExactOrderAndRejectSwappedEqualLengthParts() throws Exception {
+        String raw=raw().replace("}}",",\"원문파일\":\"/LSW/flDownload.do?flSeq=123\"}}");
+        var candidate=store.stage(baseline,0,source(),raw,SHA);preparation.validate(candidate.id());
+        byte[] bytes=SourceReferenceInspectorTests.multipartHwpx();
+        var inspector=new SourceReferenceInspector(uri->new SourceReferenceInspector.Download(200,"application/hwp+zip",bytes.length,new java.io.ByteArrayInputStream(bytes)));
+        var service=new SourceVersionReferenceReceipts(db,preparation,manager,inspector);service.inspect(candidate.id());
+        var rows=db.queryForList("SELECT part_index,part_hash,part_bytes FROM law_source_version_reference_parts WHERE candidate_id=? ORDER BY part_index",candidate.id());
+        assertThat(rows).hasSize(3);
+        var joined=new java.io.ByteArrayOutputStream();for(var row:rows)joined.write((byte[])row.get("part_bytes"));
+        assertThat(joined.toByteArray()).isEqualTo(bytes);
+        assertThat(((byte[])rows.get(0).get("part_bytes")).length).isEqualTo(1024*1024);
+        assertThat(((byte[])rows.get(2).get("part_bytes")).length).isEqualTo(bytes.length-2*1024*1024);
+        db.execute("DROP TRIGGER srcver_reference_parts_bu");
+        db.update("UPDATE law_source_version_reference_parts SET part_hash=?,part_bytes=? WHERE candidate_id=? AND part_index=0",rows.get(1).get("part_hash"),rows.get(1).get("part_bytes"),candidate.id());
+        db.update("UPDATE law_source_version_reference_parts SET part_hash=?,part_bytes=? WHERE candidate_id=? AND part_index=1",rows.get(0).get("part_hash"),rows.get(0).get("part_bytes"),candidate.id());
+        assertThatThrownBy(()->service.inspect(candidate.id())).isInstanceOf(IllegalStateException.class).hasMessageContaining("artifact bytes changed");
+    }
+    @Test void missingReferencePartsFailClosedWithoutRedownload() throws Exception {
+        String raw=raw().replace("}}",",\"원문파일\":\"/LSW/flDownload.do?flSeq=123\"}}");
+        var candidate=store.stage(baseline,0,source(),raw,SHA);preparation.validate(candidate.id());
+        byte[] bytes=SourceReferenceInspectorTests.hwpx();var calls=new java.util.concurrent.atomic.AtomicInteger();
+        var inspector=new SourceReferenceInspector(uri->{calls.incrementAndGet();return new SourceReferenceInspector.Download(200,"application/hwp+zip",bytes.length,new java.io.ByteArrayInputStream(bytes));});
+        var service=new SourceVersionReferenceReceipts(db,preparation,manager,inspector);service.inspect(candidate.id());
+        assertThatThrownBy(()->db.update("UPDATE law_source_version_reference_parts SET part_hash=? WHERE candidate_id=?","0".repeat(64),candidate.id())).isInstanceOf(RuntimeException.class);
+        db.execute("DROP TRIGGER srcver_reference_parts_bd");db.update("DELETE FROM law_source_version_reference_parts WHERE candidate_id=?",candidate.id());
+        assertThatThrownBy(()->service.inspect(candidate.id())).isInstanceOf(IllegalStateException.class);
+        assertThat(calls.get()).isOne();
+    }
+    @Test void alteredAndSurplusReferencePartsCannotReuseInspection() throws Exception {
+        String raw=raw().replace("}}",",\"원문파일\":\"/LSW/flDownload.do?flSeq=123\"}}");
+        var candidate=store.stage(baseline,0,source(),raw,SHA);preparation.validate(candidate.id());
+        byte[] bytes=SourceReferenceInspectorTests.hwpx();var calls=new java.util.concurrent.atomic.AtomicInteger();
+        var inspector=new SourceReferenceInspector(uri->{calls.incrementAndGet();return new SourceReferenceInspector.Download(200,"application/hwp+zip",bytes.length,new java.io.ByteArrayInputStream(bytes));});
+        var service=new SourceVersionReferenceReceipts(db,preparation,manager,inspector);service.inspect(candidate.id());
+        db.update("INSERT INTO law_source_version_reference_parts(candidate_id,asset_index,part_index,part_hash,part_bytes) SELECT candidate_id,1,0,part_hash,part_bytes FROM law_source_version_reference_parts WHERE candidate_id=? AND asset_index=0 AND part_index=0",candidate.id());
+        assertThatThrownBy(()->service.inspect(candidate.id())).isInstanceOf(IllegalStateException.class);
+        db.execute("DROP TRIGGER srcver_reference_parts_bd");db.update("DELETE FROM law_source_version_reference_parts WHERE candidate_id=? AND asset_index=1",candidate.id());
+        db.execute("DROP TRIGGER srcver_reference_parts_bu");db.update("UPDATE law_source_version_reference_parts SET part_bytes=? WHERE candidate_id=?",new byte[]{1,2,3},candidate.id());
+        assertThatThrownBy(()->service.inspect(candidate.id())).isInstanceOf(IllegalStateException.class);
+        assertThat(calls.get()).isOne();
     }
     @Test void candidateDriftDuringReferenceAcquisitionCannotPersistInspection() throws Exception {
         String raw=raw().replace("}}",",\"원문파일\":\"/LSW/flDownload.do?flSeq=123\"}}");

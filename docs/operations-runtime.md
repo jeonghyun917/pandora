@@ -356,6 +356,14 @@ the existing Boot PropertiesLauncher; no caller can provide commands or limits.
 HWPX native text and structural hashes likewise do not establish semantic or
 table relationship fidelity. The existing reference readiness gate remains closed.
 
+Reference inspection retains the exact acquired bytes as immutable1MiB DB parts
+in the same transaction as its header, after candidate/input/raw/manifest recheck.
+Complete ordered byte/hash readback is required before commit and on cache reuse.
+Missing, altered, swapped or surplus parts (including older hash-only reports)
+fail closed without re-downloading or overwriting evidence. The candidate byte
+budget remains32MiB; a bounded server acquisition permit limits in-flight memory.
+These stored bytes are fidelity inputs, not source activation authority.
+
 New required reference assets without genuine fidelity proof block readiness;
 their URL metadata is not file/content proof. Existing preserved baseline assets
 are bound by their full immutable snapshot, not newly declared validated files.

@@ -33,6 +33,8 @@ public class SourceVersionSchemaMaintenance implements ApplicationRunner {
         install("srcver_history_bd","law_source_version_history","DELETE","SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Preserved source receipts must remain'");
         install("srcver_reference_bu","law_source_version_reference_inspections","UPDATE","SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Reference inspection evidence is immutable'");
         install("srcver_reference_bd","law_source_version_reference_inspections","DELETE","SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Reference inspection evidence must remain'");
+        install("srcver_reference_parts_bu","law_source_version_reference_parts","UPDATE","SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Reference artifact bytes are immutable'");
+        install("srcver_reference_parts_bd","law_source_version_reference_parts","DELETE","SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Reference artifact bytes must remain'");
     }
     private void child(String name,String table,boolean byChunk,boolean embeddings) {
         for(String event:List.of("INSERT","UPDATE","DELETE")) {

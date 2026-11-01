@@ -16,6 +16,8 @@ public final class SourceVersionReferenceReceipts {
     private final SourceReferenceInspector inspector;
     private final TransactionTemplate tx;
     private final ObjectMapper json=new ObjectMapper();
+    private static final int PART_BYTES=1024*1024;
+    private static final java.util.concurrent.Semaphore ACQUISITIONS=new java.util.concurrent.Semaphore(1);
     public SourceVersionReferenceReceipts(JdbcTemplate db,SourceVersionPreparationService preparation,
             PlatformTransactionManager manager,SourceReferenceInspector inspector) {
         this.db=db;this.preparation=preparation;this.inspector=inspector;
@@ -23,6 +25,10 @@ public final class SourceVersionReferenceReceipts {
         tx.setIsolationLevel(TransactionDefinition.ISOLATION_SERIALIZABLE);tx.setTimeout(30);
     }
     public Report inspect(String id) {
+        if(!ACQUISITIONS.tryAcquire())throw new IllegalStateException("Reference acquisition capacity unavailable");
+        try {return inspectOwned(id);}finally {ACQUISITIONS.release();}
+    }
+    private Report inspectOwned(String id) {
         var snapshot=preparation.snapshotForAssets(id);
         if(snapshot.sourceAssets().isEmpty() || snapshot.sourceAssets().size()>32)throw new IllegalStateException("Bounded declared references required");
         // Validate the complete address set before making any request; aliases cannot silently merge assets.
@@ -30,12 +36,14 @@ public final class SourceVersionReferenceReceipts {
         for(var asset:snapshot.sourceAssets())if(!canonical.add(SourceReferenceInspector.officialUri(asset.sourceUrl()).toString()))
             throw new IllegalStateException("Ambiguous duplicate official reference identity");
         var existing=db.queryForList("SELECT report_json FROM law_source_version_reference_inspections WHERE candidate_id=?",id);
-        if(!existing.isEmpty())return read(snapshot,(String)existing.get(0).get("report_json"));
+        if(!existing.isEmpty())return verified(snapshot,(String)existing.get(0).get("report_json"));
         var proofs=new ArrayList<SourceReferenceInspector.Inspection>();long total=0;
+        var acquisitions=new ArrayList<SourceReferenceInspector.Acquisition>();
         for(var asset:snapshot.sourceAssets()) {
-            var proof=inspector.inspect(asset.sourceUrl());total+=proof.byteCount();
+            var acquisition=inspector.acquire(asset.sourceUrl());var proof=acquisition.inspection();total+=proof.byteCount();
             if(total>32L*1024*1024)throw new IllegalStateException("Total reference byte bound exceeded");
             proofs.add(proof);
+            acquisitions.add(acquisition);
         }
         String hash=hash(snapshot,proofs);
         var report=new Report(id,snapshot.validation().manifest(),hash,proofs,"INTEGRITY_ONLY",false);
@@ -46,14 +54,51 @@ public final class SourceVersionReferenceReceipts {
                 throw new IllegalStateException("Source changed during reference acquisition");
             var stored=db.queryForList("SELECT report_json FROM law_source_version_reference_inspections WHERE candidate_id=? FOR UPDATE",id);
             if(!stored.isEmpty()) {
-                var prior=read(snapshot,(String)stored.get(0).get("report_json"));
+                var prior=verified(snapshot,(String)stored.get(0).get("report_json"));
                 if(!prior.equals(report))throw new IllegalStateException("Reference inspection evidence is immutable");
                 return prior;
             }
             db.update("INSERT INTO law_source_version_reference_inspections(candidate_id,input_hash,validation_manifest,receipt_hash,report_json) VALUES(?,?,?,?,?)",
                 id,snapshot.inputHash(),current.manifest(),hash,json.writeValueAsString(report));
+            for(int asset=0;asset<acquisitions.size();asset++) {
+                byte[] bytes=acquisitions.get(asset).bytes();
+                for(int start=0,part=0;start<bytes.length;start+=PART_BYTES,part++) {
+                    byte[] payload=Arrays.copyOfRange(bytes,start,Math.min(bytes.length,start+PART_BYTES));
+                    db.update("INSERT INTO law_source_version_reference_parts(candidate_id,asset_index,part_index,part_hash,part_bytes) VALUES(?,?,?,?,?)",
+                        id,asset,part,SourceReferenceInspector.artifactHash(payload),payload);
+                }
+            }
+            verifyParts(report);
             return report;
         });
+    }
+    private Report verified(SourceVersionPreparationService.AssetSnapshot source,String encoded) {
+        var report=read(source,encoded);verifyParts(report);return report;
+    }
+    private void verifyParts(Report report) {
+        int expected=0;long total=0;
+        for(var proof:report.references()) {
+            if(proof.byteCount()<1 || proof.byteCount()>SourceReferenceInspector.MAX_BYTES || !proof.artifactHash().matches("[0-9a-f]{64}"))
+                throw new IllegalStateException("Reference artifact bounds changed");
+            expected+=(int)((proof.byteCount()+PART_BYTES-1)/PART_BYTES);total+=proof.byteCount();
+        }
+        if(total>32L*1024*1024 || db.queryForObject("SELECT COUNT(*) FROM law_source_version_reference_parts WHERE candidate_id=?",Long.class,report.candidateId())!=expected)
+            throw new IllegalStateException("Reference artifact part membership changed");
+        for(int asset=0;asset<report.references().size();asset++) {
+            var proof=report.references().get(asset);var rows=db.queryForList("SELECT part_index,part_hash,part_bytes FROM law_source_version_reference_parts WHERE candidate_id=? AND asset_index=? ORDER BY part_index LIMIT 9",report.candidateId(),asset);
+            if(rows.size()!=(proof.byteCount()+PART_BYTES-1)/PART_BYTES)throw new IllegalStateException("Reference artifact parts missing");
+            try {
+                var digest=java.security.MessageDigest.getInstance("SHA-256");long count=0;
+                for(int part=0;part<rows.size();part++) {
+                    var row=rows.get(part);byte[] bytes=(byte[])row.get("part_bytes");
+                    long required=Math.min(PART_BYTES,proof.byteCount()-(long)part*PART_BYTES);
+                    if(((Number)row.get("part_index")).intValue()!=part || bytes.length!=required || !SourceReferenceInspector.artifactHash(bytes).equals(row.get("part_hash")))
+                        throw new IllegalStateException("Reference artifact part changed");
+                    digest.update(bytes);count+=bytes.length;
+                }
+                if(count!=proof.byteCount() || !HexFormat.of().formatHex(digest.digest()).equals(proof.artifactHash()))throw new IllegalStateException("Reference artifact bytes changed");
+            } catch(java.security.NoSuchAlgorithmException unavailable) {throw new IllegalStateException("SHA-256 unavailable",unavailable);}
+        }
     }
     private Report read(SourceVersionPreparationService.AssetSnapshot source,String encoded) {
         var report=json.readValue(encoded,Report.class);
