@@ -24,7 +24,8 @@ class SourceReferenceInspectorTests {
             var pages=new com.kaces.pandora.rag.importing.RagTextExtractor().extract(file).pages();
             var hierarchy=new SourceHwpxTableGraph().capture(file);
             assertThat(proof.columnEvidence()).hasSize(2).allSatisfy(table->assertThat(table.status()).isEqualTo("UNSUPPORTED"));
-            assertThat(proof.structureHash()).isEqualTo(com.kaces.pandora.common.text.LawHashUtils.sha256Json(List.of("source-hwpx-relations-v1",pages,hierarchy,proof.columnEvidence())));
+            assertThat(proof.rangeEvidence()).hasSize(2).allSatisfy(table->assertThat(table.status()).isEqualTo("UNSUPPORTED"));
+            assertThat(proof.structureHash()).isEqualTo(com.kaces.pandora.common.text.LawHashUtils.sha256Json(List.of("source-hwpx-ranges-v1",pages,hierarchy,proof.columnEvidence(),proof.rangeEvidence())));
             assertThat(proof.fidelityReady()).isFalse();assertThat(proof.status()).isEqualTo("INTEGRITY_ONLY");
         } finally {java.nio.file.Files.deleteIfExists(file);}
     }

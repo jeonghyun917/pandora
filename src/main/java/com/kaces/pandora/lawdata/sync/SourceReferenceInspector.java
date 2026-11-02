@@ -18,8 +18,9 @@ public final class SourceReferenceInspector {
     record Download(int status,String mediaType,long declaredLength,InputStream body) { }
     @FunctionalInterface interface Transport {Download get(URI uri) throws Exception;}
     public record Inspection(String sourceUrl,String canonicalUrl,String artifactHash,long byteCount,
-            String format,String nativeTextHash,String structureHash,List<SourceTableColumnEvidence.TableEvidence> columnEvidence,String status,boolean fidelityReady) {
-        public Inspection {columnEvidence=List.copyOf(columnEvidence);}
+            String format,String nativeTextHash,String structureHash,List<SourceTableColumnEvidence.TableEvidence> columnEvidence,
+            List<SourceTableRangeSemantics.TableSemantics> rangeEvidence,String status,boolean fidelityReady) {
+        public Inspection {columnEvidence=List.copyOf(columnEvidence);rangeEvidence=List.copyOf(rangeEvidence);}
     }
     record Acquisition(Inspection inspection,byte[] bytes) {
         Acquisition {
@@ -95,18 +96,19 @@ public final class SourceReferenceInspector {
                     if(format.equals("pdf")) {
                         var nativePdf=new SourcePdfInspection().inspect(file);
                         if(!artifact.equals(nativePdf.artifactHash()))throw new IllegalStateException("PDF worker input identity changed");
-                        return new Acquisition(new Inspection(source,uri.toString(),artifact,bytes.length,format,nativePdf.textHash(),nativePdf.structureHash(),List.of(),"INTEGRITY_ONLY",false),bytes);
+                        return new Acquisition(new Inspection(source,uri.toString(),artifact,bytes.length,format,nativePdf.textHash(),nativePdf.structureHash(),List.of(),List.of(),"INTEGRITY_ONLY",false),bytes);
                     }
                     preflightHwpx(file);
                     var hierarchy=new SourceHwpxTableGraph().capture(file);
                     var columnEvidence=hierarchy.tables().stream().map(new SourceTableColumnEvidence()::capture).toList();
-                    if(new tools.jackson.databind.ObjectMapper().writeValueAsString(columnEvidence).length()>262144)
+                    var rangeEvidence=new SourceTableRangeSemantics().capture(hierarchy);
+                    if(new tools.jackson.databind.ObjectMapper().writeValueAsString(List.of(columnEvidence,rangeEvidence)).length()>262144)
                         throw new IllegalStateException("Serialized reference column evidence exceeds bound");
                     var extracted=new RagTextExtractor().extract(file);
                     String text=extracted.text();
                     if(text.isBlank() || text.length()>4_000_000 || extracted.pages().size()>1000)throw new IllegalStateException("Native reference text unavailable or oversized");
                     return new Acquisition(new Inspection(source,uri.toString(),artifact,bytes.length,
-                        format,LawHashUtils.sha256(text),LawHashUtils.sha256Json(java.util.List.of("source-hwpx-relations-v1",extracted.pages(),hierarchy,columnEvidence)),columnEvidence,"INTEGRITY_ONLY",false),bytes);
+                        format,LawHashUtils.sha256(text),LawHashUtils.sha256Json(java.util.List.of("source-hwpx-ranges-v1",extracted.pages(),hierarchy,columnEvidence,rangeEvidence)),columnEvidence,rangeEvidence,"INTEGRITY_ONLY",false),bytes);
                 } finally {Files.deleteIfExists(file);}
             }
         } catch(InterruptedException interrupted) {

@@ -5,10 +5,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.security.MessageDigest;
 import java.util.HexFormat;
+import java.util.*;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.text.PDFTextStripper;
 
-/** Internal hash-only process entrypoint. Never run PDFBox in the serving JVM for reference inspection. */
+/** Internal bounded native-evidence worker. Never run PDFBox in the serving JVM for reference inspection. */
 public final class SourcePdfWorker {
     private SourcePdfWorker() { }
     public static void main(String[] args) throws Exception {
@@ -24,7 +25,8 @@ public final class SourcePdfWorker {
             || Long.parseLong(vm.getVMOption("MaxMetaspaceSize").getValue())>96L*1024*1024
             || Long.parseLong(vm.getVMOption("MaxDirectMemorySize").getValue())>32L*1024*1024)
             throw new IllegalStateException("Effective PDF worker memory caps unavailable");
-        if(args.length!=1)throw new IllegalArgumentException("One worker input required");
+        boolean positions=args.length==2 && args[1].equals("positions");
+        if(args.length!=1 && !positions)throw new IllegalArgumentException("Exact worker input/mode required");
         Path file=Path.of(args[0]);
         if(!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS) || Files.size(file)>8*1024*1024)throw new IOException("Input bound rejected");
         byte[] bytes;
@@ -34,12 +36,29 @@ public final class SourcePdfWorker {
             int pages=document.getNumberOfPages();
             if(document.isEncrypted() || pages<1 || pages>1000)throw new IOException("PDF native bounds rejected");
             var output=new BoundedText();
-            new PDFTextStripper().writeText(document,output);
+            var positioned=positions?new Positions(document):null;
+            (positions?positioned:new PDFTextStripper()).writeText(document,output);
             if(output.text.toString().isBlank())throw new IOException("Native PDF text unavailable");
-            System.out.println("PDF_NATIVE_V1 "+hash(bytes)+" "+hash(output.text.toString().getBytes(StandardCharsets.UTF_8))+" "+pages+" "+output.text.length());
+            if(positions)System.out.println("PDF_POSITIONS_V1 "+hash(bytes)+" "+Base64.getEncoder().encodeToString(SourcePdfPositions.encode(positioned.pages,positioned.glyphs)));
+            else System.out.println("PDF_NATIVE_V1 "+hash(bytes)+" "+hash(output.text.toString().getBytes(StandardCharsets.UTF_8))+" "+pages+" "+output.text.length());
         }
     }
     private static String hash(byte[] bytes) throws Exception {return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));}
+    private static final class Positions extends PDFTextStripper {
+        private final List<SourcePdfPositions.Page> pages=new ArrayList<>();private final List<SourcePdfPositions.Glyph> glyphs=new ArrayList<>();
+        Positions(org.apache.pdfbox.pdmodel.PDDocument document)throws IOException {
+            setSuppressDuplicateOverlappingText(false);
+            for(var page:document.getPages()) {
+                if(page.getRotation()!=0)throw new IOException("Rotated position evidence unsupported");
+                var box=page.getCropBox();pages.add(new SourcePdfPositions.Page(box.getWidth(),box.getHeight()));
+            }
+        }
+        @Override protected void processTextPosition(org.apache.pdfbox.text.TextPosition text) {
+            if(glyphs.size()>=SourcePdfPositions.GLYPHS || text.getDir()!=0)throw new IllegalStateException("PDF position count/direction unsupported");
+            glyphs.add(new SourcePdfPositions.Glyph(getCurrentPageNo(),text.getXDirAdj(),text.getYDirAdj()-text.getHeightDir(),text.getWidthDirAdj(),text.getHeightDir(),text.getUnicode()));
+            super.processTextPosition(text);
+        }
+    }
     private static final class BoundedText extends Writer {
         private final StringBuilder text=new StringBuilder();
         @Override public void write(char[] chars,int offset,int count) throws IOException {

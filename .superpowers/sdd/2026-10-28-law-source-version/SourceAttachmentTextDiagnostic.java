@@ -22,6 +22,24 @@ public class SourceAttachmentTextDiagnostic {
             }
             if(matched+missing==0)throw new IllegalStateException("No source article selected; cannot diagnose correspondence");
             System.out.println("BODY_LITERAL_ONLY matched="+matched+" missing="+missing+" ordered="+ordered+" legalRoleCertified=false");
+            if(args.length>3 && args[3].equals("coverage")) {
+                var sections=parser.parseSourceVersionDocument(Files.readString(Path.of(args[2])),"official source").sections();
+                if(sections.size()>512)throw new IllegalStateException("Diagnostic section bound");
+                boolean[] covered=new boolean[normalized.length()];int found=0,absent=0,ambiguous=0,end=0;
+                for(var section:sections) {
+                    if(section.type().equals("source-table"))continue;
+                    String expected=section.body().replaceAll("[\\s\\p{Z}]","");int start=normalized.indexOf(expected);
+                    if(start<0){absent++;System.out.println("SOURCE_NOT_EXACT type="+section.type()+" path="+section.sourcePath());continue;}
+                    if(start!=normalized.lastIndexOf(expected) || start<end){ambiguous++;continue;}
+                    java.util.Arrays.fill(covered,start,start+expected.length(),true);end=start+expected.length();found++;
+                }
+                int gaps=0,uncovered=0;
+                for(int i=0;i<covered.length;) {
+                    if(covered[i]){i++;continue;}int start=i;while(i<covered.length && !covered[i])i++;gaps++;uncovered+=i-start;
+                    System.out.println("UNCLASSIFIED_NATIVE_TEXT start="+start+" length="+(i-start)+" text="+normalized.substring(start,Math.min(i,start+1000)));
+                }
+                System.out.println("COMPANION_COVERAGE_ONLY found="+found+" missing="+absent+" ambiguous="+ambiguous+" gaps="+gaps+" uncoveredChars="+uncovered+" legalRoleCertified=false");
+            }
         }
     }
 }

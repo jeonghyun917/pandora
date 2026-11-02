@@ -1,5 +1,36 @@
 # SDD ledger — plan: docs/superpowers/plans/2026-10-28-law-source-version.md
 
+## 2026-11-03 interval semantics/PDF continuation
+
+Taskslice verified: SourceTableRangeSemantics independent tracks/context, new
+SourcePdfPositions boundedcodec/childmode. PDFpage REDf011cb/76a1cd and compressed
+trailing REDb30564/c54f80 fixed→20PASS1d6608; multi-rowparent RED9ae1d2 fixed→
+actualDB67/f0/e0/skip1(7f426c). Final full1986/f0/e0/skip28(f80535),3:05.
+Actual cached782261:7tracks35bands,PDF1page1054glyphs, nofullfidelityclaim.
+Companioncoverage4f8107/b57cee:37sectionsmatch, onecombineddatedsupplementdoesnot;
+API10historicaldates vs nativebarecommencement text is not unique2026mapping.
+Scoped finalreview noC/I. Minor deferred: extra direct codec compressed-size/count
+and concatenated-member fixtures, guards exist. No re-review or optional expansion.
+Ruling: parentmetric ambiguities/track-selection/rendered-PDF/attachmentlegalrole
+are not erased to qualify a source; costvalid-but-unproved updatesstayinactive.
+Approvedhost63696d todayfound8080/18080/6333absent,oldPID33380stale. MariaDB3306
+runningPID4628. Atlasabsencepreserved. StandingQstartapproval used onlyofficial
+start-qdrant.cmd d605de afternoexistingprocess/listener; Qsession22769/PID17076,
+166f22green/optimizerok/law211658/rag84248. Neverstop/deleteQ. OwnedisolatedDB
+29516/23306 willnormallyshutdown afterverification. AutomationPAUSED4d3aae.
+
+Subplan docs/superpowers/plans/2026-11-03-reference-semantics.md, baseca70b2a.
+Read source handoff/raw source/PDF visual: firstscoretable has distinct%/year rows;
+no inferred AND/OR selection. Officialexactsourcepage rechecked2026-11-03:
+admRulSeq2100000287088/current2026-63/effective20261019. Governmentnotice search
+did not establish an additional attachment-role attestation; no tokenized/third-
+party result adopted. Rangeclass missingREDaea2f2→focused23PASS17d765.
+Pre-flight: new inspection rangeEvidence changes hash domain; old unproved receipt
+cannot silently upgrade. Offline artifact cache metadata must remain byte-location
+metadata, not deserialize an old inspection as new authority. Ruling: retain
+independent interval tracks and source parent/covering-header context, not a
+cross-track scoring rule or legal scope. Cost: selection semantics remain closed.
+
 ## Reference relations continuation (2026-11-02)
 
 Delivered1655e5ca992fa3ad3953db289662e72e402916aa/pushed8413c5; final1977/f0/e0/
