@@ -1,5 +1,23 @@
 # Source-owned reference relations — evidence, not activation authority
 
+## Delivered product and current runtime
+
+1655e5ca992fa3ad3953db289662e72e402916aa committed/pushed8413c5.
+Final full1977/f0/e0/skip28(0561a0), stage43850/494870 exit0.
+JARec40c1fbc78e46357084f83a65a7a2335ee2d0b2b3f541109344ae823a08f74f,
+68528218bytes. Packaged offline cached-artifact smokeb95dda accepted the same
+4hashes/8tables/6aligned/30columns, fidelityfalse. Initial non-elevated sandbox
+smoke5eccee failed before acquisition at JDK HttpClient loopback initialization
+(stack6aa645); approved-host smoke used cached bytes only, no external retry.
+No ExecutionPolicy/script bypass or alternate acquisition was used.
+
+Officialstatus/normalstopd8e9de→oldsupervisor34d0b4 exit0→fresh absenceguard→
+officialdeploy83029/1fba10 KEEPALIVE,PID33380/runtime3995f109-370d-4dc0-b49c-98a09c8e38b7.
+Health0f3ccb:root200,lawDB=Q211658,ragDB=Q84248,qreadytrue/qfail0,
+config47d394b4/indexe39713ce/lexicalbae6f4c1. Mutation3gatesfalse.
+Atlas25932/Q7568/main3792766/automationPAUSED preserved. OwnedtestDB26872
+normally shut down9c56a8/65e05d;23306absence0f3ccb. No actualsourceupdate/penalty.
+
 ## Implementation boundary
 
 SourceTableColumnEvidence emits COLUMN_ALIGNMENT_ONLY only for an explicit

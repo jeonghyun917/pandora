@@ -2,6 +2,18 @@
 
 ## Reference relations continuation (2026-11-02)
 
+Delivered1655e5ca992fa3ad3953db289662e72e402916aa/pushed8413c5; final1977/f0/e0/
+skip28/0561a0, stage43850exit0/JARec40c1fbc78e46357084f83a65a7a2335ee2d0b2b3f541109344ae823a08f74f.
+Packagedoffline cached-artifactb95ddaPASS after sandboxloopbackinitialization
+failure5eccee was diagnosed6aa645; approvedhostonly, no networkretry/bypass.
+Normalofficialstopd8e9de/oldsupervisor34d0b4→absenceguard→officialdeploy83029
+KEEPALIVE/PID33380/runtime3995f109-370d-4dc0-b49c-98a09c8e38b7. Health0f3ccb
+root200/DB=Q211658+84248/qreadytrue/qfail0/config47d394b4/indexe39713ce/
+lexicalbae6f4c1,mutation3false,Atlas25932/Q7568/main3792766/automationPAUSED.
+OwnedtestDB26872normalshutdown/23306absent. All localdeliverytasksdone; no actual
+sourceupdate/penalty. Remainingfullsemantic/legal/cross-format proof is NOT
+claimed by columnalignment/provenance; see reference-relations-20261102.md.
+
 Subplan docs/superpowers/plans/2026-11-02-reference-relations.md; native execution,
 base90682d6. Source-owned column evidence and exact declaration provenance bound
 to inspection/receipt, no readiness authority. Initial absent-class REDs then

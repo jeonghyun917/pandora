@@ -39,7 +39,7 @@ paused automation. Keep parent ledger/evidence directory for continuity.
 - [x] TDD SourceReferenceDeclarations: exact annex/attachment/unknown owners,
   duplicate occurrences retained, malformed/unbounded inputs refused; source
   receipt binds declaration list to verified raw payload and asset membership.
-- [ ] Focused real parser/receipt tests, one changed-tree full suite, one scoped
+- [x] Focused real parser/receipt tests, one changed-tree full suite, one scoped
   independent review, commit/push, official8080 package/deploy/health.
 - [x] Diagnose current official bytes once through changed relation path, retain
   exact byte hashes locally to avoid repeated downloads. Continue only genuine
@@ -55,3 +55,9 @@ Ruling: exact declaration provenance and column alignment are separate partial
 proofs, not a replacement for full semantic/legal/cross-format fidelity; cost is
 continued refusal to activate valid-but-unproved references. Parent ledger and
 artifacts retained; no cleanup/reapproval/automation resume inferred.
+
+Delivered1655e5c/pushed8413c5; stage43850exit0, packaged cached-artifactb95ddaPASS,
+officialdeploy83029 KEEPALIVE/PID33380/runtime3995f109-370d-4dc0-b49c-98a09c8e38b7;
+health0f3ccb root200/DB=Q211658+84248/qreadytrue/qfail0,mutationgatesclosed.
+No actual source update/penalty; remaining semantic/legal/cross-format conditions
+are documented in docs/evidence/rag-quality/reference-relations-20261102.md.

@@ -1,5 +1,33 @@
 # Source structure/reference delivery and remaining release gates
 
+## Latest delivery1655e5c — supersedes runtime below
+
+1655e5ca992fa3ad3953db289662e72e402916aa pushed8413c5. Source-native column
+evidence retains6scoretables/30columns and exact condition tracks/score owners;
+declaration provenance binds annex/general/unknown pointers and owner hashes to
+raw source and immutable receipts. No AND/OR/filename/legal-effect inference.
+Review2Important reproducedRED2 and fixed: internal-score whitespace rejected;
+serialized evidence262144characters/artifact capped without truncation.
+Final full1977/f0/e0/skip28(0561a0); stage43850/494870exit0;
+JARec40c1fbc78e46357084f83a65a7a2335ee2d0b2b3f541109344ae823a08f74f.
+Packaged cachedbytes smokeb95dda passes, no external retry. Officialnormalstop
+d8e9de/oldsupervisor34d0b4→absenceguard→deploy83029 KEEPALIVE/PID33380/
+runtime3995f109-370d-4dc0-b49c-98a09c8e38b7. Health0f3ccb root200/DB=Q211658+
+84248/qreadytrue/qfail0/config47d394b4/indexe39713ce/lexicalbae6f4c1.
+Atlas current25932/Q7568/main3792766/automationPAUSED preserved,mutation3false.
+OwnedtestDB26872/23306normallystopped. Atlas externally changed before this work's
+deployment; freshread-only grants/session/JAR evidence79083a/d076f1 confirms
+atlas_cms-onlyDBscope/noQwriter; do not reuse olderAtlasPID28296.
+
+Actual4artifact hashes preserved; HWPXattachment33articles correspond in order
+under whitespace-only comparison, not full equivalence or legalrole proof.
+Exact current evidence and limitations: [relation delivery](reference-relations-20261102.md).
+Next: full native table logical/parent-context correspondence and PDF cross-format
+proof; all attachment legal roles/extra-content coverage; genuine fidelity receipt
+checked on prepare/transition/rollback. requireReferences still rejects. Generic
+penalty applicability independentlyunproved; no actualupdate/penalty/fullquality
+PASS or completion. Never substitute these partial proofs for remaining gates.
+
 ## Latest continuation325918b — supersedes runtime/Atlas blocker below
 
 Product325918b0f6b105ecafda7911f080f03838331220 pushed8ca52b.
