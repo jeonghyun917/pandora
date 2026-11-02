@@ -1,5 +1,36 @@
 # Source structure/reference delivery and remaining release gates
 
+## Latest Nov3 delivery6e7d2d4 — supersedes runtime below
+
+6e7d2d4d0a8ef27ad046edd82b85acba8077450b pushed838fe2. Independent interval
+semantics preserve units/inclusivebounds/sourcecells/scores and exact parent
+metric/exception context; ambiguous multi-row owner rejects. NativePDFpositions
+stay in existingfixedcaps worker, bounded gzip/finite in-page boxes/physicalpage
+ownership/byteidentity/concurrentboundedstdout, no rendering-equivalence claim.
+Focused actualDB67/f0/e0/skip1(7f426c), finalfull1986/f0/e0/skip28(f80535), scoped
+reviewnoC/I/oneMinor(deferreddirectcodec boundaryfixtures). Actualcached7tracks/
+35bands andPDF1page1054glyphs; nativefulltextcompanion37sectionsmatch but combined
+source supplement doesnot:10dated API supplements vs bare native commencement
+text cannot uniquely prove2026role. No premise/date removal or forcedmapping.
+
+Officialstage72960exit0/JAR9f87348232201e6198ca2f5630ceddcf20a80dcca2366fcb7bfa826c002258d1;
+packaged offlineea2c4a range/PDFexit0. Todayinitialapprovedstatus63696d had all3
+listenersabsent. StandingQstartupapproval→officialstartd605de, Q17076green counts
+unchanged. Atlas later externallyappeared9004/c9a91e, preservedwithoutmutation.
+8080absenceguard→officialdeploy19025 KEEPALIVE/PID13700/
+runtime4b348cc1-5b60-46c5-9421-6f69af41a9be. Health2c8011 root200/DB=Q211658+
+84248/qreadytrue/qfail0/config47d394b4/indexe39713ce/lexicalbae6f4c1,
+mutation3false/automationPAUSED/main3792766. TestDB29516normallystopped.
+
+Exact next boundary and source/risk evidence:
+[Nov3 semantics delivery](reference-semantics-20261103.md). Still required:
+render-aware source-owned PDF/native table correspondence, explicit cross-track
+selection if applicable, dated supplement and full attachment role reconciliation,
+genuine immutable fidelityreceipt checked on prepare/switch/rollback, inherited
+real isolatedQ/readiness gates as separately evidenced, and direct penalty scope.
+SharedQgreen and local DB/HTTPmock tests do not certify real source activation.
+No actualsourceupdate/penalty/Difficult12/holdout57/full1003 or overallcompletion.
+
 ## Latest delivery1655e5c — supersedes runtime below
 
 1655e5ca992fa3ad3953db289662e72e402916aa pushed8413c5. Source-native column

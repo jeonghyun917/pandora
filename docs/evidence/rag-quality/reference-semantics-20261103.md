@@ -1,5 +1,25 @@
 # Independent interval semantics and bounded PDF native positions
 
+## Delivered product and current runtime
+
+6e7d2d4d0a8ef27ad046edd82b85acba8077450b committed/pushed838fe2.
+Final full1986/f0/e0/skip28(f80535),3:05. Officialstage72960/134153exit0;
+JAR9f87348232201e6198ca2f5630ceddcf20a80dcca2366fcb7bfa826c002258d1,
+68555288bytes. Packaged cached-artifact smokeea2c4a:range/PDFexit0,7tracks35bands,
+1physicalPDFpage1054glyphs, unchanged geometryhash, fidelityfalse.
+
+Fresh officialstatus4c8cc4 found8080absent, so no stop or internal bypass branch.
+Atlas had externally appeared asPID9004 before deployment; c9a91e reads its
+atlas-cms JARhash0a901ab8921fbf01d9d3a3cc3c305e5ccc63456e84274866e781b20715022b1a.
+This task did not start/stop/configure/write Atlas. Official protected snapshot
+preserved Atlas9004 and Q17076. Deploy19025/27675b KEEPALIVE:appPID13700,
+runtime4b348cc1-5b60-46c5-9421-6f69af41a9be. Health2c8011 root200,
+lawDB=Q211658/ragDB=Q84248/qreadytrue/qfail0;
+config47d394b4/indexe39713ce/lexicalbae6f4c1. Mutation3gatesfalse,
+automationPAUSED/main3792766 preserved. IsolatedDB29516 normallyshutdown
+6d2ee1/ea8ea4,23306absence2c8011. SharedQofficialstart remains alive, neverstopped.
+No live source update/penalty or full external quality claim.
+
 ## Delivered semantics contract
 
 SourceTableRangeSemantics parses only contiguous signed decimals with an explicit
@@ -83,9 +103,9 @@ Approved-host63696d found no8080/18080/6333listeners before any runtime change;
 is preserved; no Atlas stop/start/config/write. With prior explicit Q startup
 approval, official start-qdrant.cmd d605de startedQ only after no listener/process
 was confirmed. Qsession22769/PID17076, original configuration/storage unchanged.
-166f22:law_chunks211658/rag_chunks_v484248,bothgreen/optimizerok. No Q stop/delete.
-Owned isolatedDB29516/23306 is test-only and must be normally shut down after the
-final run. Do not infer today's runtime identity from Nov2delivery notes.
+166f22:law_chunks=211658/rag_chunks_v4=84248,bothgreen/optimizerok. No Q stop/delete.
+Owned isolatedDB29516/23306 was test-only and is now normally stopped as recorded
+above. Do not infer today's runtime identity from Nov2delivery notes.
 
 Still required before live update: fully source-owned cross-format table/rendering
 correspondence, explicit track-selection meaning where applicable, attachment
