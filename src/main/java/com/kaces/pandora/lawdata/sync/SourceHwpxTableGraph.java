@@ -74,7 +74,12 @@ final class SourceHwpxTableGraph {
                     String path=(parent==null?"":parent.path)+"/{"+URLEncoder.encode(namespace,StandardCharsets.UTF_8)+"}"+local+"["+position+"]";
                     if(path.length()>4096)throw rejected();
                     var frame=new Frame(local,namespace,path);stack.push(frame);
-                    if(local.equals("tbl")) {
+                    if(textOwner!=null) {
+                        if(parent==null || parent.textOwner!=textOwner || !namespace.equals(textOwner.table.namespace)
+                            || !Set.of("lineBreak","tab").contains(local))throw rejected();
+                        frame.inlineControl=true;
+                        budget.text(textOwner,local.equals("lineBreak")?"\n":"\t");
+                    } else if(local.equals("tbl")) {
                         if(textOwner!=null || budget.tables.size()>=256)throw rejected();
                         var parentCell=cells.peek();
                         if(!tables.isEmpty() && (parentCell==null || parentCell.table!=tables.peek()))throw rejected();
@@ -104,6 +109,7 @@ final class SourceHwpxTableGraph {
                         textOwner=cells.peek();frame.textOwner=textOwner;
                     }
                 } else if(event==XMLStreamConstants.CHARACTERS || event==XMLStreamConstants.CDATA || event==XMLStreamConstants.SPACE) {
+                    if(!stack.isEmpty() && stack.peek().inlineControl)throw rejected();
                     if(textOwner!=null)budget.text(textOwner,xml.getText());
                 } else if(event==XMLStreamConstants.END_ELEMENT) {
                     if(stack.isEmpty())throw rejected();var frame=stack.pop();
@@ -133,7 +139,7 @@ final class SourceHwpxTableGraph {
     }
     private static final class Frame {
         final String local,namespace,path;final Map<String,Integer> children=new HashMap<>();
-        TableBuilder table,rowTable;CellBuilder cell,textOwner;int row;
+        TableBuilder table,rowTable;CellBuilder cell,textOwner;int row;boolean inlineControl;
         Frame(String local,String namespace,String path) {this.local=local;this.namespace=namespace;this.path=path;}
     }
     private static final class TableBuilder {

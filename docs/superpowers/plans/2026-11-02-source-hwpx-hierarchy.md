@@ -73,3 +73,24 @@ package/push/deploy and health. Capture availability is complete for this slice;
 rendering/semantic/table/legal correspondence is not certified. Current remaining
 release prerequisites and minimum external writer facts are recorded in
 docs/evidence/rag-quality/source-reference-release-handoff-20261102.md.
+
+## Continuation: native inline condition boundaries
+
+Authorized native continuation, no additional design questions. Code inspection
+found that inline native lineBreak/tab elements inside a cell's text are ignored,
+joining separate conditions. Preserve these as newline/tab in the same owning
+cell and existing text budget. Reject unknown/foreign/nonempty inline controls
+rather than silently delete possible meaning. No renderer, inferred headers,
+new dependencies, readiness permission or legacy extractor change.
+
+- [x] Reproduce literal `90% 이상\n110% 미만\t4점` preservation failure and
+  unknown/foreign/nonempty inline-control acceptance with real bounded HWPX ZIPs.
+- [x] Minimal SourceHwpxTableGraph change, focused parser/inspector/legacy guards.
+- [ ] One stable full suite; exact byte/structure hashes may differ but semantic
+  readiness remains false. Self-review, commit/push, official package/deploy/health.
+- [ ] Continue source/reference correspondence diagnosis; successful delimiter
+  preservation is not full table equivalence or legal applicability.
+
+RED8/f2/e0(bcf5ae/8f07c5); focused53PASS(8479a6);
+stable full1971/f0/e0/skip28(6b5d48), owned isolatedDB23306 only.
+Scoped independent inline_boundary_review: noC/I/Minor; no readiness authority.

@@ -9,6 +9,18 @@ import org.junit.jupiter.api.io.TempDir;
 class SourceHwpxTableGraphTests {
     @TempDir Path root;
     private int sequence;
+    @Test void inlineControlsCannotConcatenateSeparateConditions() throws Exception {
+        String body=cell(0,0,1,1,"PLACEHOLDER","").replace("PLACEHOLDER","90% 이상<hp:lineBreak/>110% 미만<hp:tab/>4점");
+        var graph=new SourceHwpxTableGraph().capture(file(section(table(1,1,row(body)))));
+        assertThat(graph.tables().get(0).cells().get(0).directText()).isEqualTo("90% 이상\n110% 미만\t4점\n");
+    }
+    @Test void unknownOrForeignInlineControlsCannotSilentlyLoseMeaning() throws Exception {
+        for(String control:List.of("<hp:unknown/>","<x:lineBreak xmlns:x=\"urn:foreign\"/>","<hp:lineBreak>hidden</hp:lineBreak>")) {
+            String body=cell(0,0,1,1,"PLACEHOLDER","").replace("PLACEHOLDER","조건"+control+"예외");
+            Path input=file(section(table(1,1,row(body))));
+            assertThatThrownBy(()->new SourceHwpxTableGraph().capture(input)).isInstanceOf(IllegalStateException.class);
+        }
+    }
     @Test void nestedTablesRetainOwnedCellsWithoutParentHeaderInheritance() throws Exception {
         Path file=file(nestedSection());var graph=new SourceHwpxTableGraph().capture(file);
         assertThat(graph.tables()).hasSize(2);
