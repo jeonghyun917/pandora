@@ -96,6 +96,14 @@ class SourceVersionPreparationDatabaseTests {
                 var rows=nativeDocument.pages().stream().flatMap(page->page.tableRows().stream()).toList();
                 long cells=rows.stream().mapToLong(row->row.cells().size()).sum();
                 System.out.println("OFFICIAL_ARTIFACT asset="+asset+" format=hwpx rows="+rows.size()+" cells="+cells+" fidelityReady=false");
+                var hierarchy=new SourceHwpxTableGraph().capture(nativeFile);
+                long ownedCells=hierarchy.tables().stream().mapToLong(table->table.cells().size()).sum();
+                long nested=hierarchy.tables().stream().filter(table->table.parentCellPath()!=null).count();
+                assertThat(proof.structureHash()).isEqualTo(com.kaces.pandora.common.text.LawHashUtils.sha256Json(List.of("source-hwpx-hierarchy-v1",nativeDocument.pages(),hierarchy)));
+                System.out.println("OFFICIAL_HIERARCHY asset="+asset+" tables="+hierarchy.tables().size()+" cells="+ownedCells+" nested="+nested+" fidelityReady=false");
+                if(proof.sourceUrl().equals("/LSW/flDownload.do?flSeq=170755145")) {
+                    assertThat(hierarchy.tables()).hasSize(8);assertThat(ownedCells).isEqualTo(98);assertThat(nested).isEqualTo(6);
+                }
             } else System.out.println("OFFICIAL_ARTIFACT asset="+asset+" format=pdf nativeHashVerified=true tableProof=UNAVAILABLE fidelityReady=false");
         }
         assertThatThrownBy(()->transitionService().prepare(candidate.id())).isInstanceOf(IllegalStateException.class).hasMessageContaining("reference fidelity");

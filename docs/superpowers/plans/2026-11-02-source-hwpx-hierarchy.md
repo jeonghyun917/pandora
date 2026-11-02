@@ -30,6 +30,14 @@ row ownership, one address/span per cell, coordinate/spans, no overlap and full
 grid coverage; unsupported structures reject rather than produce partial proof.
 No new dependency, global parser rewrite or change to existing SourceTableRow.
 
+Ruling: retain raw namespaceURI separately and percent-encode namespace components
+inside path IDs; reject over4096-character paths and over4million aggregate
+stored-path characters. This makes owner IDs unambiguous and memory-bounded.
+`directText` captures native character events/paragraph boundaries, not rendering
+equivalence (inline tab/lineBreak controls remain a documented limitation). Exact
+artifact bytes are authority; no semantic claim may rely on this limitation being
+resolved implicitly.
+
 SourceReferenceInspector HWPX structureHash may bind both existing page evidence
 and this full hierarchy, while `INTEGRITY_ONLY/fidelityReady=false` stays fixed.
 Immutable stored artifact bytes are the recomputation authority, not a URL or

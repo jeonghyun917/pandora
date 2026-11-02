@@ -364,6 +364,14 @@ fail closed without re-downloading or overwriting evidence. The candidate byte
 budget remains32MiB; a bounded server acquisition permit limits in-flight memory.
 These stored bytes are fidelity inputs, not source activation authority.
 
+Source HWPX inspection also binds a separate bounded, namespace-qualified nested
+table/cell graph. Parent-cell paths, addresses/spans and direct text remain owned
+by the original XML nodes; inner tables do not inherit outer header roles.
+Existing flat-row/nested-table guards are unchanged. Graph character text is not
+rendering-equivalent text (inline controls are not all rendered), and graph
+availability is not table entailment or source/reference fidelity. Readiness stays
+`INTEGRITY_ONLY/fidelityReady=false` until a distinct genuine proof exists.
+
 New required reference assets without genuine fidelity proof block readiness;
 their URL metadata is not file/content proof. Existing preserved baseline assets
 are bound by their full immutable snapshot, not newly declared validated files.

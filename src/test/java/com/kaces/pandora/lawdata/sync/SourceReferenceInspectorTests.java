@@ -7,6 +7,19 @@ import java.util.*;
 import org.junit.jupiter.api.Test;
 
 class SourceReferenceInspectorTests {
+    @Test void hierarchyMetadataIsBoundIntoInspectionWithoutGrantingFidelity() throws Exception {
+        byte[] bytes=zip(Map.of("mimetype","application/hwp+zip","Contents/section0.xml",SourceHwpxTableGraphTests.nestedSection()));
+        var inspector=new SourceReferenceInspector(uri->new SourceReferenceInspector.Download(200,"application/hwp+zip",bytes.length,new ByteArrayInputStream(bytes)));
+        var proof=inspector.inspect("/flDownload.do?flSeq=123");
+        var file=java.nio.file.Files.createTempFile("source-hierarchy-test-",".hwpx");
+        try {
+            java.nio.file.Files.write(file,bytes);
+            var pages=new com.kaces.pandora.rag.importing.RagTextExtractor().extract(file).pages();
+            var hierarchy=new SourceHwpxTableGraph().capture(file);
+            assertThat(proof.structureHash()).isEqualTo(com.kaces.pandora.common.text.LawHashUtils.sha256Json(List.of("source-hwpx-hierarchy-v1",pages,hierarchy)));
+            assertThat(proof.fidelityReady()).isFalse();assertThat(proof.status()).isEqualTo("INTEGRITY_ONLY");
+        } finally {java.nio.file.Files.deleteIfExists(file);}
+    }
     @Test void acquiredArtifactBytesAreImmutableAndHashBoundWithoutEnteringPublicInspection() throws Exception {
         byte[] bytes=hwpx();
         var inspector=new SourceReferenceInspector(uri->new SourceReferenceInspector.Download(200,"application/hwp+zip",bytes.length,new ByteArrayInputStream(bytes)));

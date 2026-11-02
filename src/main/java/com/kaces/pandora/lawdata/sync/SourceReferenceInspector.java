@@ -96,11 +96,12 @@ public final class SourceReferenceInspector {
                         return new Acquisition(new Inspection(source,uri.toString(),artifact,bytes.length,format,nativePdf.textHash(),nativePdf.structureHash(),"INTEGRITY_ONLY",false),bytes);
                     }
                     preflightHwpx(file);
+                    var hierarchy=new SourceHwpxTableGraph().capture(file);
                     var extracted=new RagTextExtractor().extract(file);
                     String text=extracted.text();
                     if(text.isBlank() || text.length()>4_000_000 || extracted.pages().size()>1000)throw new IllegalStateException("Native reference text unavailable or oversized");
                     return new Acquisition(new Inspection(source,uri.toString(),artifact,bytes.length,
-                        format,LawHashUtils.sha256(text),LawHashUtils.sha256Json(extracted.pages()),"INTEGRITY_ONLY",false),bytes);
+                        format,LawHashUtils.sha256(text),LawHashUtils.sha256Json(java.util.List.of("source-hwpx-hierarchy-v1",extracted.pages(),hierarchy)),"INTEGRITY_ONLY",false),bytes);
                 } finally {Files.deleteIfExists(file);}
             }
         } catch(InterruptedException interrupted) {
