@@ -86,7 +86,7 @@ new dependencies, readiness permission or legacy extractor change.
 - [x] Reproduce literal `90% 이상\n110% 미만\t4점` preservation failure and
   unknown/foreign/nonempty inline-control acceptance with real bounded HWPX ZIPs.
 - [x] Minimal SourceHwpxTableGraph change, focused parser/inspector/legacy guards.
-- [ ] One stable full suite; exact byte/structure hashes may differ but semantic
+- [x] One stable full suite; exact byte/structure hashes may differ but semantic
   readiness remains false. Self-review, commit/push, official package/deploy/health.
 - [ ] Continue source/reference correspondence diagnosis; successful delimiter
   preservation is not full table equivalence or legal applicability.

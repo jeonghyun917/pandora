@@ -1,5 +1,39 @@
 # Source structure/reference delivery and remaining release gates
 
+## Latest continuation325918b — supersedes runtime/Atlas blocker below
+
+Product325918b0f6b105ecafda7911f080f03838331220 pushed8ca52b.
+Native cell lineBreak/tab boundaries preserved within owner/budget; unknown,
+foreign or nonempty inline controls reject. RED8/f2/e0→focused53PASS→stable
+full1971/f0/e0/skip28(6b5d48); scoped independent review noC/I/Minor.
+Official stage16311/d865f8 exit0;
+JAR362b1bbff359b6a489d5c751c01dd2c38c25481e763f07df5bbab67a6e6f2656.
+Normalstop929407, oldsupervisor25c371 exit0, fresh absenceguard then official
+deploy62965/b4d901 KEEPALIVE:PID17332/runtimefa3e14e0-f7df-4457-8354-ea0307afc8f6.
+Fresh healthc6d0fe:root200,DB=Qlaw211658/rag84248,qreadytrue/qfail0;
+config47d394b4/indexe39713ce/lexicalbae6f4c1; mutation3gatesfalse.
+Atlas28296/Q7568/main3792766/automationPAUSED preserved. Isolated23306 normal
+shutdown4d1ec4/5782f2, absence confirmedc6d0fe.
+
+Atlas-specific writer uncertainty is resolved, not pending user coordination:
+actual10 PID-owned connections all useatlas_cms, actual accountgrants/roles do
+not permit Pandora writes; packaged/source scan has noQdrant writer. See
+[read-only Atlas trace](atlas-readonly-scope-20261102.md) for bounded claims.
+The older unknown-writer row is historical, not a current blocker.
+
+Changed capture accepted4 officialartifact hashes oncece6519. Exploratory
+JSON-string substring counts are NOT content-loss/fidelity evidence. Revised
+diagnostic is annex-body-only and compile-checked32cb65, not redownloaded merely
+to obtain a nicer count. Native8table capture and Article25annex declaration do
+not certify cell-range/score relations or general-sanction scope.
+
+Exact next boundary: source-owned annex body/cell/child-table correspondence and
+all attachment roles, then immutable proof-receipt binding at preparation,
+transition and rollback. requireReferences remains closed; metadata/filename/
+hash/count/callerboolean cannot replace it. The penalty project's subject/SW/
+project/verification/judgment premises still lack direct proof. No live source
+refresh/penalty or failed terminal replay; no verifier relaxation or completion.
+
 ## Delivered code
 
 Branch `codex/group-balanced-bm25`; shared main3792766 unchanged.
