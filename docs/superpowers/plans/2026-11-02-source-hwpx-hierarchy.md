@@ -66,3 +66,10 @@ mutable parser metadata. Product/candidate/manifest binding remains unchanged.
 Focused RED→GREEN, stable changed-tree full suite, scoped review, verified
 commit/push, official package/deploy and health. No repeated suite for transport.
 Reuse the parent progress ledger and preserve exact evidence artifacts.
+
+Delivered689a580: focused33PASS, actual official8tables/98cells/6nested capture
+1PASS in isolated DB, stable full1969/f0/e0/skip28, scoped review noC/I, official
+package/push/deploy and health. Capture availability is complete for this slice;
+rendering/semantic/table/legal correspondence is not certified. Current remaining
+release prerequisites and minimum external writer facts are recorded in
+docs/evidence/rag-quality/source-reference-release-handoff-20261102.md.
