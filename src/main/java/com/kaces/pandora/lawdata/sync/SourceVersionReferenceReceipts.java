@@ -10,7 +10,9 @@ import tools.jackson.databind.ObjectMapper;
 /** Durable inspection evidence, not a fidelity or activation receipt. Acquisition is outside the DB transaction. */
 public final class SourceVersionReferenceReceipts {
     public record Report(String candidateId,String manifest,String receiptHash,List<SourceReferenceInspector.Inspection> references,
-            String status,boolean fidelityReady) {public Report {references=List.copyOf(references);}}
+            List<SourceReferenceDeclarations.Declaration> declarations,String status,boolean fidelityReady) {
+        public Report {references=List.copyOf(references);declarations=List.copyOf(declarations);}
+    }
     private final JdbcTemplate db;
     private final SourceVersionPreparationService preparation;
     private final SourceReferenceInspector inspector;
@@ -35,6 +37,7 @@ public final class SourceVersionReferenceReceipts {
         var canonical=new HashSet<String>();
         for(var asset:snapshot.sourceAssets())if(!canonical.add(SourceReferenceInspector.officialUri(asset.sourceUrl()).toString()))
             throw new IllegalStateException("Ambiguous duplicate official reference identity");
+        var declarations=declarations(snapshot);
         var existing=db.queryForList("SELECT report_json FROM law_source_version_reference_inspections WHERE candidate_id=?",id);
         if(!existing.isEmpty())return verified(snapshot,(String)existing.get(0).get("report_json"));
         var proofs=new ArrayList<SourceReferenceInspector.Inspection>();long total=0;
@@ -45,8 +48,8 @@ public final class SourceVersionReferenceReceipts {
             proofs.add(proof);
             acquisitions.add(acquisition);
         }
-        String hash=hash(snapshot,proofs);
-        var report=new Report(id,snapshot.validation().manifest(),hash,proofs,"INTEGRITY_ONLY",false);
+        String hash=hash(snapshot,proofs,declarations);
+        var report=new Report(id,snapshot.validation().manifest(),hash,proofs,declarations,"INTEGRITY_ONLY",false);
         return tx.execute(status->{
             var current=preparation.recheckForEmbeddings(id);
             var candidate=db.queryForMap("SELECT input_hash,raw_hash FROM law_source_version_candidates WHERE candidate_id=? FOR UPDATE",id);
@@ -104,7 +107,8 @@ public final class SourceVersionReferenceReceipts {
         var report=json.readValue(encoded,Report.class);
         if(!report.candidateId().equals(source.candidateId()) || !report.manifest().equals(source.validation().manifest())
             || !report.status().equals("INTEGRITY_ONLY") || report.fidelityReady()
-            || report.references().size()!=source.sourceAssets().size() || !hash(source,report.references()).equals(report.receiptHash()))
+            || report.references().size()!=source.sourceAssets().size() || !report.declarations().equals(declarations(source))
+            || !hash(source,report.references(),report.declarations()).equals(report.receiptHash()))
             throw new IllegalStateException("Reference inspection evidence changed");
         for(int i=0;i<report.references().size();i++) {
             var proof=report.references().get(i);
@@ -113,7 +117,15 @@ public final class SourceVersionReferenceReceipts {
         }
         return report;
     }
-    private String hash(SourceVersionPreparationService.AssetSnapshot source,List<SourceReferenceInspector.Inspection> proofs) {
-        return LawHashUtils.sha256Json(List.of("source-reference-inspection-v1",source.candidateId(),source.inputHash(),source.rawHash(),source.validation(),source.sourceAssets(),proofs));
+    private List<SourceReferenceDeclarations.Declaration> declarations(SourceVersionPreparationService.AssetSnapshot source) {
+        String raw=db.queryForObject("SELECT raw_detail_json FROM law_source_version_candidates WHERE candidate_id=?",String.class,source.candidateId());
+        if(raw==null || raw.length()>4_000_000 || !LawHashUtils.sha256(raw).equals(source.rawHash()))throw new IllegalStateException("Reference source identity changed");
+        var result=new SourceReferenceDeclarations().capture(raw);
+        var declared=new HashSet<String>();for(var item:result)declared.add(item.canonicalUrl());
+        var expected=new HashSet<String>();for(var asset:source.sourceAssets())expected.add(SourceReferenceInspector.officialUri(asset.sourceUrl()).toString());
+        if(!declared.equals(expected))throw new IllegalStateException("Reference declaration membership changed");return result;
+    }
+    private String hash(SourceVersionPreparationService.AssetSnapshot source,List<SourceReferenceInspector.Inspection> proofs,List<SourceReferenceDeclarations.Declaration> declarations) {
+        return LawHashUtils.sha256Json(List.of("source-reference-relations-v1",source.candidateId(),source.inputHash(),source.rawHash(),source.validation(),source.sourceAssets(),declarations,proofs));
     }
 }

@@ -117,6 +117,9 @@ class SourceVersionPreparationDatabaseTests {
         var service=new SourceVersionReferenceReceipts(db,preparation,manager,inspector);
         var report=service.inspect(candidate.id());
         assertThat(report.fidelityReady()).isFalse();assertThat(report.status()).isEqualTo("INTEGRITY_ONLY");
+        assertThat(report.declarations()).hasSize(1);
+        assertThat(report.declarations().get(0).sourcePath()).isEqualTo("/AdmRulService/원문파일");
+        assertThat(report.declarations().get(0).kind()).isEqualTo("UNCLASSIFIED_DECLARATION");
         assertThat(db.queryForObject("SELECT COUNT(*) FROM law_source_version_reference_parts WHERE candidate_id=?",Integer.class,candidate.id())).isPositive();
         assertThat(service.inspect(candidate.id())).isEqualTo(report);assertThat(calls.get()).isOne();
         assertThatThrownBy(()->db.update("UPDATE law_source_version_reference_inspections SET receipt_hash=? WHERE candidate_id=?","0".repeat(64),candidate.id())).isInstanceOf(RuntimeException.class);

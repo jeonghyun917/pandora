@@ -1,5 +1,25 @@
 # SDD ledger — plan: docs/superpowers/plans/2026-10-28-law-source-version.md
 
+## Reference relations continuation (2026-11-02)
+
+Subplan docs/superpowers/plans/2026-11-02-reference-relations.md; native execution,
+base90682d6. Source-owned column evidence and exact declaration provenance bound
+to inspection/receipt, no readiness authority. Initial absent-class REDs then
+focused27PASS/fa9fd5 and actualDB67/f0/e0/skip1/d5fe21. Actualpublic551c2d:4hashes
+unchanged; annex8tables/6explicit alignedtables/30columns; exactbytescached.
+Offline attachment47dcd5:33articles literalmatchinorder, legalroleuncertified.
+One scoped independent review found2Important: internal-score whitespace joins
+digits and cross-artifact expanded evidence accumulation. Both reproducedRED2
+(cde07a/30d6f1); boundary-only score trim and262144serialized-character evidence
+bound without truncation→focused22PASS(acbff3). Final full1977/f0/e0/skip28
+(0561a0),3:30, is finalcode evidence; pre-fix1975PASS explicitlysuperseded.
+Ruling: declaration locations/column alignment are partial proofs only; no
+AND/OR,legalrole or cross-format fidelity inferred, costcontinuedfailclosed for
+unproved references. Existingparentworkspace retained, no userassets deleted.
+Atlas externally changed to25932/JAR0a901ab8 beforedeployment; freshread-only
+d076f1/79083a reconfirms10atlas_cmsconnections/schemaonlygrants/noQcode/noRoles.
+No Atlas mutation or terminalpenaltyreplay; actualsourceupdate remainsclosed.
+
 Latest325918b0f6b105ecafda7911f080f03838331220 delivered/pushed8ca52b.
 Native condition delimiter loss RED2→focused53PASS/full1971/f0/e0/skip28(6b5d48),
 scoped independentreview noC/I/Minor. Stage16311 exit0; JAR362b1bbff359b6a489d5c751c01dd2c38c25481e763f07df5bbab67a6e6f2656.

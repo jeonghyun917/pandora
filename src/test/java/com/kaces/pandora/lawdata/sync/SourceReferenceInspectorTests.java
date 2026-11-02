@@ -7,6 +7,13 @@ import java.util.*;
 import org.junit.jupiter.api.Test;
 
 class SourceReferenceInspectorTests {
+    @Test void expandedSerializedColumnEvidenceCannotAccumulateAcrossArtifacts() throws Exception {
+        String[] values={"구간","\"".repeat(150000),"점수","2"};var xml=new StringBuilder("<hs:sec xmlns:hs=\"urn:hs\" xmlns:hp=\"urn:hp\"><hp:tbl rowCnt=\"2\" colCnt=\"2\">");
+        for(int r=0;r<2;r++){xml.append("<hp:tr>");for(int c=0;c<2;c++)xml.append("<hp:tc><hp:cellAddr rowAddr=\"").append(r).append("\" colAddr=\"").append(c).append("\"/><hp:cellSpan rowSpan=\"1\" colSpan=\"1\"/><hp:p><hp:t>").append(values[r*2+c]).append("</hp:t></hp:p></hp:tc>");xml.append("</hp:tr>");}xml.append("</hp:tbl></hs:sec>");
+        byte[] bytes=zip(Map.of("mimetype","application/hwp+zip","Contents/section0.xml",xml.toString()));
+        var inspector=new SourceReferenceInspector(uri->new SourceReferenceInspector.Download(200,"application/hwp+zip",bytes.length,new ByteArrayInputStream(bytes)));
+        assertThatThrownBy(()->inspector.inspect("/flDownload.do?flSeq=123")).isInstanceOf(IllegalStateException.class);
+    }
     @Test void hierarchyMetadataIsBoundIntoInspectionWithoutGrantingFidelity() throws Exception {
         byte[] bytes=zip(Map.of("mimetype","application/hwp+zip","Contents/section0.xml",SourceHwpxTableGraphTests.nestedSection()));
         var inspector=new SourceReferenceInspector(uri->new SourceReferenceInspector.Download(200,"application/hwp+zip",bytes.length,new ByteArrayInputStream(bytes)));
@@ -16,7 +23,8 @@ class SourceReferenceInspectorTests {
             java.nio.file.Files.write(file,bytes);
             var pages=new com.kaces.pandora.rag.importing.RagTextExtractor().extract(file).pages();
             var hierarchy=new SourceHwpxTableGraph().capture(file);
-            assertThat(proof.structureHash()).isEqualTo(com.kaces.pandora.common.text.LawHashUtils.sha256Json(List.of("source-hwpx-hierarchy-v1",pages,hierarchy)));
+            assertThat(proof.columnEvidence()).hasSize(2).allSatisfy(table->assertThat(table.status()).isEqualTo("UNSUPPORTED"));
+            assertThat(proof.structureHash()).isEqualTo(com.kaces.pandora.common.text.LawHashUtils.sha256Json(List.of("source-hwpx-relations-v1",pages,hierarchy,proof.columnEvidence())));
             assertThat(proof.fidelityReady()).isFalse();assertThat(proof.status()).isEqualTo("INTEGRITY_ONLY");
         } finally {java.nio.file.Files.deleteIfExists(file);}
     }
