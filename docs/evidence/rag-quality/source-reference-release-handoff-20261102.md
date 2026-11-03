@@ -1,5 +1,27 @@
 # Source structure/reference delivery and remaining release gates
 
+## Latest Nov3 delivery f6d0748 — supersedes runtime below
+
+f6d0748d59253d6f0f41ee59b8981a94785209c5 pushed097564; source supplementary
+entry boundaries and indexed chunk parents preserved (no inferred dates). Two
+RED stages→focused72PASS; approved-host full1983/f0/e0/skip80(fe57a4), conditional
+DB tests not enabled because prior test credential environment is absent.
+Actual native cross-format correspondence:7tracks35condition/score positions
+uniquely matched; companion9pages11926characters ordered equality, not rendering
+or legal-role proof. Official NIA2025 distribution28719/file1 acquired directly,
+hash546fd9cf…/243pages; physical173-174 provides outsourced-both→ratio and
+inhouse-either→years choice. Version basis2025-12 and internal2024footer retained;
+no2026scope inference. New manual's5sanction/recommendation pages remain confined
+to prior-consultation or performance-score maintenance/mobile-app subjects.
+
+Officialstage85602b JAR0eeda7e4f0b322200017283981158f143a4862bd0b2786a0eee73ac7c7dba269/
+68555411bytes; deploy37860KEEPALIVE/PID1620/runtime512e7148-1cbb-4afe-a5a7-2343265984dc.
+Health09855b root200/DB=Q211658·84248/qreadytrue/qfail0/config47d394b4/
+indexe39713ce/lexicalbae6f4c1/mutation3false. Atlas28400unchanged; official
+Qstart42261/PID7580retained;23306absent/main3792766/automationPAUSED.
+No actualsourceupdate/penalty. Exact next boundary and direct source URLs:
+[reference-correspondence-20261103.md](reference-correspondence-20261103.md).
+
 ## Latest Nov3 delivery6e7d2d4 — supersedes runtime below
 
 6e7d2d4d0a8ef27ad046edd82b85acba8077450b pushed838fe2. Independent interval

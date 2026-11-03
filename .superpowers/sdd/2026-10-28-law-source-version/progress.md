@@ -1,5 +1,21 @@
 # SDD ledger — plan: docs/superpowers/plans/2026-10-28-law-source-version.md
 
+## 2026-11-03 supplementary boundaries / official NIA continuation
+
+Product f6d0748 pushed097564. Entry and parent boundary RED2→focused72PASS;
+approved-host full1983/f0/e0/skip80(fe57a4); sandbox attach5 run interrupted,
+conditional DB tests not enabled (old test credential unavailable, no bypass).
+Actual PDF7tracks/35bands uniquely mapped; companion9pages/11926chars ordered
+native equality. OfficialNIA2025 manual28719/file1 hash546fd9cf…/243pages acquired;
+physical173-174 explains outsourced-both→ratio/inhouse-either→years. Distribution
+2025-12 basis/internal2024footer preserved; not2026 applicability attestation.
+Official stage85602b exit0/JAR0eeda7e4…/68555411bytes; deploy37860KEEPALIVE/
+PID1620/runtime512e7148-1cbb-4afe-a5a7-2343265984dc. Health09855b DB=Q211658+
+84248/qreadytrue/qfail0/config47d394b4/indexe39713ce/lexicalbae6f4c1/mutation3false.
+Atlas28400untouched, Qnormalstart42261/PID7580kept,23306absent,main3792766,
+automationPAUSED. No actualsourceupdate/penalty. Exact nextproofboundary:
+docs/evidence/rag-quality/reference-correspondence-20261103.md.
+
 ## 2026-11-03 interval semantics/PDF continuation
 
 Delivered6e7d2d4d0a8ef27ad046edd82b85acba8077450b/pushed838fe2. Stage72960exit0/
