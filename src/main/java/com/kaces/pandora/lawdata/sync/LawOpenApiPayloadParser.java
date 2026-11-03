@@ -212,6 +212,16 @@ public class LawOpenApiPayloadParser {
 			return;
 		}
 		if(sourceVersion && (path.endsWith(".별표내용") || path.endsWith(".부칙내용"))) {
+			// Separate source entries must not share a parent merely because their article numbers repeat.
+			// Nested line arrays remain within their owning entry; no effective date is inferred or added.
+			if(path.endsWith(".부칙내용") && node.isArray()) {
+				for(int i=0;i<node.size();i++) {
+					List<String> lines=new ArrayList<>();collectOwnedRows(node.get(i),lines);
+					String entryPath=path+"["+i+"]";
+					addStructuredSection(sections,"supplementary",null,entryPath,String.join("\n",lines),entryPath,i+1,1);
+				}
+				return;
+			}
 			List<String> rows=new ArrayList<>();collectOwnedRows(node,rows);
 			addStructuredSection(sections,path.endsWith(".별표내용")?"source-table":"supplementary",null,path,String.join("\n",rows),path,0,1);
 			return;

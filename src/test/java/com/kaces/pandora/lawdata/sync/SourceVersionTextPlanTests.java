@@ -6,6 +6,37 @@ import tools.jackson.databind.ObjectMapper;
 import com.kaces.pandora.common.json.LawJsonWriter;
 
 class SourceVersionTextPlanTests {
+    @Test void sourceSupplementEntriesKeepTheirOwnDateHeadingAndParent() {
+        var parser=new LawOpenApiPayloadParser(json,new LawJsonWriter(json));
+        String raw="""
+            {"AdmRulService":{"조문내용":"제1조(기준) 대상 사업에 적용한다.","부칙":{
+              "부칙공포일자":["20250203","20261019"],
+              "부칙내용":["부칙 <제2025-12호, 2025. 2. 3.>제1조(시행) 이 고시는 발령한 날부터 시행한다.",
+                         "부칙 <제2026-63호, 2026. 10. 19.>제1조(시행) 이 고시는 발령한 날부터 시행한다."]}}}
+            """;
+        var sections=parser.parseSourceVersionDocument(raw,"지침").sections().stream()
+            .filter(s->s.type().equals("supplementary")).toList();
+        assertThat(sections).hasSize(2);
+        assertThat(sections.get(0).body()).contains("2025-12").doesNotContain("2026-63");
+        assertThat(sections.get(1).body()).contains("2026-63").doesNotContain("2025-12");
+        assertThat(sections).extracting(SyncDetailSection::sourcePath).containsExactly(
+            "$.AdmRulService.부칙.부칙내용[0]","$.AdmRulService.부칙.부칙내용[1]");
+        var chunks=new LawSemanticChunkPlanner().plan(new ChunkPlanningContext("admrul",75,"지침"),sections);
+        assertThat(chunks.stream().map(PlannedLawChunk::parentKey).distinct().count()).isEqualTo(2);
+        assertThat(planner.plan("admrul",75,"지침",raw).unexplainedLossSpanCount()).isZero();
+    }
+    @Test void nestedSupplementLinesStayTogetherWithoutInventingADateForBareText() {
+        var parser=new LawOpenApiPayloadParser(json,new LawJsonWriter(json));
+        String raw="""
+            {"AdmRulService":{"부칙":{"부칙내용":[["부칙 <제2025-12호>","종전 사업은 제외한다."],
+             "이 고시는 발령한 날부터 시행한다."]}}}
+            """;
+        var sections=parser.parseSourceVersionDocument(raw,"지침").sections();
+        assertThat(sections).hasSize(2);
+        assertThat(sections.get(0).body()).isEqualTo("부칙 <제2025-12호>\n종전 사업은 제외한다.");
+        assertThat(sections.get(1).body()).isEqualTo("이 고시는 발령한 날부터 시행한다.");
+        assertThat(sections.get(1).title()).doesNotContain("2025","2026");
+    }
     private final ObjectMapper json=new ObjectMapper();
     private final SourceVersionTextPlan planner=new SourceVersionTextPlan(new LawOpenApiPayloadParser(json,new LawJsonWriter(json)));
     private final SourceVersionTextPlan lossyPlanner=new SourceVersionTextPlan(new LawOpenApiPayloadParser(json,new LawJsonWriter(json)) {
