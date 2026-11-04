@@ -59,7 +59,8 @@ public final class RetrievalTraceCollector {
 		activeKeys = new LinkedHashSet<>(current);
 	}
 
-	public void transitionCoverage(
+	// The bounded coverage preview is not a transition in the active answer path.
+	public void observeCoverage(
 		Collection<String> candidateKeys,
 		Map<String, String> missingReasonCodes
 	) {
@@ -69,9 +70,9 @@ public final class RetrievalTraceCollector {
 		Map<String, String> reasons = missingReasonCodes == null ? Map.of() : missingReasonCodes;
 		for (String previous : activeKeys) {
 			if (!current.contains(previous)) {
-				lose(
+				note(
 					previous,
-					RetrievalCandidateTrace.COVERAGE_FUSED_STAGE,
+					null,
 					reasons.getOrDefault(previous, RetrievalCandidateTrace.TOP_K_DISPLACED)
 				);
 			}
@@ -79,7 +80,6 @@ public final class RetrievalTraceCollector {
 		for (String candidateKey : current) {
 			enter(candidateKey, RetrievalCandidateTrace.COVERAGE_FUSED_STAGE);
 		}
-		activeKeys = new LinkedHashSet<>(current);
 	}
 
 	public void lose(String candidateKey, String stage, String reasonCode) {

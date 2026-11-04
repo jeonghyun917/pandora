@@ -2733,7 +2733,7 @@ public class LawAiAnswerService {
 			retrieval.hybrid().bm25Chunks(), retrieval.hybrid().fusedChunks(),
 			retrieval.hybrid().documentExpansionChunks(), retrieval.hybrid().documentExpansionFusedChunks()
 		), "SOURCE_CHUNK_NOT_LOADED");
-		collector.transitionCoverage(
+		collector.observeCoverage(
 			candidateKeys(retrieval.hybrid().coverageChunks().stream().limit(JUDGE_CANDIDATE_LIMIT).toList()),
 			coverageLossReasons(retrieval)
 		);

@@ -86,13 +86,27 @@ class RetrievalTraceCollectorTests {
 	}
 
 	@Test
-	void recordsDistinctCoverageFusionLossReasonsAtTheCoverageStage() {
+	void coveragePreviewMissDoesNotHideActualRerankingLoss() {
+		RetrievalTraceCollector collector = new RetrievalTraceCollector(100);
+		collector.source("law:1", "law", 1L, "vector", 1);
+		collector.observeCoverage(List.of(), Map.of());
+		collector.transition("merged", List.of("law:1"), "MERGE_NOT_SELECTED");
+		collector.transition("reranked", List.of(), "RERANK_LIMIT");
+
+		RetrievalCandidateTrace trace = collector.finish("law:1");
+		assertThat(trace.firstLossStage()).isEqualTo("reranked");
+		assertThat(trace.reasonCodes()).contains("TOP_K_DISPLACED", "RERANK_LIMIT");
+		assertThat(trace.enteredStages()).doesNotContain("coverage-fused");
+	}
+
+	@Test
+	void preservesCoveragePreviewReasonsWithoutMarkingAnActiveLoss() {
 		RetrievalTraceCollector collector = new RetrievalTraceCollector(100);
 		for (int index = 1; index <= 4; index++) {
 			collector.source("law:" + index, "law", index, "vector", index);
 		}
 
-		collector.transitionCoverage(
+		collector.observeCoverage(
 			List.of(),
 			Map.of(
 				"law:1", RetrievalCandidateTrace.ABSENT_FROM_SOURCE_UNION,
@@ -104,7 +118,7 @@ class RetrievalTraceCollectorTests {
 
 		assertThat(collector.finishAll())
 			.extracting(RetrievalCandidateTrace::firstLossStage)
-			.containsOnly(RetrievalCandidateTrace.COVERAGE_FUSED_STAGE);
+			.containsOnlyNulls();
 		assertThat(collector.finishAll())
 			.flatExtracting(RetrievalCandidateTrace::reasonCodes)
 			.containsExactly(
