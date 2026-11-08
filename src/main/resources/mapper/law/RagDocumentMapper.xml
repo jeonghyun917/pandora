@@ -962,7 +962,7 @@
     <include refid="findSemanticChunksByTextQuery"/>
   </select>
   <sql id="findSemanticChunksByTextQuery">
-    WITH matched_terms AS (
+    WITH term_scores AS (
       SELECT
         search_term.chunk_id,
         COUNT(DISTINCT search_term.query_term) AS matched_term_count,
@@ -991,7 +991,11 @@
           </foreach>
         </if>
       ) search_term
-      JOIN rag_document_chunks c ON c.chunk_id = search_term.chunk_id
+      GROUP BY search_term.chunk_id
+    ), matched_terms AS (
+      SELECT scored.chunk_id, scored.matched_term_count, scored.term_score
+      FROM term_scores scored
+      JOIN rag_document_chunks c ON c.chunk_id = scored.chunk_id
       JOIN rag_documents doc ON doc.document_id = c.document_id
       WHERE doc.use_yn = 'Y'
         AND <include refid="capturedChunkVisibility"/>
@@ -1002,8 +1006,7 @@
             #{documentType}
           </foreach>
         </if>
-      GROUP BY search_term.chunk_id
-      ORDER BY matched_term_count DESC, term_score DESC, search_term.chunk_id
+      ORDER BY matched_term_count DESC, term_score DESC, scored.chunk_id
       LIMIT #{limit}
     )
     SELECT

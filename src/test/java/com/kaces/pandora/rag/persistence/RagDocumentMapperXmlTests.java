@@ -193,6 +193,20 @@ class RagDocumentMapperXmlTests {
 	}
 
 	@Test
+	void textSearchAggregatesTermRowsBeforeCheckingChunkVisibility() throws Exception {
+		MappedStatement statement = parseMapper().getMappedStatement(TEXT_STATEMENT);
+		String sql = normalizedSql(statement, Map.of("documentTypes", List.of("official_doc"),
+			"keywords", List.of("영상정보", "설치"), "limit", 30));
+		assertThat(statement.getTimeout()).isEqualTo(3);
+		assertThat(sql).startsWith("WITH term_scores AS (")
+			.contains("GROUP BY search_term.chunk_id ), matched_terms AS (",
+				"FROM term_scores scored JOIN rag_document_chunks c ON c.chunk_id = scored.chunk_id");
+		String eligible = sql.substring(sql.indexOf("matched_terms AS ("), sql.indexOf("LIMIT ?"));
+		assertThat(eligible).contains("doc.use_yn = 'Y'", "c.use_yn='Y'",
+			"COALESCE(c.quality_status, 'PASS') IN ('PASS', 'REVIEW')", "doc.document_type IN");
+	}
+
+	@Test
 	void textSearchBindsEachPrefixInItsOwnIndexRangeBeforeJoiningChunks() throws Exception {
 		MappedStatement statement = parseMapper().getMappedStatement(TEXT_STATEMENT);
 		Map<String, Object> parameters = Map.of(
