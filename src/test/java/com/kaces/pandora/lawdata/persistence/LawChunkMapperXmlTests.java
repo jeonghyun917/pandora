@@ -21,6 +21,24 @@ import org.junit.jupiter.api.Test;
 
 class LawChunkMapperXmlTests {
 	@Test
+	void broadTextSearchRanksNarrowCandidatesBeforeHydratingBodies() throws Exception {
+		MappedStatement statement = parseMapper().getMappedStatement(LawChunkMapper.class.getName()
+			+ ".findSemanticChunksByText");
+		String sql = normalizedSql(statement, Map.of("targets", List.of("law", "admrul"),
+			"keywords", List.of("보안성", "검토"), "includeFuture", false, "limit", 30));
+		assertThat(statement.getTimeout()).isEqualTo(3);
+		assertThat(sql).startsWith("WITH ranked_candidates AS (");
+		int hydration = sql.indexOf("SELECT c.chunk_id AS chunkId");
+		assertThat(hydration).isPositive();
+		assertThat(sql.substring(0, hydration))
+			.contains("c.activation_status = 'ACTIVE'", "c.chunk_text LIKE", "LIMIT ?")
+			.doesNotContain("c.chunk_text AS chunkText", "REGEXP_REPLACE");
+		assertThat(sql.substring(hydration))
+			.contains("c.chunk_text AS chunkText", "FROM ranked_candidates ranked",
+				"ORDER BY ranked.match_score DESC, ranked.match_class, ranked.target_rank, ranked.document_title, ranked.sort_order, ranked.chunk_id");
+	}
+
+	@Test
 	void titleAndTextEvidenceSearchExcludesRetiredAndCandidateVersions() throws Exception {
 		String sql = normalizedSql(parseMapper().getMappedStatement(LawChunkMapper.class.getName()
 			+ ".findSemanticChunksByDocumentTitleAndText"), Map.of(
