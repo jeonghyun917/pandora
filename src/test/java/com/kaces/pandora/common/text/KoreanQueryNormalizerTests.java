@@ -95,6 +95,13 @@ class KoreanQueryNormalizerTests {
 	}
 
 	@Test
+	void directPurchaseScopeDoesNotInheritCatalogContractEvidence() {
+		QuestionIntentProfile scope = QuestionIntentProfile.from("공공기관의 상용소프트웨어 직접구매 대상 사업 기준을 알려줘.");
+		assertThat(scope.directEvidenceGroups()).noneMatch(group -> group.contains("디지털서비스몰") || group.contains("수의계약"));
+		assertThat(scope.focusedKeywords()).contains("상용소프트웨어 직접구매");
+	}
+
+	@Test
 	void buildsSearchPlanWithEmbeddingQueryAndFocusedKeywords() {
 		QuestionSearchPlan plan = QuestionSearchPlan.from("보안성검토 대상 시스템은?");
 
