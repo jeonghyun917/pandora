@@ -598,6 +598,8 @@ public class AnswerQuestionAlignmentVerifier {
 			for (String term : profile.terms()) {
 				String normalized = normalize(term);
 				if (normalized.length() < 2
+					|| (Set.of("효력", "법은", "법률은").contains(normalized) && profile.normalizedQuestion().contains("언제부터효력")
+						&& OfficialCommencementEvidence.isCurrentLookup(profile.normalizedQuestion()))
 					|| classificationFrame.matchesRelationTerm(normalized)
 					|| isSubjectStopTerm(normalized)
 					|| coveredByConditions(normalized, conditionGroups)

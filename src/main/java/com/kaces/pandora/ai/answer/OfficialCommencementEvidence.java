@@ -23,11 +23,23 @@ record OfficialCommencementEvidence(LocalDate effectiveDate, String clause, Stri
 	private static final Pattern WHITESPACE = Pattern.compile("(?U)\\s+");
 	private static final ObjectMapper JSON = new ObjectMapper();
 	private static final Pattern HISTORIC_YEAR = Pattern.compile("[0-9]{4}년");
+	private static final Pattern NAMED_DATE_QUERY = Pattern.compile("^(.{8,120}?)(?:언제부터효력|언제부터시행|시행일)");
 
 	static boolean isCurrentLookup(String normalized) {
 		return (normalized.contains("언제부터효력") || normalized.contains("언제부터시행") || normalized.contains("시행일"))
 			&& List.of("최초", "종전", "과거", "당시", "역대").stream().noneMatch(normalized::contains)
 			&& !HISTORIC_YEAR.matcher(normalized).find();
+	}
+
+	static boolean matchesLookupTitle(String query, String title) {
+		if (title.length() < 4 || !isCurrentLookup(query)) return false;
+		if (query.contains(title)) return true;
+		String ending = "에관한법률";
+		if (!title.endsWith(ending)) return false;
+		String alias = title.substring(0, title.length() - ending.length()).replace("및", "") + "법";
+		var match = NAMED_DATE_QUERY.matcher(query);
+		return alias.length() >= 8 && match.find() && List.of("", "은", "는", "이", "가", "의")
+			.stream().anyMatch(particle -> match.group(1).equals(alias + particle));
 	}
 
 	static Optional<OfficialCommencementEvidence> resolve(

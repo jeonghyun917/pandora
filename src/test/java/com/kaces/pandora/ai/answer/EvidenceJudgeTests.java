@@ -2677,6 +2677,15 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void commencementOwnershipRecognizesConservativeLegalTitleAbbreviation() {
+		var act = chunk(82, "law", "전자문서 및 전자거래에 관한 법률", "제1조(목적)", "전자문서에 관한 사항을 정한다.");
+		assertThat(judge.requiresCommencementOwnership("전자문서 전자거래법은 언제부터 효력이 있나요?", act)).isTrue();
+		assertThat(judge.requiresCommencementOwnership("전자문서 전자거래법 시행령은 언제부터 효력이 있나요?", act)).isFalse();
+		assertThat(judge.requiresCommencementOwnership("전자거래법은 언제부터 효력이 있나요?", act)).isFalse();
+		assertThat(judge.requiresCommencementOwnership("종전 전자문서 전자거래법은 언제부터 효력이 있었나요?", act)).isFalse();
+	}
+
+	@Test
 	void unverifiedSupplementCannotProveCurrentCommencement() {
 		String title = "인공지능 및 데이터 기반 행정 활성화에 관한 법률";
 		var historic = chunk(81, "law", title, "제1조(시행일)",

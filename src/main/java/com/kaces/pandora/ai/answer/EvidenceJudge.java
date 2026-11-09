@@ -3258,7 +3258,7 @@ public class EvidenceJudge {
 		}
 		String query = profile.normalizedQuestion();
 		String title = documentTitleStem(normalize(chunk.title()));
-		return title.length() >= 4 && query.contains(title) && OfficialCommencementEvidence.isCurrentLookup(query);
+		return OfficialCommencementEvidence.matchesLookupTitle(query, title);
 	}
 
 	boolean requiresCommencementOwnership(String question, LawSemanticChunkRow chunk) {

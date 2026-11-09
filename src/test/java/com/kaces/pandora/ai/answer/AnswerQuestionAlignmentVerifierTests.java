@@ -10,6 +10,15 @@ class AnswerQuestionAlignmentVerifierTests {
 	private final AnswerQuestionAlignmentVerifier verifier = new AnswerQuestionAlignmentVerifier();
 
 	@Test
+	void currentEffectQuestionTreatsEffectAsDateRelationNotSubject() {
+		String title = "인공지능 및 데이터 기반 행정 활성화에 관한 법률";
+		String answer = title + " 시행일은 2026년 8월 28일이다.";
+		assertThat(verifier.verify(title + "은 언제부터 효력이 있나요?", claimResult(supported(answer, answer))).aligned()).isTrue();
+		assertThat(verifier.verify("인공지능 데이터 기반 행정 활성화 법은 언제부터 효력이 있어?",
+			claimResult(supported(answer, answer))).aligned()).isTrue();
+	}
+
+	@Test
 	void explicitScoringTableQuestionNeedsSupportedTableCoverage() {
 		String ordinary = "제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법을 기재하여야 한다.";
 		String question = "제안요청서에 기술평가 항목과 상세 배점 기준표는 반드시 기재해야 하나요?";
