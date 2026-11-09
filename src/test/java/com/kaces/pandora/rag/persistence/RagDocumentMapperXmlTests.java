@@ -226,6 +226,24 @@ class RagDocumentMapperXmlTests {
 	}
 
 	@Test
+	void capturedTextSearchBoundsPreparedPostingLookupByTargetAndChunk() throws Exception {
+		MappedStatement statement = parseMapper().getMappedStatement(
+			TEXT_STATEMENT + "Captured");
+		var params = Map.of("documentTypes", List.of("official_doc"),
+			"keywords", List.of("설치"), "limit", 40,
+			"routing", Map.of("documents", Map.of(7L, Map.of("activeGeneration", "active")),
+				"replacedDocumentIds", List.of(7L), "lexicalNamespace", "captured"));
+		String sql = normalizedSql(statement, params);
+		assertThat(statement.getTimeout()).isEqualTo(3);
+		assertThat(sql).contains("FROM rag_document_chunks prepared_chunk CROSS JOIN",
+			"STRAIGHT_JOIN semantic_lexical_terms prepared FORCE INDEX (PRIMARY)",
+			"prepared.target=target_set.target",
+			"prepared_chunk.chunk_id=prepared.chunk_id",
+			"prepared.index_version=?", "prepared_chunk.document_id IN",
+			"SUM(prepared.term_frequency * prepared.field_weight)", "GROUP BY prepared.chunk_id, prepared.term");
+	}
+
+	@Test
 	void migrationFallbackIsIsolatedFromTheIndexedSearchStatement() throws Exception {
 		Configuration configuration = parseMapper();
 		Map<String, Object> parameters = Map.of(

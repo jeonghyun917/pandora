@@ -980,8 +980,13 @@
           <foreach collection="keywords" item="keyword" separator=" UNION ALL ">
             SELECT prepared.chunk_id, prepared.term, SUM(prepared.term_frequency * prepared.field_weight) AS weight,
               #{keyword} AS query_term
-            FROM semantic_lexical_terms prepared
-            JOIN rag_document_chunks prepared_chunk ON prepared_chunk.chunk_id=prepared.chunk_id
+            FROM rag_document_chunks prepared_chunk
+            CROSS JOIN (
+              SELECT 'official_doc' AS target UNION ALL SELECT 'internal_doc' UNION ALL SELECT 'reference_doc'
+            ) target_set
+            <!-- Bind the middle primary-key segment before looking up postings by chunk. -->
+            STRAIGHT_JOIN semantic_lexical_terms prepared FORCE INDEX (PRIMARY)
+              ON prepared.target=target_set.target AND prepared_chunk.chunk_id=prepared.chunk_id
             WHERE prepared.index_version=#{routing.lexicalNamespace}
               AND prepared.target IN ('official_doc','internal_doc','reference_doc')
               AND prepared.term LIKE CONCAT(#{keyword}, '%')
