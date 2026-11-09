@@ -413,7 +413,7 @@ public class ClaimEvidenceMatcher {
 
 	public EvidenceIndex index(List<LawAiAnswerGround> grounds) {
 		return new EvidenceIndex(evidenceSentences(grounds),SourceOwnedConditionalScope.index(grounds),
-			SourceOwnedNumberedDuty.index(grounds));
+			SourceOwnedNumberedDuty.index(grounds), noticeItems(grounds));
 	}
 
 	public Match match(String claim, EvidenceIndex evidenceIndex) {
@@ -431,8 +431,53 @@ public class ClaimEvidenceMatcher {
 			Match owned = matchOrdinary(rule.literal(), evidenceIndex.forGround(rule.owner()));
 			if (owned.status() == Status.SUPPORTED && owned.groundNumber() == rule.owner()) return owned;
 		}
+		for (NoticeItem item : evidenceIndex.noticeItems) {
+			if (noticeKey(claim).equals(item.claimKey())) {
+				return new Match(Status.SUPPORTED, item.owner(), item.literal(), 0, 1.0, 1.0);
+			}
+		}
         return ordinary;
     }
+
+	private static final String NOTICE_CHANGE = "다음 각 호의 어느 하나의 사항을 변경하는 경우에도 이를 알리고 동의를 받아야 한다.";
+	private static final Pattern NOTICE_HEAD = Pattern.compile(
+		"^[①-⑳]\\s+([^.!?]{1,220}?(?:때에는|경우에는)\\s+)다음 각 호의 사항을\\s+([^.!?]{1,100}알려야 한다)\\."
+			+ "(?:\\s+" + Pattern.quote(NOTICE_CHANGE) + ")?$");
+	private static final Pattern NOTICE_ITEM = Pattern.compile("^(\\d{1,2})\\.\\s+([^.!?①-⑳]{1,180})$");
+
+	private static List<NoticeItem> noticeItems(List<LawAiAnswerGround> grounds) {
+		List<NoticeItem> result = new ArrayList<>();
+		for (LawAiAnswerGround ground : grounds == null ? List.<LawAiAnswerGround>of() : grounds) {
+			String source = ground.matchedChildText();
+			if (source == null) continue;
+			var lines = source.lines().map(String::strip).toList();
+			for (int i = 0; i < lines.size(); i++) {
+				var head = NOTICE_HEAD.matcher(lines.get(i));
+				if (!head.matches()) continue;
+				int j = i + 1;
+				if (j < lines.size() && lines.get(j).equals(NOTICE_CHANGE)) j++;
+				List<NoticeItem> pending = new ArrayList<>();
+				while (j < lines.size()) {
+					var item = NOTICE_ITEM.matcher(lines.get(j));
+					if (!item.matches() || Integer.parseInt(item.group(1)) != pending.size() + 1) break;
+					String projection = head.group(1) + item.group(2).strip() + "을 " + head.group(2) + ".";
+					pending.add(new NoticeItem(ground.number(), noticeKey(projection),
+						String.join("\n", lines.subList(i, j + 1))));
+					j++;
+				}
+				if (pending.size() >= 2 && (j == lines.size() || lines.get(j).matches("^[①-⑳]\\s+.*|^제\\d+조(?:의\\d+)?\\s*\\(.*"))) {
+					result.addAll(pending);
+				}
+			}
+		}
+		return List.copyOf(result);
+	}
+
+	private static String noticeKey(String text) {
+		return text == null ? "" : text.strip().replaceAll("\\s+", " ");
+	}
+
+	private record NoticeItem(int owner, String claimKey, String literal) { }
 
     private Match matchOrdinary(String claim,EvidenceIndex evidenceIndex) {
 		List<String> claimTokens = tokenize(claim);
@@ -1872,17 +1917,19 @@ public class ClaimEvidenceMatcher {
 		private final List<EvidenceSentence> sentences;
 		private final List<SourceOwnedConditionalScope.Rule> scopeRules;
 		private final List<SourceOwnedNumberedDuty.Rule> numberedDuties;
+		private final List<NoticeItem> noticeItems;
 
 		private EvidenceIndex(List<EvidenceSentence> sentences,List<SourceOwnedConditionalScope.Rule> scopeRules,
-				List<SourceOwnedNumberedDuty.Rule> numberedDuties) {
+				List<SourceOwnedNumberedDuty.Rule> numberedDuties, List<NoticeItem> noticeItems) {
 			this.sentences = sentences == null ? List.of() : List.copyOf(sentences);
 			this.scopeRules=List.copyOf(scopeRules);
 			this.numberedDuties=List.copyOf(numberedDuties);
+			this.noticeItems=List.copyOf(noticeItems);
 		}
 
 		private EvidenceIndex forGround(int owner) {
 			return new EvidenceIndex(sentences.stream().filter(sentence -> sentence.groundNumber() == owner).toList(),
-				List.of(), List.of());
+				List.of(), List.of(), List.of());
 		}
 	}
 

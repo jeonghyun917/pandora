@@ -9,6 +9,26 @@ class ClaimEvidenceMatcherRelationTests {
 
 	private final ClaimEvidenceMatcher matcher = new ClaimEvidenceMatcher();
 	@Test
+	void conditionalNoticeItemMustComeFromItsOwnNumberedParagraph() {
+		String head = "② 개인정보처리자는 제1항제1호에 따른 동의를 받을 때에는 다음 각 호의 사항을 정보주체에게 알려야 한다.";
+		String item = "1. 개인정보의 수집ㆍ이용 목적";
+		String claim = "개인정보처리자는 제1항제1호에 따른 동의를 받을 때에는 개인정보의 수집ㆍ이용 목적을 정보주체에게 알려야 한다.";
+		var owned = List.of(ground(head + "\n" + item + "\n2. 수집하려는 개인정보의 항목\n③ 개인정보처리자는 기록을 관리한다."));
+		assertThat(matcher.match(claim, owned).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(claim, List.of(ground(head
+			+ " 다음 각 호의 어느 하나의 사항을 변경하는 경우에도 이를 알리고 동의를 받아야 한다."
+			+ "\n" + item + "\n2. 수집하려는 개인정보의 항목"))).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(claim.replace("제1항제1호에 따른 동의를 받을 때에는 ", ""), owned).status())
+			.isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(claim.replace("수집ㆍ이용 목적", "수집ㆍ이용 기간"), owned).status())
+			.isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(claim, List.of(ground(head + "\n③ 다른 조치를 하여야 한다.\n" + item))).status())
+			.isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(claim, List.of(ground(head), ground(item))).status())
+			.isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+	@Test
 	void mandatoryRoutingCannotBeReversedBySubordinateNegation() {
 		String affirmative = "하급기관의 장이 제15조제1항 각 호에 해당하는 정보화사업에 대하여 국가정보원장에게 보안성 검토를 의뢰하고자 할 경우 관계 상급기관의 장을 거쳐 의뢰하여야 한다.";
 		String negative = affirmative.replace("거쳐", "거치지 않고");
