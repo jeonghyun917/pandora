@@ -446,10 +446,19 @@ public class ClaimEvidenceMatcher {
 	private static final Pattern NOTICE_ITEM = Pattern.compile("^(\\d{1,2})\\.\\s+([^.!?①-⑳]{1,180})$");
 
 	private static List<NoticeItem> noticeItems(List<LawAiAnswerGround> grounds) {
+		return grounds == null ? List.of() : grounds.stream()
+			.flatMap(ground -> noticeItems(ground.number(), ground.matchedChildText()).stream()).toList();
+	}
+
+	static boolean hasCollectionConsentNotice(String source) {
+		return noticeItems(0, source).stream().anyMatch(item ->
+			KoreanQueryNormalizer.normalizeForMatch(item.itemText().replace("ㆍ", "·"))
+				.equals("개인정보의수집이용목적"));
+	}
+
+	private static List<NoticeItem> noticeItems(int owner, String source) {
+		if (source == null) return List.of();
 		List<NoticeItem> result = new ArrayList<>();
-		for (LawAiAnswerGround ground : grounds == null ? List.<LawAiAnswerGround>of() : grounds) {
-			String source = ground.matchedChildText();
-			if (source == null) continue;
 			var lines = source.lines().map(String::strip).toList();
 			for (int i = 0; i < lines.size(); i++) {
 				var head = NOTICE_HEAD.matcher(lines.get(i));
@@ -461,15 +470,14 @@ public class ClaimEvidenceMatcher {
 					var item = NOTICE_ITEM.matcher(lines.get(j));
 					if (!item.matches() || Integer.parseInt(item.group(1)) != pending.size() + 1) break;
 					String projection = head.group(1) + item.group(2).strip() + "을 " + head.group(2) + ".";
-					pending.add(new NoticeItem(ground.number(), noticeKey(projection),
-						String.join("\n", lines.subList(i, j + 1))));
+					pending.add(new NoticeItem(owner, noticeKey(projection),
+						String.join("\n", lines.subList(i, j + 1)), item.group(2).strip()));
 					j++;
 				}
 				if (pending.size() >= 2 && (j == lines.size() || lines.get(j).matches("^[①-⑳]\\s+.*|^제\\d+조(?:의\\d+)?\\s*\\(.*"))) {
 					result.addAll(pending);
 				}
 			}
-		}
 		return List.copyOf(result);
 	}
 
@@ -477,7 +485,7 @@ public class ClaimEvidenceMatcher {
 		return text == null ? "" : text.strip().replaceAll("\\s+", " ");
 	}
 
-	private record NoticeItem(int owner, String claimKey, String literal) { }
+	private record NoticeItem(int owner, String claimKey, String literal, String itemText) { }
 
     private Match matchOrdinary(String claim,EvidenceIndex evidenceIndex) {
 		List<String> claimTokens = tokenize(claim);

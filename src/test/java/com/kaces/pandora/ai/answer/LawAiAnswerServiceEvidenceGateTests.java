@@ -512,6 +512,31 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void conditionalCollectionNoticeSurvivesGenericProcedurePreservationCap() throws Exception {
+		String question = "개인정보 수집 이용 동의 받을 때 무엇을 알려야 해?";
+		String head = "② 개인정보처리자는 제1항제1호에 따른 동의를 받을 때에는 다음 각 호의 사항을 정보주체에게 알려야 한다.";
+		var applicable = chunk(81009L, "law", "개인정보 보호법", "수집ㆍ이용",
+			head + "\n1. 개인정보의 수집ㆍ이용 목적\n2. 수집하려는 개인정보의 항목\n③ 기록을 관리한다.");
+		var otherScope = chunk(81008L, "law", "개인정보 보호법", "목적 외 제공",
+			head + "\n1. 개인정보를 제공받는 자\n2. 제공받는 자의 이용 목적\n③ 기록을 관리한다.");
+		var judgedRows = new java.util.ArrayList<LawSemanticChunkRow>();
+		for (int i = 0; i < 6; i++) judgedRows.add(chunk(81100L+i, "official_doc", "안내 자료", "관련 사항",
+			"개인정보를 안전하게 관리하기 위하여 관리 책임자는 보유 정보를 정기적으로 점검하여야 한다."));
+		judgedRows.add(otherScope);
+		judgedRows.add(applicable);
+		var candidates = new java.util.ArrayList<>(judgedRows);
+		for (int i = 0; i < 3; i++) candidates.add(chunk(81200L+i, "official_doc", "개인정보 처리 통합 안내서", "절차",
+			"개인정보 수집 동의 신청을 검토하고 동의를 거부할 권리와 처리 절차를 안내한다."));
+		var judged = new EvidenceJudge.Result(judgedRows, Map.of(), true, true, true, true, 8, 8, 8, "direct");
+		var service = service();
+		try {
+			assertThat(intentDirectEvidenceChunks(service,candidates,question)).isNotEmpty();
+			var kept=preserveIntentDirectEvidenceChunks(service, judged, candidates, question).chunks();
+			assertThat(kept).hasSize(8).contains(applicable);
+		} finally {service.shutdownExecutors();}
+	}
+
+	@Test
 	void scopedProcedureSelectionPreservesLiteralClosedArticleAfterLongPrefix() throws Exception {
 		var scope = new LawSemanticChunkRow(13401L, 10L, "official_doc", "10", "공공소프트웨어사업 과업심의 가이드",
 			"", "", "20260101", "CURRENT", "5", "적용 대상 사업",

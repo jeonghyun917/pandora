@@ -5580,6 +5580,16 @@ public class LawAiAnswerService {
 		}
 		LinkedHashMap<String, LawSemanticChunkRow> merged = new LinkedHashMap<>();
 		Set<String> anchoredRuleKeys = new LinkedHashSet<>();
+		String noticeQuery = normalizeForMatch(query);
+		if (!restrictToConfiguredPolicyChunks && noticeQuery.contains("수집") && noticeQuery.contains("이용")
+			&& noticeQuery.contains("동의") && containsAny(noticeQuery, "알려", "고지")
+			&& !containsAny(noticeQuery, "목적외", "제3자")) {
+			judgedEvidence.chunks().stream()
+				.filter(chunk -> "law".equals(chunk.target()) && "CURRENT".equals(chunk.effectiveStatus()))
+				.filter(chunk -> hasUsefulText(chunk) && !isForcedExcludedAnswerContextChunk(chunk, query))
+				.filter(chunk -> ClaimEvidenceMatcher.hasCollectionConsentNotice(chunk.chunkText()))
+				.findFirst().ifPresent(chunk -> merged.put(scoreKey(chunk.target(), chunk.chunkId()), chunk));
+		}
 		boolean scopeAnchoredReview = judgedEvidence.directEvidenceCount() > 0
 			&& isProjectReviewScopeQuestion(normalizeForMatch(query), queryTerms(query))
 			&& judgedEvidence.chunks().stream().anyMatch(EvidenceJudge::isNationalSoftwareReviewScope);
