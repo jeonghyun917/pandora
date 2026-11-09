@@ -60,6 +60,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -119,6 +120,10 @@ public class LawAiAnswerService {
 		"산림청", "특허청", "기상청", "소방청"
 	);
 	private static final int PARENT_CONTEXT_WINDOW = 18;
+	private static final Pattern PRE_AWARD_APPLICATION = Pattern.compile(
+		"발주(?:하기|일)?(?:최소|적어도)?[0-9]{1,4}(?:영업일|일|주|개월|달)(?:이전|전)(?:까지|에)?"
+			+ "(?:사전협의(?:를)?)?신청(?!취소|철회|결과|통보|접수)"
+	);
 	private static final int LAW_TITLE_KEYWORD_FETCH_LIMIT = 20;
 	private static final int LAW_TEXT_KEYWORD_FETCH_LIMIT = 100;
 	private static final int JUDGE_CANDIDATE_LIMIT = 30;
@@ -7853,9 +7858,11 @@ public class LawAiAnswerService {
 		return text.contains("사전협의") && !text.contains("자치분권")
 			&& containsAny(text, "정보화사업", "정보시스템", "전자정부", "문화정보화")
 			&& body.contains("발주")
-			&& containsAny(body, "발주전", "발주이전", "발주하기")
-			&& containsAny(body, "이전", "발주전")
-			&& containsAny(body, "사전협의", "신청");
+			&& ((containsAny(body, "발주전", "발주이전", "발주하기")
+				&& containsAny(body, "이전", "발주전")
+				&& containsAny(body, "사전협의", "신청"))
+				|| nullToEmpty(chunk.chunkText()).lines().map(this::normalizeForMatch)
+					.anyMatch(line -> PRE_AWARD_APPLICATION.matcher(line).find()));
 	}
 
 	private List<String> preConsultationTimingAgencies(String normalizedQuery) {
@@ -8466,7 +8473,7 @@ public class LawAiAnswerService {
 					"사전협의 안내서",
 					"전자정부 성과관리 지침"
 				),
-				timing ? List.of("발주 이전", "발주 전", "발주하기", "사전협의 신청") : List.of(
+				timing ? List.of("발주 이전", "발주 전", "발주하기", "사업발주", "사전협의 신청") : List.of(
 					"사전협의의 대상사업",
 					"사전협의 대상사업",
 					"대상기관이 추진하는 모든 정보화사업",

@@ -2104,6 +2104,26 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void keepsNumericPreAwardApplicationWithoutBorrowingAnotherDeadline() throws Exception {
+		String title = "정보화사업 사전협의 안내서";
+		var application = chunk(1L, "official_doc", title, "신청 방법",
+			"사전협의 신청: 사업발주 45일 전 신청", 8);
+		var notice = chunk(2L, "official_doc", title, "결과 통보",
+			"사전협의 신청을 받은 날부터 45일 이내에 결과를 통보한다.", 9);
+		var unrelated = chunk(3L, "official_doc", title, "참가 신청",
+			"사업발주 45일 전 입찰 참가를 신청한다. 사전협의 자료는 별첨을 참고한다.", 10);
+		var overview = chunk(4L, "official_doc", title, "개요",
+			"정보화사업 발주 이전 단계에서 사전협의를 진행한다.", 2);
+		LawAiAnswerService service = service();
+		try {
+			assertThat(filterByQuestionIntent(service, List.of(notice, unrelated, overview, application),
+				"정보화사업 사전협의 신청은 언제 해야 하나요?")).containsExactly(overview, application);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void bindsNamedMinistryTimingToItsGuideRatherThanMentionsInOtherSources() throws Exception {
 		var named = chunk(1L, "official_doc", "문화체육관광부 정보화사업 사전협의 안내서", "신청 방법",
 			"정보화사업 사전협의는 발주 전에 신청하며 신청 서류를 제출한다.", 8);
