@@ -389,6 +389,25 @@ class LawAiAnswerServiceEvidenceGateTests {
         } finally {service.shutdownExecutors();}
     }
 
+    @Test void pseudonymStorageLookupUsesTheDecreeTitleBeforeBroadLawScan() throws Exception {
+        var provision=chunk(99113L,"law","개인정보 보호법 시행령","가명정보에 대한 안전성 확보조치",
+            "추가정보는 가명정보와 분리하여 저장하고, 추가정보가 불필요하게 된 경우에는 파기하여야 한다.");
+        var broad=new java.util.concurrent.atomic.AtomicInteger();
+        var law=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),new Class<?>[]{LawChunkMapper.class},
+            (proxy,method,args)->{
+                if(method.getName().equals("findSemanticChunksByDocumentTitleAndText") && ((List<?>)args[1]).contains("개인정보 보호법 시행령")
+                    && ((List<?>)args[2]).containsAll(List.of("추가정보","분리하여 저장","파기하여야"))) return List.of(provision);
+                if(method.getName().equals("findSemanticChunksByText")) broad.incrementAndGet();
+                return List.of();
+            });
+        var service=service(law,null);
+        try {
+            assertThat(findLexicalChunks(service,QuestionSearchPlan.from("가명정보 처리 안내서에서 추가정보 분리 보관과 파기를 어떻게 설명하나요?"),
+                List.of("law"),false)).contains(provision);
+            assertThat(broad.get()).isZero();
+        } finally { service.shutdownExecutors(); }
+    }
+
     @Test void publicPlaceCameraExceptionUsesSpacedLawTitleBeforeBroadLawScan() throws Exception {
         var provision=chunk(99112L,"law","개인정보 보호법","고정형 영상정보처리기기 설치 제한",
             "공개된 장소에 고정형 영상정보처리기기를 설치·운영하여서는 아니 된다. 법령에서 구체적으로 허용하는 경우는 제외한다.");
