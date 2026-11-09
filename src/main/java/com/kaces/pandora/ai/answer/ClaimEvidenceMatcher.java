@@ -228,6 +228,16 @@ public class ClaimEvidenceMatcher {
 			+ "(?=[.!?\\s]|$)",
 		Pattern.CASE_INSENSITIVE
 	);
+	private static final Pattern SUBORDINATE_ROUTE = Pattern.compile(
+		"(?:을|를)\\s+거(쳐|치지\\s+않고)(?=\\s|[,.!?]|$)"
+	);
+
+	private static int routePolarity(String text) {
+		int polarity = 0;
+		var routes = SUBORDINATE_ROUTE.matcher(text);
+		while (routes.find()) polarity |= routes.group(1).equals("쳐") ? 1 : 2;
+		return polarity;
+	}
 	private static final Pattern PLANNED_PREDICATE_ACTION = Pattern.compile(
 		"(?:^|\\s)([\\p{IsHangul}a-z0-9]{1,}?)(?:을|를)?\\s*"
 			+ "(?:할\\s*)?(?:예정|계획)(?:입니다|이다|임|(?=[.!?]|$))(?=[.!?\\s]|$)",
@@ -442,7 +452,13 @@ public class ClaimEvidenceMatcher {
 
 		List<Candidate> supported = new ArrayList<>();
 		List<Candidate> contradicted = new ArrayList<>();
+		int claimRoutePolarity = routePolarity(claim);
 		for (EvidenceSentence sentence : sentences) {
+			int sourceRoutePolarity = routePolarity(sentence.text());
+			if (((claimRoutePolarity | sourceRoutePolarity) & 2) != 0
+				&& claimRoutePolarity != sourceRoutePolarity) {
+				continue;
+			}
 			if (sentence.sourceLinkedDuty() != null
 				&& !preservesSourceLinkedDutySlots(claim, sentence.sourceLinkedDuty())) {
 				continue;

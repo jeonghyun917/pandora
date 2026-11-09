@@ -9,6 +9,15 @@ class ClaimEvidenceMatcherRelationTests {
 
 	private final ClaimEvidenceMatcher matcher = new ClaimEvidenceMatcher();
 	@Test
+	void mandatoryRoutingCannotBeReversedBySubordinateNegation() {
+		String affirmative = "하급기관의 장이 제15조제1항 각 호에 해당하는 정보화사업에 대하여 국가정보원장에게 보안성 검토를 의뢰하고자 할 경우 관계 상급기관의 장을 거쳐 의뢰하여야 한다.";
+		String negative = affirmative.replace("거쳐", "거치지 않고");
+		assertThat(matcher.match(affirmative, List.of(ground(affirmative))).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(negative, List.of(ground(negative))).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(negative, List.of(ground(affirmative))).status()).isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(affirmative, List.of(ground(negative))).status()).isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+	@Test
 	void permittedActionMustRetainItsExplicitCompletionLimit() {
 		String source = "조치가 완료될 때까지 정보시스템의 운용을 일시 제한할 수 있다.";
 		var grounds = List.of(ground(source));
