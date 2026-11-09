@@ -18,6 +18,14 @@ public final class RetrievalTraceCollector {
 		this.limit = Math.max(1, Math.min(limit, 100));
 	}
 
+	// Reserve storage without inventing a source rank or stage transition.
+	void reserve(String candidateKey, String target, long chunkId) {
+		MutableTrace reserved = trace(candidateKey, target, chunkId, 0);
+		if (reserved != null) {
+			reserved.reserved = true;
+		}
+	}
+
 	public void source(
 		String candidateKey,
 		String target,
@@ -165,6 +173,7 @@ public final class RetrievalTraceCollector {
 		private final List<String> reasonCodes = new ArrayList<>();
 		private String firstLossStage;
 		private boolean selected;
+		private boolean reserved;
 
 		private MutableTrace(String candidateKey, String target, long chunkId) {
 			this.candidateKey = candidateKey;
@@ -177,7 +186,7 @@ public final class RetrievalTraceCollector {
 		}
 
 		private boolean canEvict() {
-			return enteredStages.isEmpty() && firstLossStage == null && !selected;
+			return !reserved && enteredStages.isEmpty() && firstLossStage == null && !selected;
 		}
 
 		private RetrievalCandidateTrace immutable() {

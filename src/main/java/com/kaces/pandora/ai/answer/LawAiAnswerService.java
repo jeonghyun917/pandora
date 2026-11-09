@@ -2686,6 +2686,9 @@ public class LawAiAnswerService {
 
 	private List<RetrievalCandidateTrace> buildCandidateTraces(RetrievalResult retrieval) {
 		RetrievalTraceCollector collector = new RetrievalTraceCollector(100);
+		for (LawSemanticChunkRow chunk : retrieval.judgeCandidateChunks()) {
+			collector.reserve(scoreKey(chunk.target(), chunk.chunkId()), chunk.target(), chunk.chunkId());
+		}
 		for (QdrantSearchHit hit : retrieval.qdrantHits()) {
 			collector.source(
 				scoreKey(hit.target(), hit.chunkId()), hit.target(), hit.chunkId(),

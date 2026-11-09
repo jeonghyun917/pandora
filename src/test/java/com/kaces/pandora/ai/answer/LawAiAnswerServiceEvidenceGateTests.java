@@ -3417,6 +3417,38 @@ class LawAiAnswerServiceEvidenceGateTests {
 		return service(null);
 	}
 
+	@Test
+	void boundedTraceKeepsEveryJudgeEntrantEvenAfterTheSourceWindowFills() throws Exception {
+		var service = service();
+		var source = java.util.stream.LongStream.rangeClosed(1, 130)
+			.mapToObj(id -> chunk(id, "law", "근거 문서", "조문", "조문 본문"))
+			.toList();
+		var judgePool = source.subList(100, 130);
+		var accepted = judgePool.subList(0, 1);
+		var hybridClass = Class.forName(LawAiAnswerService.class.getName() + "$HybridRetrieval");
+		var empty = hybridClass.getDeclaredMethod("empty");
+		empty.setAccessible(true);
+		var resultClass = Class.forName(LawAiAnswerService.class.getName() + "$RetrievalResult");
+		var constructor = resultClass.getDeclaredConstructors()[0];
+		constructor.setAccessible(true);
+		var result = constructor.newInstance("OK", "law", "query", List.of("law"), List.of(), List.of(),
+			List.of(), source, judgePool, judgePool, judgePool, judgePool, accepted, accepted,
+			Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), List.of(), "OK", 30, 30, 1, Map.of(),
+			"direct", empty.invoke(null));
+		var build = LawAiAnswerService.class.getDeclaredMethod("buildCandidateTraces", resultClass);
+		build.setAccessible(true);
+		@SuppressWarnings("unchecked")
+		var traces = (List<RetrievalCandidateTrace>) build.invoke(service, result);
+		assertThat(traces).hasSize(100);
+		assertThat(traces.stream().filter(trace -> trace.enteredStages().contains("judgeCandidates")))
+			.extracting(RetrievalCandidateTrace::chunkId)
+			.containsExactlyInAnyOrderElementsOf(judgePool.stream().map(LawSemanticChunkRow::chunkId).toList());
+		assertThat(traces.stream().filter(trace -> trace.chunkId() == 130L).findFirst()).hasValueSatisfying(trace -> {
+			assertThat(trace.sourceRanks()).containsEntry("keyword", 130);
+			assertThat(trace.firstLossStage()).isEqualTo("judge");
+		});
+	}
+
 	private LawAiAnswerService service(LawChunkMapper lawChunkMapper) {
 		return service(lawChunkMapper, null);
 	}
