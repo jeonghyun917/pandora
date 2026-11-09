@@ -10155,7 +10155,8 @@ public class LawAiAnswerService {
 			return false;
 		}
 		String keyword = value.trim();
-		return (keyword.matches("[가-힣ㆍ·]{4,40}법") && !keyword.endsWith("방법"))
+		String compactTitle = keyword.replace(" ", "");
+		return (compactTitle.matches("[가-힣ㆍ·]{4,40}법") && !compactTitle.endsWith("방법"))
             || keyword.contains("\uBC95\uB960")
 			|| keyword.contains("\uC2DC\uD589\uB839")
 			|| keyword.contains("\uC2DC\uD589\uADDC\uCE59")

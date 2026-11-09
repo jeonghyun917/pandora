@@ -389,6 +389,25 @@ class LawAiAnswerServiceEvidenceGateTests {
         } finally {service.shutdownExecutors();}
     }
 
+    @Test void publicPlaceCameraExceptionUsesSpacedLawTitleBeforeBroadLawScan() throws Exception {
+        var provision=chunk(99112L,"law","개인정보 보호법","고정형 영상정보처리기기 설치 제한",
+            "공개된 장소에 고정형 영상정보처리기기를 설치·운영하여서는 아니 된다. 법령에서 구체적으로 허용하는 경우는 제외한다.");
+        var broad=new java.util.concurrent.atomic.AtomicInteger();
+        var law=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),new Class<?>[]{LawChunkMapper.class},
+            (proxy,method,args)->{
+                if(method.getName().equals("findSemanticChunksByDocumentTitleAndText") && ((List<?>)args[1]).contains("개인정보 보호법")
+                    && ((List<?>)args[2]).contains("고정형 영상정보처리기기를 설치")) return List.of(provision);
+                if(method.getName().equals("findSemanticChunksByText")) broad.incrementAndGet();
+                return List.of();
+            });
+        var service=service(law,null);
+        try {
+            assertThat(findLexicalChunks(service,QuestionSearchPlan.from("CCTV 안내서에서 공개된 장소의 설치 예외는 무엇인가요?"),
+                List.of("law"),false)).contains(provision);
+            assertThat(broad.get()).isZero();
+        } finally { service.shutdownExecutors(); }
+    }
+
     @Test void commercialDirectPurchaseUsesApplicableTitleAndLiteralBodyTermsBeforeBroadScan() throws Exception {
         String title="소프트웨어사업 계약 및 관리감독에 관한 지침";
         var scope=chunk(99106L,"admrul",title,"상용소프트웨어 직접구매 대상",
