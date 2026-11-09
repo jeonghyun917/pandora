@@ -2083,6 +2083,47 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void keepsPreConsultationTimingEvidenceWhenScopeAndUnrelatedDeadlinesCompete() throws Exception {
+		String title = "정보화사업 사전협의 안내서";
+		var scope = chunk(1L, "official_doc", title, "대상 사업",
+			"사전협의의 대상사업은 대상기관이 추진하는 모든 정보화사업이다.", 2);
+		var timing = chunk(2L, "official_doc", title, "사전협의 신청",
+			"정보화사업 사전협의는 사업을 발주하기 최소 30일 이전에 신청한다. 단 ISP는 신청과 동시에 사전규격공개가 가능하다.", 8);
+		var other = chunk(3L, "official_doc", title, "입찰 참가",
+			"입찰 참가 신청서는 입찰 마감일 10일 이전까지 제출한다.", 10);
+		LawAiAnswerService service = service();
+		try {
+			var candidates = List.of(scope, other, timing);
+			assertThat(filterByQuestionIntent(service, candidates, "정보화사업 사전협의 신청은 발주 전에 언제 해야 하나요?"))
+				.containsExactly(timing);
+			assertThat(filterByQuestionIntent(service, candidates, "정보화사업 사전협의 대상 사업은 무엇인가요?"))
+				.containsExactly(scope);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void bindsNamedMinistryTimingToItsGuideRatherThanMentionsInOtherSources() throws Exception {
+		var named = chunk(1L, "official_doc", "문화체육관광부 정보화사업 사전협의 안내서", "신청 방법",
+			"정보화사업 사전협의는 발주 전에 신청하며 신청 서류를 제출한다.", 8);
+		var other = chunk(2L, "official_doc", "행정안전부 정보화사업 사전협의 안내서", "신청 방법",
+			"정보화사업 사전협의는 발주 전에 신청한다. 문화체육관광부 안내서도 참고한다.", 8);
+		var general = chunk(3L, "official_doc", "정보화사업 사전협의 안내서", "신청 방법",
+			"정보화사업 사전협의는 발주 전에 신청한다.", 8);
+		LawAiAnswerService service = service();
+		try {
+			String question = "문체부 정보화사업 사전협의는 어느 단계에 신청하나요?";
+			assertThat(filterByQuestionIntent(service, List.of(other, general, named), question)).containsExactly(named);
+			assertThat(filterByQuestionIntent(service, List.of(other, general), question)).isEmpty();
+			assertThat(filterByQuestionIntent(service, List.of(general), "정보화사업 사전협의는 어느 단계에 신청하나요?"))
+				.containsExactly(general);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void filtersAutonomyPreConsultationAwayFromInformationSystemNoise() throws Exception {
 		String question = "자치분권 사전협의 대상기관은 어디야?";
 		LawSemanticChunkRow informationSystemNoise = chunk(

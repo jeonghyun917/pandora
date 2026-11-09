@@ -6573,6 +6573,14 @@ public class LawAiAnswerService {
 			}
 		}
 		if (isInformationSystemPreConsultationQuestion(normalizedQuery)) {
+			if (isInformationSystemPreConsultationTimingQuestion(normalizedQuery)) {
+				List<String> agencies = preConsultationTimingAgencies(normalizedQuery);
+				List<LawSemanticChunkRow> timing = candidates.stream()
+					.filter(this::isInformationSystemPreConsultationTimingEvidence)
+					.filter(chunk -> matchesPreConsultationTimingAgency(chunk, agencies))
+					.toList();
+				return timing.isEmpty() && agencies.isEmpty() ? filterByCoreConceptIfUseful(candidates, query) : timing;
+			}
 			List<LawSemanticChunkRow> filtered = candidates.stream()
 				.filter(this::isInformationSystemPreConsultationTargetEvidence)
 				.sorted(Comparator.comparingDouble(this::informationSystemPreConsultationEvidencePriority).reversed())
@@ -7834,6 +7842,39 @@ public class LawAiAnswerService {
 		return informationSystemContext && targetScope && !formOrExampleNoise;
 	}
 
+	private boolean isInformationSystemPreConsultationTimingQuestion(String query) {
+		return !containsAny(query, "제외", "면제", "생략", "미준수", "위반")
+			&& containsAny(query, "언제", "시점", "시기", "며칠전", "몇일전", "어느단계", "언제까지");
+	}
+
+	private boolean isInformationSystemPreConsultationTimingEvidence(LawSemanticChunkRow chunk) {
+		String body = normalizeForMatch(chunk.chunkText());
+		String text = normalizedChunkEvidenceText(chunk);
+		return text.contains("사전협의") && !text.contains("자치분권")
+			&& containsAny(text, "정보화사업", "정보시스템", "전자정부", "문화정보화")
+			&& body.contains("발주")
+			&& containsAny(body, "발주전", "발주이전", "발주하기")
+			&& containsAny(body, "이전", "발주전")
+			&& containsAny(body, "사전협의", "신청");
+	}
+
+	private List<String> preConsultationTimingAgencies(String normalizedQuery) {
+		return TRUSTED_DOCUMENT_AGENCY_PREFIXES.stream().filter(normalizedQuery::contains).toList();
+	}
+
+	private boolean matchesPreConsultationTimingAgency(LawSemanticChunkRow chunk, List<String> agencies) {
+		if (agencies.isEmpty()) {
+			return true;
+		}
+		String source = normalizeForMatch(nullToEmpty(chunk.title()) + " " + nullToEmpty(chunk.agencyName()));
+		return agencies.stream().anyMatch(agency -> source.contains(agency) || source.contains(switch (agency) {
+			case "문체부" -> "문화체육관광부";
+			case "행안부" -> "행정안전부";
+			case "과기정통부" -> "과학기술정보통신부";
+			default -> agency;
+		}));
+	}
+
 	private boolean isOfficialGuidePreConsultationEvidence(LawSemanticChunkRow chunk) {
 		if (chunk == null || !"official_doc".equals(chunk.target())) {
 			return false;
@@ -8415,6 +8456,8 @@ public class LawAiAnswerService {
 			, routing));
 		}
 		if (!projectReviewPreConsultationRelationQuestion && isInformationSystemPreConsultationQuestion(normalizedQuery)) {
+			boolean timing = isInformationSystemPreConsultationTimingQuestion(normalizedQuery);
+			List<String> timingAgencies = timing ? preConsultationTimingAgencies(normalizedQuery) : List.of();
 			chunks.addAll(findRagChunksByDocumentTitleAndHintsThenFilter(
 				ragTargets,
 				List.of(
@@ -8423,7 +8466,7 @@ public class LawAiAnswerService {
 					"사전협의 안내서",
 					"전자정부 성과관리 지침"
 				),
-				List.of(
+				timing ? List.of("발주 이전", "발주 전", "발주하기", "사전협의 신청") : List.of(
 					"사전협의의 대상사업",
 					"사전협의 대상사업",
 					"대상기관이 추진하는 모든 정보화사업",
@@ -8432,7 +8475,8 @@ public class LawAiAnswerService {
 					"중앙·공공기관",
 					"중앙 공공기관"
 				),
-				this::isInformationSystemPreConsultationTargetEvidence,
+				timing ? chunk -> isInformationSystemPreConsultationTimingEvidence(chunk)
+					&& matchesPreConsultationTimingAgency(chunk, timingAgencies) : this::isInformationSystemPreConsultationTargetEvidence,
 				FOCUSED_RAG_KEYWORD_FETCH_LIMIT
 			, routing));
 		}
