@@ -8648,7 +8648,7 @@ public class LawAiAnswerService {
 					this::isPublicDataStandardizationScopeEvidence,
 					FOCUSED_RAG_KEYWORD_FETCH_LIMIT
 				, routing));
-			} else {
+			} else if (isPublicDataQualityDiagnosisQuestion(normalizedQuery)) {
 				chunks.addAll(findRagChunksByDocumentTitleAndHintsThenFilter(
 					ragTargets,
 					List.of("공공데이터베이스 표준화 관리 매뉴얼"),
@@ -9118,7 +9118,8 @@ public class LawAiAnswerService {
 			, routing));
 			focusedLookup = true;
 		}
-		if (isPublicDataStandardizationQuestion(normalizedQuery) && !ragTargets.isEmpty()) {
+		if (isPublicDataStandardizationQuestion(normalizedQuery)
+			&& isPublicDataQualityDiagnosisQuestion(normalizedQuery) && !ragTargets.isEmpty()) {
 			List<String> publicDataStandardizationTitles = List.of("공공데이터베이스 표준화 관리 매뉴얼");
 			List<LawSemanticChunkRow> fastPublicDataStandardizationChunks = findRagChunksByDocumentTitleAndHintsThenFilter(
 				ragTargets,

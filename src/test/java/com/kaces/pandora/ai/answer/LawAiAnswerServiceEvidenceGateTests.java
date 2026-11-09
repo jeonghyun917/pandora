@@ -1819,6 +1819,30 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void standardizationDutiesDoNotShortCircuitOnDiagnosisCounts() throws Exception {
+		var diagnosis = chunk(3001L, "official_doc", "공공데이터베이스 표준화 관리 매뉴얼",
+			"예방적 품질관리 진단", "공공데이터베이스 예방적 품질관리 진단은 4개 영역, 9개 항목, 18개 진단기준으로 구성한다.", 40);
+		var duty = chunk(3002L, "official_doc", "공공데이터베이스 표준화 실무 안내",
+			"데이터 표준 적용", "공공기관은 데이터베이스 구축 시 기관 데이터 표준을 적용하여야 한다.", 10);
+		RagDocumentMapper mapper = (RagDocumentMapper) java.lang.reflect.Proxy.newProxyInstance(
+			RagDocumentMapper.class.getClassLoader(), new Class<?>[]{RagDocumentMapper.class}, (proxy, method, args) -> {
+				if (method.getName().equals("findSemanticChunksByText")) return List.of(duty);
+				if (args != null && args.length >= 3 && args[2] instanceof List<?> hints
+					&& hints.contains("4개의 진단영역")) return List.of(diagnosis);
+				return List.of();
+			});
+		var service = service(null, mapper);
+		try {
+			assertThat(findLexicalChunks(service, QuestionSearchPlan.from("공공데이터베이스 표준화 업무는 무엇을 해야 하나요?"),
+				List.of("official_doc"), false)).contains(duty).doesNotContain(diagnosis);
+			assertThat(findLexicalChunks(service, QuestionSearchPlan.from("공공데이터베이스 표준화 매뉴얼의 품질관리 진단 항목은 몇 개인가요?"),
+				List.of("official_doc"), false)).contains(diagnosis);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void prefersPublicDataDiagnosisFullCountPageOverAdjacentOverview() throws Exception {
 		String question = "공공데이터포털 표준화 매뉴얼의 예방적 품질관리 진단 항목은 어떻게 구성돼?";
 		LawSemanticChunkRow overview = chunk(
