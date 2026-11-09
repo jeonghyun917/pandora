@@ -19,6 +19,10 @@ import org.springframework.stereotype.Component;
 public class EvidenceJudge {
 
 	private static final int MIN_RELEVANT_RESULTS = 2;
+	private static final java.util.regex.Pattern CATALOG_CONTRACT_CLAUSE = java.util.regex.Pattern.compile(
+		"제\\s*\\d+\\s*조\\s*\\(계약체결\\)\\s*([^.]{1,400}+)\\.");
+	private static final java.util.regex.Pattern CATALOG_REQUISITION_CLAUSE = java.util.regex.Pattern.compile(
+		"제\\s*\\d+\\s*조\\s*\\(납품요구\\)\\s*①\\s*([^.]{1,400}+)\\.");
 	private static final int UI_NAVIGATION_EXCLUSION_WINDOW = 16;
 	private static final java.util.regex.Pattern SOFTWARE_CONFIRMATION_REVIEW_DUTY = java.util.regex.Pattern.compile(
 		"^(?:[①-⑳])?국가기관등의장은(?:영제\\d+조(?:의\\d+)?(?:제\\d+항)?(?:제\\d+호)?에(?:따라|따른))?과업내용을확정하기위하여"
@@ -109,6 +113,7 @@ public class EvidenceJudge {
 			: conceptEvidenceRequired ? relevantChunks
 			: useRelevantOnly ? relevantChunks : topicAlignedChunks.isEmpty() ? judgedChunks : topicAlignedChunks;
 		selectedChunks = withScopeAnchoredReviewRule(profile, selectedChunks, judgedChunks, requestedLimit);
+		selectedChunks = withCatalogRequisitionSupport(profile, selectedChunks, judgedChunks, requestedLimit);
 		selectedChunks = preferSecurityReviewGuideEvidence(profile, selectedChunks);
 		selectedChunks = preferCommitteeExpansion(profile, selectedChunks);
 		String selectionPolicy = selectionPolicy(
@@ -138,6 +143,46 @@ public class EvidenceJudge {
 			directEvidenceChunks.size(),
 			selectionPolicy
 		);
+	}
+
+	private List<JudgedChunk> withCatalogRequisitionSupport(
+		EvidenceQuestionProfile profile, List<JudgedChunk> selected, List<JudgedChunk> candidates, int limit
+	) {
+		String query = profile.normalizedQuestion();
+		if (selected.size() >= limit || !isProcurementContractMethodQuestion(query)
+			|| !containsAny(query, List.of("디지털카탈로그", "디지털카달로그", "디지털서비스몰"))) {
+			return selected;
+		}
+		for (JudgedChunk anchor : selected) {
+			var source = anchor.chunk();
+			String contract = catalogClause(source, CATALOG_CONTRACT_CLAUSE);
+			if (!anchor.directEvidence() || !"admrul".equals(source.target())
+				|| !normalize(source.title()).contains("디지털서비스카탈로그계약")
+				|| !contract.startsWith("계약담당공무원은") || !contract.endsWith("수의계약을체결할수있다")) {
+				continue;
+			}
+			for (JudgedChunk candidate : candidates) {
+				var row = candidate.chunk();
+				if (candidate.directEvidence() || selected.contains(candidate) || !source.target().equals(row.target())
+					|| !java.util.Objects.equals(source.documentId(), row.documentId())
+					|| !java.util.Objects.equals(source.chunkVersion(), row.chunkVersion())) {
+					continue;
+				}
+				String clause = catalogClause(row, CATALOG_REQUISITION_CLAUSE);
+				if (clause.contains("디지털서비스몰에등록된계약품목")
+					&& clause.contains("수요기관의장이계약담당공무원의승인을거쳐나라장터를통하여계약상대자에게납품을요구하도록하여야한다")) {
+					var supplemented = new ArrayList<>(selected);
+					supplemented.add(candidate);
+					return supplemented;
+				}
+			}
+		}
+		return selected;
+	}
+
+	private static String catalogClause(LawSemanticChunkRow row, java.util.regex.Pattern pattern) {
+		var matcher = pattern.matcher(row.chunkText() == null ? "" : row.chunkText());
+		return matcher.find() ? normalize(matcher.group(1)) : "";
 	}
 
 	private List<JudgedChunk> withScopeAnchoredReviewRule(

@@ -1937,6 +1937,26 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void preservesAnApprovedCatalogRequisitionOnlyAsSameSourceSupport() {
+		String title = "디지털서비스 카탈로그계약 업무처리규정";
+		String q = "디지털 카탈로그로 구매할 때 계약방식이 수의계약인가요?";
+		String clause = "제30조(납품요구) ① 계약담당공무원은 디지털서비스몰에 등록된 계약품목에 대하여 "
+			+ "수요기관의 장이 계약담당공무원의 승인을 거쳐 나라장터를 통하여 계약상대자에게 납품을 요구하도록 하여야 한다.";
+		var direct = chunkInDocument(8101, 81, "catalog", "admrul", title, "계약체결",
+			"제10조(계약체결) 계약담당공무원은 카탈로그의 적정성을 검토하여 수의계약을 체결할 수 있다.");
+		var requisition = chunkInDocument(8102, 81, "catalog", "admrul", title, "납품요구", clause);
+		var foreign = chunkInDocument(8103, 82, "other", "admrul", title, "납품요구", clause);
+		var approvalRemoved = chunkInDocument(8104, 81, "catalog", "admrul", title, "납품요구",
+			clause.replace("계약담당공무원의 승인을 거쳐 ", ""));
+		var baseline = judge.judge(q, List.of(direct), Map.of(), 3);
+		assertThat(baseline.directEvidenceFound()).isTrue();
+		var actual = judge.judge(q, List.of(direct, foreign, approvalRemoved, requisition), Map.of(), 3);
+		assertThat(actual.chunks()).contains(direct, requisition).doesNotContain(foreign, approvalRemoved);
+		assertThat(actual.directEvidenceCount()).isEqualTo(baseline.directEvidenceCount());
+		assertThat(judge.judge(q, List.of(requisition), Map.of(), 3).directEvidenceFound()).isFalse();
+	}
+
+	@Test
 	void sectionMetadataHelpsJudgePreferMatchingIntentSection() {
 		LawSemanticChunkRow targetScope = chunk(
 			1,
