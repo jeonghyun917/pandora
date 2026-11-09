@@ -1463,6 +1463,7 @@ public class LawAiAnswerService {
 			documentExpansionAuthoritative(hybrid)
 		);
 		searchedChunks = applyLexicalVariantAuthority(searchedChunks, bm25VariantChunks, bm25Variant);
+		searchedChunks = preserveIrmRegistrationCandidate(searchedChunks, bm25Chunks, normalized.query());
 		Map<String, Double> baseScoreByChunkId = baseScoreMap(searchedChunks, vectorScoreByChunkId, keywordScoreByChunkId);
 		baseScoreByChunkId = applyAuthoritativeRrfScores(baseScoreByChunkId, hybrid);
 		timing.candidateBuildMs.addAndGet(elapsedMillis(candidateBuildStart));
@@ -5992,6 +5993,21 @@ public class LawAiAnswerService {
 			}
 		}
 		return finishLexicalChunks(chunks, queryPlan.question());
+	}
+
+	private List<LawSemanticChunkRow> preserveIrmRegistrationCandidate(
+		List<LawSemanticChunkRow> control, List<LawSemanticChunkRow> lexical, String query
+	) {
+		if (!EvidenceJudge.isIrmRegistrationFaithfulness(normalizeForMatch(query))
+			|| control.stream().anyMatch(this::isIrmRegistrationSource)) {
+			return control;
+		}
+		return mergeChunks(control, lexical.stream().filter(this::isIrmRegistrationSource).limit(1).toList());
+	}
+
+	private boolean isIrmRegistrationSource(LawSemanticChunkRow chunk) {
+		return "official_doc".equals(chunk.target()) && "PASS".equals(chunk.qualityStatus())
+			&& EvidenceJudge.hasIrmRegistrationFormula(chunk.chunkText());
 	}
 
 	private List<LawSemanticChunkRow> mergeChunks(
@@ -11619,6 +11635,9 @@ public class LawAiAnswerService {
 
 	private List<LawSemanticChunkRow> priorityJudgeCandidates(List<LawSemanticChunkRow> chunks, String query) {
 		String normalizedQuery = normalizeForMatch(query);
+		if (EvidenceJudge.isIrmRegistrationFaithfulness(normalizedQuery)) {
+			return chunks.stream().filter(this::isIrmRegistrationSource).limit(1).toList();
+		}
 		if (!KoreanQueryNormalizer.isProcurementCatalogContractQuestion(query)
 			|| !isProcurementContractMethodQuestion(normalizedQuery)) {
 			return List.of();

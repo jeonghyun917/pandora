@@ -73,8 +73,10 @@ public class EvidenceJudge {
 			.filter(JudgedChunk::directEvidence)
 			.toList();
 		boolean directEvidenceRequired = !profile.directEvidenceGroups().isEmpty()
+			|| (isIrmRegistrationFaithfulness(profile.normalizedQuestion()) && !directEvidenceChunks.isEmpty())
 			|| searchableChunks.stream().anyMatch(chunk -> requiresCommencementOwnership(profile, chunk));
 		List<JudgedChunk> directSupportingChunks = topicAlignedChunks.stream()
+			.filter(chunk -> !isIrmRegistrationFaithfulness(profile.normalizedQuestion()))
 			.filter(chunk -> chunk.bodyDirectEvidenceMatches() > 0)
 			.filter(chunk -> !missingRequestedArticleOwnership(profile, chunk.chunk(), normalize(chunk.chunk().title())))
 			.filter(chunk -> !unverifiedCommencement(profile, chunk.chunk(), commencementEvidence))
@@ -1178,6 +1180,14 @@ public class EvidenceJudge {
 			directEvidence = true;
 			relevant = true;
 			topicAligned = true;
+		}
+
+		if (isIrmRegistrationFaithfulness(profile.normalizedQuestion())) {
+			directEvidence = !tableOfContents && hasIrmRegistrationFormula(chunk.chunkText());
+			if (directEvidence) {
+				relevant = true;
+				topicAligned = true;
+			}
 		}
 
 		double score = baseScore
@@ -3128,6 +3138,28 @@ public class EvidenceJudge {
 		int directEvidenceCount,
 		String selectionPolicy
 	) {
+	}
+
+	static boolean isIrmRegistrationFaithfulness(String normalized) {
+		return normalized.contains("충실성") && (normalized.contains("irm")
+			|| normalized.contains("정보자원관리") || normalized.contains("정보자원등록"));
+	}
+
+	static boolean hasIrmRegistrationFormula(String body) {
+		if (body == null) return false;
+		String text = body.replaceAll("(?U)\\s+", "");
+		int label = text.indexOf("정보자원등록충실성");
+		if (label < 0) return false;
+		String section = text.substring(label, Math.min(text.length(), label + 520));
+		int nextMetric = section.indexOf("정보자원품질정합성");
+		if (nextMetric >= 0) section = section.substring(0, nextMetric);
+		int equals = section.indexOf('=');
+		int divider = section.indexOf('/', equals + 1);
+		if (equals < 0 || divider < 0) return false;
+		String numerator = section.substring(equals + 1, divider);
+		String denominator = section.substring(divider + 1);
+		return numerator.contains("기한내정보자원등록완료")
+			&& denominator.contains("정보자원등록요청수");
 	}
 
 	private boolean requiresCommencementOwnership(EvidenceQuestionProfile profile, LawSemanticChunkRow chunk) {

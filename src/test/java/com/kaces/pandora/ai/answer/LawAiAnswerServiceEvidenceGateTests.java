@@ -17,6 +17,32 @@ import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
 	@Test
+	void preservesOnlyTheOwnedIrmRegistrationFormulaFromTheShadowCandidates() throws Exception {
+		var control = chunk(601, "official_doc", "정보자원관리시스템 이용 안내", "클라우드 권한", "메뉴 이용 권한 안내");
+		var formula = chunk(602, "official_doc", "정보자원 관리 수준측정", "정보자원 등록",
+			"정보자원 등록 충실성. 정비율 = (기한 내 정보자원 등록 완료 수)/(정보자원 등록요청 수) × 100");
+		var remediation = chunk(603, "official_doc", "정보자원 관리 수준측정", "품질 정합성",
+			"정보자원 품질 정합성. 정비율 = 기한 내 품질보완 완료 수/품질보완 요청 수 × 100");
+		var service = service();
+		try {
+			var merge = LawAiAnswerService.class.getDeclaredMethod("preserveIrmRegistrationCandidate",
+				List.class,List.class,String.class);
+			merge.setAccessible(true);
+			String query = "정보자원관리시스템 등록 충실성은 어떻게 측정하나요?";
+			assertThat(merge.invoke(service,List.of(control),List.of(remediation,formula),query))
+				.isEqualTo(List.of(control,formula));
+			assertThat(merge.invoke(service,List.of(control),List.of(formula),"콘텐츠 충실성은 무엇인가요?"))
+				.isEqualTo(List.of(control));
+			var priority = LawAiAnswerService.class.getDeclaredMethod("balancedJudgeCandidates",List.class,int.class,String.class);
+			priority.setAccessible(true);
+			assertThat(priority.invoke(service,List.of(control,remediation,formula),1,query))
+				.isEqualTo(List.of(formula));
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void keepsCommencementCandidateTextExactBeforeAndAfterJudging() throws Exception {
 		var service = service();
 		try {

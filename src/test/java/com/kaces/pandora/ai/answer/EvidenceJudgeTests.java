@@ -2571,6 +2571,21 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void separatesIrmRegistrationFaithfulnessFromRemediationAndWebsiteContent() {
+		String title = "정보자원 관리 수준측정 안내서";
+		var registration = chunk(171, "official_doc", title, "정보자원관리시스템 정보자원 관리현황",
+			"정보자원 등록 충실성. 정비율(%) = (기한 내 정보화사업 등록완료 수 + 기한 내 정보자원 등록 완료 수)/(정보화사업 등록요청 수 + 정보자원 등록요청 수) × 100");
+		var remediation = chunk(172, "official_doc", title, "정보자원관리시스템 정보등록 품질",
+			"정비율(%) = 기한 내 품질보완 완료 수/품질보완 요청수 × 100. 정비율 구간별 충실성 점수.");
+		var website = chunk(173, "official_doc", title, "웹 콘텐츠의 충실성",
+			"콘텐츠 정확성과 업데이트 적정성을 평가한다.");
+		var result = judge.judge("IRM에서 정보자원 등록 충실성은 어떤 지표인가요?",
+			List.of(remediation, website, registration), Map.of("official_doc:172", 2.0), 5);
+		assertThat(result.directEvidenceCount()).isEqualTo(1);
+		assertThat(result.chunks()).containsExactly(registration);
+	}
+
+	@Test
 	void unverifiedSupplementCannotProveCurrentCommencement() {
 		String title = "인공지능 및 데이터 기반 행정 활성화에 관한 법률";
 		var historic = chunk(81, "law", title, "제1조(시행일)",
