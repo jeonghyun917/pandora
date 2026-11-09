@@ -1966,6 +1966,17 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void catalogContractMethodDoesNotUseShoppingMallDirectPurchaseExceptionAsDirectEvidence() {
+		String question = "디지털 카탈로그로 구매할 때 계약방식이 수의계약인가요?";
+		var unrelated = chunk(8105, "official_doc", "상용소프트웨어 직접구매 가이드", "직접구매 제외 및 계약방법",
+			"상용SW 직접구매 대상이라도 종합쇼핑몰에 등록되지 않은 경우 직접구매 대상에서 제외할 수 있다. "
+				+ "계약방법은 경쟁입찰 또는 수의계약으로 구분한다.");
+		var result = judge.judge(question, List.of(unrelated), Map.of(), 3);
+		assertThat(result.directEvidenceFound()).isFalse();
+		assertThat(result.chunks()).isEmpty();
+	}
+
+	@Test
 	void preservesAnApprovedCatalogRequisitionOnlyAsSameSourceSupport() {
 		String title = "디지털서비스 카탈로그계약 업무처리규정";
 		String q = "디지털 카탈로그로 구매할 때 계약방식이 수의계약인가요?";

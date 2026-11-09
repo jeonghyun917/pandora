@@ -1238,6 +1238,14 @@ public class EvidenceJudge {
 				topicAligned = true;
 			}
 		}
+		String catalogContext = documentTitle + chunkHeading + body;
+		if (procurementCatalogContractQuestion && procurementContractMethodQuestion
+			&& hasCatalogTerm(profile.normalizedQuestion())
+			&& !hasCatalogTerm(catalogContext) && !catalogContext.contains("디지털서비스몰")) {
+			directEvidence = false;
+			relevant = false;
+			topicAligned = false;
+		}
 
 		double score = baseScore
 			+ (directEvidenceMatches * 0.34)
@@ -3037,6 +3045,10 @@ public class EvidenceJudge {
 			|| text.contains("2차조건")
 			|| text.contains("saas포함")
 			|| text.contains("등록소프트웨어");
+	}
+
+	private static boolean hasCatalogTerm(String text) {
+		return text.contains("카탈로그") || text.contains("카달로그");
 	}
 
 	private static boolean isProcurementContractMethodQuestion(String normalizedQuestion) {
