@@ -101,6 +101,8 @@ public class GroundedAnswerRepairService {
 			return result(initial, false, false, "NO_ALIGNED_SUPPORTED_ATOM", 0);
 		}
 		if (rewriter == null) {
+			Result fallback = verifiedCoverageWithoutRewrite(question, draft, selectedAtoms, safeGrounds, generalScopeBinding, false);
+			if (fallback != null) return fallback;
 			return result(initial, false, false, "REWRITER_UNAVAILABLE", selectedAtoms.size());
 		}
 
@@ -129,6 +131,8 @@ public class GroundedAnswerRepairService {
 			return result(initial, true, false, "REWRITER_EXCEPTION", selectedAtoms.size());
 		}
 		if (rewritten == null || rewritten.isBlank()) {
+			Result fallback = verifiedCoverageWithoutRewrite(question, draft, selectedAtoms, safeGrounds, generalScopeBinding, true);
+			if (fallback != null) return fallback;
 			return result(initial, true, false, "REWRITER_BLANK", selectedAtoms.size());
 		}
 
@@ -171,6 +175,16 @@ public class GroundedAnswerRepairService {
 				droppedTargetScope ? "SOURCE_SCOPE_NOT_PRESERVED" : "REWRITE_VERIFICATION_FAILED", selectedAtoms.size());
 		}
 		return result(reverified, true, true, "REWRITE_ACCEPTED", selectedAtoms.size());
+	}
+
+	private Result verifiedCoverageWithoutRewrite(String question, String draft, List<String> atoms,
+		List<LawAiAnswerGround> grounds, boolean conditionalRewriteRequired, boolean attempted) {
+		if (conditionalRewriteRequired || QuestionIntentProfile.from(question).configuredAnswerCoverageGroups().isEmpty()) {
+			return null;
+		}
+		var verified = verifyConfiguredLawPolicyAtomFallback(question, draft, atoms, grounds);
+		return verified == null || verified.insufficientEvidence()
+			? null : result(verified, attempted, true, "ATOM_FALLBACK_ACCEPTED", atoms.size());
 	}
 
 	private AnswerVerificationService.Result verifyConfiguredLawPolicyAtomFallback(

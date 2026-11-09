@@ -1334,6 +1334,27 @@ class GroundedAnswerRepairServiceTests {
 	}
 
 	@Test
+	void configuredCoverageCanVerifySourceAtomsWithoutARewriteResponse() {
+		String question = "정보화사업 사전협의 제외 대상은?";
+		String evidence = """
+			사업금액이 아래에 해당하는 사업은 제외하되, 신규로 추진하는 사업은 대상에 포함.
+			-(중앙·공공기관) 10억원 미만
+			-(광역·공기업) 2억원 미만
+			-(기초·공기업) 1억원 미만
+			""";
+		var grounds = List.of(ground(1, evidence, "정보화사업 사전협의 안내자료", null));
+		for (GroundedAnswerRewriter rewriter : java.util.Arrays.asList(null, RecordingRewriter.returning(""))) {
+			var service = new GroundedAnswerRepairService(realVerificationService(), rewriter);
+			var result = service.verifyAndRepair(question, "모든 사업이 제외됩니다.", grounds);
+			assertThat(result.insufficientEvidence()).as(result.toString()).isFalse();
+			assertThat(result.verifiedAnswer()).contains("신규로 추진하는 사업은 대상에 포함", "10억원 미만", "2억원 미만", "1억원 미만");
+			var incomplete = service.verifyAndRepair(question, "모든 사업이 제외됩니다.",
+				List.of(ground(1, evidence.replace("-(기초·공기업) 1억원 미만", ""), "정보화사업 사전협의 안내자료", null)));
+			assertThat(incomplete.insufficientEvidence()).isTrue();
+		}
+	}
+
+	@Test
 	void configuredSecurityReviewExceptionRepairsFromExactAccessBoundaryAtoms() {
 		String question = "보안성검토 생략 가능한 경우는?";
 		String excludedBoundary =
