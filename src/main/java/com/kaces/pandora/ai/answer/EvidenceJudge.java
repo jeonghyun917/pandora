@@ -1114,7 +1114,12 @@ public class EvidenceJudge {
 			relevant = false;
 			topicAligned = false;
 		}
-		if (targetScopeQuestion && formOrChecklistNoise && !directTargetPhrase && !securityReviewTargetAnswerChunk && !documentAnchoredDirectEvidence) {
+		if (targetScopeQuestion && formOrChecklistNoise && !directTargetPhrase && !securityReviewTargetAnswerChunk
+			&& !documentAnchoredDirectEvidence
+			&& !(directEvidence && pseudonymAdditionalInfoQuestion
+				&& containsAny(profile.normalizedQuestion(), List.of("분리보관", "분리하여보관", "별도보관", "별도로보관"))
+				&& !containsAny(profile.normalizedQuestion(), List.of("대상", "범위", "해당", "포함", "제외", "면제", "예외", "접근권한"))
+				&& SourceOwnedNumberedDuty.provesSeparateStorage(chunk.target(), chunk.chunkText()))) {
 			directEvidence = false;
 			relevant = false;
 			topicAligned = false;

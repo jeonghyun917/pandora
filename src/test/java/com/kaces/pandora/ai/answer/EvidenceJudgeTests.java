@@ -1989,6 +1989,25 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void storageDutySurvivesChecklistSuppressionOnlyWithOwnedNumberedRule() {
+		String question = "개보위 가명정보 자료의 추가정보는 분리 보관해야 하나요?";
+		String source = """
+			① 개인정보처리자는 가명정보 및 추가정보에 대하여 다음 각 호의 안전성 확보 조치를 해야 한다.
+			1. 기록 항목의 유지.
+			2. 가명정보와 추가정보의 분리 보관. 다만, 추가정보가 불필요한 경우에는 추가정보를 파기해야 한다.
+			3. 접근 권한의 분리. 다만, 정당한 사유가 있는 경우에는 최소한의 접근 권한을 부여한다.
+			""";
+		var owned = chunk(8107, "official_doc", "개인정보 안전조치 실무", "안전조치", source);
+		var example = chunk(8108, "official_doc", "개인정보 안전조치 실무", "안전조치",
+			source.replace("해야 한다.", "참고할 수 있다."));
+		var result = judge.judge(question, List.of(owned, example), Map.of(), 3);
+		assertThat(result.directEvidenceCount()).isEqualTo(1);
+		assertThat(result.chunks()).containsExactly(owned);
+		assertThat(judge.judge("개보위 가명정보 자료에서 추가정보 분리 보관 적용 대상은?",
+			List.of(owned), Map.of(), 3).directEvidenceFound()).isFalse();
+	}
+
+	@Test
 	void preservesAnApprovedCatalogRequisitionOnlyAsSameSourceSupport() {
 		String title = "디지털서비스 카탈로그계약 업무처리규정";
 		String q = "디지털 카탈로그로 구매할 때 계약방식이 수의계약인가요?";
