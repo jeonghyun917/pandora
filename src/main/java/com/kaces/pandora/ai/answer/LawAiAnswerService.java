@@ -108,6 +108,8 @@ public class LawAiAnswerService {
 	);
 	private static final List<String> DOCUMENT_LOCATION_PARTICLES = List.of("에서는", "에서");
 	private static final List<String> DOCUMENT_TOPIC_PARTICLES = List.of("은", "는", "이", "가");
+	private static final Set<String> LEGAL_REFERENCE_NOUNS = Set.of("법", "특별법", "법률", "시행령", "시행규칙");
+	private static final List<String> LEGAL_AUTHORITY_PARTICLES = List.of("에 따라", "상");
 	private static final List<String> TRUSTED_DOCUMENT_AGENCY_PREFIXES = List.of(
 		"개인정보보호위원회", "방송통신위원회", "공정거래위원회", "국민권익위원회",
 		"금융위원회", "원자력안전위원회", "국가인권위원회",
@@ -7216,7 +7218,9 @@ public class LawAiAnswerService {
 		for (String noun : DOCUMENT_REFERENCE_NOUNS) {
 			List<String> particles = DOCUMENT_TOPIC_REFERENCE_NOUNS.contains(noun)
 				? combineDocumentReferenceParticles()
-				: DOCUMENT_LOCATION_PARTICLES;
+				: LEGAL_REFERENCE_NOUNS.contains(noun)
+					? java.util.stream.Stream.concat(DOCUMENT_LOCATION_PARTICLES.stream(), LEGAL_AUTHORITY_PARTICLES.stream()).toList()
+					: DOCUMENT_LOCATION_PARTICLES;
 			for (String particle : particles) {
 				String marker = noun + particle;
 				for (int markerIndex = query.indexOf(marker); markerIndex >= 0; markerIndex = query.indexOf(marker, markerIndex + 1)) {
@@ -7224,9 +7228,16 @@ public class LawAiAnswerService {
 					if (title.length() < 4) {
 						continue;
 					}
+					int evidenceStart = markerIndex + marker.length();
+					if (LEGAL_AUTHORITY_PARTICLES.contains(particle)
+						&& (title.endsWith("방법") || title.endsWith("기법") || title.endsWith("사용법")
+							|| ("상".equals(particle) && evidenceStart < query.length()
+								&& Character.isLetterOrDigit(query.codePointAt(evidenceStart))))) {
+						continue;
+					}
 					if (markerIndex < bestMarkerIndex
 						|| (markerIndex == bestMarkerIndex && marker.length() > bestMarkerLength)) {
-						best = new DocumentReference(title, markerIndex + marker.length());
+						best = new DocumentReference(title, evidenceStart);
 						bestMarkerIndex = markerIndex;
 						bestMarkerLength = marker.length();
 					}

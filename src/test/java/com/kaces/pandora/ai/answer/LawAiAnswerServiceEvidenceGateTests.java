@@ -2911,6 +2911,23 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void extractsLegalAuthorityTitleWithoutTreatingMethodsAsLaws() throws Exception {
+		var service = service();
+		try {
+			assertThat(documentTitleAnchorKeywords(service, "개인정보 보호법에 따라 처리 목적은 어떻게 공개하나요?"))
+				.contains("개인정보 보호법");
+			assertThat(documentTitleAnchorKeywords(service, "근로기준법상 연차휴가 일수는?"))
+				.contains("근로기준법");
+			assertThat(documentTitleAnchorKeywords(service, "기존 처리 방법에 따라 공개하나요?")).isEmpty();
+			assertThat(documentTitleAnchorKeywords(service, "개정 근로기준법상식은 어디서 읽나요?")).isEmpty();
+			assertThat(documentEvidenceAnchorKeywords(service, "개인정보 보호법에 따라 처리 목적은 어떻게 공개하나요?"))
+				.anyMatch(anchor -> normalize(anchor).contains("처리목적"));
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void extractsGuidebookCoreTitleAndEvidenceFromSharedReference() throws Exception {
 		String query = "행정안전부 재난현장 수습활동 가이드북에서 통합지원본부는 어떤 역할을 해?";
 		LawAiAnswerService service = service();
