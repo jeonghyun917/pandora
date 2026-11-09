@@ -1196,7 +1196,9 @@ public class ClaimEvidenceMatcher {
 		}
 		if (evidence.conditional()
 			&& !claim.conditional()
-			&& claim.requiredRelationAnchors().isEmpty()) {
+			&& (claim.requiredRelationAnchors().isEmpty()
+				// A shared relation term does not preserve an exclusion's prerequisite.
+				|| (claim.targetMode() == TargetMode.EXCLUDED && evidence.targetMode() == TargetMode.EXCLUDED))) {
 			return Relation.NOT_ENTAILED;
 		}
 		if (claim.conditional() && !evidence.conditional() && claim.requiredConditionAnchors().isEmpty()) {

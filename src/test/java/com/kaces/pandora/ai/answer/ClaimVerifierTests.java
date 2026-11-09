@@ -7,6 +7,18 @@ import org.junit.jupiter.api.Test;
 
 class ClaimVerifierTests {
 
+	@Test
+	void sharedRelationTermCannotReplaceAnExplicitExclusionCondition() {
+		String source = "단순 H/W(Appliance 포함) 도입·설치, 단순 동영상 제작, 네트워크 등 인프라 수수료와 같이 "
+			+ "소프트웨어사업으로 볼 수 없는 경우는 비대상";
+		var ground = new LawAiAnswerGround(1, 1, 1, "official_doc", "적용 범위", null, null, null,
+			"CURRENT", null, "적용 대상 사업", 5, source, null, null, 1);
+		var verifier = new ClaimVerifier();
+		assertThat(verifier.verifyDetailed(source, List.of(ground)).supportedStrongClaimCount()).isEqualTo(1);
+		String broadened = "단순 H/W(Appliance 포함) 도입·설치, 단순 동영상 제작, 네트워크 등 인프라 수수료와 같이 모두 비대상";
+		assertThat(verifier.verifyDetailed(broadened, List.of(ground)).insufficientEvidence()).isTrue();
+	}
+
 	private final ClaimVerifier verifier = new ClaimVerifier();
 
 	@Test
