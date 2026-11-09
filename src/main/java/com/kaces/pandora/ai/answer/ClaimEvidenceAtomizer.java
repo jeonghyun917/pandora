@@ -395,6 +395,16 @@ final class ClaimEvidenceAtomizer {
 			String left = lines[index].trim();
 			if (index + 1 < lines.length) {
 				String right = lines[index + 1].trim();
+				// Only a complete terminal verb can continue this unfinished modal.
+				// A blank line, new item, or annotation is not a continuation.
+				if (!conditionalOnly && !left.contains("*")
+					&& !sourceContinuationBoundary(LEADING_LIST_MARKER.matcher(left).replaceFirst(""))
+					&& left.matches(".+(?:해야|하여야|받아야)")
+					&& right.matches("(?:한다|합니다|된다|됩니다)[.]")) {
+					joined.add(left + " " + right);
+					index++;
+					continue;
+				}
 				// A conditional procedure printed across two lines is still one literal clause.
 				// Join only an unfinished object into a verb-led nominal-ending continuation.
 				if (!sourceContinuationBoundary(left) && !sourceContinuationBoundary(right)

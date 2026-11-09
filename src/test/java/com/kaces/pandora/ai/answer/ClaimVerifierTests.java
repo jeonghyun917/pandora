@@ -10,6 +10,19 @@ class ClaimVerifierTests {
 	private final ClaimVerifier verifier = new ClaimVerifier();
 
 	@Test
+	void restoresModalEndingAcrossOneLineWithoutCrossingAnItemBoundary() {
+		String claim = "추가정보가 불필요한 경우에는 추가정보를 파기해야 합니다.";
+		String prefix = "1. 기록의 관리.\n2. 가명정보와 추가정보의 분리 보관. 다만, 추가정보가 불필요한 경우에는 추가정보를 파기해야";
+		String next = "\n3. 가명정보와 추가정보에 대한 접근 권한의 분리.";
+		var wrapped = ground("가명정보 처리 안내서", "안전조치", prefix + "\n한다." + next);
+		assertThat(verifier.verifyDetailed(claim, List.of(wrapped)).supportedStrongClaimCount()).isEqualTo(1);
+		for (String boundary : List.of("\n\n한다.", "\n3. 한다.", "\n※ 한다.")) {
+			var unowned = ground("가명정보 처리 안내서", "안전조치", prefix + boundary + next);
+			assertThat(verifier.verifyDetailed(claim, List.of(unowned)).insufficientEvidence()).isTrue();
+		}
+	}
+
+	@Test
 	void exactOwnedAnnotatedItemIsVerifiedWithoutSplittingAwayItsNote() {
 		String body = "기관의 검토결과 미수용의 경우 사유를 등록*하고, 수용의 경우 계획서 보완 후 공고 추진";
 		String note = "* 온라인 등록이 가능한 경우 온라인으로 제출하고 그 외에는 공문으로 제출";
