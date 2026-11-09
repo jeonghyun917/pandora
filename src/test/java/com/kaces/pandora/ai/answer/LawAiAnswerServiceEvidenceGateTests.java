@@ -322,10 +322,14 @@ class LawAiAnswerServiceEvidenceGateTests {
         var order=chunk(99105L,99104L,"admrul","디지털서비스 카탈로그계약 업무처리규정","납품요구","수요기관의 장은 등록된 계약품목의 납품을 요구한다.",null);
         var broad=new java.util.concurrent.atomic.AtomicInteger();
         var includeOrder=new java.util.concurrent.atomic.AtomicBoolean(true);
+        var includeFutureSeen=new java.util.concurrent.atomic.AtomicBoolean(false);
         var law=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),new Class<?>[]{LawChunkMapper.class},
             (proxy,method,args)->{
                 if(method.getName().equals("findSemanticChunksByDocumentTitleAndText") && ((List<?>)args[1]).contains("디지털서비스 카탈로그계약")
-                    && ((List<?>)args[2]).containsAll(List.of("수의계약","납품요구")))return includeOrder.get()?List.of(contract,order):List.of(contract);
+                    && ((List<?>)args[2]).containsAll(List.of("수의계약","납품요구"))) {
+                    includeFutureSeen.set(Boolean.TRUE.equals(args[3]));
+                    return includeOrder.get()?List.of(contract,order):List.of(contract);
+                }
                 if(method.getName().equals("findSemanticChunksByText"))broad.incrementAndGet();
                 return List.of();
             });
@@ -333,6 +337,10 @@ class LawAiAnswerServiceEvidenceGateTests {
         try {
             assertThat(findLexicalChunks(service,QuestionSearchPlan.from("디지털 카탈로그를 이용하면 계약방식이 수의계약으로 정해지나요?"),List.of("admrul"),false))
                 .contains(contract,order);
+            assertThat(includeFutureSeen.get()).isFalse();
+            assertThat(findLexicalChunks(service,QuestionSearchPlan.from("디지털 카탈로그에서 조달할 때 계약방법은?"),List.of("law","admrul"),true))
+                .contains(contract,order);
+            assertThat(includeFutureSeen.get()).isTrue();
             assertThat(broad.get()).isZero();
             assertThat(findLexicalChunks(service,QuestionSearchPlan.from("종합쇼핑몰을 이용하면 수의계약으로 정해지나요?"),List.of("admrul"),false))
                 .doesNotContain(contract,order);
