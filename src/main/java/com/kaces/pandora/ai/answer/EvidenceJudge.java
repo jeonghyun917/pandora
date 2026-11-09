@@ -879,6 +879,10 @@ public class EvidenceJudge {
 			&& (conceptOk || (preferredSection && bodyDirectEvidenceMatches >= profile.requiredDirectEvidenceMatches()))
 			&& (!profile.requiresStrongIntentSignal() || strongIntentSignal || bodyDirectEvidenceMatches >= profile.requiredDirectEvidenceMatches())
 			&& !tableOfContents;
+		if (trafficCrosswalkStopQuestion && !tableOfContents && "law".equals(chunk.target())
+			&& "도로교통법".equals(documentTitle) && hasConditionedCrosswalkStopDuty(chunk.chunkText())) {
+			directEvidence = true;
+		}
 		boolean preferredStructuralDirectEvidence = !profile.directEvidenceGroups().isEmpty()
 			&& preferredSection
 			&& requiredTermsMatched
@@ -2944,6 +2948,15 @@ public class EvidenceJudge {
 		);
 		boolean adminEntryOnly = firstAdminCue < body.length() && !priorTargetRule;
 		return securityReviewContext && explicitTargetCue && concreteSystemScope && !adminEntryOnly;
+	}
+
+	private static final java.util.regex.Pattern CROSSWALK_STOP_DUTY = java.util.regex.Pattern.compile(
+		"운전자는보행자.{0,130}횡단보도를통행하고있거나통행하려고하는때에는"
+			+ ".{0,160}횡단보도앞.{0,55}에서일시정지하여야한다$");
+
+	private static boolean hasConditionedCrosswalkStopDuty(String source) {
+		return source != null && java.util.Arrays.stream(source.split("[.!?\\r\\n]+"))
+			.map(EvidenceJudge::normalize).anyMatch(clause -> CROSSWALK_STOP_DUTY.matcher(clause).find());
 	}
 
 	private static boolean isProcurementCatalogContractContextChunk(String body, String documentTitle, String chunkHeading) {

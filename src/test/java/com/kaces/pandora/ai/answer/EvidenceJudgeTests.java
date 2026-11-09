@@ -1893,6 +1893,23 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void shortCrosswalkQuestionFindsTheConditionedDutyInABundledLawChunk() {
+		var duty = chunk(1, "law", "도로교통법", "회전교차로 통행방법 등",
+			"모든 차의 운전자는 교차로에서 우회전하려는 다른 차에 진로를 양보하여야 한다. "
+			+ "모든 차의 운전자는 보행자가 횡단보도를 통행하고 있거나 통행하려고 하는 때에는 횡단보도 앞에서 일시정지하여야 한다.");
+		var facility = chunk(2, "official_doc", "도로 시설물 설치관리기준", "횡단보도 설치",
+			"우회전 교차로 횡단보도 앞에 일시정지 표시 시설물을 설치할 수 있다.");
+		var roadMarking = chunk(3, "law", "도로교통법 시행규칙", "도로 노면표시",
+			"교차로 또는 횡단보도에서 차가 일시정지하여야 할 것을 표시하는 시설물의 설치 기준이다.");
+		var unrelatedStop = chunk(4, "law", "도로교통법", "회전교차로 통행방법 등",
+			"운전자는 보행자가 횡단보도를 통행하고 있거나 통행하려고 하는 때에는 안전에 유의한다. 우회전하려는 차는 회전교차로 입구에서 일시정지하여야 한다.");
+		var result = judge.judge("우회전 횡단보도에서 멈춰야 하는 경우는?",
+			List.of(facility, roadMarking, unrelatedStop, duty), Map.of(), 4);
+		assertThat(result.directEvidenceCount()).isEqualTo(1);
+		assertThat(result.chunks()).contains(duty).doesNotContain(facility, roadMarking, unrelatedStop);
+	}
+
+	@Test
 	void procurementCatalogContractQuestionKeepsDirectPurchaseContextAndRejectsLoosePrivateContractLaw() {
 		LawSemanticChunkRow loosePrivateContractLaw = chunk(
 			1,
