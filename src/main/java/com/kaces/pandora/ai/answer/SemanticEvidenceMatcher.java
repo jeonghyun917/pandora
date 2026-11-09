@@ -171,7 +171,8 @@ public class SemanticEvidenceMatcher {
 		List<SemanticMatch> supported = new ArrayList<>();
 		List<SemanticMatch> contradicted = new ArrayList<>();
 		for (IndexedAtom evidence : evidenceIndex == null ? List.<IndexedAtom>of() : evidenceIndex.atoms()) {
-			if (evidence.literalOnly() && !canonical(claim.sourceText()).equals(canonical(evidence.sentence()))) { continue; }
+			if (evidence.literalOnly() && (!canonical(claim.sourceText()).equals(canonical(evidence.sentence()))
+				|| !ClaimEvidenceAtomizer.preservesLiteralRatio(claim.sourceText(), evidence.sentence()))) { continue; }
 			SemanticMatch result = align(claim, evidence);
 			if (result.status() == ClaimEvidenceMatcher.Status.INSUFFICIENT) {
 				result = matchHypotheticalMembership(claim, evidence);
@@ -237,7 +238,8 @@ public class SemanticEvidenceMatcher {
 				continue;
 			}
 			boolean exact = expected.equals(canonical(evidence.atom().sourceText()));
-			if (evidence.literalOnly() && !exact) { continue; }
+			if (evidence.literalOnly() && (!exact
+				|| !ClaimEvidenceAtomizer.preservesLiteralRatio(claim.sourceText(), evidence.sentence()))) { continue; }
 			boolean explanatoryPrefix = expected.length() >= 20
 				&& claim.polarity() == evidence.atom().polarity()
 				&& evidence.atom().numericAnchors().containsAll(claim.numericAnchors())

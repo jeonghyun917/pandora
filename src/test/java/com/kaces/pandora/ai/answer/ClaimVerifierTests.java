@@ -1101,6 +1101,37 @@ class ClaimVerifierTests {
 		assertThat(result.supportedStrongClaimCount()).isEqualTo(2);
 	}
 
+	@Test
+	void verifiesLiteralWrappedRatioWithoutBorrowingNeighboringMetric() {
+		var source = ground("측정 지침", "산정 기준", """
+			장비 등록률
+			등록률(%) =
+			(기한 내 장비 등록 완료 수) /
+			(장비 등록 요청 수) × 100
+			장비 보완율
+			보완율(%) = (보완 완료 수) / (보완 요청 수) × 100
+			""");
+		var verifier = new ClaimVerifier();
+		String literal = "등록률(%) = (기한 내 장비 등록 완료 수) / (장비 등록 요청 수) × 100";
+		assertThat(verifier.verifyDetailed(literal, List.of(source)).insufficientEvidence()).isFalse();
+		assertThat(verifier.verifyDetailed(literal.replace("× 100", "× 10"), List.of(source))
+			.insufficientEvidence()).isTrue();
+		assertThat(verifier.verifyDetailed(literal.replace("/", "+"), List.of(source))
+			.insufficientEvidence()).isTrue();
+		assertThat(verifier.verifyDetailed(literal.replace("장비 등록 요청 수", "보완 요청 수"), List.of(source))
+			.insufficientEvidence()).isTrue();
+	}
+
+	@Test
+	void checksWrappedRatioInAnswerAsOneClaimWithoutDiscardingOtherClaims() {
+		String ratio = "등록률(%) =\n(등록 완료 수) /\n(등록 요청 수) × 100";
+		var source = ground("측정 지침", "산정 기준", ratio);
+		var verifier = new ClaimVerifier();
+		var result = verifier.verifyDetailed("답변:\n" + ratio + "\n등록 기한은 40일이다.", List.of(source));
+		assertThat(result.insufficientEvidence()).isFalse();
+		assertThat(result.unsupportedClaims()).containsExactly("등록 기한은 40일이다.");
+	}
+
 	private LawAiAnswerGround ground(String title, String chunkTitle, String snippet) {
 		return new LawAiAnswerGround(
 			1,

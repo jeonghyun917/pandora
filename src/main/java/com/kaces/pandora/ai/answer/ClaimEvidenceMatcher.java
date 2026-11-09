@@ -449,7 +449,8 @@ public class ClaimEvidenceMatcher {
 			}
 			// A reconstructed list scope is safe for verbatim repair, not fuzzy
 			// entailment: shared heading words must not support an absent item.
-			if (sentence.scopedListItem() && !normalize(claim).equals(normalize(sentence.text()))) {
+			if (sentence.scopedListItem() && (!normalize(claim).equals(normalize(sentence.text()))
+				|| !ClaimEvidenceAtomizer.preservesLiteralRatio(claim, sentence.text()))) {
 				continue;
 			}
 			if (sentence.documentTitleMetadata()) {

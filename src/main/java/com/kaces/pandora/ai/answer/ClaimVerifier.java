@@ -125,7 +125,7 @@ public class ClaimVerifier {
 			);
 		}
 		List<String> sentences = isExactAnnotatedSourceItem(answer, grounds)
-			? List.of(answer.trim()) : splitSentences(answer);
+			? List.of(answer.trim()) : splitSentences(ClaimEvidenceAtomizer.foldWrappedRatios(answer));
 		List<String> kept = new ArrayList<>();
 		List<String> unsupportedClaims = new ArrayList<>();
 		List<String> unsupportedNumericClaims = new ArrayList<>();

@@ -9,6 +9,11 @@ import java.util.regex.Pattern;
 
 final class ClaimEvidenceAtomizer {
 	private final KoreanEvidenceAtomParser evidenceAtomParser = new KoreanEvidenceAtomParser();
+	private static final Pattern WRAPPED_PERCENT_RATIO = Pattern.compile(
+		"(?m)^[ \\t]*[가-힣A-Za-z][가-힣A-Za-z0-9 \\t]{0,35}\\(%\\)[ \\t]*=[ \\t]*\\R"
+			+ "[ \\t]*[가-힣A-Za-z0-9()+ \\t]{2,180}/[ \\t]*\\R"
+			+ "[ \\t]*[가-힣A-Za-z0-9()+ \\t]{2,180}[×xX][ \\t]*100[ \\t]*(?=\\R|$)"
+	);
 
 	private static final Pattern STRUCTURAL_BOUNDARY = Pattern.compile(
 		"(?<=[!?])\\s+"
@@ -161,10 +166,37 @@ final class ClaimEvidenceAtomizer {
 		}
 		if (copied < text.length()) { result.add(new SourceFragment(text.substring(copied), false)); }
 		return result.stream().flatMap(fragment -> fragment.literalOnly()
-			? java.util.stream.Stream.of(fragment) : closedMarkedAnnotations(fragment.text()).stream()).toList();
+			? java.util.stream.Stream.of(fragment) : closedMarkedAnnotations(fragment.text()).stream())
+			.flatMap(fragment -> fragment.literalOnly()
+				? java.util.stream.Stream.of(fragment) : closedWrappedRatios(fragment.text()).stream())
+			.toList();
 	}
 
 	record SourceFragment(String text, boolean literalOnly) { }
+
+	static boolean preservesLiteralRatio(String claim, String source) {
+		// Ordinary text normalization drops mathematical punctuation.
+		return !source.contains("(%)") || !source.contains("=") || !source.contains("/")
+			|| claim.replaceAll("\\s+", " ").trim().equals(source.replaceAll("\\s+", " ").trim());
+	}
+
+	static String foldWrappedRatios(String text) {
+		return WRAPPED_PERCENT_RATIO.matcher(text).replaceAll(match -> match.group().replaceAll("\\s+", " ").trim());
+	}
+
+	private List<SourceFragment> closedWrappedRatios(String text) {
+		Matcher ratio = WRAPPED_PERCENT_RATIO.matcher(text);
+		if (!ratio.find()) { return List.of(new SourceFragment(text, false)); }
+		List<SourceFragment> result = new ArrayList<>();
+		int copied = 0;
+		do {
+			if (ratio.start() > copied) { result.add(new SourceFragment(text.substring(copied, ratio.start()), false)); }
+			result.add(new SourceFragment(ratio.group().replaceAll("\\s+", " ").trim(), true));
+			copied = ratio.end();
+		} while (ratio.find());
+		if (copied < text.length()) { result.add(new SourceFragment(text.substring(copied), false)); }
+		return result;
+	}
 
 	private List<SourceFragment> closedMarkedAnnotations(String text) {
 		Matcher block = Pattern.compile("(?m)^※[ \\t]*\\R"
