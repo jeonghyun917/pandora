@@ -1132,6 +1132,36 @@ class ClaimVerifierTests {
 		assertThat(result.unsupportedClaims()).containsExactly("등록 기한은 40일이다.");
 	}
 
+	@Test
+	void preservesReferencedDutyWhenSeparateAuthorityMayAct() {
+		var source = ground("설비 관리 지침", "검사 기준", """
+			시설관리기관의 장은 제1항에 따른 표준을 준수하여야 하고, 감독기관장은 그 준수 여부를 조사하여 시정을 요구할 수 있다.
+			""");
+		var verifier = new ClaimVerifier();
+		assertThat(verifier.verifyDetailed("시설관리기관의 장은 제1항에 따른 표준을 준수하여야 한다.", List.of(source))
+			.insufficientEvidence()).isFalse();
+		for (String mutation : List.of(
+			"감독기관장은 제1항에 따른 표준을 준수하여야 한다.",
+			"시설관리기관의 장은 제2항에 따른 표준을 준수하여야 한다.",
+			"시설관리기관의 장은 표준을 준수하여야 한다.",
+			"감독기관장은 그 준수 여부를 조사하여 시정을 요구하여야 한다.")) {
+			assertThat(verifier.verifyDetailed(mutation, List.of(source)).insufficientEvidence()).isTrue();
+		}
+	}
+
+	@Test
+	void doesNotProjectIndependentDutyAcrossConditionalOrSameActorContinuation() {
+		var atomizer = new ClaimEvidenceAtomizer();
+		String first = "시설관리기관의 장은 제1항에 따른 표준을 준수하여야";
+		for (String continuation : List.of(
+			"시설관리기관의 장은 그 준수 여부를 조사하여 시정을 요구할 수 있다.",
+			"감독기관장은 그 준수 여부를 조사한 경우에만 시정을 요구할 수 있다.",
+			"감독기관장은 그 준수 여부를 조사하여 시정을 요구하여야 한다.")) {
+			assertThat(atomizer.atomizeSource(first + " 하고, " + continuation, null))
+				.doesNotContain(first + " 한다.");
+		}
+	}
+
 	private LawAiAnswerGround ground(String title, String chunkTitle, String snippet) {
 		return new LawAiAnswerGround(
 			1,

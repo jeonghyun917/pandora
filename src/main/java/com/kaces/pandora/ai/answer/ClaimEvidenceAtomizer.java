@@ -239,6 +239,35 @@ final class ClaimEvidenceAtomizer {
 
 	/** Carry only an explicit source heading over its contiguous numbered list. */
 	List<String> atomizeSource(String text, String chunkTitle) {
+		List<String> ordinary = atomizeOrdinarySource(text, chunkTitle);
+		if (text == null || !text.contains("하여야 하고,")) return ordinary;
+		Set<String> atoms = new LinkedHashSet<>(ordinary);
+		for (String sentence : atomize(text)) {
+			int boundary = sentence.indexOf("하여야 하고,");
+			if (boundary < 0) continue;
+			String duty = sentence.substring(0, boundary) + "하여야 한다.";
+			String oversight = sentence.substring(boundary + "하여야 하고,".length()).strip();
+			if (!duty.matches(".{1,180}제[0-9]{1,2}항에 따른 .{1,180}하여야 한다\\.")
+				|| !oversight.matches("[가-힣 ]{2,30}(?:은|는) 그 [가-힣]{2,12} 여부를 [가-힣 ]{2,75}할 수 있다\\.")) {
+				continue;
+			}
+			EvidenceAtom dutyAtom = evidenceAtomParser.parse(duty);
+			EvidenceAtom oversightAtom = evidenceAtomParser.parse(oversight);
+			if (dutyAtom.parseStatus() == EvidenceAtom.ParseStatus.COMPLETE
+				&& oversightAtom.parseStatus() == EvidenceAtom.ParseStatus.COMPLETE
+				&& dutyAtom.modality() == EvidenceAtom.Modality.REQUIRED
+				&& oversightAtom.modality() == EvidenceAtom.Modality.PERMITTED
+				&& dutyAtom.subjects().size() == 1 && oversightAtom.subjects().size() == 1
+				&& !dutyAtom.subjects().equals(oversightAtom.subjects())
+				&& oversightAtom.conditions().isEmpty() && oversightAtom.exceptions().isEmpty()) {
+				// Scope, article reference and actor remain literal; only close the connective.
+				atoms.add(duty);
+			}
+		}
+		return List.copyOf(atoms);
+	}
+
+	private List<String> atomizeOrdinarySource(String text, String chunkTitle) {
 		if (text != null) {
 			// Preserve a literal, contiguous heading and its complete nominal criterion.
 			// Never borrow metadata scope or cross a numbered item/another heading.
