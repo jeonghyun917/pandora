@@ -66,6 +66,11 @@ class TaggedPdfParagraphTests {
             assertThat(receipt.selectedBody(row,route))
                 .contains("Scope\nTemporary installations are exempt only during the trial.\nSeparate paragraph.");
             assertThat(receipt.selectedBody(row,otherRoute)).isEmpty();
+            assertThat(receipt.selectedContext(row,route,"Parent\n"+literal+"\nNeighbor"))
+                .contains("Parent\nTemporary installations are exempt only during the trial.\nNeighbor");
+            assertThat(receipt.selectedContext(row,route,literal+"\n"+literal)).isEmpty();
+            assertThat(receipt.selectedContext(row,route,"unrelated "+literal)).isEmpty();
+            assertThat(receipt.selectedContext(row,otherRoute,literal)).isEmpty();
             following.appendKid(1);
             assertThat(TaggedPdfParagraph.read(pdf,1,0,1)).isEmpty();
         }

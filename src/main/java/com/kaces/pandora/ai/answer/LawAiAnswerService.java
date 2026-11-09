@@ -1746,8 +1746,19 @@ public class LawAiAnswerService {
 				LinkedHashMap::new
 			));
 		long groundsStart = System.nanoTime();
-		if (pdfParagraphEvidence != null) {
-			matchedChunkByKey.replaceAll((key, chunk) -> pdfParagraphEvidence.projectSelected(chunk, routing));
+		if (pdfParagraphEvidence != null && pdfParagraphEvidence.configured()) {
+			var proofDisplay = new java.util.ArrayList<LawSemanticChunkRow>(displayChunks.size());
+			for (var display : displayChunks) {
+				String key = scoreKey(display.target(), display.chunkId());
+				var proof = pdfParagraphEvidence.projectSelectedPair(chunkById.get(key), display, routing);
+				if (proof.isPresent()) {
+					matchedChunkByKey.put(key, proof.get().child());
+					proofDisplay.add(proof.get().context());
+				} else {
+					proofDisplay.add(display);
+				}
+			}
+			displayChunks = List.copyOf(proofDisplay);
 		}
 		List<LawAiAnswerGround> grounds = parentContextAssembler.toGrounds(
 			displayChunks,

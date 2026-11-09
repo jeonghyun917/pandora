@@ -65,17 +65,29 @@ public class PdfParagraphEvidence implements ApplicationRunner {
     }
 
     public LawSemanticChunkRow projectSelected(LawSemanticChunkRow chunk,RecoveryRoutingSnapshot snapshot) {
+        return projectSelectedPair(chunk,chunk,snapshot).map(Projection::child).orElse(chunk);
+    }
+
+    public record Projection(LawSemanticChunkRow child,LawSemanticChunkRow context) {}
+
+    public java.util.Optional<Projection> projectSelectedPair(LawSemanticChunkRow chunk,LawSemanticChunkRow display,
+            RecoveryRoutingSnapshot snapshot) {
         var active=prepared;
-        if(active==null || snapshot==null || chunk.chunkId()!=active.chunkId()
-                || !("official_doc".equals(chunk.target()) || "internal_doc".equals(chunk.target()))) return chunk;
+        if(active==null || snapshot==null || chunk==null || display==null || chunk.chunkId()!=active.chunkId()
+                || chunk.chunkId()!=display.chunkId() || chunk.documentId()!=display.documentId()
+                || !Objects.equals(chunk.target(),display.target()) || !Objects.equals(chunk.pageNo(),display.pageNo())
+                || !Objects.equals(chunk.chunkVersion(),display.chunkVersion())
+                || !("official_doc".equals(chunk.target()) || "internal_doc".equals(chunk.target()))) return java.util.Optional.empty();
         try {
             var row=read(chunk.chunkId(),snapshot);
             if(row==null || row.documentId()!=chunk.documentId() || !Objects.equals(row.pageNo(),chunk.pageNo())
                     || !Objects.equals(row.chunkVersion(),chunk.chunkVersion()) || !Objects.equals(row.chunkText(),chunk.chunkText()))
-                return chunk;
-            return active.receipt().selectedBody(row,snapshot).map(body->copyWithBody(chunk,body)).orElse(chunk);
+                return java.util.Optional.empty();
+            var child=active.receipt().selectedBody(row,snapshot);
+            var context=active.receipt().selectedContext(row,snapshot,display.chunkText());
+            return child.flatMap(body->context.map(text->new Projection(copyWithBody(chunk,body),copyWithBody(display,text))));
         } catch(RuntimeException unavailable) {
-            return chunk;
+            return java.util.Optional.empty();
         }
     }
 
