@@ -351,6 +351,28 @@ class LawAiAnswerServiceEvidenceGateTests {
             assertThat(broad.get()).isGreaterThan(before);
         } finally {service.shutdownExecutors();}
     }
+    @Test void commercialDirectPurchaseUsesApplicableTitleAndLiteralBodyTermsBeforeBroadScan() throws Exception {
+        String title="소프트웨어사업 계약 및 관리감독에 관한 지침";
+        var scope=chunk(99106L,"admrul",title,"상용소프트웨어 직접구매 대상",
+            "상용소프트웨어 직접구매 대상 사업과 제품의 기준을 정한다.");
+        var exception=chunk(99107L,"admrul",title,"상용소프트웨어 직접구매의 제외",
+            "직접구매 대상에서 제외할 수 있는 사유와 검토 절차를 정한다.");
+        var broad=new java.util.concurrent.atomic.AtomicInteger();
+        var law=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),new Class<?>[]{LawChunkMapper.class},
+            (proxy,method,args)->{
+                if(method.getName().equals("findSemanticChunksByDocumentTitleAndText") && ((List<?>)args[1]).contains(title)
+                    && ((List<?>)args[2]).containsAll(List.of("상용소프트웨어 직접구매","직접구매 대상"))) return List.of(scope,exception);
+                if(method.getName().equals("findSemanticChunksByText")) broad.incrementAndGet();
+                return List.of();
+            });
+        var service=service(law,null);
+        try {
+            assertThat(findLexicalChunks(service,QuestionSearchPlan.from("공공 소프트웨어사업에서 상용SW 직접구매 대상과 제외 기준은?"),
+                List.of("law","admrul"),false)).contains(scope,exception);
+            assertThat(broad.get()).isZero();
+        } finally {service.shutdownExecutors();}
+    }
+
     @Test void complianceLawLookupUsesConfiguredSoftwareConceptRatherThanOnlySurfaceWording() throws Exception {
         var captured=new java.util.ArrayList<String>();
         var law=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),new Class<?>[]{LawChunkMapper.class},
