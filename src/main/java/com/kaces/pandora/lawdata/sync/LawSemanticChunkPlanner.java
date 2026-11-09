@@ -54,6 +54,16 @@ final class LawSemanticChunkPlanner {
 			if (!StringUtils.hasText(text)) {
 				continue;
 			}
+			if (isArticleNote(section.type())) {
+				flush(planned, current, preserveParentBoundaries);
+				current = null;
+				if (text.length() > MAX_CHILD_CHARS || section.sourcePath() == null
+					|| section.sourcePath().length() > MAX_STORED_SOURCE_PATH_CHARS) {
+					throw new IllegalStateException("Article reference note exceeds storage bounds");
+				}
+				planned.add(new PlannedLawChunk(section.type(), section.no(), section.title(), text, section.sourcePath()));
+				continue;
+			}
 			String key = parentKey(section);
 			if (current == null || !current.key.equals(key)) {
 				flush(planned, current, preserveParentBoundaries);
@@ -112,12 +122,13 @@ final class LawSemanticChunkPlanner {
 
 	private boolean isContainedShortDuplicate(List<PlannedLawChunk> planned, int index) {
 		PlannedLawChunk current = planned.get(index);
+		if (isArticleNote(current.type())) return false;
 		String needle = normalizeForContainment(current.text());
 		if (needle.length() < TINY_CHILD_CHARS || needle.length() >= MIN_CHILD_CHARS) {
 			return false;
 		}
 		for (int otherIndex = 0; otherIndex < planned.size(); otherIndex++) {
-			if (otherIndex == index) {
+			if (otherIndex == index || isArticleNote(planned.get(otherIndex).type())) {
 				continue;
 			}
 			if (containsNormalized(planned.get(otherIndex).text(), needle)) {
@@ -188,7 +199,7 @@ final class LawSemanticChunkPlanner {
 		List<PlannedLawChunk> merged = new ArrayList<>();
 		for (int index = 0; index < planned.size(); index++) {
 			PlannedLawChunk chunk = planned.get(index);
-			if (!isTiny(chunk)) {
+			if (!isTiny(chunk) || isArticleNote(chunk.type())) {
 				merged.add(chunk);
 				continue;
 			}
@@ -323,6 +334,7 @@ final class LawSemanticChunkPlanner {
 	}
 
 	private boolean sameMergeFamily(PlannedLawChunk left, PlannedLawChunk right) {
+		if (isArticleNote(left.type()) || isArticleNote(right.type())) return false;
 		boolean leftAdministrativeRuleArticle = isAdministrativeRuleArticle(left);
 		boolean rightAdministrativeRuleArticle = isAdministrativeRuleArticle(right);
 		if (leftAdministrativeRuleArticle || rightAdministrativeRuleArticle) {
@@ -363,13 +375,19 @@ final class LawSemanticChunkPlanner {
 			nextChildOrders.put(parentKey, childOrder + 1);
 			String embeddingText = embeddingText(context.documentTitle(), parentNumber, parentTitle, chunk);
 			boolean structuralHeading = "structure-heading".equals(chunk.type());
+			boolean articleNote = isArticleNote(chunk.type());
 			versioned.add(new PlannedLawChunk(
 				chunk.type(), chunk.no(), chunk.title(), chunk.text(), chunk.sourcePath(),
 				2, parentKey, parentTitle, parentPath, childOrder, embeddingText,
-				structuralHeading ? "CONTEXT_ONLY" : "PASS", structuralHeading ? "STRUCTURAL_HEADING" : null
+				structuralHeading || articleNote ? "CONTEXT_ONLY" : "PASS",
+				articleNote ? "ARTICLE_REFERENCE_NOTE" : structuralHeading ? "STRUCTURAL_HEADING" : null
 			));
 		}
 		return versioned;
+	}
+
+	private boolean isArticleNote(String type) {
+		return LawOpenApiPayloadParser.ARTICLE_REFERENCE_NOTE.equals(type);
 	}
 
 	private boolean isAdministrativeRuleArticle(PlannedLawChunk chunk) {

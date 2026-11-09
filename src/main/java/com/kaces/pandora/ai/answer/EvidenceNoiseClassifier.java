@@ -82,6 +82,9 @@ final class EvidenceNoiseClassifier {
 		if (chunk == null) {
 			return false;
 		}
+		if (isLawArticleReferenceNote(chunk)) {
+			return true;
+		}
 		String raw = chunk.chunkText();
 		if (raw != null && !raw.isEmpty()) {
 			long controls = raw.chars().filter(c -> Character.isISOControl(c)
@@ -102,6 +105,12 @@ final class EvidenceNoiseClassifier {
 			return true;
 		}
 		return isLowSignalInstructionOnlyChunk(chunk);
+	}
+
+	static boolean isLawArticleReferenceNote(LawSemanticChunkRow chunk) {
+		return chunk != null && "law".equals(chunk.target())
+			&& ("article-reference-note".equals(chunk.sectionType())
+				|| (chunk.sourcePath() != null && chunk.sourcePath().contains(".조문참고자료")));
 	}
 
 	static boolean isLawRevisionMarkerOnlyChunk(LawSemanticChunkRow chunk) {

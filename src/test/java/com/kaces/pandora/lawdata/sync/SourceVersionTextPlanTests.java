@@ -6,6 +6,92 @@ import tools.jackson.databind.ObjectMapper;
 import com.kaces.pandora.common.json.LawJsonWriter;
 
 class SourceVersionTextPlanTests {
+    @Test void identicalNotesAtDifferentPathsNeedSeparateCoverage() {
+        String raw="""
+            {"법령":{"조문":{"조문단위":[{"조문번호":"1","조문여부":"조문",
+            "조문제목":"적용","조문내용":"제1조(적용) 안전기준을 적용한다.",
+            "조문참고자료":[["[제목개정 2025.1.1]","[제목개정 2025.1.1]"]]}]}}}
+            """;
+        var plan=planner.plan("law",75,"테스트 법",raw);
+        assertThat(plan.chunks().stream().filter(chunk->"article-reference-note".equals(chunk.type())))
+            .extracting(PlannedLawChunk::sourcePath).containsExactly(
+                "$.법령.조문.조문단위[0].조문참고자료[0][0]",
+                "$.법령.조문.조문단위[0].조문참고자료[0][1]");
+    }
+
+    @Test void articleNotesKeepTheirOwnerAndNeverBecomeOperativeBody() {
+        String raw="""
+            {"법령":{"조문":{"조문단위":[
+              {"조문번호":"8","조문여부":"조문","조문제목":"안전 조치","조문내용":"제8조(안전 조치) 담당기관은 안전기준을 적용한다.",
+               "조문참고자료":[["[제목개정 2025.1.1]","[제8조는 2026년 12월 31일까지 유효함]"]]},
+              {"조문번호":"9","조문여부":"조문","조문제목":"통행","조문내용":"제9조(통행) 보행자가 있을 때에는 운행을 중지한다."}
+            ]}}}
+            """;
+        var plan=planner.plan("law",75,"테스트 법",raw);
+        var notes=plan.sections().stream().filter(section->"article-reference-note".equals(section.type())).toList();
+        assertThat(notes).extracting(SyncDetailSection::sourcePath).containsExactly(
+            "$.법령.조문.조문단위[0].조문참고자료[0][0]", "$.법령.조문.조문단위[0].조문참고자료[0][1]");
+        assertThat(notes).extracting(SyncDetailSection::no).containsOnly("제8조");
+        assertThat(plan.chunks().stream().filter(chunk->chunk.text().contains("유효함"))).singleElement()
+            .satisfies(chunk->{
+                assertThat(chunk.qualityStatus()).isEqualTo("CONTEXT_ONLY");
+                assertThat(chunk.parentSourcePath()).isEqualTo("$.법령.조문.조문단위[0]");
+                assertThat(chunk.text()).doesNotContain("안전기준을 적용","운행을 중지");
+            });
+        assertThat(plan.unexplainedLossSpanCount()).isZero();
+        var moved=new SourceVersionTextPlan(new LawOpenApiPayloadParser(json,new LawJsonWriter(json)) {
+            @Override public SyncDetailDocument parseSourceVersionDocument(String payload,String title) {
+                var parsed=super.parseSourceVersionDocument(payload,title);
+                return new SyncDetailDocument(parsed.title(),parsed.sections().stream().map(section->
+                    "article-reference-note".equals(section.type())
+                        ? new SyncDetailSection(section.type(),"제9조",section.title(),section.body(),
+                            section.sourcePath().replace("조문단위[0]","조문단위[1]"),section.paragraphNo(),section.lineNo())
+                        : section).toList(),parsed.assets());
+            }
+        });
+        assertThatThrownBy(()->moved.plan("law",75,"테스트 법",raw))
+            .isInstanceOf(IllegalStateException.class).hasMessageContaining("note ownership");
+        assertThatThrownBy(()->planner.plan("law",75,"테스트 법",raw.replace(
+            "[[\"[제목개정 2025.1.1]\",\"[제8조는 2026년 12월 31일까지 유효함]\"]]",
+            "{\"알수없는필드\":\"임의 텍스트\"}")))
+            .isInstanceOf(IllegalStateException.class).hasMessageContaining("note structure");
+    }
+
+    @Test void titleOnlyArticleFieldStaysWithItsOperativeParagraph() {
+        String raw="""
+            {"법령":{"조문":{"조문단위":[{"조문번호":"8","조문여부":"조문",
+            "조문제목":"안전 조치","조문내용":"제8조(안전 조치)",
+            "항":[{"항번호":"①","항내용":"① 담당기관은 보행자가 있을 때 운행을 중지하여야 한다."}]}]}}}
+            """;
+        var plan=planner.plan("law",75,"테스트 법",raw);
+        assertThat(plan.sections()).anySatisfy(section->{
+            assertThat(section.sourcePath()).isEqualTo("$.법령.조문.조문단위[0].조문내용");
+            assertThat(section.body()).isEqualTo("제8조(안전 조치)");
+        });
+        assertThat(plan.chunks()).singleElement().satisfies(chunk->{
+            assertThat(chunk.text()).contains("제8조(안전 조치)","보행자가 있을 때 운행을 중지하여야 한다.");
+            assertThat(chunk.qualityStatus()).isEqualTo("PASS");
+        });
+    }
+
+    @Test void nestedLawItemTextRetainsEveryOwnedLeafInOrder() {
+        String raw="""
+            {"법령":{"조문":{"조문단위":[{"조문번호":"8","조문여부":"조문",
+            "조문제목":"안전 조치","조문내용":"제8조(안전 조치) 담당기관은 다음 기준을 적용한다.",
+            "항":{"항내용":"① 담당기관은 통행 안전을 확보하여야 한다.",
+            "호":[{"호내용":"1. 현장 조건에 맞게 다음 안전조치를 실시한다.",
+            "목":[{"목내용":[["가. 작업 전 통행 구간을 확인한다."],["나. 보행자가 있을 때에는 운행을 중지한다."]]}]}]}}]}}}
+            """;
+        var plan=planner.plan("law",75,"테스트 법",raw);
+        var items=plan.sections().stream().filter(section->"item".equals(section.type())).toList();
+        assertThat(items).extracting(SyncDetailSection::body).containsExactly(
+            "가. 작업 전 통행 구간을 확인한다.","나. 보행자가 있을 때에는 운행을 중지한다.");
+        assertThat(items).extracting(SyncDetailSection::sourcePath).containsExactly(
+            "$.법령.조문.조문단위[0].항.호[0].목[0].목내용[0][0]",
+            "$.법령.조문.조문단위[0].항.호[0].목[0].목내용[1][0]");
+        assertThat(plan.unexplainedLossSpanCount()).isZero();
+    }
+
     @Test void sourceSupplementEntriesKeepTheirOwnDateHeadingAndParent() {
         var parser=new LawOpenApiPayloadParser(json,new LawJsonWriter(json));
         String raw="""

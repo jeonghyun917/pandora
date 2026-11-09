@@ -556,6 +556,32 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void lawReferenceNoteCannotBeFlattenedIntoOperativeParentText() throws Exception {
+		var operative = new LawSemanticChunkRow(12501L, 20L, "law", "20", "안전 규칙",
+			"", "", "20260101", "CURRENT", "제8조", "제8조(안전 조치)", "담당기관은 보행자가 있을 때 운행을 중지한다.",
+			null, "$.법령.조문.조문단위[0].항[0].항내용", "", 25, "operative",
+			"제8조(안전 조치)", "article", "PASS", null, "parent-8", 4);
+		var note = new LawSemanticChunkRow(12502L, 20L, "law", "20", "안전 규칙",
+			"", "", "20260101", "CURRENT", "제8조", "제8조(안전 조치)", "[종전 규정은 2026년 12월 31일까지 유효함]",
+			null, "$.법령.조문.조문단위[0].조문참고자료[0][0]", "", 26, "note",
+			"제8조(안전 조치)", "article-reference-note", "CONTEXT_ONLY", null, "parent-8", 4);
+		var service = service();
+		try {
+			Method enrich = LawAiAnswerService.class.getDeclaredMethod("enrichChunkWithParentContext",
+				LawSemanticChunkRow.class, List.class, String.class);
+			enrich.setAccessible(true);
+			var expanded = (LawSemanticChunkRow) enrich.invoke(service, operative,
+				List.of(operative, note), "보행자가 있으면 어떤 안전 조치를 해야 하나요?");
+			assertThat(expanded.chunkText()).contains("운행을 중지한다").doesNotContain("종전 규정은");
+			Method prepare = LawAiAnswerService.class.getDeclaredMethod("preferUsefulTextForJudgeCandidates",
+				List.class, String.class);
+			prepare.setAccessible(true);
+			assertThat((List<?>) prepare.invoke(service, List.of(note), "보행자가 있으면 어떤 안전 조치를 해야 하나요?"))
+				.isEmpty();
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void parentContextDoesNotMixDocumentsWithTheSameHeading() throws Exception {
 		var original = new LawSemanticChunkRow(12201L, 20L, "official_doc", "20", "계약 지침",
 			"", "", "20260101", "CURRENT", "25", "제76조", "제76조(계약 조건) 원문 조건",

@@ -3211,6 +3211,9 @@ public class LawAiAnswerService {
 		List<LawSemanticChunkRow> documentChunks,
 		String query
 	) {
+		documentChunks = documentChunks.stream()
+			.filter(candidate -> !EvidenceNoiseClassifier.isLawArticleReferenceNote(candidate))
+			.toList();
 		LawSemanticChunkRow enumeratedContinuation = adjacentEnumeratedContinuation(chunk, documentChunks);
 		if (enumeratedContinuation != null) {
 			return List.of(chunk, enumeratedContinuation);
@@ -10925,6 +10928,9 @@ public class LawAiAnswerService {
 
 	// 메소드 설명: hasUsefulText 처리 흐름을 수행합니다.
 	private boolean hasUsefulText(LawSemanticChunkRow chunk) {
+		if (EvidenceNoiseClassifier.isLawArticleReferenceNote(chunk)) {
+			return false;
+		}
 		String text = limitText(cleanHwpxText(chunk.chunkText()), MAX_USEFUL_TEXT_CHECK_CHARS)
 			.replace("<개정", "")
 			.replaceAll("\\d{4}\\.\\d+\\.\\d+>", "")
@@ -10934,10 +10940,13 @@ public class LawAiAnswerService {
 
 	private List<LawSemanticChunkRow> preferUsefulTextForJudgeCandidates(List<LawSemanticChunkRow> chunks, String query) {
 		QuestionIntentProfile profile = QuestionIntentProfile.from(query);
-		List<LawSemanticChunkRow> nonNoiseChunks = chunks.stream()
+		List<LawSemanticChunkRow> answerCandidates = chunks.stream()
+			.filter(chunk -> !EvidenceNoiseClassifier.isLawArticleReferenceNote(chunk))
+			.toList();
+		List<LawSemanticChunkRow> nonNoiseChunks = answerCandidates.stream()
 			.filter(chunk -> !EvidenceNoiseClassifier.shouldSuppressAsEvidence(chunk, profile.normalizedQuestion()))
 			.toList();
-		List<LawSemanticChunkRow> sourceChunks = nonNoiseChunks.isEmpty() ? chunks : nonNoiseChunks;
+		List<LawSemanticChunkRow> sourceChunks = nonNoiseChunks.isEmpty() ? answerCandidates : nonNoiseChunks;
 		List<LawSemanticChunkRow> usefulChunks = sourceChunks.stream()
 			.filter(chunk -> hasUsefulText(chunk) || isDirectOrFocusedEvidenceChunk(chunk, profile))
 			.toList();

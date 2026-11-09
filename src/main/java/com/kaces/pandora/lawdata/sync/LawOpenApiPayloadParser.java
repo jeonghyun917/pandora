@@ -23,6 +23,7 @@ import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class LawOpenApiPayloadParser {
+	static final String ARTICLE_REFERENCE_NOTE = "article-reference-note";
 
 	private static final Pattern LAW_ARTICLE_NODE_PATH = Pattern.compile("^\\$\\.법령\\.조문\\.조문단위\\[[0-9]+]$");
 	private static final Pattern ARTICLE_NO_PREFIX = Pattern.compile("^(제\\d+조(?:의\\d+)?)");
@@ -193,7 +194,7 @@ public class LawOpenApiPayloadParser {
 		if(node==null || node.isNull() || node.isMissingNode())return;
 		if(node.isArray()) {for(int i=0;i<node.size();i++)collectSourceLawArticles(node.get(i),path+"["+i+"]",sections);return;}
 		if(!node.isObject())throw new IllegalStateException("Owned law article object required");
-		collectLawArticleSections(node,path,sections);
+		collectLawArticleSections(node,path,sections,true);
 	}
 	private void collectSourceAuxiliary(JsonNode node,String path,List<SyncDetailSection> sections) {
 		if(node==null || node.isNull())return;
@@ -231,7 +232,7 @@ public class LawOpenApiPayloadParser {
 			return;
 		}
 		if (node.isObject() && LAW_ARTICLE_NODE_PATH.matcher(path).matches()) {
-			collectLawArticleSections(node, path, sections);
+			collectLawArticleSections(node, path, sections, false);
 			return;
 		}
 		if (node.isTextual()) {
@@ -321,7 +322,7 @@ public class LawOpenApiPayloadParser {
 				|| path.contains(REVISION_REASON_ALT_PATH_TOKEN));
 	}
 
-	private void collectLawArticleSections(JsonNode article, String path, List<SyncDetailSection> sections) {
+	private void collectLawArticleSections(JsonNode article, String path, List<SyncDetailSection> sections, boolean sourceVersion) {
 		String articleBody = stripHtmlTags(firstText(article, "조문내용"));
 		if ("전문".equals(firstText(article, "조문여부")) && !hasLawUnits(article.get("항"))) {
 			addStructuredSection(sections, "structure-heading", null, articleBody, articleBody,
@@ -330,10 +331,16 @@ public class LawOpenApiPayloadParser {
 		}
 		String articleNo = articleNo(article, articleBody);
 		String articleTitle = articleTitle(article, articleBody, articleNo);
-		if (!hasLawUnits(article.get("항")) || !isHeadingOnlyArticleBody(articleBody, articleTitle)) {
+		if (sourceVersion) {
+			addOwnedLawUnitText(article.get("조문내용"), path + ".조문내용", "article", articleNo, articleTitle, 0, sections);
+		} else if (!hasLawUnits(article.get("항")) || !isHeadingOnlyArticleBody(articleBody, articleTitle)) {
 			addStructuredSection(sections, "article", articleNo, articleTitle, articleBody, path + ".조문내용", 0, 0);
 		}
-		collectLawUnits(article.get("항"), path + ".항", "항단위", "paragraph", "항내용", articleNo, articleTitle, sections);
+		collectLawUnits(article.get("항"), path + ".항", "항단위", "paragraph", "항내용", articleNo, articleTitle, sections, sourceVersion);
+		if (sourceVersion) {
+			addOwnedLawUnitText(article.get("조문참고자료"), path + ".조문참고자료",
+				ARTICLE_REFERENCE_NOTE, articleNo, articleTitle, 0, sections);
+		}
 	}
 
 	private boolean hasLawUnits(JsonNode node) {
@@ -360,7 +367,8 @@ public class LawOpenApiPayloadParser {
 		String contentField,
 		String articleNo,
 		String articleTitle,
-		List<SyncDetailSection> sections
+		List<SyncDetailSection> sections,
+		boolean sourceVersion
 	) {
 		if (node == null || node.isNull()) {
 			return;
@@ -368,18 +376,29 @@ public class LawOpenApiPayloadParser {
 		List<UnitNode> units = unitNodes(node, path, wrapperName);
 		for (int index = 0; index < units.size(); index++) {
 			UnitNode unit = units.get(index);
-			addStructuredSection(
-				sections,
-				type,
-				articleNo,
-				articleTitle,
-				firstText(unit.node(), contentField),
-				unit.path() + "." + contentField,
-				index + 1,
-				1
-			);
-			collectLawUnits(unit.node().get("호"), unit.path() + ".호", "호단위", "subparagraph", "호내용", articleNo, articleTitle, sections);
-			collectLawUnits(unit.node().get("목"), unit.path() + ".목", "목단위", "item", "목내용", articleNo, articleTitle, sections);
+			if (sourceVersion) {
+				addOwnedLawUnitText(unit.node().get(contentField), unit.path() + "." + contentField,
+					type, articleNo, articleTitle, index + 1, sections);
+			} else {
+				addStructuredSection(sections, type, articleNo, articleTitle, firstText(unit.node(), contentField),
+					unit.path() + "." + contentField, index + 1, 1);
+			}
+			collectLawUnits(unit.node().get("호"), unit.path() + ".호", "호단위", "subparagraph", "호내용", articleNo, articleTitle, sections, sourceVersion);
+			collectLawUnits(unit.node().get("목"), unit.path() + ".목", "목단위", "item", "목내용", articleNo, articleTitle, sections, sourceVersion);
+		}
+	}
+
+	private void addOwnedLawUnitText(JsonNode node, String path, String type, String no, String title,
+		int paragraphNo, List<SyncDetailSection> sections) {
+		if (node == null || node.isNull()) return;
+		if (node.isTextual()) {
+			addStructuredSection(sections, type, no, title, node.asText(), path, paragraphNo, 1);
+		} else if (node.isArray()) {
+			for (int i = 0; i < node.size(); i++) {
+				addOwnedLawUnitText(node.get(i), path + "[" + i + "]", type, no, title, paragraphNo, sections);
+			}
+		} else {
+			throw new IllegalStateException("Unsupported authoritative law unit text structure");
 		}
 	}
 
