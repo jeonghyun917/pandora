@@ -653,6 +653,31 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void ownedStorageGroundsSurviveIntentPreservationCap() throws Exception {
+		String question = "개보위 가명정보 자료의 추가정보는 분리 보관해야 하나요?";
+		String rule = """
+			① 개인정보처리자는 가명정보 및 추가정보에 대하여 다음 각 호의 안전성 확보 조치를 해야 한다.
+			1. 기록 항목의 유지.
+			2. 가명정보와 추가정보의 분리 보관.
+			3. 접근 권한의 분리.
+			""";
+		var guide = chunk(81390L, "official_doc", "가명정보 처리 안내서", "안전조치", rule);
+		var decree = chunk(81391L, "law", "개인정보 보호법 시행령", "안전조치", rule);
+		var rows = new java.util.ArrayList<LawSemanticChunkRow>();
+		for (int i = 0; i < 8; i++) rows.add(chunk(81310L+i, "official_doc", "정보관리 실무 자료", "검토 항목",
+			"가명정보의 추가정보 분리 보관 현황과 적용 대상을 점검해야 하는지 검토한다."));
+		rows.add(guide);
+		rows.add(decree);
+		var judged = new EvidenceJudge.Result(rows, Map.of(), true, true, true, true, 10, 10, 10, "direct");
+		var service = service();
+		try {
+			var kept = preserveIntentDirectEvidenceChunks(service, judged, rows, question).chunks();
+			assertThat(kept).hasSize(8);
+			assertThat(kept.subList(0, 2)).containsExactlyInAnyOrder(guide, decree);
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void scopedProcedureSelectionPreservesLiteralClosedArticleAfterLongPrefix() throws Exception {
 		var scope = new LawSemanticChunkRow(13401L, 10L, "official_doc", "10", "공공소프트웨어사업 과업심의 가이드",
 			"", "", "20260101", "CURRENT", "5", "적용 대상 사업",

@@ -5595,11 +5595,19 @@ public class LawAiAnswerService {
 		if (!restrictToConfiguredPolicyChunks) {
 			directEvidenceChunks = intentDirectEvidenceChunks(judgeContextChunks, query);
 		}
-		if (directEvidenceChunks.isEmpty()) {
+		Set<String> anchoredRuleKeys = new LinkedHashSet<>();
+		if (!restrictToConfiguredPolicyChunks && EvidenceJudge.isPseudonymStorageDutyQuestion(normalizeForMatch(query))) {
+			judgedEvidence.chunks().stream()
+				.filter(chunk -> !Set.of("EXPIRED", "REPEALED", "ABOLISHED", "DELETED", "PAST")
+					.contains(String.valueOf(chunk.effectiveStatus()).strip().toUpperCase(java.util.Locale.ROOT)))
+				.filter(chunk -> SourceOwnedNumberedDuty.provesSeparateStorage(chunk.target(), chunk.chunkText()))
+				.limit(3)
+				.forEach(chunk -> anchoredRuleKeys.add(scoreKey(chunk.target(), chunk.chunkId())));
+		}
+		if (directEvidenceChunks.isEmpty() && anchoredRuleKeys.isEmpty()) {
 			return judgedEvidence;
 		}
 		LinkedHashMap<String, LawSemanticChunkRow> merged = new LinkedHashMap<>();
-		Set<String> anchoredRuleKeys = new LinkedHashSet<>();
 		String noticeQuery = normalizeForMatch(query);
 		if (!restrictToConfiguredPolicyChunks && noticeQuery.contains("수집") && noticeQuery.contains("이용")
 			&& noticeQuery.contains("동의") && containsAny(noticeQuery, "알려", "고지")

@@ -1116,9 +1116,7 @@ public class EvidenceJudge {
 		}
 		if (targetScopeQuestion && formOrChecklistNoise && !directTargetPhrase && !securityReviewTargetAnswerChunk
 			&& !documentAnchoredDirectEvidence
-			&& !(directEvidence && pseudonymAdditionalInfoQuestion
-				&& containsAny(profile.normalizedQuestion(), List.of("분리보관", "분리하여보관", "별도보관", "별도로보관"))
-				&& !containsAny(profile.normalizedQuestion(), List.of("대상", "범위", "해당", "포함", "제외", "면제", "예외", "접근권한"))
+			&& !(directEvidence && isPseudonymStorageDutyQuestion(profile.normalizedQuestion())
 				&& SourceOwnedNumberedDuty.provesSeparateStorage(chunk.target(), chunk.chunkText()))) {
 			directEvidence = false;
 			relevant = false;
@@ -2023,7 +2021,7 @@ public class EvidenceJudge {
 	}
 
 	// 메소드 설명: containsAny 처리 흐름을 수행합니다.
-	private boolean containsAny(String text, List<String> values) {
+	private static boolean containsAny(String text, List<String> values) {
 		for (String value : values) {
 			if (text.contains(normalize(value))) {
 				return true;
@@ -2228,6 +2226,12 @@ public class EvidenceJudge {
 			&& (text.contains("인공지능친화적관리")
 				|| (text.contains("학습데이터") && text.contains("참조데이터"))
 				|| (text.contains("데이터셋") && text.contains("메타데이터")));
+	}
+
+	static boolean isPseudonymStorageDutyQuestion(String normalizedQuestion) {
+		return isPseudonymAdditionalInfoQuestion(normalizedQuestion)
+			&& containsAny(normalizedQuestion, List.of("분리보관", "분리하여보관", "별도보관", "별도로보관"))
+			&& !containsAny(normalizedQuestion, List.of("대상", "범위", "해당", "포함", "제외", "면제", "예외", "접근권한"));
 	}
 
 	private static boolean isPseudonymAdditionalInfoQuestion(String normalizedQuestion) {
