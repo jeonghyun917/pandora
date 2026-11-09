@@ -1061,27 +1061,28 @@
   <select id="findDocumentExpansionDocuments"
           resultType="com.kaces.pandora.semantic.retrieval.DocumentIdentityCandidate"
           timeout="3">
+    <bind name="hasProvisionTerms" value="provisionTerms != null and provisionTerms.size() > 0"/>
     WITH document_matches AS (
       SELECT
         doc.document_id,
         doc.target,
         doc.title,
         LOWER(REGEXP_REPLACE(doc.title, '[^0-9A-Za-z가-힣]', '')) AS normalized_title,
-        MAX(
+        <if test="hasProvisionTerms">MAX(</if>
           <foreach collection="titleTerms" item="titleTerm" separator=" + ">
             CASE WHEN LOWER(REGEXP_REPLACE(doc.title, '[^0-9A-Za-z가-힣]', ''))
               LIKE CONCAT('%', LOWER(REGEXP_REPLACE(#{titleTerm}, '[^0-9A-Za-z가-힣]', '')), '%')
               THEN 1 ELSE 0 END
           </foreach>
-        ) AS matched_title_term_count,
-        MAX(CASE WHEN
+        <if test="hasProvisionTerms">)</if> AS matched_title_term_count,
+        <if test="hasProvisionTerms">MAX(</if>CASE WHEN
           <foreach collection="titleTerms" item="titleTerm" separator=" OR ">
             LOWER(REGEXP_REPLACE(doc.title, '[^0-9A-Za-z가-힣]', ''))
               = LOWER(REGEXP_REPLACE(#{titleTerm}, '[^0-9A-Za-z가-힣]', ''))
           </foreach>
-          THEN 1 ELSE 0 END) AS exact_title_match,
+          THEN 1 ELSE 0 END<if test="hasProvisionTerms">)</if> AS exact_title_match,
         <choose>
-          <when test="provisionTerms != null and provisionTerms.size() > 0">
+          <when test="hasProvisionTerms">
             MAX(CASE WHEN
               <foreach collection="provisionTerms" item="provisionTerm" separator=" OR ">
                 LOWER(REGEXP_REPLACE(COALESCE(c.chunk_no, ''), '[^0-9A-Za-z가-힣]', ''))
@@ -1096,16 +1097,30 @@
           <otherwise>0</otherwise>
         </choose> AS provision_anchor_match
       FROM law_api_documents doc
-      JOIN law_api_document_chunks c ON c.document_id = doc.document_id
+      <if test="hasProvisionTerms">
+        JOIN law_api_document_chunks c ON c.document_id = doc.document_id
+      </if>
       WHERE doc.use_yn = 'Y'
-        AND c.use_yn = 'Y'
-        AND c.activation_status = 'ACTIVE'
+        <choose>
+          <when test="hasProvisionTerms">
+            AND c.use_yn = 'Y'
+            AND c.activation_status = 'ACTIVE'
+          </when>
+          <otherwise>
+            AND EXISTS (
+              SELECT 1 FROM law_api_document_chunks c
+              WHERE c.document_id = doc.document_id AND c.use_yn = 'Y' AND c.activation_status = 'ACTIVE'
+            )
+          </otherwise>
+        </choose>
         <include refid="effectiveSearchFilter"/>
         AND doc.target IN
         <foreach collection="targets" item="target" open="(" separator="," close=")">
           #{target}
         </foreach>
-      GROUP BY doc.document_id, doc.target, doc.title
+      <if test="hasProvisionTerms">
+        GROUP BY doc.document_id, doc.target, doc.title
+      </if>
     )
     SELECT
       document_id AS documentId,

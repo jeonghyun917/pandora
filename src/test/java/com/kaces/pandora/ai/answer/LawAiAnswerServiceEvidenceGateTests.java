@@ -1819,6 +1819,65 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void provenPublicDutyPrecedesBroadEntityTitleMatches() throws Exception {
+		var duty = chunk(3121L, "admrul", "공공기관 데이터베이스 표준화 지침", "업무",
+			"공공기관의 장은 공공데이터베이스 표준화 업무를 수행하여야 한다.", 1);
+		var broad = chunk(3122L, "admrul", "공공데이터 관리 규정", "목적", "이 규정은 목적을 정한다.", 1);
+		var mapper = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
+			LawChunkMapper.class.getClassLoader(), new Class<?>[]{LawChunkMapper.class}, (proxy, method, args) -> {
+				if (method.getName().equals("findDocumentExpansionDocuments")) {
+					return List.of(new com.kaces.pandora.semantic.retrieval.DocumentIdentityCandidate(
+						duty.documentId(), "admrul", duty.title(), "공공기관데이터베이스표준화지침", 3, false, false));
+				}
+				if (method.getName().equals("findDocumentExpansionChunks")) return List.of(duty);
+				if (method.getName().equals("findSemanticChunksByDocumentTitleAndText")) return List.of(broad);
+				return List.of();
+			});
+		var service = service(mapper, null);
+		try {
+			assertThat(findLexicalChunks(service, QuestionSearchPlan.from("공공데이터베이스 표준화는 무엇을 해야 하나요?"),
+				List.of("law", "admrul"), false)).containsExactly(duty);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void boundsOpenPublicDutySearchOnlyWithUniqueApplicableTitle() throws Exception {
+		var duty = chunk(3101L, "admrul", "공공기관의 설비 점검 지침", "점검 의무",
+			"공공기관의 장은 공공설비 점검 업무를 수행하여야 한다.", 1);
+		var fallback = chunk(3102L, "admrul", "기타 지침", "점검", "시설관리자는 점검 업무를 수행하여야 한다.", 1);
+		var doc = new com.kaces.pandora.semantic.retrieval.DocumentIdentityCandidate(
+			duty.documentId(), "admrul", duty.title(), "공공기관의설비점검지침", 3, false, false);
+		var other = new com.kaces.pandora.semantic.retrieval.DocumentIdentityCandidate(
+			3103L, "admrul", "공공기관 설비 점검 별도 지침", "공공기관설비점검별도지침", 3, false, false);
+		for (String state : List.of("owned", "ambiguous", "unproven", "unavailable")) {
+			var mapper = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
+				LawChunkMapper.class.getClassLoader(), new Class<?>[]{LawChunkMapper.class}, (proxy, method, args) -> {
+					if (method.getName().equals("findDocumentExpansionDocuments")
+						&& List.of("공공", "설비", "점검").equals(args[1])) {
+						if (state.equals("unavailable")) throw new IllegalStateException("unavailable");
+						return state.equals("ambiguous") ? List.of(doc, other) : List.of(doc);
+					}
+					if (method.getName().equals("findDocumentExpansionChunks")
+						&& List.of(duty.documentId()).equals(args[0])) {
+						return state.equals("unproven") ? List.of() : List.of(duty);
+					}
+					if (method.getName().equals("findSemanticChunksByText")) return List.of(fallback);
+					return List.of();
+				});
+			var service = service(mapper, null);
+			try {
+				var result = findLexicalChunks(service, QuestionSearchPlan.from("공공설비 점검은 무엇을 해야 하나요?"),
+					List.of("admrul"), false);
+				assertThat(result).as(state).containsExactly(state.equals("owned") ? duty : fallback);
+			} finally {
+				service.shutdownExecutors();
+			}
+		}
+	}
+
+	@Test
 	void standardizationDutiesDoNotShortCircuitOnDiagnosisCounts() throws Exception {
 		var diagnosis = chunk(3001L, "official_doc", "공공데이터베이스 표준화 관리 매뉴얼",
 			"예방적 품질관리 진단", "공공데이터베이스 예방적 품질관리 진단은 4개 영역, 9개 항목, 18개 진단기준으로 구성한다.", 40);

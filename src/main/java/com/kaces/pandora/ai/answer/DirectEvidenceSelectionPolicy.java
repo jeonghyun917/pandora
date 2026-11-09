@@ -30,6 +30,10 @@ public class DirectEvidenceSelectionPolicy {
 		this.semanticMatcher = new SemanticEvidenceMatcher(parser);
 	}
 
+	String openDutyTopic(String question, QuestionIntentProfile profile) {
+		return templateFactory.from(question, profile).openDutyTopic();
+	}
+
 	public Result apply(
 		String question,
 		QuestionIntentProfile profile,

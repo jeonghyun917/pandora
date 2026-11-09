@@ -9473,6 +9473,13 @@ public class LawAiAnswerService {
 			return finishLexicalChunks(chunks, query);
 		}
 		List<String> genericKeywords = focusedLookup ? genericLexicalKeywords(query) : keywords;
+		if (!boundedLawEvidenceMatched && documentTitleAnchors.isEmpty() && !includeFuture && lawTargets.contains("admrul")) {
+			var ownedDuty = findOpenPublicDutyTitleChunks(query, profile, routing);
+			if (!ownedDuty.isEmpty()) {
+				chunks.addAll(ownedDuty);
+				return finishLexicalChunks(chunks, query);
+			}
+		}
 		if (!boundedLawEvidenceMatched && !lawTargets.isEmpty() && chunks.isEmpty()) {
 			List<String> entityTitles = profile.entities().stream()
 				.flatMap(entity -> entity.aliases().stream())
@@ -10230,6 +10237,34 @@ public class LawAiAnswerService {
 			.limit(6)
 			.toList();
 	}
+
+    private List<LawSemanticChunkRow> findOpenPublicDutyTitleChunks(String query, QuestionIntentProfile profile,
+        RecoveryRoutingSnapshot routing) {
+        String topic = directEvidenceSelectionPolicy.openDutyTopic(query, profile);
+        if (topic == null) return List.of();
+        String[] words = topic.split("\\s+");
+        if (words.length != 2 || !words[0].startsWith("공공") || words[0].length() < 4) return List.of();
+        var terms = List.of("공공", words[0].substring(2), words[1]);
+        try {
+            var documents = lawChunkMapper.findDocumentExpansionDocuments(
+                List.of("admrul"), terms, List.of(), false, 2);
+            if (documents == null || documents.size() != 1) return List.of();
+            var doc = documents.get(0);
+            String title = normalizeForMatch(doc.title());
+            if (!"admrul".equals(doc.target()) || !title.startsWith("공공기관")
+                || terms.stream().anyMatch(term -> !title.contains(normalizeForMatch(term)))) return List.of();
+            var candidates = safeLexicalQuery("law open-duty title chunks", () -> lawChunkMapper.findDocumentExpansionChunks(
+                List.of(doc.documentId()), List.of(), List.of(), terms.subList(1, terms.size()), false, 8, 8), routing)
+                .stream().filter(row -> row != null && doc.documentId() == row.documentId()
+                    && "admrul".equals(row.target()) && "CURRENT".equals(row.effectiveStatus())).toList();
+            return directEvidenceSelectionPolicy.apply(query, profile, List.of(), candidates, Map.of(),
+                Set.of("admrul"), 8).chunks();
+        } catch (RuntimeException exception) {
+            // This is an optional bounded lookup; existing lexical behavior remains the fallback.
+            log.debug("Law open-duty title lookup unavailable; continuing with standard lexical search");
+            return List.of();
+        }
+    }
 
     private List<String> domainLawTitleKeywords(QuestionIntentProfile profile) {
         return profile.entities().stream().flatMap(entity->entity.directEvidenceGroups().stream()).flatMap(List::stream)

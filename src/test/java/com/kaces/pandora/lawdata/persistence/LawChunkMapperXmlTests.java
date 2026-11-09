@@ -118,6 +118,18 @@ class LawChunkMapperXmlTests {
 	}
 
 	@Test
+	void titleOnlyExpansionChecksActiveChunkExistenceWithoutExpandingEveryChunk() throws Exception {
+		var statement = parseMapper().getMappedStatement(DOCUMENT_EXPANSION_DOCUMENTS_STATEMENT);
+		String sql = normalizedSql(statement, Map.of("targets", List.of("admrul"), "titleTerms", List.of("설비", "검사"),
+			"provisionTerms", List.of(), "includeFuture", false, "limit", 4));
+		assertThat(sql)
+			.doesNotContain("JOIN law_api_document_chunks")
+			.contains("EXISTS ( SELECT 1 FROM law_api_document_chunks c",
+				"c.document_id = doc.document_id", "c.use_yn = 'Y'", "c.activation_status = 'ACTIVE'",
+				"0 AS provision_anchor_match", "normalized_title =", "AND normalized_title LIKE");
+	}
+
+	@Test
 	void documentExpansionChunksAreRankedAndBoundedBeforeJdbc() throws Exception {
 		Configuration configuration = parseMapper();
 		MappedStatement statement = configuration.getMappedStatement(DOCUMENT_EXPANSION_CHUNKS_STATEMENT);
