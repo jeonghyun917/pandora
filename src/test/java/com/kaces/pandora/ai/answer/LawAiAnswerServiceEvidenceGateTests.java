@@ -351,6 +351,23 @@ class LawAiAnswerServiceEvidenceGateTests {
             assertThat(broad.get()).isGreaterThan(before);
         } finally {service.shutdownExecutors();}
     }
+    @Test void lexicalSortingScoresEachUniqueCandidateOnceAndPreservesTieOrder() throws Exception {
+        var first=org.mockito.Mockito.spy(chunk(99109L,"law","가이드","절차","일반적인 처리 사항입니다."));
+        var second=org.mockito.Mockito.spy(chunk(99110L,"law","가이드","절차","일반적인 처리 사항입니다."));
+        var third=org.mockito.Mockito.spy(chunk(99111L,"law","가이드","절차","일반적인 처리 사항입니다."));
+        var duplicate=org.mockito.Mockito.spy(chunk(99109L,"law","다른 본문","보안","개인정보 처리방침"));
+        var otherTarget=org.mockito.Mockito.spy(chunk(99109L,"official_doc","다른 문서","절차","개인정보 처리방침"));
+        var service=service();
+        try {
+            var finish=LawAiAnswerService.class.getDeclaredMethod("finishLexicalChunks",List.class,String.class);
+            finish.setAccessible(true);
+            assertThat(finish.invoke(service,List.of(first,second,duplicate,third,otherTarget),"개인정보 처리방침"))
+                .isEqualTo(List.of(otherTarget,first,second,third));
+            for (var row:List.of(first,second,third,otherTarget)) org.mockito.Mockito.verify(row).chunkText();
+            org.mockito.Mockito.verify(duplicate,org.mockito.Mockito.never()).chunkText();
+        } finally { service.shutdownExecutors(); }
+    }
+
     @Test void crosswalkStopFindsPedestrianDutyEvenWhenTheChunkHeadingIsBundled() throws Exception {
         var duty=chunk(99108L,"law","도로교통법","회전교차로 통행방법 등",
             "모든 차의 운전자는 보행자가 횡단보도를 통행하고 있거나 통행하려고 하는 때에는 횡단보도 앞에서 일시정지하여야 한다.");

@@ -10218,10 +10218,14 @@ public class LawAiAnswerService {
 			))
 			.values()
 			.stream()
-			.sorted(Comparator.comparingDouble((LawSemanticChunkRow chunk) -> keywordScore(chunk, query)).reversed())
+			.map(chunk -> new LexicalScore(chunk, keywordScore(chunk, query)))
+			.sorted(Comparator.comparingDouble(LexicalScore::score).reversed())
 			.limit(KEYWORD_CANDIDATE_LIMIT)
+			.map(LexicalScore::chunk)
 			.toList();
 	}
+
+	private record LexicalScore(LawSemanticChunkRow chunk, double score) {}
 
 	// 메소드 설명: lexicalKeywords 처리 흐름을 수행합니다.
 	private List<String> lexicalKeywords(String query) {
