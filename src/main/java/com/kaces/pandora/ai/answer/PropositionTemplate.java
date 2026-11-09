@@ -10,8 +10,13 @@ public record PropositionTemplate(
 	Set<String> relations,
 	Set<String> targetScopes,
 	Set<String> conditions,
-	Set<RequiredSlot> requiredSlots
+	Set<RequiredSlot> requiredSlots,
+	String openDutyTopic
 ) {
+	public PropositionTemplate(Set<String> subjects, Set<String> actions, Set<String> relations,
+		Set<String> targetScopes, Set<String> conditions, Set<RequiredSlot> requiredSlots) {
+		this(subjects, actions, relations, targetScopes, conditions, requiredSlots, null);
+	}
 	public PropositionTemplate {
 		subjects = immutable(subjects);
 		actions = immutable(actions);

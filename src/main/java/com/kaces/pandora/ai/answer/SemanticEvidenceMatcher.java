@@ -273,6 +273,9 @@ public class SemanticEvidenceMatcher {
 			|| evidence.parseStatus() == EvidenceAtom.ParseStatus.AMBIGUOUS) {
 			return SemanticMatch.insufficient("TEMPLATE_OR_EVIDENCE_INCOMPLETE");
 		}
+		if (template.openDutyTopic() != null) {
+			return matchOpenDuty(template, evidence);
+		}
 		Set<String> aligned = new LinkedHashSet<>();
 		if (!requiredAligned(template.requiredSlots().contains(PropositionTemplate.RequiredSlot.SUBJECT),
 			template.subjects(), evidence.subjects(), "subject", aligned)
@@ -293,6 +296,29 @@ public class SemanticEvidenceMatcher {
 		return new SemanticMatch(
 			ClaimEvidenceMatcher.Status.SUPPORTED, Set.copyOf(aligned), 0, evidence.sourceText(), 1.0d, "ALIGNED"
 		);
+	}
+
+	private SemanticMatch matchOpenDuty(PropositionTemplate template, EvidenceAtom evidence) {
+		if (evidence.parseStatus() != EvidenceAtom.ParseStatus.COMPLETE
+			|| evidence.modality() != EvidenceAtom.Modality.REQUIRED || evidence.polarity() != EvidenceAtom.Polarity.POSITIVE
+			|| evidence.subjects().isEmpty() || evidence.actions().isEmpty()
+			|| (!template.subjects().isEmpty() && !template.subjects().equals(evidence.subjects()))) {
+			return SemanticMatch.insufficient("OPEN_DUTY_ACTOR_OR_ACTION_MISSING");
+		}
+		String source = evidence.sourceText();
+		if (source.matches("(?s).*[\\\"“”‘’「」『』].*")) {
+			return SemanticMatch.insufficient("OPEN_DUTY_TOPIC_NOT_OWNED");
+		}
+		String topic = java.util.Arrays.stream(template.openDutyTopic().split("\\s+"))
+			.map(java.util.regex.Pattern::quote).collect(java.util.stream.Collectors.joining("\\s+"));
+		var ownedAction = java.util.regex.Pattern.compile("(?<![가-힣A-Za-z0-9])" + topic
+			+ "(?:\\s+업무)?(?:을|를)\\s+(?:([가-힣]{2,20}?)(?:하여야|해야)\\s*한다"
+			+ "|[가-힣]{2,20}?하도록\\s+(?:관리|요구|조치|지시)(?:하고|하여야|해야))").matcher(source);
+		if (ownedAction.results().noneMatch(match -> match.group(1) == null || evidence.actions().contains(match.group(1)))) {
+			return SemanticMatch.insufficient("OPEN_DUTY_TOPIC_NOT_OWNED");
+		}
+		return new SemanticMatch(ClaimEvidenceMatcher.Status.SUPPORTED, Set.of("topic", "actor", "action", "modality"),
+			0, source, 1.0d, "SOURCE_OWNED_OPEN_DUTY");
 	}
 
 	private SemanticMatch align(EvidenceAtom claim, IndexedAtom indexed) {

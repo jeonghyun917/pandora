@@ -118,6 +118,22 @@ class DirectEvidenceSelectionPolicyTests {
 		assertThat(result.reasonByCandidateKey()).containsEntry("law:4", "DIRECT_ATOM_REJECTED_LIMIT");
 	}
 
+	@Test
+	void bindsOpenDutyToOwnedTopicAndExplicitActor() {
+		var owned = chunk(11L, "CURRENT", "law", "시설관리자는 정기 장비 점검 업무를 수행하여야 한다.");
+		var wrongActor = chunk(12L, "CURRENT", "law", "감독기관은 정기 장비 점검 업무를 수행하여야 한다.");
+		var unrelatedDuty = chunk(13L, "CURRENT", "law", "시설관리자는 정기 장비 점검을 위하여 연락처를 등록하여야 한다.");
+		var permission = chunk(14L, "CURRENT", "law", "시설관리자는 정기 장비 점검 업무를 수행할 수 있다.");
+		var split = chunk(15L, "CURRENT", "law", "정기 장비 점검 업무\n시설관리자는 연락처를 등록하여야 한다.");
+		var incidental = chunk(16L, "CURRENT", "law", "시설관리자는 정기 장비 점검 업무를 안내하고 연락처를 등록하여야 한다.");
+		var candidates = List.of(wrongActor, unrelatedDuty, permission, split, incidental, owned);
+		for (String question : List.of("정기 장비 점검은 뭘 해야해?", "시설관리자는 정기 장비 점검에 관해 무엇을 해야 하나요?")) {
+			var result = policy.apply(question, QuestionIntentProfile.from(question), List.of(), candidates, Map.of(), Set.of("law"), 10);
+			assertThat(result.chunks()).as(question).contains(owned).doesNotContain(unrelatedDuty, permission, split, incidental);
+			if (question.startsWith("시설관리자는")) assertThat(result.chunks()).doesNotContain(wrongActor);
+		}
+	}
+
 	private LawSemanticChunkRow chunk(long id, String status, String target, String text) {
 		return new LawSemanticChunkRow(
 			id, 100L + id, target, "ext-" + id, "법령", "기관", "법률", "2026-01-01", status,
