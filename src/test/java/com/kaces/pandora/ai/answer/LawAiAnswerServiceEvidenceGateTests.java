@@ -1819,6 +1819,38 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void keepsSourceOwnedOpenDutyWholeInsteadOfClippingAtTopicMentions() throws Exception {
+		var duty = "시설관리자는 정기 장비 점검 업무를 수행하여야 한다.";
+		var body = "정기 장비 점검 개요와 정기 장비 점검 배경을 설명한다.\n"
+			+ "일반 안내는 시행 주체의 업무와 관계가 없다.\n".repeat(25) + duty;
+		var row = chunk(3140L, "admrul", "시설 관리 지침", "업무 기준", body, 1);
+		var service = service();
+		try {
+			assertThat(contextSnippet(service, row, "정기 장비 점검은 무엇을 해야 하나요?", 180)).contains(duty);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void keepsOriginalNumberedParagraphForInheritedOpenDutyActor() throws Exception {
+		String paragraph = "③ 시설관리자는 발주 전 요구사항 반영 여부를 「설비 관리 매뉴얼」을 활용하여 점검하고, "
+			+ "운영사업 수행 시 담당자로 하여금 정기 장비 점검 업무를 수행하도록 관리하고 검사 시 점검이 수행되었는지 "
+			+ "검사하여 보완사항이 발생한 경우 담당자로 하여금 즉시 보완토록 조치하여야 한다.";
+		String body = "정기 장비 점검 개요와 정기 장비 점검 배경이다.\n"
+			+ "일반 안내는 시행 주체의 업무와 관계가 없다.\n".repeat(25)
+			+ paragraph + "\n④ 감독기관은 점검 결과를 검토할 수 있다.";
+		var service = service();
+		try {
+			var row = chunk(3141L, "admrul", "시설 관리 지침", "업무 기준", body, 1);
+			assertThat(contextSnippet(service, row, "정기 장비 점검은 무엇을 해야 하나요?", 240))
+				.contains(paragraph);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void provenPublicDutyPrecedesBroadEntityTitleMatches() throws Exception {
 		var duty = chunk(3121L, "admrul", "공공기관 데이터베이스 표준화 지침", "업무",
 			"공공기관의 장은 공공데이터베이스 표준화 업무를 수행하여야 한다.", 1);

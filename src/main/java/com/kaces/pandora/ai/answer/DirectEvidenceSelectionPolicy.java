@@ -34,6 +34,15 @@ public class DirectEvidenceSelectionPolicy {
 		return templateFactory.from(question, profile).openDutyTopic();
 	}
 
+	List<String> openDutyBodySentences(String question, String body) {
+		var template = templateFactory.from(question, null);
+		if (template.openDutyTopic() == null) return List.of();
+		return atomizer.atomizeForAlignment(body).stream()
+			.filter(sentence -> semanticMatcher.match(template, parser.parse(sentence)).status()
+				== ClaimEvidenceMatcher.Status.SUPPORTED)
+			.toList();
+	}
+
 	public Result apply(
 		String question,
 		QuestionIntentProfile profile,

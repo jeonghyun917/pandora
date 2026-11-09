@@ -3628,6 +3628,9 @@ public class LawAiAnswerService {
 			value = completeNumberedProcedureSnippet(chunk, query);
 		}
 		if (value.isBlank()) {
+			value = openDutyContextWindow(chunk.chunkText(), query, limit);
+		}
+		if (value.isBlank()) {
 			value = contextSnippet(chunk.chunkText(), query, limit);
 		}
 		value = prependMeaningfulChunkHeading(chunk, value);
@@ -3638,6 +3641,61 @@ public class LawAiAnswerService {
 			return "";
 		}
 		return value;
+	}
+
+	private String openDutyContextWindow(String body, String query, int limit) {
+		if (body == null || body.length() <= limit || limit <= 0) return "";
+		var sentences = directEvidenceSelectionPolicy.openDutyBodySentences(query, body);
+		if (sentences.isEmpty()) return "";
+		String display = cleanDisplayText(body).replaceAll("\\s+", " ").trim();
+		for (String sentence : sentences) {
+			String literal = cleanDisplayText(sentence).replaceAll("\\s+", " ").trim();
+			if (literal.isEmpty() || literal.length() > limit) continue;
+			int offset = display.indexOf(literal);
+			if (offset < 0 || display.indexOf(literal, offset + 1) >= 0) continue;
+			int start = Math.max(0, offset - (limit - literal.length()) / 2);
+			int end = Math.min(display.length(), start + limit);
+			// Keep the whole owned sentence while clipping the neighboring prose only at spaces.
+			while (start < offset && start > 0 && display.charAt(start - 1) != ' ') start++;
+			while (end > offset + literal.length() && end < display.length() && display.charAt(end) != ' ') end--;
+			return (start > 0 ? "... " : "") + display.substring(start, end).trim()
+				+ (end < display.length() ? " ..." : "");
+		}
+		String paragraph = inheritedOpenDutyParagraph(body, sentences, limit);
+		int remaining = limit - paragraph.length() - 5;
+		if (paragraph.isEmpty() || remaining < 120) return paragraph;
+		String supplemental = contextSnippet(body, query, remaining);
+		// The second excerpt is not a continuation of the owned paragraph.
+		return supplemental.isBlank() || supplemental.length() > remaining || supplemental.contains(paragraph)
+			? paragraph : paragraph + "\n...\n" + supplemental;
+	}
+
+	private String inheritedOpenDutyParagraph(String body, List<String> sentences, int limit) {
+		var paragraph = java.util.regex.Pattern.compile("([①-⑲])([^①-⑳]{1,1600})(?=([②-⑳]))").matcher(body);
+		String result = "";
+		while (paragraph.find()) {
+			if (paragraph.group(3).charAt(0) != paragraph.group(1).charAt(0) + 1) continue;
+			String literal = cleanDisplayText(paragraph.group(1) + paragraph.group(2));
+			if (literal.length() > limit || !literal.endsWith(".")
+				|| literal.matches("(?s).*제\\s*\\d+\\s*조\\s*[(（].*")) continue;
+			String bodyWithoutMarker = cleanDisplayText(paragraph.group(2));
+			for (String sentence : sentences) {
+				String atom = cleanDisplayText(sentence);
+				int separator = atom.indexOf(' ');
+				if (separator < 1) continue;
+				String actor = atom.substring(0, separator + 1);
+				if (!actor.matches("[가-힣]{2,25}(?:은|는) ") || !bodyWithoutMarker.startsWith(actor)) continue;
+				String tail = atom.substring(separator + 1).replaceAll("\\s+", "");
+				String compactBody = bodyWithoutMarker.replaceAll("\\s+", "");
+				if (!compactBody.endsWith(tail)) continue;
+				String prior = compactBody.substring(0, compactBody.length() - tail.length());
+				if (!(prior.endsWith("하고,") || prior.endsWith("하며,"))) continue;
+				if (!result.isEmpty()) return "";
+				result = literal;
+				break;
+			}
+		}
+		return result;
 	}
 
 	// 메소드 설명: answerFocusInstruction 처리 흐름을 수행합니다.
