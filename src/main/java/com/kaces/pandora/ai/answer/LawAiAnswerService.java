@@ -9539,6 +9539,22 @@ public class LawAiAnswerService {
 		if (focusedLookup && chunks.size() >= MIN_FOCUSED_LEXICAL_CHUNKS) {
 			return finishLexicalChunks(chunks, query);
 		}
+		if (!boundedLawEvidenceMatched && documentTitleAnchors.isEmpty() && !includeFuture
+			&& lawTargets.contains("admrul") && isProcurementContractMethodQuestion(normalizedQuery)
+			&& containsAny(normalizedQuery, "디지털카탈로그", "디지털카달로그", "디지털서비스몰")) {
+			var catalog = safeLexicalQuery("law digital catalog contract and order", () ->
+				lawChunkMapper.findSemanticChunksByDocumentTitleAndText(List.of("admrul"),
+					List.of("디지털서비스 카탈로그계약"), List.of("수의계약", "납품요구"), false,
+					LAW_TEXT_KEYWORD_FETCH_LIMIT), routing);
+			chunks.addAll(catalog);
+			// A title alias only retrieves candidates. Keep the ordinary fallback unless
+			// one document contains both role-specific passages; the judge still decides support.
+			boundedLawEvidenceMatched = catalog.stream().collect(java.util.stream.Collectors.groupingBy(LawSemanticChunkRow::documentId))
+				.values().stream().anyMatch(rows -> rows.stream().map(row -> normalizeForMatch(row.chunkText()))
+					.anyMatch(body -> body.contains("계약담당공무원") && body.contains("수의계약을체결"))
+					&& rows.stream().map(row -> normalizeForMatch(row.chunkText()))
+						.anyMatch(body -> body.contains("수요기관의장") && body.contains("납품을요구")));
+		}
 		List<String> genericKeywords = focusedLookup ? genericLexicalKeywords(query) : keywords;
 		if (!boundedLawEvidenceMatched && documentTitleAnchors.isEmpty() && !includeFuture && lawTargets.contains("admrul")) {
 			var ownedDuty = findOpenPublicDutyTitleChunks(query, profile, routing);

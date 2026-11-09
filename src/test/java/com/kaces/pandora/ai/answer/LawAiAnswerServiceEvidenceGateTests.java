@@ -317,6 +317,32 @@ class LawAiAnswerServiceEvidenceGateTests {
             assertThat(result).contains(rule);assertThat(broad.get()).isZero();
         } finally {service.shutdownExecutors();}
     }
+    @Test void digitalCatalogContractMethodFindsBothActorsWithoutTreatingGeneralMallAsTheSameChannel() throws Exception {
+        var contract=chunk(99104L,"admrul","디지털서비스 카탈로그계약 업무처리규정","계약체결","계약담당공무원은 요건을 충족하면 수의계약을 체결할 수 있다.");
+        var order=chunk(99105L,99104L,"admrul","디지털서비스 카탈로그계약 업무처리규정","납품요구","수요기관의 장은 등록된 계약품목의 납품을 요구한다.",null);
+        var broad=new java.util.concurrent.atomic.AtomicInteger();
+        var includeOrder=new java.util.concurrent.atomic.AtomicBoolean(true);
+        var law=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),new Class<?>[]{LawChunkMapper.class},
+            (proxy,method,args)->{
+                if(method.getName().equals("findSemanticChunksByDocumentTitleAndText") && ((List<?>)args[1]).contains("디지털서비스 카탈로그계약")
+                    && ((List<?>)args[2]).containsAll(List.of("수의계약","납품요구")))return includeOrder.get()?List.of(contract,order):List.of(contract);
+                if(method.getName().equals("findSemanticChunksByText"))broad.incrementAndGet();
+                return List.of();
+            });
+        var service=service(law,null);
+        try {
+            assertThat(findLexicalChunks(service,QuestionSearchPlan.from("디지털 카탈로그를 이용하면 계약방식이 수의계약으로 정해지나요?"),List.of("admrul"),false))
+                .contains(contract,order);
+            assertThat(broad.get()).isZero();
+            assertThat(findLexicalChunks(service,QuestionSearchPlan.from("종합쇼핑몰을 이용하면 수의계약으로 정해지나요?"),List.of("admrul"),false))
+                .doesNotContain(contract,order);
+            includeOrder.set(false);
+            int before=broad.get();
+            assertThat(findLexicalChunks(service,QuestionSearchPlan.from("디지털서비스몰의 구매 계약방법은?"),List.of("admrul"),false))
+                .contains(contract).doesNotContain(order);
+            assertThat(broad.get()).isGreaterThan(before);
+        } finally {service.shutdownExecutors();}
+    }
     @Test void complianceLawLookupUsesConfiguredSoftwareConceptRatherThanOnlySurfaceWording() throws Exception {
         var captured=new java.util.ArrayList<String>();
         var law=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),new Class<?>[]{LawChunkMapper.class},
@@ -4144,9 +4170,13 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	private LawSemanticChunkRow chunk(long chunkId, String target, String title, String chunkNo, String text, Integer pageNo) {
+		return chunk(chunkId, chunkId, target, title, chunkNo, text, pageNo);
+	}
+
+	private LawSemanticChunkRow chunk(long chunkId, long documentId, String target, String title, String chunkNo, String text, Integer pageNo) {
 		return new LawSemanticChunkRow(
 			chunkId,
-			chunkId,
+			documentId,
 			target,
 			String.valueOf(chunkId),
 			title,
