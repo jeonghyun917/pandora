@@ -19,7 +19,7 @@ final class SourcePdfInspection {
         this.timeoutMillis=timeoutMillis;
     }
     Result inspect(Path file) {
-        byte[] output=run(file,false).bytes();
+        byte[] output=run(file).bytes();
         var records=new String(output,StandardCharsets.UTF_8).lines().filter(line->line.startsWith("PDF_NATIVE_V1 ")).toList();
         if(records.size()!=1 || !records.get(0).matches("PDF_NATIVE_V1 [0-9a-f]{64} [0-9a-f]{64} [0-9]{1,4} [0-9]{1,7}"))
             throw new IllegalStateException("PDF worker response unavailable");
@@ -28,13 +28,38 @@ final class SourcePdfInspection {
         return new Result(fields[1],fields[2],LawHashUtils.sha256Json(List.of("pdf-native-no-table-proof-v1",pages,fields[2])),pages,characters);
     }
     SourcePdfPositions.Result positions(Path file) {
-            var response=run(file,true);
+            var response=run(file,"positions");
             String output=new String(response.bytes(),StandardCharsets.UTF_8).strip();
             if(!output.matches("PDF_POSITIONS_V1 [0-9a-f]{64} [A-Za-z0-9+/=]{1,49152}"))throw new IllegalStateException("PDF position protocol rejected");
             String[] fields=output.split(" ");if(!response.expectedHash().equals(fields[1]))throw new IllegalStateException("PDF position input identity changed");
             return SourcePdfPositions.decode(fields[1],Base64.getDecoder().decode(fields[2]));
     }
-    private WorkerOutput run(Path file,boolean positions) {
+    TaggedPdfParagraph.Lines paragraph(Path file,String originalHash,int page,int first,int second) {
+        if(originalHash==null || !originalHash.matches("[0-9a-f]{64}") || page<1 || page>1000
+                || first<0 || second<0 || first==second) throw new IllegalArgumentException("Invalid paragraph identity");
+        String[] coordinates={Integer.toString(page),Integer.toString(first),Integer.toString(second)};
+        var response=run(file,"paragraph",coordinates[0],coordinates[1],coordinates[2]);
+        String prefix="PDF_PARAGRAPH_V1 "+originalHash+" "+String.join(" ",coordinates)+" ";
+        String output=new String(response.bytes(),StandardCharsets.US_ASCII).strip();
+        if(!output.startsWith(prefix)) throw new IllegalStateException("PDF paragraph identity rejected");
+        String[] lines=output.substring(prefix.length()).split(" ",-1);
+        if(lines.length!=2) throw new IllegalStateException("PDF paragraph protocol rejected");
+        return new TaggedPdfParagraph.Lines(decodeLine(lines[0]),decodeLine(lines[1]));
+    }
+    private static String decodeLine(String encoded) {
+        if(encoded.length()>21_848 || !encoded.matches("[A-Za-z0-9+/]+={0,2}"))
+            throw new IllegalStateException("PDF paragraph line encoding rejected");
+        try {
+            String line=StandardCharsets.UTF_8.newDecoder().decode(
+                java.nio.ByteBuffer.wrap(Base64.getDecoder().decode(encoded))).toString();
+            if(line.isBlank() || line.length()>4096 || line.codePoints().anyMatch(Character::isISOControl))
+                throw new IllegalStateException("PDF paragraph line rejected");
+            return line;
+        } catch(IllegalArgumentException | java.nio.charset.CharacterCodingException invalid) {
+            throw new IllegalStateException("PDF paragraph line encoding rejected",invalid);
+        }
+    }
+    private WorkerOutput run(Path file,String... mode) {
         requireReviewedEnvironment(System.getenv());
         if(!WORKERS.tryAcquire())throw new IllegalStateException("PDF inspection capacity unavailable");
         Process worker=null;Future<byte[]> reader=null;
@@ -42,12 +67,12 @@ final class SourcePdfInspection {
             if(!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS) || Files.size(file)<5 || Files.size(file)>SourceReferenceInspector.MAX_BYTES)
                 throw new IllegalStateException("Bounded PDF worker input required");
             String expectedHash=null;
-            if(positions)try(var input=Files.newInputStream(file)) {
+            if(mode.length==1 && "positions".equals(mode[0]))try(var input=Files.newInputStream(file)) {
                 byte[] bytes=input.readNBytes(SourceReferenceInspector.MAX_BYTES+1);
                 if(bytes.length<5 || bytes.length>SourceReferenceInspector.MAX_BYTES)throw new IllegalStateException("Position input byte bound rejected");
                 expectedHash=SourceReferenceInspector.artifactHash(bytes);
             }
-            worker=new ProcessBuilder(command(file,positions)).redirectError(ProcessBuilder.Redirect.DISCARD).start();
+            worker=new ProcessBuilder(command(file,mode)).redirectError(ProcessBuilder.Redirect.DISCARD).start();
             Process active=worker;reader=READERS.submit(()->active.getInputStream().readNBytes(65_537));
             if(!worker.waitFor(timeoutMillis,TimeUnit.MILLISECONDS))throw new IllegalStateException("PDF inspection deadline exceeded");
             byte[] output=reader.get(1,TimeUnit.SECONDS);
@@ -74,9 +99,9 @@ final class SourcePdfInspection {
             throw new IllegalStateException("Inherited JVM options require explicit resource-policy review");
     }
     static List<String> command(Path file) {
-        return command(file,false);
+        return command(file,new String[0]);
     }
-    private static List<String> command(Path file,boolean positions) {
+    private static List<String> command(Path file,String... mode) {
         var command=new ArrayList<String>();
         String executable=System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win")?"java.exe":"java";
         command.add(Path.of(System.getProperty("java.home"),"bin",executable).toString());
@@ -84,7 +109,7 @@ final class SourcePdfInspection {
         boolean packaged=ClassLoader.getSystemResource("org/springframework/boot/loader/launch/PropertiesLauncher.class")!=null;
         if(packaged)command.add("-Dloader.main="+SourcePdfWorker.class.getName());
         command.addAll(List.of("-cp",System.getProperty("java.class.path"),packaged?"org.springframework.boot.loader.launch.PropertiesLauncher":SourcePdfWorker.class.getName(),file.toAbsolutePath().toString()));
-        if(positions)command.add("positions");
+        command.addAll(List.of(mode));
         return List.copyOf(command);
     }
 }

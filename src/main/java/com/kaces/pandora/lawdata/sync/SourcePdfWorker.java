@@ -26,7 +26,8 @@ public final class SourcePdfWorker {
             || Long.parseLong(vm.getVMOption("MaxDirectMemorySize").getValue())>32L*1024*1024)
             throw new IllegalStateException("Effective PDF worker memory caps unavailable");
         boolean positions=args.length==2 && args[1].equals("positions");
-        if(args.length!=1 && !positions)throw new IllegalArgumentException("Exact worker input/mode required");
+        boolean paragraph=args.length==5 && args[1].equals("paragraph");
+        if(args.length!=1 && !positions && !paragraph)throw new IllegalArgumentException("Exact worker input/mode required");
         Path file=Path.of(args[0]);
         if(!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS) || Files.size(file)>8*1024*1024)throw new IOException("Input bound rejected");
         byte[] bytes;
@@ -35,6 +36,15 @@ public final class SourcePdfWorker {
         try(var document=Loader.loadPDF(bytes)) {
             int pages=document.getNumberOfPages();
             if(document.isEncrypted() || pages<1 || pages>1000)throw new IOException("PDF native bounds rejected");
+            if(paragraph) {
+                int page=Integer.parseInt(args[2]), first=Integer.parseInt(args[3]), second=Integer.parseInt(args[4]);
+                var lines=TaggedPdfParagraph.read(document,page,first,second).orElseThrow(()->new IOException("Unbound tagged spans"));
+                var encoder=Base64.getEncoder();
+                System.out.println("PDF_PARAGRAPH_V1 "+hash(bytes)+" "+page+" "+first+" "+second+" "
+                    +encoder.encodeToString(lines.first().getBytes(StandardCharsets.UTF_8))+" "
+                    +encoder.encodeToString(lines.second().getBytes(StandardCharsets.UTF_8)));
+                return;
+            }
             var output=new BoundedText();
             var positioned=positions?new Positions(document):null;
             (positions?positioned:new PDFTextStripper()).writeText(document,output);

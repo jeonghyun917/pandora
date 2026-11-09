@@ -16,6 +16,24 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
+    @Test
+    void configuredPdfParagraphNeverUsesCachedAnswerWithoutSelectedRowValidation() throws Exception {
+        var service=service();
+        var key=LawAiAnswerService.class.getDeclaredMethod("answerCacheKey",LawAiAnswerRequest.class);
+        key.setAccessible(true);
+        var request=new LawAiAnswerRequest("official_doc",null,"적용 범위는 무엇인가요?",5,false);
+        assertThat(key.invoke(service,request)).isNotNull();
+        var adapter=LawAiAnswerService.class.getDeclaredField("pdfParagraphEvidence");
+        adapter.setAccessible(true);
+        var disabled=new com.kaces.pandora.lawdata.sync.PdfParagraphEvidence(null,null,null,"");
+        adapter.set(service,disabled);
+        assertThat(key.invoke(service,request)).isNotNull();
+        assertThat(disabled.configurationIdentity("baseline")).isEqualTo("baseline");
+        var configured=new com.kaces.pandora.lawdata.sync.PdfParagraphEvidence(null,null,null,"configured");
+        adapter.set(service,configured);
+        assertThat(key.invoke(service,request)).isNull();
+        assertThat(configured.configurationIdentity("baseline")).isNotEqualTo("baseline");
+    }
 	@Test
 	void preservesOnlyTheOwnedIrmRegistrationFormulaFromTheShadowCandidates() throws Exception {
 		var control = chunk(601, "official_doc", "정보자원관리시스템 이용 안내", "클라우드 권한", "메뉴 이용 권한 안내");

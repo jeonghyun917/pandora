@@ -39,6 +39,18 @@ This produces `target-stage/pandora-0.0.1-SNAPSHOT.jar`. Stop only the 8080
 service, verify the staged jar, replace the app-dev jar, then start 8080 again.
 The 18080 batch runner must not be stopped or promoted as part of this flow.
 
+PDF paragraph evidence is disabled by default. The app-dev setting
+`pandora.rag.pdf-paragraph-spec` accepts one operator-reviewed entry:
+`chunkId,page,firstMCID,secondMCID,start,end,bellOffset,sourceSha256,bodySha256`.
+Page is one-based, offsets are UTF-16, end is exclusive, and the optional
+legacy control offset is relative to the excerpt (`-1` when absent).
+Set it only after verifying the registered original, selected chunk and
+exact paragraph span. Preparation happens at startup in the bounded PDF
+worker. Stale or unavailable proof leaves the original text unchanged.
+When configured, answer caching is bypassed and the runtime configuration
+fingerprint distinguishes configured and prepared state. Removing the setting
+and restarting app-dev disables the projection without reindexing.
+
 Batch-runner process metadata is kept separately from the promoted jar:
 
 ```text

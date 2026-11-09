@@ -70,6 +70,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Service
 public class LawAiAnswerService {
+    @Autowired(required = false)
+    private com.kaces.pandora.lawdata.sync.PdfParagraphEvidence pdfParagraphEvidence;
 	private RagRecoveryRoutingService recoveryRoutingService;
     private com.kaces.pandora.rag.recovery.RagRecoveryReadinessService recoveryReadiness;
     @Autowired
@@ -548,14 +550,14 @@ public class LawAiAnswerService {
 			artifact.path(),
 			artifact.modifiedAt(),
 			RuntimeConfigurationIdentity.instanceId(),
-			RuntimeConfigurationIdentity.sha256(
+			pdfParagraphConfigurationIdentity(RuntimeConfigurationIdentity.sha256(
 				properties,
 				lexicalProperties,
 				rrfProperties,
 				coverageAwareProperties,
 				documentExpansionProperties,
 				lexicalVariantProperties
-			),
+			)),
 			indexIdentity == null ? null : indexIdentity.revision(),
 			lexicalRevision(),
 			indexIdentity == null ? null : pointCount(indexIdentity.lawQdrant()),
@@ -1744,6 +1746,9 @@ public class LawAiAnswerService {
 				LinkedHashMap::new
 			));
 		long groundsStart = System.nanoTime();
+		if (pdfParagraphEvidence != null) {
+			matchedChunkByKey.replaceAll((key, chunk) -> pdfParagraphEvidence.projectSelected(chunk, routing));
+		}
 		List<LawAiAnswerGround> grounds = parentContextAssembler.toGrounds(
 			displayChunks,
 			matchedChunkByKey,
@@ -11872,7 +11877,15 @@ public class LawAiAnswerService {
 		return answerCacheKey(request, null);
 	}
 
+	private String pdfParagraphConfigurationIdentity(String baseline) {
+		return pdfParagraphEvidence == null ? baseline : pdfParagraphEvidence.configurationIdentity(baseline);
+	}
+
 	private String answerCacheKey(LawAiAnswerRequest request, RecoveryRoutingSnapshot routing) {
+		// A cached response would bypass the current selected-row identity check.
+		if (pdfParagraphEvidence != null && pdfParagraphEvidence.configured()) {
+			return null;
+		}
 		String question = request == null || request.question() == null ? "" : request.question().trim().replaceAll("\\s+", " ");
 		if (question.isBlank()) {
 			return null;
