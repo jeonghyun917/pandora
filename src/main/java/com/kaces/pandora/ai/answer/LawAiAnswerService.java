@@ -110,6 +110,8 @@ public class LawAiAnswerService {
 	private static final List<String> DOCUMENT_TOPIC_PARTICLES = List.of("은", "는", "이", "가");
 	private static final Set<String> LEGAL_REFERENCE_NOUNS = Set.of("법", "특별법", "법률", "시행령", "시행규칙");
 	private static final List<String> LEGAL_AUTHORITY_PARTICLES = List.of("에 따라", "상");
+	private static final Pattern COORDINATED_TITLE_ACTIONS =
+		Pattern.compile("(?<![\\p{L}\\p{N}])(설치|구축)[ ·]운영(?![\\p{L}\\p{N}])");
 	private static final List<String> TRUSTED_DOCUMENT_AGENCY_PREFIXES = List.of(
 		"개인정보보호위원회", "방송통신위원회", "공정거래위원회", "국민권익위원회",
 		"금융위원회", "원자력안전위원회", "국가인권위원회",
@@ -7275,6 +7277,13 @@ public class LawAiAnswerService {
 		String core = documentTitleLookupCore(withoutReferencePrefix);
 		if (core.length() >= 8 && !core.equals(withoutReferencePrefix)) {
 			anchors.add(core);
+		}
+		// Search aliases retain all title words; only conventional coordination punctuation changes.
+		for (String candidate : List.of(title, withoutReferencePrefix, core)) {
+			if (candidate.length() >= 8 && COORDINATED_TITLE_ACTIONS.matcher(candidate).find()) {
+				anchors.add(COORDINATED_TITLE_ACTIONS.matcher(candidate).replaceAll("$1·운영"));
+				anchors.add(COORDINATED_TITLE_ACTIONS.matcher(candidate).replaceAll("$1 운영"));
+			}
 		}
 	}
 

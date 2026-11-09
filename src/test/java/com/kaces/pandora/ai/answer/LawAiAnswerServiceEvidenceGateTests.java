@@ -2928,6 +2928,19 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void namedGuideLookupPreservesTheTitleAcrossCoordinatedPunctuation() throws Exception {
+		var service = service();
+		try {
+			assertThat(documentTitleAnchorKeywords(service, "공공기관 장비 설치 운영 가이드라인은 무엇인가요?"))
+				.contains("공공기관 장비 설치 운영 가이드라인", "공공기관 장비 설치·운영 가이드라인");
+			assertThat(documentTitleAnchorKeywords(service, "데이터 구축·운영 매뉴얼은 어떤 문서인가요?"))
+				.contains("데이터 구축·운영 매뉴얼", "데이터 구축 운영 매뉴얼");
+			assertThat(documentTitleAnchorKeywords(service, "공공기관 장비 운영 가이드라인은 무엇인가요?"))
+				.containsExactly("공공기관 장비 운영 가이드라인");
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void extractsLegalAuthorityTitleWithoutTreatingMethodsAsLaws() throws Exception {
 		var service = service();
 		try {
