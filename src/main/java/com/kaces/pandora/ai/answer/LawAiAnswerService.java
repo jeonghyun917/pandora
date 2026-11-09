@@ -6056,11 +6056,20 @@ public class LawAiAnswerService {
 	private List<LawSemanticChunkRow> preserveIrmRegistrationCandidate(
 		List<LawSemanticChunkRow> control, List<LawSemanticChunkRow> lexical, String query
 	) {
-		if (!EvidenceJudge.isIrmRegistrationFaithfulness(normalizeForMatch(query))
-			|| control.stream().anyMatch(this::isIrmRegistrationSource)) {
+		if (!EvidenceJudge.isIrmRegistrationFaithfulness(normalizeForMatch(query))) {
 			return control;
 		}
-		return mergeChunks(control, lexical.stream().filter(this::isIrmRegistrationSource).limit(1).toList());
+		var existing = control.stream().filter(this::isIrmRegistrationSource).toList();
+		if (existing.stream().anyMatch(chunk -> EvidenceJudge.hasIrmRegistrationCriterion(chunk.chunkText()))) {
+			return control;
+		}
+		var preferred = lexical.stream().filter(this::isIrmRegistrationSource)
+			.filter(chunk -> existing.isEmpty() || (EvidenceJudge.hasIrmRegistrationCriterion(chunk.chunkText())
+				&& existing.stream().anyMatch(current -> current.documentId() == chunk.documentId()
+					&& java.util.Objects.equals(current.chunkVersion(), chunk.chunkVersion()))))
+			.sorted(Comparator.comparing(chunk -> !EvidenceJudge.hasIrmRegistrationCriterion(chunk.chunkText())))
+			.limit(1).toList();
+		return mergeChunks(control, preferred);
 	}
 
 	private boolean isIrmRegistrationSource(LawSemanticChunkRow chunk) {
@@ -11730,7 +11739,9 @@ public class LawAiAnswerService {
 	private List<LawSemanticChunkRow> priorityJudgeCandidates(List<LawSemanticChunkRow> chunks, String query) {
 		String normalizedQuery = normalizeForMatch(query);
 		if (EvidenceJudge.isIrmRegistrationFaithfulness(normalizedQuery)) {
-			return chunks.stream().filter(this::isIrmRegistrationSource).limit(1).toList();
+			return chunks.stream().filter(this::isIrmRegistrationSource)
+				.sorted(Comparator.comparing(chunk -> !EvidenceJudge.hasIrmRegistrationCriterion(chunk.chunkText())))
+				.limit(1).toList();
 		}
 		if (!KoreanQueryNormalizer.isProcurementCatalogContractQuestion(query)
 			|| !isProcurementContractMethodQuestion(normalizedQuery)) {

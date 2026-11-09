@@ -3162,6 +3162,14 @@ public class EvidenceJudge {
 			&& denominator.contains("정보자원등록요청수");
 	}
 
+	static boolean hasIrmRegistrationCriterion(String body) {
+		if (body == null) return false;
+		String compact = body.replaceAll("(?U)\\s+", "");
+		return java.util.regex.Pattern.compile(
+			"정보자원등록충실성(?:\\([^()]{1,18}\\))?[:：]정보자원등록요청을기한내(?:충실히)?이행하였는가[?？]"
+		).matcher(compact).find();
+	}
+
 	private boolean requiresCommencementOwnership(EvidenceQuestionProfile profile, LawSemanticChunkRow chunk) {
 		if (!"law".equals(chunk.target())) {
 			return false;

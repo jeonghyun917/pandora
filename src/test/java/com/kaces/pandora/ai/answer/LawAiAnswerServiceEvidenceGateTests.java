@@ -31,12 +31,22 @@ class LawAiAnswerServiceEvidenceGateTests {
 			String query = "정보자원관리시스템 등록 충실성은 어떻게 측정하나요?";
 			assertThat(merge.invoke(service,List.of(control),List.of(remediation,formula),query))
 				.isEqualTo(List.of(control,formula));
+			var criteria = chunk(604, "official_doc", "정보자원 관리 수준측정", "정보자원 등록",
+				"정보자원 등록 충실성(0.4점): 정보자원 등록요청을 기한 내 충실히 이행하였는가? "
+				+ "정비율 = (기한 내 정보자원 등록 완료 수)/(정보자원 등록요청 수) × 100");
+			var falseCriteria = chunk(605, "official_doc", "정보자원 관리 수준측정", "정보자원 등록",
+				"정보자원 등록 충실성. 정비율 = (기한 내 정보자원 등록 완료 수)/(정보자원 등록요청 수) × 100. "
+				+ "정보자원 품질 정합성: 품질 보완 요청을 기한 내 이행하였는가?");
+			assertThat(merge.invoke(service,List.of(control),List.of(formula,falseCriteria,criteria),query))
+				.isEqualTo(List.of(control,criteria));
 			assertThat(merge.invoke(service,List.of(control),List.of(formula),"콘텐츠 충실성은 무엇인가요?"))
 				.isEqualTo(List.of(control));
 			var priority = LawAiAnswerService.class.getDeclaredMethod("balancedJudgeCandidates",List.class,int.class,String.class);
 			priority.setAccessible(true);
 			assertThat(priority.invoke(service,List.of(control,remediation,formula),1,query))
 				.isEqualTo(List.of(formula));
+			assertThat(priority.invoke(service,List.of(control,formula,criteria),1,query))
+				.isEqualTo(List.of(criteria));
 		} finally {
 			service.shutdownExecutors();
 		}
