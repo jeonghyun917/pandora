@@ -102,6 +102,16 @@ class KoreanQueryNormalizerTests {
 	}
 
 	@Test
+	void contractMethodCueDoesNotBridgePurchaseAndRegistrationWords() {
+		assertThat(QuestionIntentProfile.from("상용SW 직접구매 계약정보 등록은 언제까지인가요?").intentTypes())
+			.contains("period").doesNotContain("contract_method");
+		assertThat(QuestionIntentProfile.from("구매계약은 어떤 절차인가요?").intentTypes())
+			.contains("contract_method");
+		assertThat(QuestionIntentProfile.from("직접구매 계약정보 등록 기한과 수의계약 여부를 알려줘.").intentTypes())
+			.contains("period", "contract_method");
+	}
+
+	@Test
 	void buildsSearchPlanWithEmbeddingQueryAndFocusedKeywords() {
 		QuestionSearchPlan plan = QuestionSearchPlan.from("보안성검토 대상 시스템은?");
 

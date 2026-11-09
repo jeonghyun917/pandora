@@ -36,7 +36,7 @@ public record QuestionIntentProfile(
 		"절차", "방법", "어떻게", "언제", "시기", "기한", "기간"
 	);
 	private static final List<String> CONTRACT_CUES = List.of(
-		"수의계약", "계약방법", "계약방식", "계약인가", "계약가능", "구매계약", "카탈로그계약"
+		"수의계약", "계약방법", "계약방식", "계약인가", "계약가능", "word:구매계약", "카탈로그계약"
 	);
 	private static final List<String> DOCUMENT_NOUN_CUES = List.of(
 		"문서", "매뉴얼", "가이드", "가이드라인", "안내서", "해설서", "보고서", "보도자료", "사례집", "백서"
@@ -109,6 +109,7 @@ public record QuestionIntentProfile(
 		addEntities(entities, conceptGroups, lexical, focused, sectionTypes, preferredTargets, directEvidenceGroups);
 		addSynonymGroups(synonymGroups, conceptGroups, lexical);
 		addCommonIntent(
+			question,
 			normalized,
 			suppressProcedureIntent,
 			suppressedIntentIds,
@@ -242,6 +243,7 @@ public record QuestionIntentProfile(
 	}
 
 	private static void addCommonIntent(
+		String question,
 		String normalized,
 		boolean suppressProcedureIntent,
 		Set<String> suppressedIntentIds,
@@ -273,7 +275,7 @@ public record QuestionIntentProfile(
 			sectionTypes.add("exception");
 			intentGroups.add(List.of("제외", "비대상", "면제", "생략", "예외"));
 		}
-		if (!suppressedIntentIds.contains("contract_method") && containsAny(normalized, CONTRACT_CUES)) {
+		if (!suppressedIntentIds.contains("contract_method") && QuestionIntentDictionary.matchesAny(question, normalized, CONTRACT_CUES)) {
 			intentTypes.add("contract_method");
 			sectionTypes.add("procedure");
 			intentGroups.add(List.of("수의계약", "계약방법", "계약방식", "구매계약", "카탈로그계약"));
