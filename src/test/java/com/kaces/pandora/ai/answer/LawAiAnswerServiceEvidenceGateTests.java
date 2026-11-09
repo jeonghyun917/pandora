@@ -678,6 +678,31 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void explicitDirectPurchaseExclusionPreservesTheOperativeOfficialRule() throws Exception {
+		String question = "상용소프트웨어 직접구매에서 제외되는 경우는 무엇인가요?";
+		String title = "소프트웨어사업 계약 및 관리감독에 관한 지침";
+		String heading = "제8조(상용소프트웨어 직접구매의 제외)";
+		String body = heading + " ① 국가기관등의 장은 제7조제1항에 해당하는 사업에서 다음 각 호에 해당하는 경우 직접 구매 대상에서 제외할 수 있다.";
+		var owner = chunk(81490L, "admrul", title, heading, body);
+		var reference = chunk(81410L, "admrul", title, heading,
+			heading + " ① 국가기관등의 장은 제7조제1항을 참조하여야 한다."
+				+ " 별도 지침에 해당하는 경우 직접 구매 대상에서 제외할 수 있다.");
+		var copied = chunk(81411L, "official_doc", "상용소프트웨어 구매 실무 자료", heading, body);
+		var candidates = new java.util.ArrayList<>(List.of(reference, copied));
+		for (int i = 0; i < 7; i++) candidates.add(chunk(81420L+i, "official_doc", "구매 실무 자료", "직접구매 제외 검토",
+			"상용소프트웨어 직접구매 대상에서 제외되는 경우와 적용 범위를 검토해야 한다."));
+		candidates.add(owner);
+		var judged = new EvidenceJudge.Result(candidates, Map.of(), true, true, true, true, 10, 10, 10, "direct");
+		var service = service();
+		try {
+			var kept = preserveIntentDirectEvidenceChunks(service, judged, candidates, question).chunks();
+			assertThat(kept).hasSize(8).startsWith(owner);
+			assertThat(preserveIntentDirectEvidenceChunks(service, judged, candidates,
+				"상용소프트웨어 직접구매 대상은 무엇인가요?").chunks().get(0)).isNotEqualTo(owner);
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void scopedProcedureSelectionPreservesLiteralClosedArticleAfterLongPrefix() throws Exception {
 		var scope = new LawSemanticChunkRow(13401L, 10L, "official_doc", "10", "공공소프트웨어사업 과업심의 가이드",
 			"", "", "20260101", "CURRENT", "5", "적용 대상 사업",

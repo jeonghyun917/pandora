@@ -5604,6 +5604,9 @@ public class LawAiAnswerService {
 				.limit(3)
 				.forEach(chunk -> anchoredRuleKeys.add(scoreKey(chunk.target(), chunk.chunkId())));
 		}
+		if (!restrictToConfiguredPolicyChunks) {
+			preferOwnedDirectPurchaseExclusion(judgedEvidence.chunks(), query, anchoredRuleKeys);
+		}
 		if (directEvidenceChunks.isEmpty() && anchoredRuleKeys.isEmpty()) {
 			return judgedEvidence;
 		}
@@ -5683,6 +5686,24 @@ public class LawAiAnswerService {
 			Math.max(judgedEvidence.directEvidenceCount(), directEvidenceChunks.size()),
 			judgedEvidence.selectionPolicy() + "+intent_direct_preserve"
 		);
+	}
+
+	private void preferOwnedDirectPurchaseExclusion(List<LawSemanticChunkRow> judged, String query, Set<String> priorityKeys) {
+		String normalized = normalizeForMatch(query);
+		if (!containsAny(normalized, "제외", "예외") || normalized.contains("등록")
+			|| !containsAny(normalized, "상용sw", "상용소프트웨어") || !normalized.contains("직접구매")) return;
+		var profile = QuestionIntentProfile.from(query);
+		if (!profile.matchedPolicyIds().contains("commercial_direct_purchase_authority")) return;
+		Set<String> titles = profile.policySearchKeywords().stream()
+			.filter(this::isPolicyDocumentTitleKeyword).map(this::normalizeForMatch)
+			.collect(java.util.stream.Collectors.toUnmodifiableSet());
+		judged.stream()
+			.filter(row -> "admrul".equals(row.target()) && "CURRENT".equals(row.effectiveStatus()))
+			.filter(row -> titles.contains(normalizeForMatch(row.title())))
+			.filter(row -> normalizeForMatch(nullToEmpty(row.chunkText()).split("[.!?]", 2)[0]).matches(
+				"제[0-9]+조(?:의[0-9]+)?상용소프트웨어직접구매의?제외국가기관등의장은제[0-9]+조"
+					+ ".{0,240}해당하는경우직접구매대상에서제외할수있다"))
+			.findFirst().ifPresent(row -> priorityKeys.add(scoreKey(row.target(), row.chunkId())));
 	}
 
 	private List<LawSemanticChunkRow> recoverScopeAnchoredProcedureCandidates(
