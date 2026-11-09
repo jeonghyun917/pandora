@@ -234,7 +234,8 @@ final class DocumentDiscoveryPolicy {
 			ground.parentContextText(),
 			ground.contextChunkIds(),
 			ground.contextPolicy(),
-			ground.evidenceRole()
+			ground.evidenceRole(),
+			ground.officialCommencement()
 		);
 	}
 }

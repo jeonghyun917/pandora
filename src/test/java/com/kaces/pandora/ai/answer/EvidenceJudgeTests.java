@@ -2571,6 +2571,15 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void unverifiedSupplementCannotProveCurrentCommencement() {
+		String title = "인공지능 및 데이터 기반 행정 활성화에 관한 법률";
+		var historic = chunk(81, "law", title, "제1조(시행일)",
+			"제1조(시행일) 이 법은 공포 후 6개월이 경과한 날부터 시행한다.");
+		assertThat(judge.judge(title + "은 언제부터 효력이 있나요?",
+			List.of(historic), Map.of(), 5).directEvidenceFound()).isFalse();
+	}
+
+	@Test
 	void exactParagraphLookupRecognizesOwnedCircledParagraph() {
 		var own = chunk(71, "admrul", "정보시스템 감리 운영 지침", "제1조(목적) (2/3)",
 			"제12조(감리결과) ① 사업자는 결과보고서에 따라 시정한다.② 감리법인은 결과를 확인한다.");

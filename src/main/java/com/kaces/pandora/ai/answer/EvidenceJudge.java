@@ -40,6 +40,11 @@ public class EvidenceJudge {
 		Map<String, Double> baseScoreByChunkId,
 		int requestedLimit
 	) {
+		return judge(question, chunks, baseScoreByChunkId, requestedLimit, Map.of());
+	}
+
+	Result judge(String question, List<LawSemanticChunkRow> chunks, Map<String, Double> baseScoreByChunkId,
+		int requestedLimit, Map<Long, OfficialCommencementEvidence> commencementEvidence) {
 		if (chunks == null || chunks.isEmpty()) {
 			return new Result(List.of(), Map.of(), false, false, false, false, 0, 0, 0, "empty");
 		}
@@ -52,7 +57,9 @@ public class EvidenceJudge {
 
 		EvidenceQuestionProfile profile = buildQuestionProfile(question);
 		List<JudgedChunk> judgedChunks = searchableChunks.stream()
-			.map(chunk -> judgeChunk(profile, chunk, baseScoreByChunkId.getOrDefault(scoreKey(chunk), 0.0)))
+			.map(chunk -> judgeChunk(profile, chunk, baseScoreByChunkId.getOrDefault(scoreKey(chunk), 0.0),
+				unverifiedCommencement(profile, chunk, commencementEvidence),
+				requiresCommencementOwnership(profile, chunk) && verifiedCommencement(chunk, commencementEvidence)))
 			.sorted(Comparator.comparingDouble(JudgedChunk::score).reversed())
 			.toList();
 		List<JudgedChunk> topicAlignedChunks = judgedChunks.stream()
@@ -65,10 +72,12 @@ public class EvidenceJudge {
 		List<JudgedChunk> directEvidenceChunks = topicAlignedChunks.stream()
 			.filter(JudgedChunk::directEvidence)
 			.toList();
-		boolean directEvidenceRequired = !profile.directEvidenceGroups().isEmpty();
+		boolean directEvidenceRequired = !profile.directEvidenceGroups().isEmpty()
+			|| searchableChunks.stream().anyMatch(chunk -> requiresCommencementOwnership(profile, chunk));
 		List<JudgedChunk> directSupportingChunks = topicAlignedChunks.stream()
 			.filter(chunk -> chunk.bodyDirectEvidenceMatches() > 0)
 			.filter(chunk -> !missingRequestedArticleOwnership(profile, chunk.chunk(), normalize(chunk.chunk().title())))
+			.filter(chunk -> !unverifiedCommencement(profile, chunk.chunk(), commencementEvidence))
 			.toList();
 		List<JudgedChunk> exploratoryLookupChunks = isExploratoryLookupQuestion(profile.normalizedQuestion())
 			? judgedChunks.stream()
@@ -688,7 +697,8 @@ public class EvidenceJudge {
 	}
 
 	// 메소드 설명: judgeChunk 처리 흐름을 수행합니다.
-	private JudgedChunk judgeChunk(EvidenceQuestionProfile profile, LawSemanticChunkRow chunk, double baseScore) {
+	private JudgedChunk judgeChunk(EvidenceQuestionProfile profile, LawSemanticChunkRow chunk, double baseScore,
+		boolean unverifiedCommencement, boolean verifiedCommencement) {
 		String body = normalize(chunk.chunkText());
 		String documentTitle = normalize(chunk.title());
 		String parentSectionTitle = normalize(chunk.parentSectionTitle());
@@ -1161,8 +1171,13 @@ public class EvidenceJudge {
 			topicAligned = true;
 		}
 
-		if (missingRequestedArticleOwnership(profile, chunk, documentTitle)) {
+		if (missingRequestedArticleOwnership(profile, chunk, documentTitle)
+			|| unverifiedCommencement) {
 			directEvidence = false;
+		} else if (verifiedCommencement && !tableOfContents) {
+			directEvidence = true;
+			relevant = true;
+			topicAligned = true;
 		}
 
 		double score = baseScore
@@ -3113,6 +3128,32 @@ public class EvidenceJudge {
 		int directEvidenceCount,
 		String selectionPolicy
 	) {
+	}
+
+	private boolean requiresCommencementOwnership(EvidenceQuestionProfile profile, LawSemanticChunkRow chunk) {
+		if (!"law".equals(chunk.target())) {
+			return false;
+		}
+		String query = profile.normalizedQuestion();
+		String title = documentTitleStem(normalize(chunk.title()));
+		return title.length() >= 4 && query.contains(title) && OfficialCommencementEvidence.isCurrentLookup(query);
+	}
+
+	boolean requiresCommencementOwnership(String question, LawSemanticChunkRow chunk) {
+		return requiresCommencementOwnership(buildQuestionProfile(question), chunk);
+	}
+
+	private boolean unverifiedCommencement(EvidenceQuestionProfile profile, LawSemanticChunkRow chunk,
+		Map<Long, OfficialCommencementEvidence> evidence) {
+		if (!requiresCommencementOwnership(profile, chunk)) {
+			return false;
+		}
+		return !verifiedCommencement(chunk, evidence);
+	}
+
+	private boolean verifiedCommencement(LawSemanticChunkRow chunk, Map<Long, OfficialCommencementEvidence> evidence) {
+		var proof = evidence.get(chunk.chunkId());
+		return proof != null && proof.covers(chunk.chunkText());
 	}
 
 	private record JudgedChunk(

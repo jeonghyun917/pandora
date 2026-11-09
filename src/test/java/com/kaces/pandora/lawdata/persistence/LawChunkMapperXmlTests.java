@@ -21,6 +21,17 @@ import org.junit.jupiter.api.Test;
 
 class LawChunkMapperXmlTests {
 	@Test
+	void commencementLookupBindsActiveChunksToTheirOwnStoredDetails() throws Exception {
+		var statement = parseMapper().getMappedStatement(LawChunkMapper.class.getName() + ".findCommencementSources");
+		String sql = normalizedSql(statement, Map.of("chunkIds", List.of(41L, 42L)));
+		assertThat(statement.getTimeout()).isEqualTo(3);
+		assertThat(sql).contains("dt.detail_id = c.detail_id", "dt.document_id = c.document_id",
+			"c.activation_status = 'ACTIVE'", "d.target = 'law'", "d.effective_status = 'CURRENT'",
+			"c.chunk_id IN", "LIMIT 8");
+		assertThat(normalizedSql(statement, Map.of("chunkIds", List.of()))).contains("AND 1 = 0");
+	}
+
+	@Test
 	void broadTextSearchRanksNarrowCandidatesBeforeHydratingBodies() throws Exception {
 		MappedStatement statement = parseMapper().getMappedStatement(LawChunkMapper.class.getName()
 			+ ".findSemanticChunksByText");

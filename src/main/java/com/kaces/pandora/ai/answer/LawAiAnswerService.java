@@ -1503,11 +1503,13 @@ public class LawAiAnswerService {
 			? judgeCandidateChunks
 			: enrichWithParentContext(judgeCandidateChunks, normalized.query(), timing, routing);
 		long judgeStart = System.nanoTime();
-		EvidenceJudge.Result judgedEvidence = evidenceJudge.judge(
+		var commencementProofs = new HashMap<Long, OfficialCommencementEvidence>();
+		EvidenceJudge.Result judgedEvidence = judgeWithCommencementEvidence(
 			normalized.query(),
 			judgeContextChunks,
 			combinedScoreByChunkId,
-			normalized.display()
+			normalized.display(),
+			commencementProofs
 		);
 		timing.judgeMs.set(elapsedMillis(judgeStart));
 		Map<String, Double> finalScoreByChunkId = judgedEvidence.scoreByChunkId();
@@ -1549,11 +1551,13 @@ public class LawAiAnswerService {
 					? judgeCandidateChunks
 					: enrichWithParentContext(judgeCandidateChunks, normalized.query(), timing, routing);
 				long fallbackJudgeStart = System.nanoTime();
-				judgedEvidence = evidenceJudge.judge(
+				commencementProofs.clear();
+				judgedEvidence = judgeWithCommencementEvidence(
 					normalized.query(),
 					judgeContextChunks,
 					combinedScoreByChunkId,
-					normalized.display()
+					normalized.display(),
+					commencementProofs
 				);
 				timing.judgeMs.addAndGet(elapsedMillis(fallbackJudgeStart));
 				finalScoreByChunkId = judgedEvidence.scoreByChunkId();
@@ -1651,6 +1655,14 @@ public class LawAiAnswerService {
 		if (!evidenceAfterNoiseFilter.isEmpty()) {
 			evidenceChunks = evidenceAfterNoiseFilter;
 		}
+		if (OfficialCommencementEvidence.isCurrentLookup(normalizeForMatch(normalized.query()))
+			&& judgeContextChunks.stream().anyMatch(chunk -> evidenceJudge.requiresCommencementOwnership(normalized.query(), chunk))) {
+			evidenceChunks = retainVerifiedCommencement(evidenceChunks, commencementProofs);
+			if (evidenceChunks.isEmpty()) {
+				judgedEvidence = new EvidenceJudge.Result(List.of(), finalScoreByChunkId, true, false,
+					judgedEvidence.conceptEvidenceRequired(), false, 0, 0, 0, "commencement_unverified");
+			}
+		}
 		String weakEvidenceReason = weakEvidenceRejectionReason(queryPlan, judgedEvidence, evidenceChunks);
 		if (weakEvidenceReason != null) {
 			String noGroundMessage = weakEvidenceDiagnosticMessage(
@@ -1736,6 +1748,10 @@ public class LawAiAnswerService {
 			displayContext.contextChunkIdsByKey()
 		);
         grounds=markAdministrativeBasisSupport(grounds,normalized.query(),matchedChunkByKey);
+		grounds = grounds.stream().map(ground -> {
+			var proof = "law".equals(ground.target()) ? commencementProofs.get(ground.chunkId()) : null;
+			return proof == null ? ground : ground.withOfficialCommencement(proof);
+		}).toList();
 		grounds = DocumentDiscoveryPolicy.orderGrounds(normalized.query(), grounds);
 		timing.groundsMs.addAndGet(elapsedMillis(groundsStart));
 		if (grounds.isEmpty()) {
@@ -3171,7 +3187,8 @@ public class LawAiAnswerService {
 
 	private boolean shouldJudgeExactCandidateText(String query) {
 		QuestionIntentProfile profile = QuestionIntentProfile.from(query);
-		return isAutonomyPreConsultationProcedureQuestion(profile.normalizedQuestion())
+		return OfficialCommencementEvidence.isCurrentLookup(normalizeForMatch(query))
+			|| isAutonomyPreConsultationProcedureQuestion(profile.normalizedQuestion())
 			|| isPseudonymAdditionalInfoQuestion(profile.normalizedQuestion())
 			|| isPublicDataCustomSupportQuestion(profile.normalizedQuestion())
 			|| isPublicDataQualityDiagnosisQuestion(profile.normalizedQuestion())
@@ -3529,6 +3546,14 @@ public class LawAiAnswerService {
 			profile.contextCharsPerGround()
 		);
 		String focus = answerFocusInstruction(retrieval.query());
+		String officialDates = retrieval.grounds().stream().filter(ground -> ground.officialCommencement() != null)
+			.map(ground -> "[근거 " + ground.number() + " 공식 시행 메타데이터] "
+				+ ground.officialCommencement().officialDateStatement(ground.title()) + "\n"
+				+ ground.officialCommencement().clause())
+			.collect(java.util.stream.Collectors.joining("\n\n"));
+		if (!officialDates.isBlank()) {
+			context = officialDates;
+		}
 		if (focus.isBlank()) {
 			return context;
 		}
@@ -5478,7 +5503,7 @@ public class LawAiAnswerService {
 		List<LawSemanticChunkRow> recoveredCandidates = recoverScopeAnchoredProcedureCandidates(judgedEvidence, judgeContextChunks, query, routing);
 		if (recoveredCandidates.size() > judgeContextChunks.size()) {
 			judgeContextChunks = recoveredCandidates;
-			judgedEvidence = evidenceJudge.judge(query, judgeContextChunks,
+			judgedEvidence = judgeWithCommencementEvidence(query, judgeContextChunks,
 				combinedScoreByChunkId == null ? Map.of() : combinedScoreByChunkId, DEFAULT_LIMIT);
 		}
 		List<LawSemanticChunkRow> configuredPolicyChunks = configuredPolicyDocumentDirectEvidenceChunks(
@@ -7990,6 +8015,61 @@ public class LawAiAnswerService {
 		);
 		boolean tocOnly = containsAny(text, "목차", "contents") && !procedureActionEvidence;
 		return autonomyContext && procedureActionEvidence && !tocOnly && !text.contains("정보화사업사전협의");
+	}
+
+	private EvidenceJudge.Result judgeWithCommencementEvidence(String query, List<LawSemanticChunkRow> chunks,
+		Map<String, Double> scores, int limit) {
+		return judgeWithCommencementEvidence(query, chunks, scores, limit, new HashMap<>());
+	}
+
+	private EvidenceJudge.Result judgeWithCommencementEvidence(String query, List<LawSemanticChunkRow> chunks,
+		Map<String, Double> scores, int limit, Map<Long, OfficialCommencementEvidence> proofs) {
+		String normalized = normalizeForMatch(query);
+		if (lawChunkMapper == null || !OfficialCommencementEvidence.isCurrentLookup(normalized)) {
+			return evidenceJudge.judge(query, chunks, scores, limit);
+		}
+		var candidates = new LinkedHashMap<Long, LawSemanticChunkRow>();
+		chunks.stream().filter(chunk -> evidenceJudge.requiresCommencementOwnership(query, chunk))
+			.filter(chunk -> chunk.sourcePath() != null && (chunk.sourcePath().startsWith("$.법령.조문.")
+				|| chunk.sourcePath().matches("\\$\\.법령\\.부칙\\.부칙단위\\[[0-9]+]")))
+			.limit(8).forEach(chunk -> candidates.putIfAbsent(chunk.chunkId(), chunk));
+		if (candidates.isEmpty()) {
+			return evidenceJudge.judge(query, chunks, scores, limit);
+		}
+		try {
+			var sources = lawChunkMapper.findCommencementSources(List.copyOf(candidates.keySet()));
+			if (sources != null) {
+				var provedDocuments = new HashSet<Long>();
+				for (var source : sources) {
+					OfficialCommencementEvidence.resolve(candidates.get(source.chunkId()), source)
+						.ifPresent(proof -> {
+							proofs.put(source.chunkId(), proof);
+							provedDocuments.add(source.documentId());
+						});
+				}
+				for (var source : sources) {
+					var anchor = candidates.get(source.chunkId());
+					if (anchor != null && anchor.sourcePath().startsWith("$.법령.조문.")
+						&& !provedDocuments.contains(source.documentId())) {
+						OfficialCommencementEvidence.resolveFromDetail(anchor, source).ifPresent(proof -> {
+							proofs.put(source.chunkId(), proof);
+							provedDocuments.add(source.documentId());
+						});
+					}
+				}
+			}
+		} catch (RuntimeException unavailable) {
+			proofs.clear();
+		}
+		return evidenceJudge.judge(query, chunks, scores, limit, proofs);
+	}
+
+	private List<LawSemanticChunkRow> retainVerifiedCommencement(List<LawSemanticChunkRow> chunks,
+		Map<Long, OfficialCommencementEvidence> proofs) {
+		return chunks.stream().filter(chunk -> {
+			var proof = "law".equals(chunk.target()) ? proofs.get(chunk.chunkId()) : null;
+			return proof != null && proof.covers(chunk.chunkText());
+		}).toList();
 	}
 
 	private boolean isScopedRfpScoringContext(LawSemanticChunkRow chunk) {

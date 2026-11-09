@@ -16,6 +16,63 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
+	@Test
+	void keepsCommencementCandidateTextExactBeforeAndAfterJudging() throws Exception {
+		var service = service();
+		try {
+			var method = LawAiAnswerService.class.getDeclaredMethod("shouldJudgeExactCandidateText", String.class);
+			method.setAccessible(true);
+			assertThat(method.invoke(service, "공공행정법은 언제부터 효력이 있나요?")).isEqualTo(true);
+			assertThat(method.invoke(service, "공공행정법의 신고 절차는 무엇인가요?")).isEqualTo(false);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void admitsOnlyTheOfficiallyOwnedCommencementFromMixedCandidates() throws Exception {
+		String title = "인공지능 및 데이터 기반 행정 활성화에 관한 법률";
+		String previous = "제1조(시행일) 이 법은 공포 후 6개월이 경과한 날부터 시행한다.";
+		String current = previous + " 다만, 제8조는 공포 후 1년이 경과한 날부터 시행한다.";
+		String path = "$.법령.부칙.부칙단위[1]";
+		var own = new LawSemanticChunkRow(81, 12, "law", "60", title, null, null, null, "CURRENT",
+			null, "제1조(시행일)", current, null, path, null, 0, null, null, "supplementary", "PASS", null, null, 2);
+		var old = new LawSemanticChunkRow(82, 12, "law", "60", title, null, null, null, "CURRENT",
+			null, "제1조(시행일)", previous, null, "$.법령.부칙.부칙단위[0]", null, 0, null, null,
+			"supplementary", "PASS", null, null, 2);
+		String raw = """
+			{"법령":{"기본정보":{"공포번호":"21000","공포일자":"20260227","시행일자":"20260828"},
+			"부칙":{"부칙단위":[{"부칙공포번호":"17000","부칙공포일자":"20200101","부칙내용":[["%s"]]},
+			{"부칙공포번호":"21000","부칙공포일자":"20260227","부칙내용":[["%s"]]}]}}}
+			""".formatted(previous, current);
+		var sources = List.of(
+			new com.kaces.pandora.lawdata.persistence.LawCommencementSourceRow(81,12,4,"60",2,path,current,"20260828",raw),
+			new com.kaces.pandora.lawdata.persistence.LawCommencementSourceRow(82,12,4,"60",2,old.sourcePath(),previous,"20260828",raw));
+		var mapper = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),
+			new Class<?>[]{LawChunkMapper.class}, (proxy, method, args) -> {
+				if (method.getName().equals("findCommencementSources") && List.of(82L,81L).equals(args[0])) return sources;
+				throw new AssertionError("Unexpected mapper call: " + method.getName());
+			});
+		var service = service(mapper);
+		try {
+			var method = LawAiAnswerService.class.getDeclaredMethod("judgeWithCommencementEvidence",
+				String.class, List.class, Map.class, int.class, Map.class);
+			method.setAccessible(true);
+			var proofs = new java.util.HashMap<Long, OfficialCommencementEvidence>();
+			var result = (EvidenceJudge.Result) method.invoke(service, title + "은 언제부터 효력이 있나요?",
+				List.of(old, own), Map.of("law:82", 2.0), 5, proofs);
+			assertThat(result.directEvidenceCount()).isEqualTo(1);
+			assertThat(result.chunks()).containsExactly(own);
+			assertThat(proofs).containsOnlyKeys(81L);
+			assertThat(proofs.get(81L).clause()).isEqualTo(current);
+			var postSelection = LawAiAnswerService.class.getDeclaredMethod("retainVerifiedCommencement", List.class, Map.class);
+			postSelection.setAccessible(true);
+			assertThat(postSelection.invoke(service, List.of(old, own), proofs)).isEqualTo(List.of(own));
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
     @Test void explicitPreconsultationCorrectionNormIsASearchCandidateNotAutomaticGeneralScopeProof() throws Exception {
         String norm="협의기관의 장은 사전협의 미이행, 사전협의 신청 미등록, 사전협의 검토결과의 미반영, 사업산출물의 사전협의시스템 미등록 등에 대하여 신청기관에 시정을 요구할 수 있으며, 신청기관의 장은 이를 반영하고 이행결과를 협의기관의 장에게 제출하여야 한다.";
         var correction=chunk(99401L,"admrul","전자정부 성과관리 지침","사전협의 이행실태의 점검",norm);

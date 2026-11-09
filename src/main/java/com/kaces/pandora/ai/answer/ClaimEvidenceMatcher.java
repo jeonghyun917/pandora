@@ -828,6 +828,15 @@ public class ClaimEvidenceMatcher {
 				.filter(ClaimEvidenceAtomizer.SourceFragment::literalOnly)
 				.map(fragment -> normalize(fragment.text())).distinct().toList();
 			addDocumentTitleEvidence(unique, ground.number(), ground.title(), anchorContext);
+			if (ground.officialCommencement() != null && "law".equals(ground.target())
+				&& ground.officialCommencement().covers(ground.matchedChildText())) {
+				addEvidenceFragments(unique, ground.number(),
+					ground.officialCommencement().officialDateStatement(ground.title()),
+					null, anchorContext, false, List.of(), List.of(), List.of());
+				addEvidenceFragments(unique, ground.number(), ground.officialCommencement().clause(),
+					null, anchorContext, false, List.of(), List.of(), List.of());
+				continue;
+			}
 			List<String> unownedAnnotations = List.of(String.valueOf(ground.matchedChildText()),
 				String.valueOf(ground.snippet()), String.valueOf(ground.parentContextText())).stream()
 				.flatMap(source -> atomizer.unownedAnnotatedItems(source).stream()).map(this::normalize).distinct().toList();

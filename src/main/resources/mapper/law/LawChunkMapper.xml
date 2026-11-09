@@ -52,6 +52,26 @@
     END
   </sql>
 
+  <select id="findCommencementSources" resultType="com.kaces.pandora.lawdata.persistence.LawCommencementSourceRow" timeout="3">
+    SELECT c.chunk_id AS chunkId, c.document_id AS documentId, c.detail_id AS detailId,
+      d.external_id AS externalId, c.chunk_version AS chunkVersion, c.source_path AS sourcePath,
+      c.chunk_text AS chunkText, d.effective_date AS effectiveDate, dt.raw_json AS rawJson
+    FROM law_api_document_chunks c
+    JOIN law_api_documents d ON d.document_id = c.document_id
+    JOIN law_api_document_details dt ON dt.detail_id = c.detail_id AND dt.document_id = c.document_id
+    WHERE c.activation_status = 'ACTIVE' AND c.use_yn = 'Y' AND d.use_yn = 'Y' AND dt.use_yn = 'Y'
+      AND d.target = 'law' AND d.effective_status = 'CURRENT'
+      AND OCTET_LENGTH(dt.raw_json) &lt;= 2097152
+      <choose>
+        <when test="chunkIds != null and chunkIds.size() > 0 and chunkIds.size() &lt;= 8">
+          AND c.chunk_id IN
+          <foreach collection="chunkIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        </when>
+        <otherwise>AND 1 = 0</otherwise>
+      </choose>
+    LIMIT 8
+  </select>
+
   <select id="findChunkIdsByDocumentId" resultType="long">
     SELECT chunk_id
     FROM law_api_document_chunks

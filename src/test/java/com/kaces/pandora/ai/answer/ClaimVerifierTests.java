@@ -9,6 +9,22 @@ class ClaimVerifierTests {
 
 	private final ClaimVerifier verifier = new ClaimVerifier();
 
+	@Test
+	void verifiesOnlyTheDateFromBoundOfficialCommencementEvidence() {
+		String title = "공공행정 정보 활용에 관한 법률";
+		String clause = "제1조(시행일) 이 법은 공포 후 6개월이 경과한 날부터 시행한다. 다만, 제8조는 공포 후 1년이 경과한 날부터 시행한다.";
+		var ground = new LawAiAnswerGround(1, 1, 1, "law", title, null, null, "20260227",
+			"CURRENT", "제1조", "시행일", null, clause, "$.법령.부칙.부칙단위[1]", null, 1.0);
+		var proof = new OfficialCommencementEvidence(java.time.LocalDate.of(2026, 8, 28), clause);
+		var verifiedGround = ground.withOfficialCommencement(proof);
+		assertThat(verifier.verifyDetailed(title + " 시행일은 2026년 8월 28일이다.", List.of(verifiedGround))
+			.supportedStrongClaimCount()).isEqualTo(1);
+		assertThat(verifier.verifyDetailed(title + " 시행일은 2026년 2월 27일이다.", List.of(verifiedGround))
+			.insufficientEvidence()).isTrue();
+		assertThat(verifier.verifyDetailed(title + " 시행일은 2026년 8월 28일이다.", List.of(ground))
+			.insufficientEvidence()).isTrue();
+	}
+
 	private static final String SEPARATE_STORAGE_DUTY =
 		"개인정보처리자는 추가정보를 가명정보와 분리하여 보관해야 합니다.";
 	private static final String STORAGE_LIST = """

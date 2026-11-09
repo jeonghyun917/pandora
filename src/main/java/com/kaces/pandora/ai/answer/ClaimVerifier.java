@@ -41,7 +41,7 @@ public class ClaimVerifier {
             ground.pageNo(),ground.snippet(),ground.sourcePath(),ground.sourceUrl(),ground.score(),ground.matchedChildText(),
             ground.parentContextText(),ground.contextChunkIds()==null?null:
                 java.util.Collections.unmodifiableList(new ArrayList<>(ground.contextChunkIds())),
-            ground.contextPolicy(),ground.evidenceRole())).toList(),routing));
+            ground.contextPolicy(),ground.evidenceRole(),ground.officialCommencement())).toList(),routing));
         return ()->{if(previous==null)scopedEvidence.remove();else scopedEvidence.set(previous);};
     }
 
