@@ -6608,6 +6608,12 @@ public class LawAiAnswerService {
 				.filter(this::isRfpRequirementEvidenceChunk)
 				.toList();
 			if (!filtered.isEmpty()) {
+				if (containsAny(normalizedQuery, "배점", "평가점수")
+					&& containsAny(normalizedQuery, "기술평가", "기술성평가", "평가항목", "평가기준")) {
+					return candidates.stream()
+						.filter(chunk -> isRfpRequirementEvidenceChunk(chunk) || isScopedRfpScoringContext(chunk))
+						.toList();
+				}
 				return filtered;
 			}
 		}
@@ -7984,6 +7990,19 @@ public class LawAiAnswerService {
 		);
 		boolean tocOnly = containsAny(text, "목차", "contents") && !procedureActionEvidence;
 		return autonomyContext && procedureActionEvidence && !tocOnly && !text.contains("정보화사업사전협의");
+	}
+
+	private boolean isScopedRfpScoringContext(LawSemanticChunkRow chunk) {
+		String heading = normalizeForMatch(String.join(" ", nullToEmpty(chunk.chunkTitle()),
+			nullToEmpty(chunk.parentSectionTitle())));
+		String body = normalizeForMatch(nullToEmpty(chunk.chunkText()));
+		String title = normalizeForMatch(nullToEmpty(chunk.title()));
+		return (title.contains("제안요청서") || body.contains("제안요청서"))
+			&& !containsAny(heading, "작성예시", "예시표", "서식")
+			&& !body.startsWith("작성예시")
+			&& containsAny(body, "배점", "평가점수")
+			&& containsAny(body, "평가항목", "평가기준", "기술능력평가")
+			&& containsAny(body, "사업유형", "사업특성", "협상에의한계약");
 	}
 
 	private boolean isRfpRequirementEvidenceChunk(LawSemanticChunkRow chunk) {

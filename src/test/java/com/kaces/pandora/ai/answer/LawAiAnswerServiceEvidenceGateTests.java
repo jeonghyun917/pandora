@@ -2409,6 +2409,32 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void preservesScopedScoringContextWithoutTreatingExamplesAsRequirements() throws Exception {
+		var general = chunk(71L, "official_doc", "공공정보화 제안요청서 작성 가이드", "제안요청서 기재사항",
+			"제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법 등을 기술하여야 합니다.", null);
+		var scoped = chunk(72L, "official_doc", "공공정보화 제안요청서 작성 가이드", "정성평가항목 및 배점한도",
+			"사업유형별로 평가항목이 달라 이를 고려하여 평가기준을 작성합니다. 정성평가항목 및 배점한도는 관련 규정을 참고합니다.", null);
+		var example = chunk(73L, "official_doc", "공공정보화 제안요청서 작성 가이드", "작성 예시",
+			"사업유형별 평가항목과 배점한도를 보여주는 작성 예시입니다.", null);
+		var unrelated = chunk(74L, "official_doc", "인사평가 가이드", "평가항목 및 배점한도",
+			"사업유형별 평가항목과 배점한도를 고려합니다.", null);
+		var service = service();
+		try {
+			var candidates = List.of(general, example, unrelated, scoped);
+			String scoring = "제안요청서에서 기술평가 항목과 배점표를 반드시 적어야 하나요?";
+			var filtered = filterByQuestionIntent(service, candidates, scoring);
+			assertThat(filtered).containsExactly(general, scoped);
+			assertThat(new EvidenceJudge().judge(scoring, filtered, Map.of(), 5).directEvidenceFound()).isFalse();
+			assertThat(filterByQuestionIntent(service, List.of(scoped, unrelated), scoring))
+				.containsExactly(scoped, unrelated);
+			assertThat(filterByQuestionIntent(service, candidates, "공공기관 제안요청서의 필수 항목은?"))
+				.containsExactly(general);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void filtersRfpRequirementNoiseWhenDirectRequirementEvidenceExists() throws Exception {
 		String question = "제안요청서 작성할 때 요구사항 평가요소랑 평가방법도 넣어야 해?";
 		LawSemanticChunkRow formNoise = chunk(
