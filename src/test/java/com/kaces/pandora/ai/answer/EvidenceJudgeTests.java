@@ -2571,6 +2571,32 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void exactParagraphLookupRecognizesOwnedCircledParagraph() {
+		var own = chunk(71, "admrul", "정보시스템 감리 운영 지침", "제1조(목적) (2/3)",
+			"제12조(감리결과) ① 사업자는 결과보고서에 따라 시정한다.② 감리법인은 결과를 확인한다.");
+		assertThat(judge.judge("정보시스템 감리 운영 지침에서 제12조제1항 근거를 알려줘",
+			List.of(own), Map.of(), 5).directEvidenceFound()).isTrue();
+	}
+
+	@Test
+	void exactParagraphLookupDoesNotPromoteAnotherLawsCitation() {
+		var citation = chunk(72, "admrul", "정보시스템 감리 운영 지침", "제1조(목적)",
+			"법 제12조제1항에 따른 정보자원 관리에 관한 사항을 정함을 목적으로 한다.");
+		assertThat(judge.judge("정보시스템 감리 운영 지침에서 제12조제1항 근거를 알려줘",
+			List.of(citation), Map.of(), 5).directEvidenceFound()).isFalse();
+	}
+
+	@Test
+	void exactParagraphLookupDoesNotBorrowFromAdjacentOrSuffixedArticle() {
+		var neighboring = chunk(73, "admrul", "정보시스템 감리 운영 지침", "제1조(목적) (2/3)",
+			"제12조(감리결과) ② 감리법인은 결과를 확인한다.\n제12조의2(재점검) ① 사업자는 재점검을 요청한다.");
+		assertThat(judge.judge("정보시스템 감리 운영 지침에서 제12조제1항 근거를 알려줘",
+			List.of(neighboring), Map.of(), 5).directEvidenceFound()).isFalse();
+		assertThat(judge.judge("정보시스템 감리 운영 지침에서 제12조의2제1항 근거를 알려줘",
+			List.of(neighboring), Map.of(), 5).directEvidenceFound()).isTrue();
+	}
+
+	@Test
 	void acceptsExactLawTitleAndArticleReferenceAsDirectEvidence() {
 		LawSemanticChunkRow looseDiscipline = chunk(
 			1,

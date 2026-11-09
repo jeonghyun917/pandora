@@ -68,6 +68,7 @@ public class EvidenceJudge {
 		boolean directEvidenceRequired = !profile.directEvidenceGroups().isEmpty();
 		List<JudgedChunk> directSupportingChunks = topicAlignedChunks.stream()
 			.filter(chunk -> chunk.bodyDirectEvidenceMatches() > 0)
+			.filter(chunk -> !missingRequestedArticleOwnership(profile, chunk.chunk(), normalize(chunk.chunk().title())))
 			.toList();
 		List<JudgedChunk> exploratoryLookupChunks = isExploratoryLookupQuestion(profile.normalizedQuestion())
 			? judgedChunks.stream()
@@ -489,7 +490,9 @@ public class EvidenceJudge {
 			return false;
 		}
 		String text = String.valueOf(chunkHeading == null ? "" : chunkHeading) + String.valueOf(body == null ? "" : body);
-		if (articleReferences.stream().noneMatch(text::contains)) {
+		boolean relatedLookup = profile.normalizedQuestion().contains("관련조항");
+		if (articleReferences.stream().noneMatch(reference -> relatedLookup ? text.contains(reference)
+			: LawArticleOwnership.owns(reference, chunk.chunkTitle(), chunk.chunkText()))) {
 			return false;
 		}
 		boolean asksGround = containsAny(
@@ -501,6 +504,22 @@ public class EvidenceJudge {
 			.filter(term -> !term.startsWith("제") || !term.contains("조"))
 			.anyMatch(term -> text.contains(term) || documentTitleStem.contains(term) || documentTitle.contains(term));
 		return asksGround && domainTermMatched;
+	}
+
+	private boolean missingRequestedArticleOwnership(
+		EvidenceQuestionProfile profile, LawSemanticChunkRow chunk, String documentTitle
+	) {
+		if ((!"law".equals(chunk.target()) && !"admrul".equals(chunk.target()))
+			|| profile.normalizedQuestion().contains("관련조항")) {
+			return false;
+		}
+		String stem = documentTitleStem(documentTitle);
+		if (stem.length() < 4 || !profile.normalizedQuestion().contains(stem)) {
+			return false;
+		}
+		List<String> references = articleReferences(profile.normalizedQuestion());
+		return !references.isEmpty() && references.stream().noneMatch(
+			reference -> LawArticleOwnership.owns(reference, chunk.chunkTitle(), chunk.chunkText()));
 	}
 
 	private boolean isExactDocumentBodyAnchorEvidence(
@@ -609,7 +628,7 @@ public class EvidenceJudge {
 			return List.of();
 		}
 		java.util.regex.Matcher matcher = java.util.regex.Pattern
-			.compile("제\\d+조(?:제\\d+항)?")
+			.compile(LawArticleOwnership.REFERENCE)
 			.matcher(normalizedQuestion);
 		List<String> references = new ArrayList<>();
 		while (matcher.find()) {
@@ -1140,6 +1159,10 @@ public class EvidenceJudge {
 			directEvidence = true;
 			relevant = true;
 			topicAligned = true;
+		}
+
+		if (missingRequestedArticleOwnership(profile, chunk, documentTitle)) {
+			directEvidence = false;
 		}
 
 		double score = baseScore

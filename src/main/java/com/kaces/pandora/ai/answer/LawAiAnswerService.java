@@ -4883,7 +4883,7 @@ public class LawAiAnswerService {
 			nullToEmpty(chunk.chunkText())
 		));
 		long matchedReferences = references.stream()
-			.filter(text::contains)
+			.filter(reference -> matchesArticleReference(chunk, query, reference, text))
 			.count();
 		if (matchedReferences <= 0) {
 			return 0.0;
@@ -4921,7 +4921,13 @@ public class LawAiAnswerService {
 			nullToEmpty(chunk.chunkTitle()),
 			nullToEmpty(chunk.chunkText())
 		));
-		return references.stream().anyMatch(text::contains);
+		return references.stream().anyMatch(reference -> matchesArticleReference(chunk, query, reference, text));
+	}
+
+	private boolean matchesArticleReference(LawSemanticChunkRow chunk, String query, String reference, String text) {
+		return isLawTarget(chunk.target()) && !normalizeForMatch(query).contains("관련조항")
+			? LawArticleOwnership.owns(reference, chunk.chunkTitle(), chunk.chunkText())
+			: text.contains(reference);
 	}
 
 	private List<String> articleReferencesFromQuery(String query) {
@@ -4930,7 +4936,7 @@ public class LawAiAnswerService {
 			return List.of();
 		}
 		java.util.regex.Matcher matcher = java.util.regex.Pattern
-			.compile("제\\d+조(?:제\\d+항)?")
+			.compile(LawArticleOwnership.REFERENCE)
 			.matcher(normalizedQuery);
 		List<String> references = new java.util.ArrayList<>();
 		while (matcher.find()) {
@@ -7274,6 +7280,9 @@ public class LawAiAnswerService {
 		for (String reference : articleReferencesFromQuery(query)) {
 			if (reference.length() >= 3) {
 				keywords.add(reference);
+				if (!normalizeForMatch(query).contains("관련조항") && !documentTitleAnchorKeywords(query).isEmpty()) {
+					keywords.add(LawArticleOwnership.article(reference));
+				}
 			}
 		}
 		for (String anchor : documentEvidenceAnchorKeywords(query)) {
