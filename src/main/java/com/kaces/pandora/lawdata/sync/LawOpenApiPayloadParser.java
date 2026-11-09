@@ -26,6 +26,9 @@ public class LawOpenApiPayloadParser {
 	static final String ARTICLE_REFERENCE_NOTE = "article-reference-note";
 
 	private static final Pattern LAW_ARTICLE_NODE_PATH = Pattern.compile("^\\$\\.법령\\.조문\\.조문단위\\[[0-9]+]$");
+	private static final Pattern LAW_SUPPLEMENT_BODY_PATH = Pattern.compile(
+		"^\\$\\.법령\\.부칙\\.부칙단위(?:\\[[0-9]+])?\\.부칙내용(?:\\[[0-9]+])*$");
+	private static final Pattern COMMENCEMENT_HEADING = Pattern.compile("^제[0-9]+조\\s*\\(시행일\\)");
 	private static final Pattern ARTICLE_NO_PREFIX = Pattern.compile("^(제\\d+조(?:의\\d+)?)");
 
 	private static final Pattern ARTICLE_HEADING_PREFIX = Pattern.compile("^(\\uC81C\\d+\\uC870(?:\\uC758\\d+)?\\([^\\n]{1,120}?\\))");
@@ -238,6 +241,14 @@ public class LawOpenApiPayloadParser {
 		if (node.isTextual()) {
 			if (isExcludedLongTextPath(path)) {
 				return;
+			}
+			if (!sourceVersion && LAW_SUPPLEMENT_BODY_PATH.matcher(path).matches()) {
+				String body = stripHtmlTags(node.asText()).stripLeading();
+				var heading = COMMENCEMENT_HEADING.matcher(body);
+				if (body.length() < 80 && heading.find() && !body.substring(heading.end()).isBlank()) {
+					addStructuredSection(sections, "supplementary", null, heading.group(), body, path, 0, 1);
+					return;
+				}
 			}
 			if (ADMIN_RULE_ARTICLE_CONTENT_PATH.equals(path) && stripHtmlTags(node.asText()).length() < 80) {
 				addStructuredSection(sections, "text", null, path, node.asText(), path, 0, 1);

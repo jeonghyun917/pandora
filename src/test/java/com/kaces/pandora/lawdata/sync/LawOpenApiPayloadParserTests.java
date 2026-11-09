@@ -12,6 +12,19 @@ class LawOpenApiPayloadParserTests {
 	private final LawOpenApiPayloadParser parser = new LawOpenApiPayloadParser(objectMapper, new LawJsonWriter(objectMapper));
 
 	@Test
+	void preservesShortOwnedCommencementAndItsExceptionWithoutCopyingAmendmentText() {
+		String clause = "제1조(시행일) 이 법은 공포 후 6개월이 경과한 날부터 시행한다. 다만, 제32조는 공포 후 1년이 경과한 날부터 시행한다.";
+		var document = parser.parseDetailDocument("""
+			{"법령":{"부칙":{"부칙단위":[{"부칙내용":[["부칙 <제21392호,2026.2.27>","%s"]]}]},
+			  "개정문":{"개정문내용":["제1조(시행일) 이 법은 즉시 시행한다."]}}}
+			""".formatted(clause), "예시법");
+		assertThat(document.sections()).extracting(SyncDetailSection::body).containsExactly(clause);
+		assertThat(document.sections().get(0).sourcePath()).isEqualTo("$.법령.부칙.부칙단위[0].부칙내용[0][1]");
+		var chunks = new LawSemanticChunkPlanner().plan(new ChunkPlanningContext("law", 73L, "예시법"), document.sections());
+		assertThat(chunks).anySatisfy(chunk -> assertThat(chunk.text()).contains(clause));
+	}
+
+	@Test
 	void preservesStructuralPreambleWithoutOwningTheFollowingArticle() {
 		var document = parser.parseDetailDocument("""
 			{"법령":{"조문":{"조문단위":[
