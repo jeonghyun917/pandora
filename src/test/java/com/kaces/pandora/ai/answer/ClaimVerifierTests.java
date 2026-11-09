@@ -9,6 +9,41 @@ class ClaimVerifierTests {
 
 	private final ClaimVerifier verifier = new ClaimVerifier();
 
+	private static final String SEPARATE_STORAGE_DUTY =
+		"개인정보처리자는 추가정보를 가명정보와 분리하여 보관해야 합니다.";
+	private static final String STORAGE_LIST = """
+		1. 기록의 유지.
+		2. 가명정보와 추가정보의 분리 보관. 다만, 추가정보가 불필요한 경우에는 추가정보를 파기해야 한다.
+		3. 접근 권한의 분리. 다만, 정당한 사유가 있는 경우에는 최소한의 접근 권한을 부여한다.
+		""";
+
+	@Test
+	void verifiesStorageDutyUnderItsOwnOperativeNumberedList() {
+		var source = ground("안전조치 안내서", "안전조치",
+			"① 개인정보처리자는 가명정보 및 추가정보에 대하여 다음 각 호의 안전성 확보 조치를 해야 한다.\n"
+				+ STORAGE_LIST);
+		assertThat(verifier.verifyDetailed(SEPARATE_STORAGE_DUTY, List.of(source)).supportedStrongClaimCount())
+			.isEqualTo(1);
+	}
+
+	@Test
+	void doesNotBorrowStorageDutyAcrossBoundaryOrAccessException() {
+		for (String lead : List.of(
+			"개인정보처리자는 다음 각 호의 사항을 참고할 수 있다.\n",
+			"개인정보처리자는 다음 각 호의 안전성 확보 조치를 해야 한다.\n\n",
+			"개인정보처리자는 다음 각 호의 안전성 확보 조치를 해야 한다.\n② 예시 목록\n")) {
+			var source = ground("안전조치 안내서", "안전조치", lead + STORAGE_LIST);
+			assertThat(verifier.verifyDetailed(SEPARATE_STORAGE_DUTY, List.of(source)).insufficientEvidence())
+				.isTrue();
+		}
+		var source = ground("안전조치 안내서", "안전조치",
+			"① 개인정보처리자는 가명정보 및 추가정보에 대하여 다음 각 호의 안전성 확보 조치를 해야 한다.\n"
+				+ STORAGE_LIST);
+		assertThat(verifier.verifyDetailed(
+			"접근 권한을 분리하기 어려운 경우에는 가명정보와 추가정보를 함께 보관할 수 있습니다.",
+			List.of(source)).insufficientEvidence()).isTrue();
+	}
+
 	@Test
 	void restoresModalEndingAcrossOneLineWithoutCrossingAnItemBoundary() {
 		String claim = "추가정보가 불필요한 경우에는 추가정보를 파기해야 합니다.";

@@ -402,7 +402,8 @@ public class ClaimEvidenceMatcher {
 	}
 
 	public EvidenceIndex index(List<LawAiAnswerGround> grounds) {
-		return new EvidenceIndex(evidenceSentences(grounds),SourceOwnedConditionalScope.index(grounds));
+		return new EvidenceIndex(evidenceSentences(grounds),SourceOwnedConditionalScope.index(grounds),
+			SourceOwnedNumberedDuty.index(grounds));
 	}
 
 	public Match match(String claim, EvidenceIndex evidenceIndex) {
@@ -412,9 +413,14 @@ public class ClaimEvidenceMatcher {
             Match literal=matchOrdinary(bound.operativeLiteral(),evidenceIndex);
             if(literal.status()!=Status.SUPPORTED)continue;
             Match owned=literal.groundNumber()==bound.owner()?literal:matchOrdinary(bound.operativeLiteral(),
-                new EvidenceIndex(evidenceIndex.sentences.stream().filter(sentence->sentence.groundNumber()==bound.owner()).toList(),List.of()));
+                evidenceIndex.forGround(bound.owner()));
             if(owned.status()==Status.SUPPORTED && owned.groundNumber()==bound.owner())return owned;
         }
+		for (var rule : evidenceIndex.numberedDuties) {
+			if (!rule.matches(claim)) continue;
+			Match owned = matchOrdinary(rule.literal(), evidenceIndex.forGround(rule.owner()));
+			if (owned.status() == Status.SUPPORTED && owned.groundNumber() == rule.owner()) return owned;
+		}
         return ordinary;
     }
 
@@ -1839,10 +1845,18 @@ public class ClaimEvidenceMatcher {
 	public static final class EvidenceIndex {
 		private final List<EvidenceSentence> sentences;
 		private final List<SourceOwnedConditionalScope.Rule> scopeRules;
+		private final List<SourceOwnedNumberedDuty.Rule> numberedDuties;
 
-		private EvidenceIndex(List<EvidenceSentence> sentences,List<SourceOwnedConditionalScope.Rule> scopeRules) {
+		private EvidenceIndex(List<EvidenceSentence> sentences,List<SourceOwnedConditionalScope.Rule> scopeRules,
+				List<SourceOwnedNumberedDuty.Rule> numberedDuties) {
 			this.sentences = sentences == null ? List.of() : List.copyOf(sentences);
 			this.scopeRules=List.copyOf(scopeRules);
+			this.numberedDuties=List.copyOf(numberedDuties);
+		}
+
+		private EvidenceIndex forGround(int owner) {
+			return new EvidenceIndex(sentences.stream().filter(sentence -> sentence.groundNumber() == owner).toList(),
+				List.of(), List.of());
 		}
 	}
 
