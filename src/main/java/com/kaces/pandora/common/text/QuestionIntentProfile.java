@@ -227,11 +227,22 @@ public record QuestionIntentProfile(
 		if (documentDiscoveryQuestion()) {
 			return List.of();
 		}
+		Set<String> overridden = new LinkedHashSet<>();
+		for (String id : matchedPolicyIds) {
+			overridden.addAll(QuestionIntentDictionary.values("policy." + id + ".answer_coverage_overrides", List.of()));
+		}
 		return distinctGroups(matchedPolicyIds.stream()
+			.filter(policyId -> !overridden.contains(policyId))
 			.flatMap(policyId -> QuestionIntentDictionary.groups(
 				"policy." + policyId + ".answer_required",
 				List.of()
 			).stream())
+			.toList());
+	}
+
+	public List<List<String>> configuredAnswerClaimGroups() {
+		return distinctGroups(matchedPolicyIds.stream()
+			.flatMap(id -> QuestionIntentDictionary.groups("policy." + id + ".answer_claim_required", List.of()).stream())
 			.toList());
 	}
 

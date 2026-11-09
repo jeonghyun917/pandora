@@ -114,6 +114,13 @@ public class AnswerQuestionAlignmentVerifier {
 		if (supportedLinks.isEmpty()) {
 			return AlignmentResult.failed("NO_SUPPORTED_CLAIMS", List.of(SUBJECT, RELATION));
 		}
+		if (!alignmentProfile.answerClaimGroups().isEmpty() && supportedLinks.stream()
+			.flatMap(link -> atomizer.atomizeForAlignment(link.claim()).stream())
+			.map(AnswerQuestionAlignmentVerifier::normalize)
+			.noneMatch(atom -> alignmentProfile.answerClaimGroups().stream()
+				.allMatch(group -> group.stream().anyMatch(atom::contains)))) {
+			return AlignmentResult.failed("MISSING_ANSWER_COVERAGE", List.of(ANSWER_COVERAGE));
+		}
 		boolean completeAnswerCoverage = hasCompleteAnswerCoverage(supportedLinks, alignmentProfile);
 		Map<Integer, String> subjectContextByGround = subjectContextByGround(grounds);
 		List<SourceOwnedConditionalScope.Rule> scopeRules=SourceOwnedConditionalScope.index(grounds);
@@ -453,6 +460,7 @@ public class AnswerQuestionAlignmentVerifier {
 		List<List<String>> conditionGroups,
 		List<List<String>> configuredPolicyBridgeGroups,
 		List<List<String>> answerCoverageGroups,
+		List<List<String>> answerClaimGroups,
 		List<String> documentIdentityTitleAnchors,
 		boolean documentIdentityQuestion
 	) {
@@ -486,6 +494,10 @@ public class AnswerQuestionAlignmentVerifier {
 				conditionGroups,
 				policyBridgeGroups,
 				questionProfile.configuredAnswerCoverageGroups().stream()
+					.map(AlignmentProfile::normalizedValues)
+					.filter(group -> !group.isEmpty())
+					.toList(),
+				questionProfile.configuredAnswerClaimGroups().stream()
 					.map(AlignmentProfile::normalizedValues)
 					.filter(group -> !group.isEmpty())
 					.toList(),

@@ -10,6 +10,20 @@ class AnswerQuestionAlignmentVerifierTests {
 	private final AnswerQuestionAlignmentVerifier verifier = new AnswerQuestionAlignmentVerifier();
 
 	@Test
+	void explicitScoringTableQuestionNeedsSupportedTableCoverage() {
+		String ordinary = "제안요청서에는 과업내용, 요구사항, 계약조건, 평가요소와 평가방법을 기재하여야 한다.";
+		String question = "제안요청서에 기술평가 항목과 상세 배점 기준표는 반드시 기재해야 하나요?";
+		var general = claimResult(supported(ordinary, ordinary));
+		assertThat(verifier.verify("제안요청서 필수 항목은 무엇인가요?", general).aligned()).isTrue();
+		assertThat(verifier.verify(question, general).aligned()).isFalse();
+		String example = "기술평가 배점 기준표의 작성 예시이다.";
+		assertThat(verifier.verify(question, claimResult(supported(ordinary, ordinary),
+			supported(example, example))).aligned()).isFalse();
+		String scoped = "협상에 의한 계약의 제안요청서에는 기술평가 항목과 배점 기준표를 기재하여야 한다.";
+		assertThat(verifier.verify(question, claimResult(supported(scoped, scoped))).aligned()).isTrue();
+	}
+
+	@Test
 	void negativeQuestionAntecedentRemainsARequiredConditionNotAnAnswerSubject() {
 		String question = "행정시스템 법제도를 준수하지 않으면 어떤 불이익이 있나요?";
 		String conditional = "행정시스템 법제도를 준수하지 않으면 행정시스템 법제도 보완 조치를 통보합니다.";
