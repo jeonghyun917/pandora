@@ -1977,6 +1977,18 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void catalogContractMethodDoesNotBorrowMethodTermsFromDirectPurchaseExclusionSection() {
+		var unrelated = chunk(8106, "official_doc", "공공SW사업 법제도 관리감독 및 지원 가이드",
+			"직접구매 비대상 소프트웨어 현황",
+			"디지털서비스몰 또는 종합쇼핑몰에 등록되지 않은 상용SW는 직접구매 대상에서 제외할 수 있다. "
+				+ "직접구매 비대상 소프트웨어의 계약방법은 경쟁입찰 또는 수의계약으로 구분하여 기록한다.");
+		var result = judge.judge("디지털 카탈로그로 구매할 때 계약방식이 수의계약인가요?",
+			List.of(unrelated), Map.of(), 3);
+		assertThat(result.directEvidenceFound()).isFalse();
+		assertThat(result.chunks()).isEmpty();
+	}
+
+	@Test
 	void preservesAnApprovedCatalogRequisitionOnlyAsSameSourceSupport() {
 		String title = "디지털서비스 카탈로그계약 업무처리규정";
 		String q = "디지털 카탈로그로 구매할 때 계약방식이 수의계약인가요?";
