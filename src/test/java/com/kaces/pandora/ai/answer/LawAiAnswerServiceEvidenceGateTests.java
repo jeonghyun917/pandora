@@ -351,6 +351,27 @@ class LawAiAnswerServiceEvidenceGateTests {
             assertThat(broad.get()).isGreaterThan(before);
         } finally {service.shutdownExecutors();}
     }
+    @Test void crosswalkStopFindsPedestrianDutyEvenWhenTheChunkHeadingIsBundled() throws Exception {
+        var duty=chunk(99108L,"law","도로교통법","회전교차로 통행방법 등",
+            "모든 차의 운전자는 보행자가 횡단보도를 통행하고 있거나 통행하려고 하는 때에는 횡단보도 앞에서 일시정지하여야 한다.");
+        var broad=new java.util.concurrent.atomic.AtomicInteger();
+        var law=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),new Class<?>[]{LawChunkMapper.class},
+            (proxy,method,args)->{
+                if(method.getName().equals("findSemanticChunksByDocumentTitleAndText") && ((List<?>)args[1]).contains("도로교통법")
+                    && ((List<?>)args[2]).contains("횡단보도를 통행하고 있거나")) return List.of(duty);
+                if(method.getName().equals("findSemanticChunksByText")) broad.incrementAndGet();
+                return List.of();
+            });
+        var service=service(law,null);
+        try {
+            assertThat(findLexicalChunks(service,QuestionSearchPlan.from("교차로에서 우회전할 때 횡단보도 앞에 일시정지하나요?"),
+                List.of("law","admrul"),false)).contains(duty);
+            assertThat(broad.get()).isZero();
+            assertThat(findLexicalChunks(service,QuestionSearchPlan.from("회전교차로에서 진입 순서는 어떻게 되나요?"),
+                List.of("law","admrul"),false)).doesNotContain(duty);
+        } finally {service.shutdownExecutors();}
+    }
+
     @Test void commercialDirectPurchaseUsesApplicableTitleAndLiteralBodyTermsBeforeBroadScan() throws Exception {
         String title="소프트웨어사업 계약 및 관리감독에 관한 지침";
         var scope=chunk(99106L,"admrul",title,"상용소프트웨어 직접구매 대상",
