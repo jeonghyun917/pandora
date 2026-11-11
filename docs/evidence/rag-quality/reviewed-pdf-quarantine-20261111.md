@@ -1,6 +1,10 @@
 # Reviewed PDF quarantine and deterministic preparation
 
+Latest original-serving verification: full95906/b4242d exit0, 2076/f0/e0/skip81; actual isolated DB plus controller89814/b6f8d9 passed8/f0/e0 separately. Official staged JAR0d367f1dcb136cea107c9cfcd938ac8bf44469b2061710cb2a01811231cd4ee5. Scoped review's two Important issues (same-original recovery generation matching and preview identity) were reproduced and fixed with tests; no other C/I reported. Existing preserved-file storage behavior is not relabeled as newly rehashed source evidence. Source-specific indexing/materialization, readiness and atomic transition/rollback remain required before any real replacement.
+
 Latest partial Task3 verification: post-fix full66412/565bc3 exit0, 2073/f0/e0/skip81; actual isolated DB92933/5f5d64 exit0 separately. Staged JAR5419d08f722467f0fdbb9c74fe8f96a7d1b35d644cd1d4b3a8050242bc1a9733; official DryRun d6f530 passed. Source-aware original serving, readiness, activation and rollback remain unfinished. No live source update or penalty was executed.
+
+Original-serving follow-up (uncommitted): actual retained-source reader RED693e58→DB9c32bf; published-generation open RED177081→DBd48c10. Controller integration RED0f9ce7→focus0c35af6PASS, then review identified same-original non-baseline generations and preview pinning gaps. Clean actual DB REDfc3b03 confirmed the former; generation-specific PDF/HTML/asset API REDb2b34f confirmed missing routes. Combined final focus89814/b6f8d9 passed8/f0/e0 (real DB1 plus controller7), including exact source/hash/metadata, RETIRED read, PENDING/wrong-document/refused byte mutation, pinned preview assets, unchanged legacy store use, login required and no provider-message exposure. Test-owned URL stream cleanup was corrected after Windows temp-file cleanup error71c299; no production policy changed. Full95906 is running; stage68918/5b1c91 exit0, JAR0d367f1dcb136cea107c9cfcd938ac8bf44469b2061710cb2a01811231cd4ee5. New reader is not yet the live product.
 
 Base: dbb1e8a7355c7a3910ee0706768168e5be586dcb. This checkpoint is not source activation, INDEX_READY, penalty eligibility or an answer-quality PASS.
 

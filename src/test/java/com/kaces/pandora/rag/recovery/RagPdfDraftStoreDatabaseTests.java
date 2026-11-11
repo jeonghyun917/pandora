@@ -134,6 +134,14 @@ class RagPdfDraftStoreDatabaseTests {
         recovery.insertPointer(pointer);
         var writer=new RagPdfGenerationStore(db,manager,candidates,recovery,store);
         try {
+            var originalReader=new RagPdfOriginalReader(db);
+            assertThat(originalReader.isPreservedOriginal(document,baselineId,originalHash)).isTrue();
+            assertThat(originalReader.isPreservedOriginal(document,baselineId,"0".repeat(64))).isFalse();
+            String sameOriginal=UUID.randomUUID().toString();
+            recovery.insertGeneration(new RecoveryGeneration(sameOriginal,document,originalHash,draft.productSha(),
+                    draft.baselineHash(),"7".repeat(64),"6".repeat(64),"RETIRED"));
+            try {assertThat(originalReader.isPreservedOriginal(document,sameOriginal,originalHash)).isTrue();}
+            finally {db.update("DELETE FROM rag_recovery_generations WHERE generation_id=?",sameOriginal);}
             assertThatThrownBy(()->writer.create(stored.id(),"0".repeat(64))).isInstanceOf(IllegalStateException.class);
             var generation=writer.create(stored.id(),prepared.manifest());
             assertThat(generation.state()).isEqualTo("PENDING");
@@ -194,7 +202,7 @@ class RagPdfDraftStoreDatabaseTests {
 
     private static void capturedSourceMetadataIsVersionSpecific(JdbcTemplate db,org.mybatis.spring.SqlSessionTemplate session,
             ReviewedPdfDraft draft,RagPdfDraftStore.Staged stored,RagPdfDraftPreparation.Prepared prepared,
-            String oldTitle,String oldHash) {
+            String oldTitle,String oldHash) throws Exception {
         long document=draft.documentId();
         long oldChunk=db.queryForObject("SELECT chunk_id FROM rag_document_chunks WHERE document_id=? AND use_yn='Y'",Long.class,document);
         String old=UUID.randomUUID().toString(),fresh=UUID.randomUUID().toString();
@@ -252,6 +260,23 @@ class RagPdfDraftStoreDatabaseTests {
                 .extracting(com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow::chunkId).containsExactly(newChunk);
             assertThat(mapper.findSemanticChunksByDocumentTitleScopedCaptured(List.of("official_doc"),List.of(title),10,prior)).isEmpty();
             assertThat(mapper.findSemanticChunksByDocumentTitleScopedCaptured(List.of("official_doc"),List.of(oldTitle),10,current)).isEmpty();
+            var originals=new RagPdfOriginalReader(db);
+            byte[] sourceBytes=originals.read(source);
+            assertThat(hash(sourceBytes)).isEqualTo(draft.sourceHash());
+            assertThat(originals.open(document,fresh).source()).isEqualTo(source);
+            assertThat(originals.open(document,fresh).bytes()).isEqualTo(sourceBytes);
+            assertThatThrownBy(()->originals.open(document+1,fresh)).isInstanceOf(IllegalStateException.class);
+            var wrongTitle=new RecoveryPdfSource(fresh,document,stored.id(),draft.sourceHash(),stored.reviewHash(),prepared.manifest(),"Wrong edition",url);
+            assertThatThrownBy(()->originals.read(wrongTitle)).isInstanceOf(IllegalStateException.class);
+            db.update("UPDATE rag_recovery_generations SET state='RETIRED' WHERE generation_id=?",fresh);
+            assertThat(originals.read(source)).isEqualTo(sourceBytes);
+            db.update("UPDATE rag_recovery_generations SET state='PENDING' WHERE generation_id=?",fresh);
+            assertThatThrownBy(()->originals.read(source)).isInstanceOf(IllegalStateException.class);
+            assertThatThrownBy(()->originals.open(document,fresh)).isInstanceOf(IllegalStateException.class);
+            db.update("UPDATE rag_recovery_generations SET state='RETIRED' WHERE generation_id=?",fresh);
+            db.update("UPDATE rag_pdf_source_drafts SET source_bytes=? WHERE draft_id=?",new byte[]{1,2,3},stored.id());
+            assertThatThrownBy(()->originals.read(source)).isInstanceOf(IllegalStateException.class);
+            db.update("UPDATE rag_pdf_source_drafts SET source_bytes=? WHERE draft_id=?",sourceBytes,stored.id());
         } finally {
             db.update("DELETE FROM rag_pdf_generation_sources WHERE generation_id IN (?,?)",old,fresh);
             db.update("DELETE FROM rag_recovery_members WHERE generation_id IN (?,?)",old,fresh);
