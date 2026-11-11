@@ -123,7 +123,7 @@ final class RagPdfDraftStore {
         return new StoredInput((String)row.get("draft_id"),draft,bytes);
     }
 
-    private static String hash(byte[] bytes) {
+    static String hash(byte[] bytes) {
         try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));}
         catch(NoSuchAlgorithmException impossible){throw new IllegalStateException(impossible);}
     }

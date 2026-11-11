@@ -81,6 +81,15 @@
   <select id="findGenerationLexicalChunksForSource" resultType="com.kaces.pandora.semantic.lexical.LexicalChunkDocument">
     <include refid="generationLexicalChunksQuery"/>
   </select>
+  <sql id="reviewedPdfValidationMarker">
+    COALESCE(JSON_UNQUOTE(JSON_EXTRACT(CASE WHEN JSON_VALID(g.validation_evidence)
+      THEN g.validation_evidence ELSE '[]' END,'$[0]')),'')='reviewed-pdf-validation-v1'
+  </sql>
+  <select id="isReviewedPdfGeneration" resultType="boolean">
+    SELECT EXISTS(SELECT 1 FROM rag_recovery_generations g
+      LEFT JOIN rag_pdf_generation_sources binding ON binding.generation_id=g.generation_id
+      WHERE g.generation_id=#{generationId} AND (binding.generation_id IS NOT NULL OR <include refid="reviewedPdfValidationMarker"/>))
+  </select>
   <sql id="generationLexicalTitle">
     <choose><when test="source != null">#{source.title}</when><otherwise>d.title</otherwise></choose>
   </sql>
@@ -106,7 +115,7 @@
           AND BINARY JSON_UNQUOTE(JSON_EXTRACT(draft.draft_json,'$.title'))=BINARY #{source.title}
           AND BINARY JSON_UNQUOTE(JSON_EXTRACT(draft.draft_json,'$.sourceUrl'))=BINARY #{source.sourceUrl}
         </when>
-        <otherwise>AND g.source_hash=d.file_hash AND binding.generation_id IS NULL</otherwise>
+        <otherwise>AND g.source_hash=d.file_hash AND binding.generation_id IS NULL AND NOT (<include refid="reviewedPdfValidationMarker"/>)</otherwise>
       </choose>
     ORDER BY c.chunk_id LIMIT 10001
   </sql>

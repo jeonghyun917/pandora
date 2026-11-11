@@ -26,17 +26,20 @@ class RagPdfDraftStoreDatabaseTests {
         assertThat(owned.getFileName().toString()).startsWith("pandora-import-tx-test-");
         assertThat(Path.of(db.queryForObject("SELECT @@datadir",String.class)).toRealPath()).isEqualTo(owned);
         new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(new ClassPathResource("schema.sql")).execute(ds);
+        new com.kaces.pandora.semantic.lexical.SemanticLexicalSchemaMaintenance(db).run(null);
         var manager=new DataSourceTransactionManager(ds);
         var factory=new org.mybatis.spring.SqlSessionFactoryBean();factory.setDataSource(ds);
         factory.setMapperLocations(new ClassPathResource("mapper/law/RagDocumentMapper.xml"),
-                new ClassPathResource("mapper/law/RagRecoveryMapper.xml"));
+                new ClassPathResource("mapper/law/RagRecoveryMapper.xml"),new ClassPathResource("mapper/law/SemanticLexicalMapper.xml"));
         var session=new org.mybatis.spring.SqlSessionTemplate(factory.getObject());
         var candidates=new RagRecoveryCandidateService(session.getMapper(com.kaces.pandora.rag.persistence.RagDocumentMapper.class),
-                session.getMapper(RagRecoveryMapper.class),null,manager);
-        String tag=UUID.randomUUID().toString(), oldHash=hash(tag.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        db.update("INSERT INTO rag_documents(document_type,title,file_name,file_path,file_hash,source_org,published_date,source_url) VALUES('official_doc',?,'old.pdf','preserved',?,'Legacy agency','19990101','https://legacy.example/old.pdf')",tag,oldHash);
+                session.getMapper(RagRecoveryMapper.class),new com.kaces.pandora.rag.storage.LocalRagOriginalDocumentStore(),manager);
+        String oldBody="The agency shall preserve the original approved operational decision and provide the complete record for inspection before replacing the service.";
+        var original=root.resolve("preserved.txt");Files.writeString(original,oldBody);
+        String tag=UUID.randomUUID().toString(),oldHash=hash(Files.readAllBytes(original));
+        db.update("INSERT INTO rag_documents(document_type,title,file_name,file_path,file_hash,source_org,published_date,source_url) VALUES('official_doc',?,'old.txt',?,?,'Legacy agency','19990101','https://legacy.example/old.pdf')",tag,original.toString(),oldHash);
         long id=db.queryForObject("SELECT document_id FROM rag_documents WHERE file_hash=?",Long.class,oldHash);
-        db.update("INSERT INTO rag_document_chunks(document_id,chunk_version,chunk_text,embedding_text,content_hash) VALUES(?,4,'Preserved baseline.','Preserved baseline.',?)",id,oldHash);
+        db.update("INSERT INTO rag_document_chunks(document_id,chunk_version,chunk_text,embedding_text,content_hash) VALUES(?,4,?,?,?)",id,oldBody,oldBody,oldHash);
         var tx=new TransactionTemplate(manager);
         String baseline=tx.execute(status->candidates.lockedStoredBaselineHash(id));
         var before=baseline;
@@ -108,7 +111,7 @@ class RagPdfDraftStoreDatabaseTests {
             db.update("UPDATE rag_document_chunks SET chunk_text='Changed baseline.' WHERE document_id=?",id);
             assertThatThrownBy(()->store.stage(draft,file)).isInstanceOf(IllegalStateException.class);
             assertThatThrownBy(()->store.load(first.id())).isInstanceOf(IllegalStateException.class);
-            db.update("UPDATE rag_document_chunks SET chunk_text='Preserved baseline.' WHERE document_id=?",id);
+            db.update("UPDATE rag_document_chunks SET chunk_text=? WHERE document_id=?",oldBody,id);
             // updated_at is part of the exact stored snapshot; use a new draft after this mutation.
             Files.write(file,new byte[]{1,2,3});
             assertThatThrownBy(()->store.stage(draft,file)).isInstanceOf(IllegalStateException.class);
@@ -121,7 +124,7 @@ class RagPdfDraftStoreDatabaseTests {
 
     private static void pendingGenerationPreservesOriginal(JdbcTemplate db,org.mybatis.spring.SqlSessionTemplate session,
             DataSourceTransactionManager manager,RagRecoveryCandidateService candidates,RagPdfDraftStore store,
-            ReviewedPdfDraft draft,RagPdfDraftStore.Staged stored,RagPdfDraftPreparation.Prepared prepared,String originalHash) {
+            ReviewedPdfDraft draft,RagPdfDraftStore.Staged stored,RagPdfDraftPreparation.Prepared prepared,String originalHash) throws Exception {
         long document=draft.documentId();
         String baselineId=UUID.randomUUID().toString();
         var recovery=session.getMapper(RagRecoveryMapper.class);
@@ -140,8 +143,26 @@ class RagPdfDraftStoreDatabaseTests {
             String sameOriginal=UUID.randomUUID().toString();
             recovery.insertGeneration(new RecoveryGeneration(sameOriginal,document,originalHash,draft.productSha(),
                     draft.baselineHash(),"7".repeat(64),"6".repeat(64),"RETIRED"));
-            try {assertThat(originalReader.isPreservedOriginal(document,sameOriginal,originalHash)).isTrue();}
+            try {
+                assertThat(originalReader.isPreservedOriginal(document,sameOriginal,originalHash)).isTrue();
+                db.update("UPDATE rag_recovery_generations SET validation_evidence=? WHERE generation_id=?",
+                        "[\"reviewed-pdf-validation-v1\"]",sameOriginal);
+                assertThat(originalReader.isPreservedOriginal(document,sameOriginal,originalHash)).isFalse();
+            }
             finally {db.update("DELETE FROM rag_recovery_generations WHERE generation_id=?",sameOriginal);}
+            var firstInput=store.load(stored.id());
+            var alternateDraft=new ReviewedPdfDraft(document,draft.sourceHash(),draft.baselineHash(),draft.productSha(),draft.title(),draft.sourceUrl(),
+                    List.of(new ReviewedPdfDraft.Unit("alternate","Alternate reviewed heading",draft.units().get(0).review())));
+            var alternateInput=new RagPdfDraftStore.StoredInput(stored.id(),alternateDraft,firstInput.sourceBytes());
+            // Model two individually accepted reads; the actual locked DB row still holds the first input.
+            var alternateStore=org.mockito.Mockito.mock(RagPdfDraftStore.class);
+            org.mockito.Mockito.when(alternateStore.load(stored.id())).thenReturn(alternateInput);
+            var alternatePrepared=new RagPdfDraftPreparation(alternateStore).prepare(stored.id());
+            var driftingStore=org.mockito.Mockito.mock(RagPdfDraftStore.class);
+            org.mockito.Mockito.when(driftingStore.load(stored.id())).thenReturn(firstInput,alternateInput,alternateInput);
+            var driftingWriter=new RagPdfGenerationStore(db,manager,candidates,recovery,driftingStore);
+            assertThatThrownBy(()->driftingWriter.create(stored.id(),alternatePrepared.manifest())).isInstanceOf(IllegalStateException.class);
+            assertThat(db.queryForObject("SELECT COUNT(*) FROM rag_recovery_generations WHERE document_id=?",Integer.class,document)).isOne();
             assertThatThrownBy(()->writer.create(stored.id(),"0".repeat(64))).isInstanceOf(IllegalStateException.class);
             var generation=writer.create(stored.id(),prepared.manifest());
             assertThat(generation.state()).isEqualTo("PENDING");
@@ -178,6 +199,55 @@ class RagPdfDraftStoreDatabaseTests {
             }
             db.update("UPDATE rag_document_chunks SET chunk_text='tampered' WHERE chunk_id=?",rows.get(0).chunkId());
             assertThatThrownBy(()->writer.create(stored.id(),prepared.manifest())).isInstanceOf(IllegalStateException.class);
+            assertThatThrownBy(()->writer.validate(generation.id(),prepared.manifest())).isInstanceOf(IllegalStateException.class);
+            assertThat(recovery.findGeneration(generation.id(),false).state()).isEqualTo("PENDING");
+            db.update("UPDATE rag_document_chunks SET chunk_text=? WHERE chunk_id=?",rows.get(0).chunkText(),rows.get(0).chunkId());
+            assertThatThrownBy(()->writer.validate(generation.id(),"0".repeat(64))).isInstanceOf(IllegalStateException.class);
+            db.update("UPDATE rag_recovery_pointers SET revision=1 WHERE document_id=?",document);
+            try {assertThatThrownBy(()->writer.validate(generation.id(),prepared.manifest())).isInstanceOf(IllegalStateException.class);}
+            finally {db.update("UPDATE rag_recovery_pointers SET revision=0 WHERE document_id=?",document);}
+            assertThat(recovery.findGeneration(generation.id(),false).state()).isEqualTo("PENDING");
+            var validated=writer.validate(generation.id(),prepared.manifest());
+            assertThat(validated.state()).isEqualTo("VALIDATED");
+            assertThat(validated.manifest()).isEqualTo(generation.manifest());
+            assertThat(recovery.findPointer(document,false)).isEqualTo(pointer);
+            assertThat(recovery.findAssets(generation.id())).isNull();
+            assertThat(recovery.findPreparation(generation.id())).isNull();
+            assertThat(recovery.findEmbeddingReceipts(generation.id())).isEmpty();
+            assertThat(db.queryForObject("SELECT validation_evidence FROM rag_recovery_generations WHERE generation_id=?",String.class,generation.id()))
+                .contains("reviewed-pdf-validation-v1",stored.reviewHash(),prepared.manifest(),prepared.extractionHash(),generation.id(),
+                    hash(preparedJson.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            var readback=new RagPdfValidatedSourceReader(db);
+            var transaction=new TransactionTemplate(manager);
+            assertThatThrownBy(()->readback.find(validated,pointer,rows)).isInstanceOf(IllegalStateException.class);
+            var proof=transaction.execute(status->readback.find(validated,pointer,rows)).orElseThrow();
+            assertThat(proof.source().sourceHash()).isEqualTo(draft.sourceHash());
+            assertThat(proof.source().title()).isEqualTo(draft.title());
+            assertThat(proof.preparedManifest()).isEqualTo(prepared.manifest());
+            assertThatThrownBy(()->transaction.execute(status->readback.find(generation,pointer,rows))).isInstanceOf(IllegalStateException.class);
+            assertThatThrownBy(()->transaction.execute(status->readback.find(validated,new RecoverySnapshot(document,1,baselineId,originalHash,draft.baselineHash()),rows)))
+                .isInstanceOf(IllegalStateException.class);
+            String changedLocator=preparedJson.replace("\"key\":\"procedure\"","\"key\":\"substituted\"");
+            assertThat(changedLocator).isNotEqualTo(preparedJson);
+            db.update("UPDATE rag_pdf_generation_sources SET prepared_json=? WHERE generation_id=?",changedLocator,generation.id());
+            try {assertThatThrownBy(()->transaction.execute(status->readback.find(validated,pointer,rows))).isInstanceOf(IllegalStateException.class);}
+            finally {db.update("UPDATE rag_pdf_generation_sources SET prepared_json=? WHERE generation_id=?",preparedJson,generation.id());}
+            byte[] changedBytes=firstInput.sourceBytes();changedBytes[10]^=1;
+            db.update("UPDATE rag_pdf_source_drafts SET source_bytes=? WHERE draft_id=?",changedBytes,stored.id());
+            try {assertThatThrownBy(()->transaction.execute(status->readback.find(validated,pointer,rows))).isInstanceOf(IllegalStateException.class);}
+            finally {db.update("UPDATE rag_pdf_source_drafts SET source_bytes=? WHERE draft_id=?",firstInput.sourceBytes(),stored.id());}
+            long duplicate=transaction.execute(status->{recovery.insertInactiveChunk(rows.get(0));return recovery.lastChunkId();});
+            db.update("UPDATE rag_recovery_members SET chunk_id=? WHERE generation_id=? AND chunk_id=?",duplicate,generation.id(),rows.get(0).chunkId());
+            try {
+                var remapped=recovery.findCandidateChunks(generation.id());
+                assertThat(remapped.stream().map(RagRecoverySourceValidator::unassigned).toList())
+                    .isEqualTo(rows.stream().map(RagRecoverySourceValidator::unassigned).toList());
+                assertThatThrownBy(()->transaction.execute(status->readback.find(validated,pointer,remapped))).isInstanceOf(IllegalStateException.class);
+            } finally {
+                db.update("UPDATE rag_recovery_members SET chunk_id=? WHERE generation_id=? AND chunk_id=?",rows.get(0).chunkId(),generation.id(),duplicate);
+                db.update("DELETE FROM rag_document_chunks WHERE chunk_id=?",duplicate);
+            }
+            prepareReviewedAssets(db,session,manager,candidates,validated,readback,pointer,rows);
             db.update("DELETE FROM rag_pdf_generation_sources WHERE generation_id=?",generation.id());
             db.update("DELETE FROM rag_recovery_members WHERE generation_id=?",generation.id());
             db.update("DELETE FROM rag_recovery_generations WHERE generation_id=?",generation.id());
@@ -197,6 +267,79 @@ class RagPdfDraftStoreDatabaseTests {
             db.update("DELETE FROM rag_recovery_members WHERE generation_id IN (SELECT generation_id FROM rag_recovery_generations WHERE document_id=?)",document);
             db.update("DELETE FROM rag_recovery_generations WHERE document_id=?",document);
             db.update("DELETE FROM rag_document_chunks WHERE document_id=? AND use_yn='N'",document);
+        }
+    }
+
+    private static void prepareReviewedAssets(JdbcTemplate db,org.mybatis.spring.SqlSessionTemplate session,DataSourceTransactionManager manager,
+            RagRecoveryCandidateService candidates,RecoveryGeneration generation,RagPdfValidatedSourceReader readback,
+            RecoverySnapshot preserved,List<com.kaces.pandora.rag.document.RagDocumentChunkRow> rows) {
+        var recovery=session.getMapper(RagRecoveryMapper.class);
+        var documents=session.getMapper(com.kaces.pandora.rag.persistence.RagDocumentMapper.class);
+        var lexical=session.getMapper(com.kaces.pandora.semantic.lexical.SemanticLexicalMapper.class);
+        var index=new com.kaces.pandora.semantic.lexical.SemanticLexicalIndexService(lexical,new com.kaces.pandora.semantic.lexical.KoreanLexicalTokenizer());
+        var routing=new RagRecoveryRoutingService(recovery,lexical,manager);routing.configurePdfSources(new RagPdfSourceRoutingReader(db));
+        var embeddings=org.mockito.Mockito.mock(com.kaces.pandora.infra.openai.OpenAiEmbeddingClient.class);
+        var q=org.mockito.Mockito.mock(com.kaces.pandora.infra.qdrant.QdrantClient.class);
+        var properties=new com.kaces.pandora.semantic.config.LawAiProperties(null,
+            new com.kaces.pandora.semantic.config.LawAiProperties.Qdrant("http://127.0.0.1:1","unused-law","unused-rag",3),null,null);
+        var receipts=new RagRecoveryReceiptService(documents,recovery,manager,properties,readback);
+        var preparer=new RagRecoveryIndexService(documents,recovery,candidates,receipts,embeddings,q,lexical,index,manager,
+                properties,generation.productSha(),routing,readback);
+        String id=generation.id(),collection="rag_recovery_"+id.replace("-",""),version="recovery_"+id;
+        assertThatThrownBy(()->preparer.prepare(id)).isInstanceOf(IllegalStateException.class);
+        var binding=db.queryForMap("SELECT * FROM rag_pdf_generation_sources WHERE generation_id=?",id);
+        // Same-byte classification must not fall back to legacy when the typed binding disappears.
+        db.update("UPDATE rag_documents SET file_hash=? WHERE document_id=?",generation.sourceHash(),generation.documentId());
+        db.update("DELETE FROM rag_pdf_generation_sources WHERE generation_id=?",id);
+        try {
+            var vectors=new TreeMap<Long,List<Double>>();rows.forEach(row->vectors.put(row.chunkId(),List.of(1.0,2.0,3.0)));
+            assertThatThrownBy(()->receipts.save(id,vectors)).isInstanceOf(IllegalStateException.class);
+            var legacy=new RagRecoveryValidationService(documents,recovery,new com.kaces.pandora.rag.storage.LocalRagOriginalDocumentStore(),manager,generation.productSha());
+            assertThatThrownBy(()->legacy.validate(id)).isInstanceOf(IllegalStateException.class);
+            assertThat(recovery.findGeneration(id,false).state()).isEqualTo("VALIDATED");
+            assertThat(recovery.findGenerationLexicalChunksForSource(id,null)).isEmpty();
+            db.update("UPDATE rag_recovery_generations SET state='ACTIVE' WHERE generation_id=?",id);
+            var pointer=new RecoverySnapshot(generation.documentId(),preserved.revision()+1,id,generation.sourceHash(),generation.baselineHash());
+            assertThatThrownBy(()->new org.springframework.transaction.support.TransactionTemplate(manager).execute(
+                    status->new RagPdfSourceRoutingReader(db).capture(Map.of(generation.documentId(),pointer),Set.of())))
+                    .isInstanceOf(IllegalStateException.class).hasMessage("Replacement source binding missing");
+        } finally {
+            db.update("UPDATE rag_recovery_generations SET state='VALIDATED' WHERE generation_id=?",id);
+            db.update("DELETE FROM rag_recovery_embedding_receipts WHERE generation_id=?",id);
+            db.update("UPDATE rag_documents SET file_hash=? WHERE document_id=?",preserved.sourceHash(),generation.documentId());
+            db.update("INSERT INTO rag_pdf_generation_sources(generation_id,draft_id,source_hash,review_hash,manifest,prepared_manifest,prepared_json,product_sha,metadata_hash) VALUES(?,?,?,?,?,?,?,?,?)",
+                    id,binding.get("draft_id"),binding.get("source_hash"),binding.get("review_hash"),binding.get("manifest"),binding.get("prepared_manifest"),
+                    binding.get("prepared_json"),binding.get("product_sha"),binding.get("metadata_hash"));
+        }
+        String evidence=db.queryForObject("SELECT validation_evidence FROM rag_recovery_generations WHERE generation_id=?",String.class,id);
+        db.update("UPDATE rag_recovery_generations SET validation_evidence='[]' WHERE generation_id=?",id);
+        try {assertThatThrownBy(()->preparer.prepareReviewedPdf(id)).isInstanceOf(IllegalStateException.class);}
+        finally {db.update("UPDATE rag_recovery_generations SET validation_evidence=? WHERE generation_id=?",evidence,id);}
+        org.mockito.Mockito.verifyNoInteractions(embeddings,q);
+        assertThat(recovery.findPreparation(id)).isNull();
+        org.mockito.Mockito.when(embeddings.embed(org.mockito.ArgumentMatchers.anyList())).thenReturn(Collections.nCopies(rows.size(),List.of(1.0,2.0,3.0)));
+        org.mockito.Mockito.when(q.ragRecoveryCollection(id)).thenReturn(collection);
+        org.mockito.Mockito.when(q.inspectRagRecoveryPoints(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyList()))
+            .thenReturn(new com.kaces.pandora.infra.qdrant.QdrantClient.RecoveryPointInspection(null,
+                    rows.stream().map(com.kaces.pandora.rag.document.RagDocumentChunkRow::chunkId).collect(java.util.stream.Collectors.toSet())));
+        org.mockito.Mockito.when(q.verifyRagRecoveryCollection(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyList())).thenReturn("e".repeat(64));
+        try {
+            var assets=preparer.prepareReviewedPdf(id);
+            assertThat(assets.chunkCount()).isEqualTo(rows.size());
+            assertThat(recovery.findGeneration(id,false).state()).isEqualTo("INDEX_READY");
+            assertThat(recovery.findPointer(generation.documentId(),false)).isEqualTo(preserved);
+            assertThat(recovery.verifiedEmbeddingCount(id)).isEqualTo(rows.size());
+            assertThat(db.queryForList("SELECT DISTINCT term FROM semantic_lexical_terms WHERE index_version=? AND target='official_doc' AND field_kind='document_title'",String.class,version))
+                .contains("official","rule");
+            preparer.verifyReviewedPdf(assets);
+            assertThatThrownBy(()->preparer.verify(assets)).isInstanceOf(IllegalStateException.class);
+        } finally {
+            db.update("DELETE FROM rag_recovery_embedding_receipts WHERE generation_id=?",id);
+            db.update("DELETE FROM rag_recovery_assets WHERE generation_id=?",id);
+            db.update("DELETE FROM rag_recovery_preparations WHERE generation_id=?",id);
+            db.update("DELETE FROM semantic_lexical_index_state WHERE index_version=?",version);
         }
     }
 

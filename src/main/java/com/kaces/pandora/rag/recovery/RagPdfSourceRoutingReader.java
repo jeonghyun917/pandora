@@ -27,7 +27,7 @@ public final class RagPdfSourceRoutingReader {
         }
         String marks=String.join(",",Collections.nCopies(expected.size(),"?"));
         var rows=db.queryForList("""
-                SELECT g.generation_id,g.document_id,g.source_hash,g.baseline_hash,g.product_sha,g.manifest,g.state,
+                SELECT g.generation_id,g.document_id,g.source_hash,g.baseline_hash,g.product_sha,g.manifest,g.state,g.validation_evidence,
                   d.file_hash AS original_hash,d.document_type,
                   b.generation_id AS bound_generation,b.draft_id,b.source_hash AS bound_source,
                   b.review_hash AS bound_review,b.manifest AS bound_manifest,b.product_sha AS bound_product,
@@ -51,7 +51,8 @@ public final class RagPdfSourceRoutingReader {
                     || !Objects.equals(pointer.baselineHash(),row.get("baseline_hash")))
                 throw new IllegalStateException("Captured source pointer mismatch");
             if(row.get("bound_generation")==null) {
-                if(!Objects.equals(row.get("source_hash"),row.get("original_hash")))
+                if(RagPdfGenerationStore.isReviewedEvidence(row.get("validation_evidence"))
+                        || !Objects.equals(row.get("source_hash"),row.get("original_hash")))
                     throw new IllegalStateException("Replacement source binding missing");
                 continue;
             }

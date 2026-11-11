@@ -38,6 +38,8 @@ public class RagRecoveryValidationService {
             if(document==null || generation==null || generation.documentId()!=initial.documentId()
                     || !Set.of("PENDING","VALIDATED").contains(generation.state()))throw new IllegalStateException("Generation is not validatable");
             RecoveryValidation result;
+            if(Boolean.TRUE.equals(recovery.isReviewedPdfGeneration(generationId)))
+                throw new IllegalStateException("Reviewed PDF requires its own validation");
             try {
                 var current=candidates.lockedPreview(generation.documentId(),productSha);
                 if(!current.baselineHash().equals(generation.baselineHash()) || !current.sourceHash().equals(generation.sourceHash())) {

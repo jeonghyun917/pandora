@@ -20,8 +20,8 @@ public final class RagPdfOriginalReader {
     public boolean isPreservedOriginal(long documentId,String generationId,String sourceHash) {
         if(documentId<=0 || generationId==null || !generationId.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
                 || sourceHash==null || !sourceHash.matches("[0-9a-f]{64}"))return false;
-        Integer count=db.queryForObject("""
-                SELECT COUNT(*) FROM rag_recovery_baselines b
+        var rows=db.queryForList("""
+                SELECT g.validation_evidence FROM rag_recovery_baselines b
                 JOIN rag_recovery_generations baseline ON baseline.generation_id=b.generation_id AND baseline.document_id=b.document_id
                 JOIN rag_recovery_generations g ON g.document_id=b.document_id
                   AND g.source_hash=baseline.source_hash AND g.baseline_hash=baseline.baseline_hash
@@ -29,8 +29,8 @@ public final class RagPdfOriginalReader {
                 LEFT JOIN rag_pdf_generation_sources replacement ON replacement.generation_id=g.generation_id
                 WHERE b.document_id=? AND g.generation_id=? AND g.source_hash=? AND g.state IN ('ACTIVE','RETIRED')
                   AND baseline.state IN ('ACTIVE','RETIRED') AND replacement.generation_id IS NULL
-                """,Integer.class,documentId,generationId,sourceHash);
-        return count!=null && count==1;
+                """,documentId,generationId,sourceHash);
+        return rows.size()==1 && !RagPdfGenerationStore.isReviewedEvidence(rows.get(0).get("validation_evidence"));
     }
 
     public byte[] read(RecoveryPdfSource source) {

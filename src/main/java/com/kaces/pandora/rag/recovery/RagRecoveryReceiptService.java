@@ -16,33 +16,41 @@ import tools.jackson.databind.ObjectMapper;
 public class RagRecoveryReceiptService {
     private final RagDocumentMapper documents;
     private final RagRecoveryMapper recovery;
+    private final RagPdfValidatedSourceReader pdfReadback;
     private final TransactionTemplate transaction;
     private final String model;
     private final int dimensions;
     private final ObjectMapper json = new ObjectMapper();
 
     public RagRecoveryReceiptService(RagDocumentMapper documents, RagRecoveryMapper recovery,
-            PlatformTransactionManager manager, LawAiProperties properties) {
+            PlatformTransactionManager manager, LawAiProperties properties,RagPdfValidatedSourceReader pdfReadback) {
         this.documents = documents; this.recovery = recovery;
+        this.pdfReadback=Objects.requireNonNull(pdfReadback);
         model = properties.openai().embeddingModel(); dimensions = properties.qdrant().vectorSize();
         transaction = new TransactionTemplate(manager);
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     public void save(String generationId, Map<Long, List<Double>> vectors) {
+        saveBound(generationId,vectors,null);
+    }
+    void saveReviewedPdf(String generationId,Map<Long,List<Double>> vectors,String expectedEvidence) {
+        saveBound(generationId,vectors,reviewedEvidence(expectedEvidence));
+    }
+    private void saveBound(String generationId,Map<Long,List<Double>> vectors,String pdfEvidence) {
         var snapshot = new TreeMap<Long, List<Double>>();
         if (vectors == null || vectors.isEmpty() || vectors.size() > 10000) throw new IllegalArgumentException("Bounded embeddings required");
         vectors.forEach((id, vector) -> {
             if (id == null || id <= 0) throw new IllegalArgumentException("Candidate identity required");
             snapshot.put(id, checkedVector(vector));
         });
-        locked(generationId, context -> {
+        locked(generationId,pdfEvidence,context -> {
             if (!"VALIDATED".equals(context.generation().state())) throw new IllegalStateException("Generation is not preparable");
             if (!snapshot.keySet().equals(context.chunks().stream().map(RagDocumentChunkRow::chunkId).collect(java.util.stream.Collectors.toSet()))) {
                 throw new IllegalArgumentException("Embedding candidate identities differ");
             }
             var existing = recovery.findEmbeddingReceipts(generationId);
-            var expected = context.chunks().stream().map(chunk -> receipt(context.generation(), chunk, snapshot.get(chunk.chunkId()))).toList();
+            var expected = context.chunks().stream().map(chunk -> receipt(context, chunk, snapshot.get(chunk.chunkId()))).toList();
             if (!existing.isEmpty()) {
                 if (existing.size() != expected.size() || !new HashSet<>(existing).equals(new HashSet<>(expected))) {
                     throw new IllegalStateException("Prepared embeddings are immutable");
@@ -55,7 +63,13 @@ public class RagRecoveryReceiptService {
     }
 
     public Map<Long, List<Double>> load(String generationId) {
-        return locked(generationId, context -> {
+        return loadBound(generationId,null);
+    }
+    Map<Long,List<Double>> loadReviewedPdf(String generationId,String expectedEvidence) {
+        return loadBound(generationId,reviewedEvidence(expectedEvidence));
+    }
+    private Map<Long,List<Double>> loadBound(String generationId,String pdfEvidence) {
+        return locked(generationId,pdfEvidence,context -> {
             var stored = recovery.findEmbeddingReceipts(generationId);
             if (stored.size() != context.chunks().size()) throw new IllegalStateException("Prepared embeddings incomplete");
             var byId = new HashMap<Long, RecoveryEmbeddingReceipt>();
@@ -73,7 +87,7 @@ public class RagRecoveryReceiptService {
                         values.add(value.doubleValue());
                     }
                     var vector = checkedVector(values);
-                    if (!receipt(context.generation(), chunk, vector).equals(row)) throw new IllegalStateException("Embedding receipt changed");
+                    if (!receipt(context, chunk, vector).equals(row)) throw new IllegalStateException("Embedding receipt changed");
                     vectors.put(chunk.chunkId(), vector);
                 } catch (RuntimeException invalid) { throw new IllegalStateException("Prepared embedding integrity failure", invalid); }
             }
@@ -81,7 +95,7 @@ public class RagRecoveryReceiptService {
         });
     }
 
-    private <T> T locked(String id, Function<Context, T> action) {
+    private <T> T locked(String id,String pdfEvidence, Function<Context, T> action) {
         if (id == null || !id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) throw new IllegalArgumentException("Generation UUID required");
         return transaction.execute(status -> {
             var initial = recovery.findGeneration(id, false);
@@ -89,14 +103,22 @@ public class RagRecoveryReceiptService {
             var document = documents.findSourceProofDocument(initial.documentId(), true);
             var generation = recovery.findGeneration(id, true);
             if (document == null || generation == null || generation.documentId() != initial.documentId()
-                    || !generation.sourceHash().equals(document.fileHash())
                     || !Set.of("VALIDATED", "INDEX_READY").contains(generation.state())) throw new IllegalStateException("Generation is not prepared");
+            if(pdfEvidence==null && (!generation.sourceHash().equals(document.fileHash()) || Boolean.TRUE.equals(recovery.isReviewedPdfGeneration(id))))
+                throw new IllegalStateException("Preserved-original generation required");
             var chunks = recovery.findCandidateChunks(id);
             if (chunks.isEmpty() || chunks.size() > 10000 || !RecoveryCandidatePlan.manifestFor(generation.documentId(), generation.sourceHash(),
                     generation.productSha(), chunks.stream().map(RagRecoverySourceValidator::unassigned).toList()).equals(generation.manifest())) {
                 throw new IllegalStateException("Candidate manifest changed");
             }
-            return action.apply(new Context(generation, chunks));
+            if(pdfEvidence!=null) {
+                var proof=pdfReadback.find(generation,recovery.findPointer(generation.documentId(),true),chunks)
+                        .orElseThrow(()->new IllegalStateException("Reviewed PDF proof unavailable"));
+                var reservation=recovery.findPreparation(id);
+                if(!pdfEvidence.equals(proof.evidenceHash()) || reservation==null || !generation.manifest().equals(reservation.manifest()))
+                    throw new IllegalStateException("Reviewed PDF embedding preparation changed");
+            }
+            return action.apply(new Context(generation,chunks,pdfEvidence));
         });
     }
 
@@ -109,11 +131,17 @@ public class RagRecoveryReceiptService {
         return List.copyOf(vector);
     }
 
-    private RecoveryEmbeddingReceipt receipt(RecoveryGeneration generation, RagDocumentChunkRow chunk, List<Double> vector) {
+    private RecoveryEmbeddingReceipt receipt(Context context,RagDocumentChunkRow chunk,List<Double> vector) {
+        var generation=context.generation();
         String value = json.writeValueAsString(vector);
-        String hash = LawHashUtils.sha256(json.writeValueAsString(List.of(generation.id(), generation.sourceHash(), generation.productSha(),
-                generation.manifest(), chunk, model, vector)));
+        var identity=new ArrayList<Object>(List.of(generation.id(),generation.sourceHash(),generation.productSha(),generation.manifest(),chunk,model,vector));
+        if(context.pdfEvidence()!=null)identity.add(context.pdfEvidence());
+        String hash=LawHashUtils.sha256(json.writeValueAsString(identity));
         return new RecoveryEmbeddingReceipt(generation.id(), chunk.chunkId(), generation.manifest(), model, value, hash);
     }
-    private record Context(RecoveryGeneration generation, List<RagDocumentChunkRow> chunks) { }
+    private static String reviewedEvidence(String value) {
+        if(value==null || !value.matches("[0-9a-f]{64}"))throw new IllegalArgumentException("Exact reviewed source evidence required");
+        return value;
+    }
+    private record Context(RecoveryGeneration generation,List<RagDocumentChunkRow> chunks,String pdfEvidence) { }
 }

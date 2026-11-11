@@ -14,6 +14,7 @@ public interface RagRecoveryMapper {
     RecoveryRoutingEpoch findRoutingEpoch();
     RecoveryRoutingEpoch lockRoutingEpoch();
     Long findCorpusRevision();
+    Boolean isReviewedPdfGeneration(@Param("generationId") String generationId);
     Boolean isCorpusCurrent();
     int markCorpusChanged();
     int casCorpusEpoch(@Param("expected") long expected,@Param("corpusRevision") long corpusRevision,

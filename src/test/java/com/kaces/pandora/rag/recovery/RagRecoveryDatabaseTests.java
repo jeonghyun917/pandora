@@ -172,10 +172,11 @@ class RagRecoveryDatabaseTests {
                             new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds),"b".repeat(40));
                     assertThat(validation.validate(created.id()).passed()).isTrue();
                     assertThat(recovery.findGeneration(created.id(),false).state()).isEqualTo("VALIDATED");
+                    var pdfReadback=new RagPdfValidatedSourceReader(jdbc);
                     var receiptService = new RagRecoveryReceiptService(documents, recovery,
                         new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds),
                         new com.kaces.pandora.semantic.config.LawAiProperties(null,
-                            new com.kaces.pandora.semantic.config.LawAiProperties.Qdrant("http://127.0.0.1:1", "unused-law", "unused-rag", 3), null, null));
+                            new com.kaces.pandora.semantic.config.LawAiProperties.Qdrant("http://127.0.0.1:1", "unused-law", "unused-rag", 3), null, null),pdfReadback);
                     var candidateIds = jdbc.queryForList("SELECT chunk_id FROM rag_document_chunks WHERE document_id=? AND use_yn='N' ORDER BY chunk_id", Long.class, id);
                     var vectors = Map.of(candidateIds.get(0), List.of(1.0, 0.0, 0.0), candidateIds.get(1), List.of(0.0, 1.0, 0.0));
                     String receiptTrigger = "reject_receipt_" + id;
@@ -214,7 +215,7 @@ class RagRecoveryDatabaseTests {
                         new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds),
                         new com.kaces.pandora.semantic.config.LawAiProperties(null,
                             new com.kaces.pandora.semantic.config.LawAiProperties.Qdrant("http://127.0.0.1:1", "unused-law", "unused-rag", 3), null, null), "c".repeat(40),
-                        new RagRecoveryRoutingService(recovery,lexical,new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds)));
+                        new RagRecoveryRoutingService(recovery,lexical,new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds)),pdfReadback);
                     doThrow(new IllegalStateException("lost write response")).doNothing().when(q)
                         .upsertRagRecovery(anyString(), anyString(), anyString(), anyList(), anyList());
                     assertThatThrownBy(() -> indexService.prepare(next.id())).isInstanceOf(IllegalStateException.class);
@@ -294,7 +295,7 @@ class RagRecoveryDatabaseTests {
                         new com.kaces.pandora.semantic.lexical.SemanticLexicalIndexService(lexical,new com.kaces.pandora.semantic.lexical.KoreanLexicalTokenizer()),
                         new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds),
                         new com.kaces.pandora.semantic.config.LawAiProperties(null,
-                            new com.kaces.pandora.semantic.config.LawAiProperties.Qdrant("http://127.0.0.1:1","unused-law","unused-rag",3),null,null),"d".repeat(40),router);
+                            new com.kaces.pandora.semantic.config.LawAiProperties.Qdrant("http://127.0.0.1:1","unused-law","unused-rag",3),null,null),"d".repeat(40),router,pdfReadback);
                     assertThat(futureIndex.prepare(future.id()).chunkCount()).isEqualTo(2);
                     assertThat(recovery.findPreparation(future.id()).baseRevision()).isEqualTo(1);
                     assertThat(recovery.findPointer(id,false).activeGeneration()).isEqualTo(next.id());

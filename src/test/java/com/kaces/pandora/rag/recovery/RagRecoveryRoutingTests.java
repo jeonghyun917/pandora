@@ -16,7 +16,8 @@ class RagRecoveryRoutingTests {
         org.mockito.Mockito.when(properties.openai().embeddingModel()).thenReturn("test");
         var embeddings=org.mockito.Mockito.mock(com.kaces.pandora.infra.openai.OpenAiEmbeddingClient.class);
         var qdrant=org.mockito.Mockito.mock(com.kaces.pandora.infra.qdrant.QdrantClient.class);
-        var index=new RagRecoveryIndexService(null,recovery,null,null,embeddings,qdrant,null,null,manager,properties,"a".repeat(40),routing);
+        var index=new RagRecoveryIndexService(null,recovery,null,null,embeddings,qdrant,null,null,manager,properties,"a".repeat(40),routing,
+                org.mockito.Mockito.mock(RagPdfValidatedSourceReader.class));
         assertThatThrownBy(()->index.prepare(GENERATION)).isInstanceOf(IllegalStateException.class).hasMessageContaining("captured PDF source unavailable");
         org.mockito.Mockito.verifyNoInteractions(embeddings,qdrant);
     }

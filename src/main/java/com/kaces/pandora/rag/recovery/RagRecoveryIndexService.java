@@ -27,6 +27,7 @@ public class RagRecoveryIndexService {
     private final SemanticLexicalIndexService lexicalIndex;
     private final TransactionTemplate transaction;
     private final RagRecoveryRoutingService routing;
+    private final RagPdfValidatedSourceReader pdfReadback;
     private final String model;
     private final String productSha;
     private com.kaces.pandora.lawdata.version.SourceVersionCorpusService sources;
@@ -40,7 +41,8 @@ public class RagRecoveryIndexService {
             RagRecoveryCandidateService candidates, RagRecoveryReceiptService receipts, OpenAiEmbeddingClient embeddings,
             QdrantClient qdrant, SemanticLexicalMapper lexical, SemanticLexicalIndexService lexicalIndex,
             PlatformTransactionManager manager, LawAiProperties properties,
-            @Value("${pandora.rag.recovery.product-sha:}") String productSha,RagRecoveryRoutingService routing) {
+            @Value("${pandora.rag.recovery.product-sha:}") String productSha,RagRecoveryRoutingService routing,
+            RagPdfValidatedSourceReader pdfReadback) {
         this.documents=documents; this.recovery=recovery; this.candidates=candidates; this.receipts=receipts;
         this.embeddings=embeddings; this.qdrant=qdrant; this.lexical=lexical; this.lexicalIndex=lexicalIndex;
         this.model=properties.openai().embeddingModel(); this.productSha=productSha;
@@ -48,10 +50,15 @@ public class RagRecoveryIndexService {
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         transaction.setIsolationLevel(TransactionDefinition.ISOLATION_SERIALIZABLE);
         this.routing=Objects.requireNonNull(routing);
+        this.pdfReadback=Objects.requireNonNull(pdfReadback);
     }
 
     public RecoveryAssets prepare(String generationId) {
-        try { return prepareBound(generationId); }
+        return prepareMode(generationId,false);
+    }
+    RecoveryAssets prepareReviewedPdf(String generationId) {return prepareMode(generationId,true);}
+    private RecoveryAssets prepareMode(String generationId,boolean reviewedPdf) {
+        try { return prepareBound(generationId,reviewedPdf); }
         catch(RecoveryStaleException stale) {
             transaction.executeWithoutResult(status->{
                 if(sources!=null)sources.lockSourceEpoch();
@@ -63,12 +70,12 @@ public class RagRecoveryIndexService {
             throw stale;
         }
     }
-    private RecoveryAssets prepareBound(String generationId) {
-        Snapshot initial=snapshot(generationId,true);
+    private RecoveryAssets prepareBound(String generationId,boolean reviewedPdf) {
+        Snapshot initial=snapshot(generationId,true,reviewedPdf);
         if ("INDEX_READY".equals(initial.generation().state())) {
             var existing=recovery.findAssets(generationId);
             if(existing==null)throw new IllegalStateException("Recovery assets missing");
-            verify(existing); return existing;
+            verifyBound(existing,reviewedPdf); return existing;
         }
         Map<Long,List<Double>> vectors;
         if(recovery.findEmbeddingReceipts(generationId).isEmpty()) {
@@ -79,9 +86,12 @@ public class RagRecoveryIndexService {
                 if(result==null || result.size()!=batch.size())throw new IllegalStateException("Embedding response incomplete");
                 for(int n=0;n<batch.size();n++)prepared.put(batch.get(n).chunkId(),result.get(n));
             }
-            receipts.save(generationId,prepared);
+            if(reviewedPdf)receipts.saveReviewedPdf(generationId,prepared,initial.reviewedEvidence());
+            else receipts.save(generationId,prepared);
         }
-        vectors=receipts.load(generationId);
+        vectors=loadVectors(initial);
+        if(reviewedPdf && !initial.preparation().equals(snapshot(generationId,false,true).preparation()))
+            throw new RecoveryStaleException("Reviewed PDF preparation changed before Qdrant");
         // Reconcile the actual namespace before every write, including after a lost response or process restart.
         for(int start=0;start<initial.chunks().size();start+=128) {
             var batch=initial.chunks().subList(start,Math.min(start+128,initial.chunks().size()));
@@ -107,7 +117,7 @@ public class RagRecoveryIndexService {
                 vectorFingerprint,lexicalFingerprint,initial.chunks().size());
         checkedAssets(assets);
         return transaction.execute(status->{
-            var current=captureLocked(generationId);
+            var current=captureLocked(generationId,true,reviewedPdf);
             if(!current.corpusHash().equals(initial.corpusHash()) || !current.generation().manifest().equals(initial.generation().manifest())) {
                 throw new RecoveryStaleException("Recovery corpus changed during preparation");
             }
@@ -125,26 +135,35 @@ public class RagRecoveryIndexService {
     }
 
     public void verify(RecoveryAssets assets) {
+        verifyBound(assets,false);
+    }
+    void verifyReviewedPdf(RecoveryAssets assets) {verifyBound(assets,true);}
+    private void verifyBound(RecoveryAssets assets,boolean reviewedPdf) {
         checkedAssets(assets);
-        var current=snapshot(assets.generationId(),false);
+        var current=snapshot(assets.generationId(),false,reviewedPdf);
         if(!"INDEX_READY".equals(current.generation().state()) || !assets.equals(recovery.findAssets(assets.generationId()))
                 || !assets.manifest().equals(current.generation().manifest()) || assets.chunkCount()!=current.chunks().size()) {
             throw new IllegalStateException("Recovery receipt is not current");
         }
-        var vectors=receipts.load(assets.generationId());
+        var vectors=loadVectors(current);
         if(!assets.vectorFingerprint().equals(vectorFingerprint(current,vectors))
                 || !assets.lexicalFingerprint().equals(lexicalIndex.verifyRecovery(assets.generationId(),current.corpus()))) {
             throw new IllegalStateException("Recovery assets changed or disappeared");
         }
     }
 
+    private Map<Long,List<Double>> loadVectors(Snapshot snapshot) {
+        return snapshot.reviewedEvidence()==null?receipts.load(snapshot.generation().id())
+                :receipts.loadReviewedPdf(snapshot.generation().id(),snapshot.reviewedEvidence());
+    }
+
     private String vectorFingerprint(Snapshot snapshot,Map<Long,List<Double>> vectors) {
         return qdrant.verifyRagRecoveryCollection(snapshot.generation().id(),model,snapshot.generation().manifest(),snapshot.chunks(),
                 snapshot.chunks().stream().map(c->vectors.get(c.chunkId())).toList());
     }
-    private Snapshot snapshot(String id,boolean reserve) {
+    private Snapshot snapshot(String id,boolean reserve,boolean reviewedPdf) {
         return transaction.execute(status->{
-            var snapshot=captureLocked(id);
+            var snapshot=captureLocked(id,true,reviewedPdf);
             var existing=recovery.findPreparation(id);
             if(existing==null) {
                 if(!reserve || recovery.findAssets(id)!=null || !recovery.findEmbeddingReceipts(id).isEmpty()
@@ -158,12 +177,11 @@ public class RagRecoveryIndexService {
     RecoveryPreparationReceipt recheckForPromotion(String id) {
         if(!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
             throw new IllegalStateException("Promotion recheck requires a transaction");
-        var snapshot=captureLocked(id,false);
+        var snapshot=captureLocked(id,false,false);
         if(!snapshot.preparation().equals(recovery.findPreparation(id)))throw new IllegalStateException("Preparation unavailable");
         return snapshot.preparation();
     }
-    private Snapshot captureLocked(String id) { return captureLocked(id,true); }
-    private Snapshot captureLocked(String id,boolean checkOriginal) {
+    private Snapshot captureLocked(String id,boolean checkOriginal,boolean reviewedPdf) {
         if(id==null || !id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
                 || productSha==null || !productSha.matches("[0-9a-f]{40}"))throw new IllegalArgumentException("Verified generation/product required");
         if(sources!=null)sources.lockSourceEpoch();
@@ -175,20 +193,24 @@ public class RagRecoveryIndexService {
         var generation=recovery.findGeneration(id,true);
         if(document==null || generation==null || !productSha.equals(generation.productSha())
                 || !Set.of("VALIDATED","INDEX_READY").contains(generation.state()))throw new IllegalStateException("Generation not validated");
-        if(checkOriginal) {
-            var preview=candidates.lockedPreview(generation.documentId(),productSha);
-            if(!preview.sourceHash().equals(generation.sourceHash()) || !preview.baselineHash().equals(generation.baselineHash())
-                    || !preview.manifest().equals(generation.manifest()))throw new IllegalStateException("Source or baseline changed");
-        } else if(!document.fileHash().equals(generation.sourceHash())
-                || !candidates.lockedStoredBaselineHash(generation.documentId()).equals(generation.baselineHash())) {
-            throw new IllegalStateException("Stored source or baseline changed");
-        }
+        if(!reviewedPdf && Boolean.TRUE.equals(recovery.isReviewedPdfGeneration(id)))throw new IllegalStateException("Preserved-original recovery required");
         var pointer=recovery.findPointer(generation.documentId(),true);
         if(pointer==null || !pointer.equals(captured.documents().get(generation.documentId())))
             throw new IllegalStateException("Routing pointer changed");
         var chunks=List.copyOf(recovery.findCandidateChunks(id));
         if(chunks.isEmpty() || chunks.size()>10000 || !RecoveryCandidatePlan.manifestFor(generation.documentId(),generation.sourceHash(),productSha,
                 chunks.stream().map(RagRecoverySourceValidator::unassigned).toList()).equals(generation.manifest()))throw new IllegalStateException("Candidate manifest changed");
+        var pdf=reviewedPdf?pdfReadback.find(generation,pointer,chunks)
+                .orElseThrow(()->new IllegalStateException("Reviewed PDF validation proof required")):null;
+        if(checkOriginal) {
+            var preview=candidates.lockedPreview(generation.documentId(),productSha);
+            if(!preview.baselineHash().equals(generation.baselineHash()) || (pdf==null
+                    ? !preview.sourceHash().equals(generation.sourceHash()) || !preview.manifest().equals(generation.manifest())
+                    : !preview.sourceHash().equals(document.fileHash())))throw new IllegalStateException("Source or baseline changed");
+        } else if((pdf==null && !document.fileHash().equals(generation.sourceHash()))
+                || !candidates.lockedStoredBaselineHash(generation.documentId()).equals(generation.baselineHash())) {
+            throw new IllegalStateException("Stored source or baseline changed");
+        }
         var replacements=new TreeMap<Long,List<LexicalChunkDocument>>();
         for(var documentId:captured.replacedDocumentIds()) {
             if(documentId==generation.documentId())continue;
@@ -198,18 +220,24 @@ public class RagRecoveryIndexService {
             replacements.put(documentId,rows);
         }
         var replacement=new ArrayList<LexicalChunkDocument>();
+        String title=pdf==null?document.title():pdf.source().title();
         for(var row:chunks)if(Set.of("PASS","REVIEW").contains(row.qualityStatus())) {
-            String parent=row.parentSectionTitle()==null || row.parentSectionTitle().isEmpty()?document.title():row.parentSectionTitle();
+            String parent=row.parentSectionTitle()==null || row.parentSectionTitle().isEmpty()?title:row.parentSectionTitle();
             replacement.add(new LexicalChunkDocument(document.documentType(),row.chunkId(),row.documentId(),
-                    "rag:"+row.documentId()+":"+LawHashUtils.sha256(parent),row.contentHash(),document.title(),row.parentSectionTitle(),row.chunkTitle(),row.chunkText()));
+                    "rag:"+row.documentId()+":"+LawHashUtils.sha256(parent),row.contentHash(),title,row.parentSectionTitle(),row.chunkTitle(),row.chunkText()));
         }
         replacements.put(generation.documentId(),replacement);
         var corpus=RecoveryCorpus.overlay(captured.revision(),lexical.findActiveSearchableChunks(),replacements);
         if(sources!=null)corpus=sources.overlay(corpus,captured.sources());
-        var preparation=new RecoveryPreparationReceipt(id,generation.manifest(),captured.revision(),captured.cacheIdentity(),corpus.fingerprint());
+        String reviewedEvidence=pdf==null?null:pdf.evidenceHash();
+        Long corpusRevision=pdf==null?null:recovery.findCorpusRevision();
+        if(pdf!=null && (corpusRevision==null || corpusRevision<0))throw new RecoveryStaleException("Reviewed PDF corpus revision unavailable");
+        String routingIdentity=reviewedEvidence==null?captured.cacheIdentity():LawHashUtils.sha256Json(
+                List.of("reviewed-pdf-asset-routing-v1",captured.cacheIdentity(),reviewedEvidence,corpusRevision));
+        var preparation=new RecoveryPreparationReceipt(id,generation.manifest(),captured.revision(),routingIdentity,corpus.fingerprint());
         var existing=recovery.findPreparation(id);
         if(existing!=null && !existing.equals(preparation))throw new RecoveryStaleException("Recovery preparation is stale or changed");
-        return new Snapshot(generation,chunks,corpus.chunks(),corpus.fingerprint(),preparation);
+        return new Snapshot(generation,chunks,corpus.chunks(),corpus.fingerprint(),preparation,reviewedEvidence);
     }
     private void checkedAssets(RecoveryAssets assets) {
         if(assets==null || !qdrant.ragRecoveryCollection(assets.generationId()).equals(assets.vectorCollection())
@@ -219,5 +247,5 @@ public class RagRecoveryIndexService {
                 || assets.chunkCount()<=0 || assets.chunkCount()>10000)throw new IllegalArgumentException("Bounded manifest-bound asset receipt required");
     }
     private record Snapshot(RecoveryGeneration generation,List<RagDocumentChunkRow> chunks,List<LexicalChunkDocument> corpus,String corpusHash,
-        RecoveryPreparationReceipt preparation) { }
+        RecoveryPreparationReceipt preparation,String reviewedEvidence) { }
 }
