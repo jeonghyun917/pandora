@@ -941,6 +941,23 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void distinguishesSecurityReviewOmissionFromScopeAndUnconditionalExamples() {
+		var scope = chunk(857L, "official_doc", "공공 사이버보안 기준", "보안성 검토 대상",
+			"국가정보원 보안성 검토 대상 사업 및 시기: 정보통신망 또는 정보시스템 구축 사업이 해당한다.");
+		var omission = chunk(858L, "official_doc", "공공 사이버보안 기준", "검토 생략",
+			"기관의 장은 기존 검토를 거쳐 완료하고 망 구성을 변경하지 않는 후속 운영 사업의 보안성 검토 절차를 생략할 수 있다.");
+		var example = chunk(859L, "official_doc", "공공 사이버보안 기준", "검토 생략",
+			"후속 운영 예시: 노후 장비 교체. 생략 가능 여부는 별도 확인한다.");
+		String question = "후속 운영 사업에서 보안성 검토의 생략 조건은 무엇입니까?";
+		assertThat(judge.judge(question, List.of(scope, example), Map.of(), 5).directEvidenceFound()).isFalse();
+		var result = judge.judge(question, List.of(scope, example, omission), Map.of(), 5);
+		assertThat(result.directEvidenceFound()).isTrue();
+		assertThat(result.chunks()).first().isEqualTo(omission);
+		assertThat(judge.judge("보안성 검토 대상 사업은 무엇입니까?", List.of(scope), Map.of(), 5)
+			.directEvidenceFound()).isTrue();
+	}
+
+	@Test
 	void securityReviewScopeCanBeOwnedByTheOperativeActorAndNumberedRuleRatherThanATargetHeading() {
 		String rule = "제7조(검토 기관) ① 국가정보원장은 각급기관의 장이 추진하는 다음 각 호에 해당하는 "
 			+ "정보화사업에 대하여 보안성 검토를 실시한다. 1. 국가안보상 중요한 정보통신망 구축 "

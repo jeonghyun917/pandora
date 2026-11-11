@@ -490,6 +490,9 @@ public class EvidenceJudge {
 		if (profile.securityReviewResultAction() && !hasBoundSecurityReviewResultAction(chunk.chunkText())) {
 			return false;
 		}
+		if (isSecurityReviewOmissionQuestion(normalizedQuestion) && !hasOperativeSecurityReviewOmission(body)) {
+			return false;
+		}
 		if (isPenaltyConsequenceQuestion(profile)
 			&& isSecurityContractConsequenceOutsideQuestion(profile.normalizedQuestion(), body, documentTitle, chunkHeading)) {
 			return false;
@@ -1487,6 +1490,10 @@ public class EvidenceJudge {
 
 		if (directEvidence && profile.securityReviewResultAction()
 			&& !hasBoundSecurityReviewResultAction(chunk.chunkText())) {
+			directEvidence = false;
+		}
+		if (directEvidence && isSecurityReviewOmissionQuestion(profile.normalizedQuestion())
+			&& !hasOperativeSecurityReviewOmission(body)) {
 			directEvidence = false;
 		}
 		return new JudgedChunk(chunk, score, topicAligned, relevant, directEvidence, directEvidenceMatches, bodyDirectEvidenceMatches);
@@ -2946,7 +2953,18 @@ public class EvidenceJudge {
 	private static boolean isSecurityReviewTargetQuestion(String normalizedQuestion) {
 		String normalized = normalize(normalizedQuestion);
 		return (normalized.contains("보안성검토") || (normalized.contains("보안성") && normalized.contains("검토")))
-			&& normalized.contains("대상");
+			&& normalized.contains("대상") && !isSecurityReviewOmissionQuestion(normalized);
+	}
+
+	private static boolean isSecurityReviewOmissionQuestion(String normalized) {
+		return normalized.contains("보안성검토") && normalized.contains("생략");
+	}
+
+	private static final java.util.regex.Pattern SECURITY_REVIEW_OMISSION = java.util.regex.Pattern.compile(
+		"보안성검토(?:절차(?:의이행)?)?[을를]생략할수있다");
+
+	private static boolean hasOperativeSecurityReviewOmission(String normalizedBody) {
+		return SECURITY_REVIEW_OMISSION.matcher(normalizedBody).find();
 	}
 
 	private static boolean isSecurityReviewTargetAnswerChunk(String body, String documentTitle, String chunkHeading,
@@ -3392,7 +3410,8 @@ public class EvidenceJudge {
 			QuestionIntentProfile extracted = QuestionIntentProfile.from(question);
 			List<String> terms = extracted.terms().isEmpty() ? queryTerms(question) : extracted.terms();
 			boolean securityReviewResultAction = extracted.matchedPolicyIds().contains("security_review_result_action");
-			boolean definitionQuestion = (isDefinitionQuestion(normalized) && !securityReviewResultAction)
+			boolean securityReviewOmission = isSecurityReviewOmissionQuestion(normalized);
+			boolean definitionQuestion = (isDefinitionQuestion(normalized) && !securityReviewResultAction && !securityReviewOmission)
 				|| isAiCommitteeFunctionQuestion(normalized);
 			List<String> requiredTerms = requiredExactTerms(question);
 			if (definitionQuestion && hasNonAcronymConceptTerm(terms, requiredTerms)) {
@@ -3414,7 +3433,11 @@ public class EvidenceJudge {
 					intentGroups.add(group);
 				}
 			}
-			if (shouldUseExtractedDirectEvidenceGroups(extracted, normalized)) {
+			if (securityReviewOmission) {
+				// An omission question asks for the permission, not the ordinary scope of review.
+				directEvidenceGroups.add(List.of("생략할 수 있다"));
+			}
+			else if (shouldUseExtractedDirectEvidenceGroups(extracted, normalized)) {
 				for (List<String> group : extracted.directEvidenceGroups()) {
 					if (!isDirectEvidenceGroupCovered(directEvidenceGroups, group)) {
 						directEvidenceGroups.add(group);
