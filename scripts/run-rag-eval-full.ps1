@@ -34,6 +34,8 @@ Set-Or-ClearEnv 'RAG_EVAL_REQUEST_TIMEOUT_MS' ([string]$RequestTimeoutMs)
 Set-Or-ClearEnv 'RAG_EVAL_INTER_BATCH_SLEEP_MS' ([string]$InterBatchSleepMs)
 Set-Or-ClearEnv 'RAG_EVAL_CASE_LIMIT' ''
 Set-Or-ClearEnv 'RAG_EVAL_CASE_IDS' ''
+Set-Or-ClearEnv 'RAG_EVAL_GATE_PROFILE' 'release'
+Set-Or-ClearEnv 'RAG_EVAL_REQUIRE_FULL_RELEASE' '1'
 Set-Or-ClearEnv 'RAG_EVAL_RESUME' ($(if ($Resume) { 'true' } else { '' }))
 
 $header = "[{0}] full rag eval start baseUrl={1} output={2}" -f (Get-Date).ToString('o'), $BaseUrl, $env:RAG_EVAL_OUTPUT

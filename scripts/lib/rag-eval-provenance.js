@@ -6,7 +6,11 @@ const RELEASE_EVALUATION_CASE_COUNT = 1003;
 
 function determineRunScope(selectedCases, allCases, caseIds, caseLimit) {
   const explicitlyTargeted = (caseIds?.length ?? 0) > 0 || Number(caseLimit ?? 0) > 0;
-  return !explicitlyTargeted && selectedCases.length === allCases.length ? 'full' : 'targeted';
+  const completeUniverse = allCases.length === RELEASE_EVALUATION_CASE_COUNT
+    && selectedCases.length === allCases.length
+    && new Set(allCases.map((item) => item.id)).size === allCases.length
+    && allCases.every((item, index) => item.id && item.id === selectedCases[index]?.id);
+  return !explicitlyTargeted && completeUniverse ? 'full' : 'targeted';
 }
 
 function resolveReportPaths(scope, env = process.env) {

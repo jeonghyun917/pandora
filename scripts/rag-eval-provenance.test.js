@@ -350,7 +350,7 @@ test('dataset provenance hash changes when only the answer-oracle sidecar change
 });
 
 test('full and targeted runs use separate latest and checkpoint files', () => {
-  const cases = [{ id: 'a' }, { id: 'b' }];
+  const cases = Array.from({ length: RELEASE_EVALUATION_CASE_COUNT }, (_, i) => ({ id: `case-${i}` }));
   assert.equal(determineRunScope(cases, cases, [], 0), 'full');
   assert.equal(determineRunScope(cases.slice(0, 1), cases, [], 1), 'targeted');
   assert.deepEqual(resolveReportPaths('full', {}), {
@@ -359,6 +359,41 @@ test('full and targeted runs use separate latest and checkpoint files', () => {
     checkpointPath: 'logs/rag-eval-gate-full-checkpoint.json',
   });
   assert.equal(resolveReportPaths('targeted', {}).outputPath, 'logs/rag-eval-gate-targeted-latest.json');
+});
+
+test('a truncated or duplicate universe cannot write a full release report', () => {
+  const cases = Array.from({ length: RELEASE_EVALUATION_CASE_COUNT }, (_, i) => ({ id: `case-${i}` }));
+  const truncated = cases.slice(0, -1);
+  const duplicate = [...truncated, truncated[0]];
+  assert.equal(determineRunScope(truncated, truncated, [], 0), 'targeted');
+  assert.equal(determineRunScope(duplicate, duplicate, [], 0), 'targeted');
+});
+
+test('explicit full release rejects a missing dataset before runtime lookup', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pandora-full-preflight-'));
+  try {
+    const resources = path.join(directory, 'src', 'main', 'resources');
+    fs.mkdirSync(resources, { recursive: true });
+    fs.copyFileSync(baseEvaluationCasePaths[0], path.join(resources, path.basename(baseEvaluationCasePaths[0])));
+    fs.copyFileSync(answerOraclePath, path.join(resources, path.basename(answerOraclePath)));
+    const result = spawnSync(process.execPath, [path.join(repositoryRoot, 'scripts', 'rag-eval-gate.js')], {
+      cwd: directory,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        RAG_EVAL_BASE_URL: 'http://127.0.0.1:1',
+        RAG_EVAL_CASE_IDS: '',
+        RAG_EVAL_CASE_LIMIT: '0',
+        RAG_EVAL_GATE_PROFILE: 'release',
+        RAG_EVAL_REQUIRE_FULL_RELEASE: '1',
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /full release requires all 1003 unique cases and all dataset files/);
+    assert.equal(fs.existsSync(path.join(directory, 'logs')), false);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('targeted runs cannot overwrite reserved full-run report paths', () => {

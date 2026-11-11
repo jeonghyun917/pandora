@@ -51,6 +51,9 @@ const baselineManifestPath = String(process.env.RAG_EVAL_BASELINE_MANIFEST || ''
 async function main() {
   const evaluationState = loadEvaluationState();
   const { allCases, cases, scope, datasetHashValue, selectionHashValue } = evaluationState;
+  if (process.env.RAG_EVAL_REQUIRE_FULL_RELEASE === '1' && scope !== 'full') {
+    throw new Error('[rag-eval-gate] full release requires all 1003 unique cases and all dataset files');
+  }
   const reportPaths = resolveReportPaths(scope);
   checkpointPath = reportPaths.checkpointPath;
   const suppliedBaselineManifest = loadBaselineManifest();
@@ -526,11 +529,13 @@ function loadCases() {
 function loadEvaluationState() {
   const allCases = loadCases();
   const cases = selectCases(allCases);
+  const presentDatasetPaths = datasetPaths.filter((casePath) => fs.existsSync(casePath));
   return {
     allCases,
     cases,
-    scope: determineRunScope(cases, allCases, caseIds, caseLimit),
-    datasetHashValue: datasetHash(datasetPaths.filter((casePath) => fs.existsSync(casePath))),
+    scope: gateProfile === 'release' && presentDatasetPaths.length === datasetPaths.length
+      ? determineRunScope(cases, allCases, caseIds, caseLimit) : 'targeted',
+    datasetHashValue: datasetHash(presentDatasetPaths),
     allSelectionHashValue: selectionHash(allCases),
     selectionHashValue: selectionHash(cases),
   };
