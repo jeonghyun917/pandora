@@ -8980,6 +8980,10 @@ public class LawAiAnswerService {
 			&& !documentTitleAnchors.isEmpty();
 		QuestionIntentProfile profile = queryPlan.profile();
 		List<LawSemanticChunkRow> chunks = new java.util.ArrayList<>();
+		if (routing != null && ragTargets.contains("official_doc") && documentTitleAnchors.isEmpty()
+			&& !requiresLawOrVersionSpecificEvidence(query, profile)) {
+			chunks.addAll(findReviewedSecurityProcedureCandidates(query, normalizedQuery, profile, routing));
+		}
 		boolean guideFocusedQuestion = isGuideFocusedQuestion(queryTerms(query));
 		boolean focusedLookup = false;
 		boolean boundedRagDocumentTitleMatched = false;
@@ -9786,6 +9790,27 @@ public class LawAiAnswerService {
 			}
 		}
 		return finishLexicalChunks(chunks, query);
+	}
+
+	private List<LawSemanticChunkRow> findReviewedSecurityProcedureCandidates(String query, String normalizedQuery,
+		QuestionIntentProfile profile, RecoveryRoutingSnapshot routing) {
+		if (!normalizedQuery.contains("보안성검토")) return List.of();
+		boolean omission = normalizedQuery.contains("생략");
+		boolean submission = profile.intentTypes().contains("required_documents")
+			&& normalizedQuery.contains("제출");
+		if (omission == submission) return List.of();
+		var titles = routing.pdfSources().values().stream().map(source -> source.title())
+			.filter(title -> normalizeForMatch(title).startsWith("국가사이버보안기본지침"))
+			.distinct().limit(2).toList();
+		if (titles.isEmpty()) return List.of();
+		var hints = omission ? List.of("보안성 검토 절차의 이행을 생략할 수 있다")
+			: List.of("제출 문서", "사항이 포함된 문서를 제출하여야 한다");
+		return safeLexicalQuery("reviewed security procedure body", () ->
+			ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScopedRouted(
+				List.of("official_doc"), titles, hints, 12, routing), routing).stream()
+			.filter(row -> titles.contains(row.title()) && isCapturedReviewedOfficialDoc(row, routing))
+			.filter(row -> evidenceJudge.judge(query, List.of(row), Map.of(), 1).directEvidenceFound())
+			.toList();
 	}
 
 	private boolean hasDirectReviewedLexicalGround(String query, List<LawSemanticChunkRow> candidates, RecoveryRoutingSnapshot routing) {

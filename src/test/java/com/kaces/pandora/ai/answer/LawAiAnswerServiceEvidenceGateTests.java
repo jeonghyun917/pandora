@@ -591,6 +591,44 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void retrievesOperativeReviewClausesFromRequestPinnedSourceRatherThanGenericHeading() throws Exception {
+		var generation = "33333333-3333-4333-8333-333333333333";
+		var title = "국가 사이버보안 기본지침 (2026. 5. 1.)";
+		var source = new com.kaces.pandora.rag.recovery.RecoveryPdfSource(generation, 88600,
+			"22222222-2222-4222-8222-222222222222", "a".repeat(64), "b".repeat(64), "c".repeat(64),
+			title, "https://agency.example/review.pdf");
+		var pointer = new com.kaces.pandora.rag.recovery.RecoverySnapshot(88600, 1, generation, "a".repeat(64), "d".repeat(64));
+		var asset = new com.kaces.pandora.rag.recovery.RecoveryAssets(generation, "c".repeat(64),
+			"rag_recovery_" + generation.replace("-", ""), "e".repeat(64), "f".repeat(64), 2);
+		var routing = new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(1, Map.of(88600L, pointer),
+			Map.of(generation, asset), java.util.Set.of(), asset.lexicalFingerprint(), "recovery_" + generation,
+			com.kaces.pandora.lawdata.version.SourceVersionRoutingSnapshot.empty(),
+			Map.of(generation, source));
+		var omission = chunk(88601, 88600, "official_doc", title, "검토 생략",
+			"기관의 장은 검토를 마친 시설에서 망 변경 없는 단순 장비 교체의 보안성 검토 절차를 생략할 수 있다.", null);
+		var submission = chunk(88602, 88600, "official_doc", title, "p.39 제출",
+			"기관의 장은 보안성 검토를 의뢰하는 경우 다음 각 호의 사항이 포함된 문서를 제출하여야 한다. 1. 배치도 2. 비상계획", null);
+		var other = chunk(88603, 88601, "official_doc", title, "검토 생략", omission.chunkText(), null);
+		RagDocumentMapper rag = (RagDocumentMapper) java.lang.reflect.Proxy.newProxyInstance(
+			RagDocumentMapper.class.getClassLoader(), new Class<?>[]{RagDocumentMapper.class}, (proxy, mapper, args) ->
+				mapper.getName().equals("findSemanticChunksByDocumentTitleAndTextScopedRouted") && args[4] == routing
+					? List.of(other, omission, submission) : List.of());
+		var service = service(null, rag);
+		try {
+			var method = LawAiAnswerService.class.getDeclaredMethod("findLexicalChunks",
+				QuestionSearchPlan.class, List.class, boolean.class, routing.getClass());
+			method.setAccessible(true);
+			var targets = List.of("official_doc");
+			assertThat(method.invoke(service, QuestionSearchPlan.from("망 변경 없는 장비 교체의 보안성 검토 생략 조건은?"),
+				targets, false, routing)).isEqualTo(List.of(omission));
+			assertThat(method.invoke(service, QuestionSearchPlan.from("보안성 검토 의뢰 때 어떤 문서를 제출합니까?"),
+				targets, false, routing)).isEqualTo(List.of(submission));
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void genericLawTimeoutDoesNotHideIndependentlyDirectReviewedDocumentInMixedSearch() throws Exception {
 		var timeout = new org.springframework.dao.QueryTimeoutException("bounded legacy scan");
 		var generation = "11111111-1111-4111-8111-111111111111";
