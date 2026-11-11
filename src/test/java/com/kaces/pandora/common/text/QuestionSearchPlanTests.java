@@ -6,6 +6,12 @@ import org.junit.jupiter.api.Test;
 
 class QuestionSearchPlanTests {
 	@Test
+	void sectionHintsReachTheBoundedKeywordListInConfiguredOrder() {
+		var plan = QuestionSearchPlan.from("공공기관의 데이터베이스를 구축할 때 데이터 표준을 어떻게 적용합니까?");
+		assertThat(plan.bm25Keywords()).containsSubsequence("target_scope", "requirement", "operation_rule", "procedure");
+	}
+
+	@Test
 	void penaltyFocusPreservesEachSourceConditionAndAuthority() {
 		assertThat(join(QuestionSearchPlan.from("계약 위반 시 어떤 조치가 있나요?").answerFocusInstructions()))
 			.contains("원문 조건과 권한 주체", "일반적인 총괄 결론", "원문에 없는 제출 의무");

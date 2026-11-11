@@ -1,6 +1,7 @@
 package com.kaces.pandora.common.text;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -170,17 +171,17 @@ public record QuestionIntentProfile(
 			terms,
 			lexical.stream().filter(value -> value.length() >= 2).distinct().limit(24).toList(),
 			focused.stream().filter(value -> value.length() >= 2).distinct().limit(10).toList(),
-			Set.copyOf(intentTypes),
+			Collections.unmodifiableSet(intentTypes),
 			entities,
 			distinctGroups(synonymGroups),
 			preferredTargets.stream().distinct().toList(),
 			distinctGroups(conceptGroups),
 			distinctGroups(intentGroups),
 			distinctGroups(directEvidenceGroups),
-			Set.copyOf(sectionTypes),
+			Collections.unmodifiableSet(sectionTypes),
 			focusedSearch,
 			policySearchKeywords.stream().filter(value -> value.length() >= 2).distinct().limit(24).toList(),
-			Set.copyOf(matchedPolicyIds)
+			Collections.unmodifiableSet(matchedPolicyIds)
 		);
 	}
 
