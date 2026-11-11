@@ -3657,6 +3657,8 @@ public class LawAiAnswerService {
 	}
 
 	private String contextSnippet(LawSemanticChunkRow chunk, String query, int limit) {
+		String submission = completeReviewedSubmissionSnippet(chunk, query, limit);
+		if (!submission.isBlank()) return submission;
 		String value = completeSecurityReviewTargetSnippet(chunk, query, limit);
 		if (value.isBlank()) {
 			value = completeNumberedProcedureSnippet(chunk, query);
@@ -4275,6 +4277,8 @@ public class LawAiAnswerService {
 	}
 
 	private String snippet(LawSemanticChunkRow chunk, String query) {
+		String submission = completeReviewedSubmissionSnippet(chunk, query, 460);
+		if (!submission.isBlank()) return submission;
 		String securityReviewTargets = completeSecurityReviewTargetSnippet(chunk, query, 900);
 		if (!securityReviewTargets.isBlank()) {
 			return prependMeaningfulChunkHeading(chunk, securityReviewTargets);
@@ -4284,6 +4288,35 @@ public class LawAiAnswerService {
 			return prependMeaningfulChunkHeading(chunk, numberedProcedure);
 		}
 		return prependMeaningfulChunkHeading(chunk, snippet(chunk.chunkText(), query));
+	}
+
+	private String completeReviewedSubmissionSnippet(LawSemanticChunkRow chunk, String query, int limit) {
+		if (chunk == null || chunk.chunkText() == null || !"official_doc".equals(chunk.target())
+			|| !"PASS".equals(chunk.qualityStatus())
+			|| (chunk.effectiveStatus() != null && !"CURRENT".equals(chunk.effectiveStatus()))
+			|| !normalizeForMatch(chunk.title()).startsWith("국가사이버보안기본지침")
+			|| !normalizeForMatch(query).contains("보안성검토")
+			|| !QuestionIntentProfile.from(query).intentTypes().contains("required_documents")) return "";
+		var articles = java.util.regex.Pattern.compile("(?m)^[ \\t]*제\\s*\\d+\\s*조(?:의\\s*\\d+)?\\s*[(（]([^\\r\\n)）]+)[)）]")
+			.matcher(chunk.chunkText());
+		while (articles.find()) {
+			if (!"제출문서".equals(normalizeForMatch(articles.group(1)))) continue;
+			int start = articles.start();
+			if (!articles.find()) return "";
+			String body = chunk.chunkText().substring(start, articles.start()).strip();
+			if (body.length() > limit) return "";
+			var items = java.util.regex.Pattern.compile("(?m)^[ \\t]*(\\d{1,2})[.]\\h*\\S").matcher(body);
+			if (!items.find()) return "";
+			String lead = normalizeForMatch(body.substring(0, items.start()));
+			if (!lead.contains("보안성검토를의뢰할경우") || !lead.contains("다음각호")
+				|| !lead.contains("문서를제출하여야한다")) return "";
+			int expected = 1;
+			do {
+				if (Integer.parseInt(items.group(1)) != expected++) return "";
+			} while (items.find());
+			return expected > 2 ? body : "";
+		}
+		return "";
 	}
 
 	private String completeNumberedProcedureSnippet(LawSemanticChunkRow chunk, String query) {
@@ -9806,7 +9839,8 @@ public class LawAiAnswerService {
 		boolean submission = profile.intentTypes().contains("required_documents")
 			&& (normalizedQuery.contains("제출")
 				|| (containsAny(normalizedQuery, "의뢰", "요청")
-					&& containsAny(normalizedQuery, "첨부자료를내야", "첨부문서를내야", "첨부서류를내야")));
+					&& containsAny(normalizedQuery, "첨부자료를내야", "첨부문서를내야", "첨부서류를내야",
+						"첨부해야할자료", "첨부해야할문서", "첨부해야할서류")));
 		boolean resultAction = profile.matchedPolicyIds().contains("security_review_result_action");
 		if ((omission ? 1 : 0) + (submission ? 1 : 0) + (resultAction ? 1 : 0) != 1) return List.of();
 		var titles = routing.pdfSources().values().stream().map(source -> source.title())

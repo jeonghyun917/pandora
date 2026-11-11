@@ -1633,6 +1633,23 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void keepsTheReferralConditionWithItsOwnedSubmissionList() throws Exception {
+		String article = "제27조(제출 문서) 기관의 장은 제21조제2항에 따라 보안성 검토를 의뢰할\n"
+			+ "경우 다음 각 호의 사항이 포함된 문서를 제출하여야 한다.\n"
+			+ "1. 시설 계획서\n2. 비상대응계획\n3. 통신망 구성도\n4. 자체 보안대책";
+		var row = chunk(88690, "official_doc", "국가 사이버보안 기본지침 (2026. 5. 1.)", "제출 문서",
+			"기존 장비 변경의 조건을 기록한다.\n".repeat(50) + article
+				+ "\n제28조(검토결과 조치) 통보받은 경우 대책을 보완한다.", null);
+		var service=service();
+		try {
+			String context = contextSnippet(service,row,"보안성 검토 의뢰 시 제출할 서류는 무엇입니까?",240);
+			assertThat(context).contains(article).doesNotContain("제28조","기존 장비");
+			assertThat(contextSnippet(service,row,"보안성 검토를 의뢰할 때 첨부해야 할 문서는 무엇입니까?",240))
+				.contains(article).doesNotContain("제28조","기존 장비");
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void completeNumberedProcedureSnippetStartsAtTheProcedureFlow() throws Exception {
 		String prefix = ("보안성 검토 대상 사업 식별과 담당기관 역할을 설명한다. ").repeat(30);
 		LawSemanticChunkRow complete = chunk(
