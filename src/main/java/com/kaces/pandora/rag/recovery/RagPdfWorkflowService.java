@@ -12,7 +12,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 @Service
 public final class RagPdfWorkflowService {
     public record Review(long documentId,String title,String sourceUrl,String sourceHash,String baselineHash,
-            String productSha,String reviewHash,int units,boolean mutationsEnabled) { }
+            String productSha,String reviewHash,int units,boolean mutationsEnabled,List<String> generationIds) {
+        public Review {generationIds=List.copyOf(generationIds);}
+    }
     public record Preparation(String draftId,String reviewHash,String manifest,int chunks,int units) { }
     private final JdbcTemplate db;
     private final PlatformTransactionManager transactions;
@@ -40,8 +42,20 @@ public final class RagPdfWorkflowService {
     }
     public Review review() {
         var draft=trusted.read().draft();
+        String reviewHash=draft.reviewHash();
+        var generations=db.queryForList("""
+            SELECT g.generation_id FROM rag_recovery_generations g
+            JOIN rag_pdf_generation_sources b ON b.generation_id=g.generation_id AND b.source_hash=g.source_hash
+                AND b.product_sha=g.product_sha AND b.manifest=g.manifest
+            JOIN rag_pdf_source_drafts q ON q.draft_id=b.draft_id AND q.document_id=g.document_id
+                AND q.source_hash=g.source_hash AND q.product_sha=g.product_sha AND q.baseline_hash=g.baseline_hash
+                AND q.review_hash=b.review_hash AND q.state='STAGED'
+            WHERE g.document_id=? AND g.source_hash=? AND g.baseline_hash=? AND g.product_sha=? AND b.review_hash=?
+            ORDER BY g.generation_id LIMIT 101
+            """,String.class,draft.documentId(),draft.sourceHash(),draft.baselineHash(),draft.productSha(),reviewHash);
+        if(generations.size()>100)throw new IllegalStateException("Reviewed generation history bound exceeded");
         return new Review(draft.documentId(),draft.title(),draft.sourceUrl(),draft.sourceHash(),draft.baselineHash(),
-                draft.productSha(),draft.reviewHash(),draft.units().size(),enabled);
+                draft.productSha(),reviewHash,draft.units().size(),enabled,generations);
     }
     public RecoveryBaselineAssets register() {
         var input=input();var draft=input.draft();

@@ -351,6 +351,7 @@ class RagPdfDraftStoreDatabaseTests {
                     generation.productSha(),true,true,trustedManifest.toString(),com.kaces.pandora.common.text.LawHashUtils.sha256(inputJson));
             String draftId=(String)trustedRow.get("draft_id");
             assertThat(workflow.review().reviewHash()).isEqualTo(trustedDraft.reviewHash());
+            assertThat(workflow.review().generationIds()).containsExactly(id);
             assertThat(workflow.stage().id()).isEqualTo(draftId);
             assertThat(workflow.inspect(draftId).chunks()).isEqualTo(rows.size());
             assertThatThrownBy(()->workflow.prepare(preserved.activeGeneration())).isInstanceOf(IllegalStateException.class);

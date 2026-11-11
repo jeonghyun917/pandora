@@ -8,6 +8,15 @@ import org.springframework.transaction.PlatformTransactionManager;
 import com.kaces.pandora.rag.persistence.RagDocumentMapper;
 
 class RagPdfWorkflowServiceTests {
+    @Test void scopedReviewedWindowCannotOpenLegacyMutations() {
+        var candidates=mock(RagRecoveryCandidateService.class);var mapper=mock(RagRecoveryMapper.class);
+        var workflow=new RagRecoveryWorkflowService(candidates,null,null,null,null,null,mapper,"a".repeat(40),true);
+        assertThat(workflow.status(42).mutationsEnabled()).isTrue();
+        workflow.configureReviewedOnly(true);
+        assertThat(workflow.status(42).mutationsEnabled()).isFalse();
+        assertThatThrownBy(()->workflow.create(42,"b".repeat(64))).isInstanceOf(IllegalStateException.class);
+        verifyNoInteractions(candidates);
+    }
     @Test void closedGateNeverReadsInputOrTouchesAssets() {
         var db=mock(JdbcTemplate.class);var tx=mock(PlatformTransactionManager.class);
         var documents=mock(RagDocumentMapper.class);var recovery=mock(RagRecoveryMapper.class);

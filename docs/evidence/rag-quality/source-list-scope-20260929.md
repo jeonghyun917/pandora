@@ -1,5 +1,9 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-11-11 공식 관리 UI 최종 번들: Windows Vite 입력 HTML LF 고정으로 혼합 CR 제거, 동일 JS/CSS 빌드/sync b4688e. 최종 stage85d162 JAR6d776c7b36f787416f5e9ad925c2b07386037c4c5c9178baab52c24baf5c399c(위 Java/JS 회귀 재사용). 소유 원본 승인 입력 준비 전 운영read-only 용량8a59a2/b1ef5e maxpacket16MiB, lexical5완전세대 합56.6GiB, 여유82GiB, corpus/공개revision0/0·routing1. 운영 쓰기 없음.
+
+- 2026-11-11 관리자 PDF 전용 화면: 앱 세션·CSRF로 단계별 변경, 제출중 중복차단/상태드리프트 거부/자동재시도없음. 동일바이트 기준본 혼입 RED27a986→서버의 정확한 검토소유세대ID/보존기준본제외, 전용창이 일반복구쓰기를 닫는 REDd31d24→격리DB/Q+HTTP39738/c8b75b 7/f0/e0. 화면회귀2c588a 8PASS/build, 공식static sync31a4cd, 전체74400/599dad 2085/f0/e0/skip84, stage21569/85dade JARd86fdd20489f7652ca1db3aa1b323d22eafb8c98352186fcb78cce2ce99f3833. Atlas 현재 JAR66af2a11... 변화라 이전 증거 재사용하지 않음: f458ca 10/10 atlas_cms, 외부schema grant/role/Q참조0, 86클래스·설정검사, aa5034 현재 DB연결 Pandora·Atlas만. 18080·Q 조작없음. 운영후보·실제평가 아직 미실행.
+
 - 2026-11-11 운영 원문·DB·벡터 읽기복사본 기반 실제격리64119/b73f3f PASS1/f0/e0/skip0(136.2s): 기존65청크→새PDF176청크(검토7단위) register/stage/create/validate/prepare/승격/보존원본복귀, 구·신 captured 소비자 분리, 원본행·기존64개1536차원벡터 불변. 기준본27cd7440d9810964f305129820a2faf3303fa316df903980728cac27fa4912b9. 새임베딩만 합성, 외부AI·운영쓰기없음. Q읽기복사 a28647 f343087e943de3993c36ee177cdde74182224ba96a3506a3c7cc0fa3b7bbb896, 현재 공식PDF 직접확인554aec 1255400bytes/SHA2641449f2ce05d6871d733a5a4a9e210d996b9153a9466a74edc73a386502945 동일. 현재게시바이트 일치이지 일반법제도 제재/기관범위 확장 근거 아님.
 
 - 2026-11-11 관리workflow4083fcc1fd014d5761cc23d38cfc723580db9734 push1ebb65→공식stopf83bdd/구supervisor종료19c40a→deploy15617/ec2a22 KEEPALIVE PID105032/runtime1e9c5aae-391f-4bd3-9cea-ea3c70237560. 건강060cd6 root200/새관리경로비인증401/DB=Q211658·84248/qreadytrue/qfail0. Atlas35048/sharedQ8976·중지예약불변, mutationflags기본false 유지.

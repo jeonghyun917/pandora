@@ -40,6 +40,35 @@ export async function runRecoveryAction(action, value, csrfToken) {
     headers: { 'Content-Type': 'application/json', 'X-Pandora-Recovery-CSRF': csrfToken }, body: JSON.stringify(body) }));
 }
 
+const reviewedPdfRoot = `${recoveryRoot}/reviewed-pdf`;
+export async function fetchReviewedPdfReview() {
+  return recoveryResponse(await fetch(`${reviewedPdfRoot}/review`, { credentials: 'same-origin', cache: 'no-store' }));
+}
+export async function inspectReviewedPdf(draftId) {
+  if (!recoveryUuid.test(draftId ?? '')) throw new Error('서버 보관본 ID가 필요합니다.');
+  return recoveryResponse(await fetch(`${reviewedPdfRoot}/preparation?${new URLSearchParams({ draftId })}`, { credentials: 'same-origin', cache: 'no-store' }));
+}
+export async function runReviewedPdfAction(action, value, csrfToken) {
+  if (!recoveryHash.test(csrfToken ?? '')) throw new Error('새 관리자 요청 보호 세션이 필요합니다.');
+  const revision = (v) => Number.isSafeInteger(v) && v >= 0 && v < Number.MAX_SAFE_INTEGER;
+  let body;
+  if (['register', 'stage'].includes(action)) body = {};
+  else if (action === 'create' && recoveryUuid.test(value?.draftId ?? '') && recoveryHash.test(value?.expectedPreparedManifest ?? ''))
+    body = { draftId: value.draftId, expectedPreparedManifest: value.expectedPreparedManifest };
+  else if (action === 'validate' && recoveryUuid.test(value?.generationId ?? '') && recoveryHash.test(value?.expectedPreparedManifest ?? ''))
+    body = { generationId: value.generationId, expectedPreparedManifest: value.expectedPreparedManifest };
+  else if (action === 'prepare' && recoveryUuid.test(value?.generationId ?? '')) body = { generationId: value.generationId };
+  else if (action === 'promote' && recoveryUuid.test(value?.generationId ?? '') && revision(value?.expectedRevision) && recoveryHash.test(value?.expectedManifest ?? ''))
+    body = { generationId: value.generationId, expectedRevision: value.expectedRevision, expectedManifest: value.expectedManifest };
+  else if (action === 'rollback' && recoveryUuid.test(value?.expectedActiveGeneration ?? '') && recoveryUuid.test(value?.restoreGeneration ?? '')
+      && value.expectedActiveGeneration !== value.restoreGeneration && revision(value?.expectedRevision))
+    body = { documentId: recoveryDocumentId(value.documentId), expectedActiveGeneration: value.expectedActiveGeneration,
+      expectedRevision: value.expectedRevision, restoreGeneration: value.restoreGeneration };
+  else throw new Error('정확한 서버 검토본과 작업 상태를 확인하세요.');
+  return recoveryResponse(await fetch(`${reviewedPdfRoot}/${action}`, { method: 'POST', credentials: 'same-origin', cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', 'X-Pandora-Recovery-CSRF': csrfToken }, body: JSON.stringify(body) }));
+}
+
 // 메소드 설명: searchLawData 처리 흐름을 수행합니다.
 export async function rebuildLexicalIndex() {
   const response = await fetch('/api/admin/semantic-lexical-index/rebuild', {

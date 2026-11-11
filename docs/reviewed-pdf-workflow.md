@@ -7,7 +7,7 @@ This workflow is default-off. It preserves the existing original, active chunks,
 All operations are under the existing ADMIN session and recovery CSRF/origin boundary at `/api/law-data/rag-recovery/reviewed-pdf`.
 
 - `pandora.rag.recovery.product-sha`: exact verified product commit.
-- `pandora.rag.recovery.mutations-enabled` and `pandora.rag.reviewed-pdf.mutations-enabled`: both must be true for mutations. Both default to false.
+- `pandora.rag.recovery.mutations-enabled` and `pandora.rag.reviewed-pdf.mutations-enabled`: both must be true for reviewed mutations. Both default to false. The reviewed flag also closes the legacy recovery mutation routes, so a reviewed maintenance window cannot authorize unrelated documents.
 - `pandora.rag.reviewed-pdf.manifest-path`: absolute server-owned JSON input file.
 - `pandora.rag.reviewed-pdf.manifest-sha256`: independently reviewed SHA-256 of that file's exact bytes.
 

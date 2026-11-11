@@ -16,6 +16,11 @@ public class RagRecoveryWorkflowService {
     private final RagRecoveryMapper mapper;
     private final String productSha;
     private final boolean enabled;
+    private boolean reviewedOnly;
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureReviewedOnly(@Value("${pandora.rag.reviewed-pdf.mutations-enabled:false}") boolean reviewedOnly) {
+        this.reviewedOnly=reviewedOnly;
+    }
     public RagRecoveryWorkflowService(RagRecoveryCandidateService candidates,RagRecoveryValidationService validation,RagRecoveryIndexService index,
             RagRecoveryPromotionService promotion,RagRecoveryRollbackService rollback,RagRecoveryBaselineService baseline,RagRecoveryMapper mapper,
             @Value("${pandora.rag.recovery.product-sha:}") String productSha,@Value("${pandora.rag.recovery.mutations-enabled:false}") boolean enabled) {
@@ -28,7 +33,7 @@ public class RagRecoveryWorkflowService {
         if(documentId<=0)throw new IllegalArgumentException("Positive document required");
         var generations=mapper.listGenerations(documentId);
         if(generations==null || generations.size()>100)throw new IllegalStateException("Recovery history bound exceeded");
-        return new Status(mapper.findPointer(documentId,false),mapper.findBaselineAssets(documentId),List.copyOf(generations),enabled&&validProduct(),validProduct()?productSha:null);
+        return new Status(mapper.findPointer(documentId,false),mapper.findBaselineAssets(documentId),List.copyOf(generations),enabled&&!reviewedOnly&&validProduct(),validProduct()?productSha:null);
     }
     public RecoveryGeneration create(long documentId,String expectedPreviewHash) {
         requireMutation();var generation=candidates.create(documentId,expectedPreviewHash,productSha);
@@ -44,6 +49,6 @@ public class RagRecoveryWorkflowService {
     public RecoverySnapshot rollback(long documentId,String active,long revision,String restore) { requireMutation();return rollback.rollback(documentId,active,revision,restore); }
     private boolean validProduct() { return productSha!=null && productSha.matches("[0-9a-f]{40}"); }
     private void requireProduct() { if(!validProduct())throw new IllegalStateException("Verified product identity unavailable"); }
-    private void requireMutation() { if(!enabled)throw new IllegalStateException("Recovery mutation release gate is closed");requireProduct(); }
+    private void requireMutation() { if(!enabled || reviewedOnly)throw new IllegalStateException("Recovery mutation release gate is closed");requireProduct(); }
     private static void requireId(String id) { if(id==null || !id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))throw new IllegalArgumentException("Generation UUID required"); }
 }
