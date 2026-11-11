@@ -213,7 +213,8 @@ class RagRecoveryDatabaseTests {
                         lexical, new com.kaces.pandora.semantic.lexical.SemanticLexicalIndexService(lexical, new com.kaces.pandora.semantic.lexical.KoreanLexicalTokenizer()),
                         new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds),
                         new com.kaces.pandora.semantic.config.LawAiProperties(null,
-                            new com.kaces.pandora.semantic.config.LawAiProperties.Qdrant("http://127.0.0.1:1", "unused-law", "unused-rag", 3), null, null), "c".repeat(40));
+                            new com.kaces.pandora.semantic.config.LawAiProperties.Qdrant("http://127.0.0.1:1", "unused-law", "unused-rag", 3), null, null), "c".repeat(40),
+                        new RagRecoveryRoutingService(recovery,lexical,new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds)));
                     doThrow(new IllegalStateException("lost write response")).doNothing().when(q)
                         .upsertRagRecovery(anyString(), anyString(), anyString(), anyList(), anyList());
                     assertThatThrownBy(() -> indexService.prepare(next.id())).isInstanceOf(IllegalStateException.class);
@@ -293,7 +294,7 @@ class RagRecoveryDatabaseTests {
                         new com.kaces.pandora.semantic.lexical.SemanticLexicalIndexService(lexical,new com.kaces.pandora.semantic.lexical.KoreanLexicalTokenizer()),
                         new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds),
                         new com.kaces.pandora.semantic.config.LawAiProperties(null,
-                            new com.kaces.pandora.semantic.config.LawAiProperties.Qdrant("http://127.0.0.1:1","unused-law","unused-rag",3),null,null),"d".repeat(40));
+                            new com.kaces.pandora.semantic.config.LawAiProperties.Qdrant("http://127.0.0.1:1","unused-law","unused-rag",3),null,null),"d".repeat(40),router);
                     assertThat(futureIndex.prepare(future.id()).chunkCount()).isEqualTo(2);
                     assertThat(recovery.findPreparation(future.id()).baseRevision()).isEqualTo(1);
                     assertThat(recovery.findPointer(id,false).activeGeneration()).isEqualTo(next.id());

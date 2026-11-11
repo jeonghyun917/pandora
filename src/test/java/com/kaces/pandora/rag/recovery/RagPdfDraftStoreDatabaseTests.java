@@ -260,6 +260,13 @@ class RagPdfDraftStoreDatabaseTests {
                 .extracting(com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow::chunkId).containsExactly(newChunk);
             assertThat(mapper.findSemanticChunksByDocumentTitleScopedCaptured(List.of("official_doc"),List.of(title),10,prior)).isEmpty();
             assertThat(mapper.findSemanticChunksByDocumentTitleScopedCaptured(List.of("official_doc"),List.of(oldTitle),10,current)).isEmpty();
+            var recovery=session.getMapper(RagRecoveryMapper.class);
+            assertThat(recovery.findGenerationLexicalChunksForSource(fresh,source)).singleElement().satisfies(row->{
+                assertThat(row.documentTitle()).isEqualTo(title);assertThat(row.documentId()).isEqualTo(document);
+            });
+            assertThat(recovery.findGenerationLexicalChunksForSource(old,null)).singleElement().satisfies(row->assertThat(row.documentTitle()).isEqualTo(oldTitle));
+            assertThat(recovery.findGenerationLexicalChunksForSource(fresh,null)).isEmpty();
+            assertThat(recovery.findGenerationLexicalChunksForSource(old,source)).isEmpty();
             var originals=new RagPdfOriginalReader(db);
             byte[] sourceBytes=originals.read(source);
             assertThat(hash(sourceBytes)).isEqualTo(draft.sourceHash());

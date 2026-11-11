@@ -40,14 +40,14 @@ public class RagRecoveryIndexService {
             RagRecoveryCandidateService candidates, RagRecoveryReceiptService receipts, OpenAiEmbeddingClient embeddings,
             QdrantClient qdrant, SemanticLexicalMapper lexical, SemanticLexicalIndexService lexicalIndex,
             PlatformTransactionManager manager, LawAiProperties properties,
-            @Value("${pandora.rag.recovery.product-sha:}") String productSha) {
+            @Value("${pandora.rag.recovery.product-sha:}") String productSha,RagRecoveryRoutingService routing) {
         this.documents=documents; this.recovery=recovery; this.candidates=candidates; this.receipts=receipts;
         this.embeddings=embeddings; this.qdrant=qdrant; this.lexical=lexical; this.lexicalIndex=lexicalIndex;
         this.model=properties.openai().embeddingModel(); this.productSha=productSha;
         transaction=new TransactionTemplate(manager);
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         transaction.setIsolationLevel(TransactionDefinition.ISOLATION_SERIALIZABLE);
-        routing=new RagRecoveryRoutingService(recovery,lexical,manager);
+        this.routing=Objects.requireNonNull(routing);
     }
 
     public RecoveryAssets prepare(String generationId) {
@@ -193,7 +193,7 @@ public class RagRecoveryIndexService {
         for(var documentId:captured.replacedDocumentIds()) {
             if(documentId==generation.documentId())continue;
             var active=captured.documents().get(documentId);
-            var rows=List.copyOf(recovery.findGenerationLexicalChunks(active.activeGeneration()));
+            var rows=List.copyOf(recovery.findGenerationLexicalChunksForSource(active.activeGeneration(),captured.pdfSources().get(active.activeGeneration())));
             if(rows.isEmpty() || rows.size()>10000)throw new IllegalStateException("Active lexical membership unavailable");
             replacements.put(documentId,rows);
         }

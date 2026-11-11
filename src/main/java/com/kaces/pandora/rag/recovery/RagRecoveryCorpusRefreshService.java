@@ -52,7 +52,10 @@ public class RagRecoveryCorpusRefreshService {
         if(epoch==null || epoch.revision()<=0 || revision==null || revision<0)throw new IllegalStateException("Recovery corpus unavailable");
         var captured=routing.captureForRebuildInTransaction();
         var replacements=new TreeMap<Long,List<LexicalChunkDocument>>();
-        for(var id:captured.replacedDocumentIds())replacements.put(id,recovery.findGenerationLexicalChunks(captured.documents().get(id).activeGeneration()));
+        for(var id:captured.replacedDocumentIds()) {
+            String generation=captured.documents().get(id).activeGeneration();
+            replacements.put(id,recovery.findGenerationLexicalChunksForSource(generation,captured.pdfSources().get(generation)));
+        }
         var corpus=RecoveryCorpus.overlay(epoch.revision(),lexical.findActiveSearchableChunks(),replacements);
         if(sources!=null)corpus=sources.overlay(corpus,captured.sources());
         return new Snapshot(epoch.revision(),revision,captured.cacheIdentity(),corpus);

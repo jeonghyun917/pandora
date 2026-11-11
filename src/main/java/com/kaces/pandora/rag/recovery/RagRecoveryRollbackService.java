@@ -87,7 +87,7 @@ public class RagRecoveryRollbackService {
         var replacements=new TreeMap<Long,List<LexicalChunkDocument>>();
         for(var id:captured.replacedDocumentIds()) {
             String generation=id==documentId?restore:captured.documents().get(id).activeGeneration();
-            replacements.put(id,List.copyOf(recovery.findGenerationLexicalChunks(generation)));
+            replacements.put(id,List.copyOf(recovery.findGenerationLexicalChunksForSource(generation,captured.pdfSources().get(generation))));
         }
         if(!replacements.containsKey(documentId))throw new IllegalStateException("Rollback source is not a replacement");
         var corpus=RecoveryCorpus.overlay(captured.revision(),lexical.findActiveSearchableChunks(),replacements);

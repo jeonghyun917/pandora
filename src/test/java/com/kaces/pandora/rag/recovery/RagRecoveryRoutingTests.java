@@ -5,6 +5,21 @@ import java.util.*;
 import org.junit.jupiter.api.Test;
 
 class RagRecoveryRoutingTests {
+    @Test void indexPreparationUsesTheInjectedCapturedRouterBeforeExternalWrites() {
+        var recovery=org.mockito.Mockito.mock(RagRecoveryMapper.class);
+        var routing=org.mockito.Mockito.mock(RagRecoveryRoutingService.class);
+        var manager=org.mockito.Mockito.mock(org.springframework.transaction.PlatformTransactionManager.class);
+        org.mockito.Mockito.when(manager.getTransaction(org.mockito.ArgumentMatchers.any())).thenReturn(new org.springframework.transaction.support.SimpleTransactionStatus());
+        org.mockito.Mockito.when(recovery.lockRoutingEpoch()).thenReturn(new RecoveryRoutingEpoch(0,null,null));
+        org.mockito.Mockito.when(routing.captureInTransaction()).thenThrow(new IllegalStateException("captured PDF source unavailable"));
+        var properties=org.mockito.Mockito.mock(com.kaces.pandora.semantic.config.LawAiProperties.class,org.mockito.Mockito.RETURNS_DEEP_STUBS);
+        org.mockito.Mockito.when(properties.openai().embeddingModel()).thenReturn("test");
+        var embeddings=org.mockito.Mockito.mock(com.kaces.pandora.infra.openai.OpenAiEmbeddingClient.class);
+        var qdrant=org.mockito.Mockito.mock(com.kaces.pandora.infra.qdrant.QdrantClient.class);
+        var index=new RagRecoveryIndexService(null,recovery,null,null,embeddings,qdrant,null,null,manager,properties,"a".repeat(40),routing);
+        assertThatThrownBy(()->index.prepare(GENERATION)).isInstanceOf(IllegalStateException.class).hasMessageContaining("captured PDF source unavailable");
+        org.mockito.Mockito.verifyNoInteractions(embeddings,qdrant);
+    }
     @Test void pdfSourceReaderRunsInsideTheSameCapturedTransaction() {
         var mapper=org.mockito.Mockito.mock(RagRecoveryMapper.class);
         var lexical=org.mockito.Mockito.mock(com.kaces.pandora.semantic.lexical.SemanticLexicalMapper.class);

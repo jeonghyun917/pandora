@@ -595,7 +595,43 @@ class SourceVersionPreparationDatabaseTests {
         db.update("UPDATE law_source_version_vector_receipts SET vector_fingerprint=? WHERE candidate_id=?","f".repeat(64),candidate.id());
         assertThatThrownBy(()->audit.auditByChunkIds("admrul",ids)).isInstanceOf(IllegalStateException.class);
     }
-    private SourceVersionTransitionService transitionService() {
+    @Test void sourceTransitionPreservesCapturedPdfReplacementInCorpus() {
+        String generation=UUID.randomUUID().toString(),draft=UUID.randomUUID().toString();
+        String original="1".repeat(64),fresh="2".repeat(64),manifest="3".repeat(64),review="4".repeat(64),base="5".repeat(64);
+        db.update("INSERT INTO rag_documents(document_type,title,file_name,file_path,file_hash) VALUES('official_doc','Oldtitle','old.pdf','old',?)",original);
+        long document=db.queryForObject("SELECT document_id FROM rag_documents WHERE file_hash=?",Long.class,original);
+        db.update("INSERT INTO rag_document_chunks(document_id,chunk_version,chunk_text,embedding_text,content_hash,use_yn) VALUES(?,4,'Owned body','Owned body',?,'N')",document,"6".repeat(64));
+        long chunk=db.queryForObject("SELECT chunk_id FROM rag_document_chunks WHERE document_id=?",Long.class,document);
+        db.update("INSERT INTO rag_recovery_generations(generation_id,document_id,source_hash,product_sha,baseline_hash,manifest,preview_hash,state) VALUES(?,?,?,?,?,?,?,'ACTIVE')",generation,document,fresh,SHA,base,manifest,"7".repeat(64));
+        db.update("INSERT INTO rag_recovery_members(generation_id,chunk_id) VALUES(?,?)",generation,chunk);
+        db.update("INSERT INTO rag_pdf_source_drafts(draft_id,document_id,review_hash,source_hash,baseline_hash,product_sha,draft_json,replay_json,replay_hash,source_bytes,state) VALUES(?,?,?,?,?,?,?,'[]',?,?,'STAGED')",
+                draft,document,review,fresh,base,SHA,"{\"title\":\"Newtitle\",\"sourceUrl\":\"https://agency.example/new.pdf\"}","8".repeat(64),new byte[]{1});
+        db.update("INSERT INTO rag_pdf_generation_sources(generation_id,draft_id,source_hash,review_hash,manifest,prepared_manifest,prepared_json,product_sha,metadata_hash) VALUES(?,?,?,?,?,?,'{}',?,?)",
+                generation,draft,fresh,review,manifest,"9".repeat(64),SHA,"a".repeat(64));
+        try {
+            // Structural corpus-consumer fixture only; this is not a PDF fidelity/readiness receipt.
+            var source=new com.kaces.pandora.rag.recovery.RecoveryPdfSource(generation,document,draft,fresh,review,manifest,"Newtitle","https://agency.example/new.pdf");
+            var assets=new com.kaces.pandora.rag.recovery.RecoveryAssets(generation,manifest,"rag_recovery_"+generation.replace("-",""),"b".repeat(64),"c".repeat(64),1);
+            var captured=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(1,
+                Map.of(document,new com.kaces.pandora.rag.recovery.RecoverySnapshot(document,1,generation,fresh,base)),
+                Map.of(generation,assets),Set.of(),"c".repeat(64),"recovery_"+generation,SourceVersionRoutingSnapshot.empty(),Map.of(generation,source));
+            var router=org.mockito.Mockito.mock(com.kaces.pandora.rag.recovery.RagRecoveryRoutingService.class);
+            org.mockito.Mockito.when(router.captureInTransaction()).thenReturn(captured);
+            var candidate=store.stage(baseline,0,source(),raw(),SHA);preparation.validate(candidate.id());
+            var transition=transitionService(router).prepare(candidate.id());
+            assertThat(transition.state()).isEqualTo("READY");
+            assertThat(db.queryForList("SELECT term FROM semantic_lexical_terms WHERE index_version=? AND target='official_doc' AND chunk_id=? AND field_kind='document_title'",String.class,"recovery_"+transition.id(),chunk))
+                .contains("newtitle").doesNotContain("oldtitle");
+        } finally {
+            db.update("DELETE FROM rag_pdf_generation_sources WHERE generation_id=?",generation);
+            db.update("DELETE FROM rag_pdf_source_drafts WHERE draft_id=?",draft);
+            db.update("DELETE FROM rag_recovery_members WHERE generation_id=?",generation);
+            db.update("DELETE FROM rag_recovery_generations WHERE generation_id=?",generation);
+            db.update("DELETE FROM rag_documents WHERE document_id=?",document);
+        }
+    }
+    private SourceVersionTransitionService transitionService() {return transitionService(null);}
+    private SourceVersionTransitionService transitionService(com.kaces.pandora.rag.recovery.RagRecoveryRoutingService suppliedRouting) {
         var embedding=org.mockito.Mockito.mock(com.kaces.pandora.infra.openai.OpenAiEmbeddingClient.class);
         var q=org.mockito.Mockito.mock(com.kaces.pandora.infra.qdrant.QdrantClient.class);
         org.mockito.Mockito.when(embedding.embed(org.mockito.ArgumentMatchers.anyList())).thenReturn(List.of(List.of(1.0,2.0,3.0)));
@@ -606,7 +642,7 @@ class SourceVersionPreparationDatabaseTests {
         org.mockito.Mockito.when(q.verifyLawSourceVersionCollection(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyList())).thenReturn("d".repeat(64));
         var vectors=new SourceVersionVectorPreparation(db,preparation,receipts,chunkMapper,embedding,q,manager,"source-test-embedding","law_shared");
         testVectors=vectors;
-        var routing=new com.kaces.pandora.rag.recovery.RagRecoveryRoutingService(recoveryMapper,lexicalMapper,manager);
+        var routing=suppliedRouting==null?new com.kaces.pandora.rag.recovery.RagRecoveryRoutingService(recoveryMapper,lexicalMapper,manager):suppliedRouting;
         routing.configureSourceVersionRouting(new SourceVersionRoutingReader(db,manager));
         var index=new com.kaces.pandora.semantic.lexical.SemanticLexicalIndexService(lexicalMapper,new com.kaces.pandora.semantic.lexical.KoreanLexicalTokenizer());
         return new SourceVersionTransitionService(db,store,preparation,vectors,chunkMapper,new SourceVersionCorpusService(db,store),recoveryMapper,routing,lexicalMapper,index,manager,SHA,"c".repeat(64));

@@ -75,16 +75,41 @@
     VALUES(#{receipt.generationId},#{receipt.manifest},#{receipt.baseRevision},#{receipt.routingIdentity},#{receipt.corpusFingerprint})
   </insert>
   <select id="findGenerationLexicalChunks" resultType="com.kaces.pandora.semantic.lexical.LexicalChunkDocument">
+    <bind name="source" value="null"/>
+    <include refid="generationLexicalChunksQuery"/>
+  </select>
+  <select id="findGenerationLexicalChunksForSource" resultType="com.kaces.pandora.semantic.lexical.LexicalChunkDocument">
+    <include refid="generationLexicalChunksQuery"/>
+  </select>
+  <sql id="generationLexicalTitle">
+    <choose><when test="source != null">#{source.title}</when><otherwise>d.title</otherwise></choose>
+  </sql>
+  <sql id="generationLexicalChunksQuery">
     SELECT d.document_type AS target,c.chunk_id AS chunkId,c.document_id AS documentId,
-      CONCAT('rag:',c.document_id,':',SHA2(COALESCE(NULLIF(c.parent_section_title,''),d.title),256)) AS parentKey,
-      c.content_hash AS contentHash,d.title AS documentTitle,COALESCE(c.parent_section_title,'') AS parentTitle,
+      CONCAT('rag:',c.document_id,':',SHA2(COALESCE(NULLIF(c.parent_section_title,''),<include refid="generationLexicalTitle"/>),256)) AS parentKey,
+      c.content_hash AS contentHash,<include refid="generationLexicalTitle"/> AS documentTitle,COALESCE(c.parent_section_title,'') AS parentTitle,
       COALESCE(c.chunk_title,'') AS chunkTitle,c.chunk_text AS body
     FROM rag_recovery_members m JOIN rag_document_chunks c ON c.chunk_id=m.chunk_id
       JOIN rag_recovery_generations g ON g.generation_id=m.generation_id AND g.document_id=c.document_id
       JOIN rag_documents d ON d.document_id=c.document_id
+        LEFT JOIN rag_pdf_generation_sources binding ON binding.generation_id=g.generation_id
+        LEFT JOIN rag_pdf_source_drafts draft ON draft.draft_id=binding.draft_id
     WHERE m.generation_id=#{generationId} AND d.use_yn='Y' AND COALESCE(c.quality_status,'PASS') IN ('PASS','REVIEW')
+      <choose>
+        <when test="source != null">
+          AND g.generation_id=#{source.generationId} AND g.document_id=#{source.documentId}
+          AND g.source_hash=#{source.sourceHash} AND g.manifest=#{source.manifest}
+          AND binding.draft_id=#{source.draftId} AND binding.review_hash=#{source.reviewHash}
+          AND binding.source_hash=g.source_hash AND binding.manifest=g.manifest AND binding.product_sha=g.product_sha
+          AND draft.document_id=g.document_id AND draft.source_hash=g.source_hash AND draft.review_hash=binding.review_hash
+          AND draft.product_sha=g.product_sha AND draft.baseline_hash=g.baseline_hash AND draft.state='STAGED'
+          AND BINARY JSON_UNQUOTE(JSON_EXTRACT(draft.draft_json,'$.title'))=BINARY #{source.title}
+          AND BINARY JSON_UNQUOTE(JSON_EXTRACT(draft.draft_json,'$.sourceUrl'))=BINARY #{source.sourceUrl}
+        </when>
+        <otherwise>AND g.source_hash=d.file_hash AND binding.generation_id IS NULL</otherwise>
+      </choose>
     ORDER BY c.chunk_id LIMIT 10001
-  </select>
+  </sql>
   <select id="lockDocument" resultType="long">SELECT document_id FROM rag_documents WHERE document_id=#{documentId} FOR UPDATE</select>
   <select id="lockDocumentByHash" resultType="long">SELECT document_id FROM rag_documents WHERE file_hash=#{hash} FOR UPDATE</select>
   <select id="lockDocumentsByPaths" resultType="long">

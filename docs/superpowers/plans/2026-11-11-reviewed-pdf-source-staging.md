@@ -51,11 +51,19 @@ Files: new RagPdfDraftPreparation.java and its tests; bounded worker protocol on
 
 Inspect RagRecoveryPromotionService, RagRecoveryRollbackService, RagRecoveryRoutingService, RagRecoveryBaselineService, RagOriginalDocumentStore, proof lookup and answer citation projection before implementing.
 
-- [ ] Derive an explicit replacement-source routing record; do not change current pointer sourceHash equality checks in isolation.
+- [x] Derive an explicit replacement-source routing record; do not change current pointer sourceHash equality checks in isolation.
 - [ ] Tests cover old captured requests, new captured requests, same-document original/materialization lookup, metadata/citation ownership, all search routes and cache identity.
 - [ ] Prepare vector/lexical/corpus assets with immutable source identity; CAS source metadata and routing epoch only after independent readiness verification.
 - [ ] Rollback must restore preserved original identity, baseline metadata and assets atomically; stale revisions and incomplete assets fail closed.
 - [ ] Run isolated DB/Qdrant integration through normal permitted scripts. No security-policy bypass or terminal failure replay.
+
+### Task 3 continuation: validate before asset preparation
+
+Files: `rag/recovery/RagPdfGenerationStore.java`, `RagPdfDraftStoreDatabaseTests.java`, then `RagRecoveryIndexService.java` and `RagRecoveryReceiptService.java` in a distinct asset step. Consume the existing trusted retained draft, exact PENDING generation and complete `prepared_json`/chunk membership. Do not create another generation when validating a stale ID.
+
+- [ ] RED: `RagPdfGenerationStore.validate(String generationId, String expectedPreparedManifest)` returns a `RecoveryGeneration` in VALIDATED only after exact regeneration; wrong manifest, stale pointer, unapproved review, bad stored binding/chunks or missing member must leave PENDING and the original pointer intact. No vector/lexical/preparation receipt is written.
+- [ ] GREEN: outside the write transaction regenerate from retained trusted bytes; in one SERIALIZABLE transaction lock routing epoch, document/baseline, pointer, draft and generation in the established order. Require exact preview identity from the current pointer, complete stored member list and immutable source binding. Store a `reviewed-pdf-validation-v1` evidence receipt (generation, draft/review, product, source/baseline, preview, both manifests, extraction digest and count) with the existing `saveValidation` CAS. No legacy validator guard is removed.
+- [ ] Asset step: read and independently recheck that exact PDF receipt before any embedding or Qdrant operation; use captured replacement title/locator and the unchanged original-side baseline proof. Bind corpus identity, full member manifest, vectors and lexical namespace. Keep the existing same-original path explicit and unchanged. Real Qdrant and rollback controls remain mandatory before publication.
 
 ## Task 4: Stable delivery and conditional quality ladder
 

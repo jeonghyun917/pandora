@@ -179,7 +179,10 @@ public final class SourceVersionTransitionService {
         var current=captured.sources().routes().get(group);
         if(revision>0 && (current==null || current.activeDocumentId()!=active || !current.vectorFingerprint().equals(baselineVector)))throw new IllegalStateException("Active source vector provenance changed");
         var replacements=new TreeMap<Long,List<LexicalChunkDocument>>();
-        for(long id:captured.replacedDocumentIds())replacements.put(id,recovery.findGenerationLexicalChunks(captured.documents().get(id).activeGeneration()));
+        for(long id:captured.replacedDocumentIds()) {
+            String generation=captured.documents().get(id).activeGeneration();
+            replacements.put(id,recovery.findGenerationLexicalChunksForSource(generation,captured.pdfSources().get(generation)));
+        }
         var corpus=RecoveryCorpus.overlay(epoch.revision(),lexical.findActiveSearchableChunks(),replacements);
         corpus=sources.overlay(corpus,captured.sources());
         var old=new TreeSet<>(db.queryForList("SELECT document_id FROM law_source_version_history WHERE group_key=? ORDER BY document_id LIMIT 10001",Long.class,group));old.add(active);old.remove(target);
