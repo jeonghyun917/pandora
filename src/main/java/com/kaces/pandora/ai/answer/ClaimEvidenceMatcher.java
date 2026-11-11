@@ -102,7 +102,7 @@ public class ClaimEvidenceMatcher {
 		Pattern.CASE_INSENSITIVE
 	);
 	private static final Pattern RECIPIENT_ROLE = Pattern.compile(
-		"(?:^|\\s)([\\p{IsHangul}a-z0-9]{2,}?)(?:에게|한테)(?=\\s|$)",
+		"(?:^|\\s)(" + KoreanEvidenceAtomParser.INSTITUTION_HEAD_ROLE + "|[\\p{IsHangul}a-z0-9]{2,}?)(?:에게|한테)(?=\\s|$)",
 		Pattern.CASE_INSENSITIVE
 	);
 	private static final Pattern EXCLUSIVE_ROLE_ANCHOR = Pattern.compile(

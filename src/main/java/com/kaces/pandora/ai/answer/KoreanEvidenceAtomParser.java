@@ -25,8 +25,9 @@ public class KoreanEvidenceAtomParser {
 	private static final Pattern OBJECT = Pattern.compile(
 		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9()·ㆍ/-]{2,}?)(?:을|를)(?=\\s|[,.!?]|$)"
 	);
+	static final String INSTITUTION_HEAD_ROLE = "[\\p{IsHangul}A-Za-z0-9]{2,}(?:\\s+등)?의\\s*장";
 	private static final Pattern RECIPIENT = Pattern.compile(
-		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9()·ㆍ/-]{2,}?)(?:에게|한테)(?=\\s|[,.!?]|$)"
+		"(?:^|\\s)(" + INSTITUTION_HEAD_ROLE + "|[\\p{IsHangul}A-Za-z0-9()·ㆍ/-]{2,}?)(?:에게|한테)(?=\\s|[,.!?]|$)"
 	);
 	private static final Pattern TRANSFER_DESTINATION = Pattern.compile(
 		"(?:^|\\s)(?!(?:이내|이후|이전|당일|익일)에\\s)([\\p{IsHangul}A-Za-z0-9()·ㆍ/-]{2,}?)에\\s+"

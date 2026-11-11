@@ -8,6 +8,15 @@ import org.junit.jupiter.api.Test;
 class ClaimVerifierTests {
 
 	@Test
+	void rejectsNotificationToTheHeadOfADifferentInstitution() {
+		String source = "심사위원장은 접수된 신청서를 검토하고, 그 검토의견을 해당 관리기관의 장에게 통보해야 한다.";
+		var grounds = List.of(ground("시설 운영 규정", "심사 결과", source));
+		var changed = source.replace("관리기관의 장에게", "운영기관의 장에게");
+		assertThat(verifier.verifyDetailed(source, grounds).supportedStrongClaimCount()).isEqualTo(1);
+		assertThat(verifier.verifyDetailed(changed, grounds).insufficientEvidence()).isTrue();
+	}
+
+	@Test
 	void sharedRelationTermCannotReplaceAnExplicitExclusionCondition() {
 		String source = "단순 H/W(Appliance 포함) 도입·설치, 단순 동영상 제작, 네트워크 등 인프라 수수료와 같이 "
 			+ "소프트웨어사업으로 볼 수 없는 경우는 비대상";
