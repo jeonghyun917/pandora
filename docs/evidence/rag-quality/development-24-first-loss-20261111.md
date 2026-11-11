@@ -34,3 +34,9 @@ This is an audit of the saved **search** checkpoint, not a rerun, a current-buil
 | ai-law-enforcement-date | 11058178: official detail anchor; operative article alone is not date proof | First lost at grounds; later typed date recovery and frozen as-of conflict are separate |
 
 At least one scoped anchor was selected in **19 of 22 responses**; this is not complete-answer coverage. The independently paired seven-anchor Recall@20 results remain vector 4/7 and BM25 3/7. Do not substitute this table for a new checkpoint, use it to infer a current-build answer PASS, or advance the evaluation ladder without an eligible penalty PASS. The [release evidence ledger](source-list-scope-20260929.md) records later bounded fixes, exact runtime identities, and release prerequisites.
+
+### RFP scoring: selected source versus direct evidence
+
+The three saved `ac50f134`, `fa51cb9`, and `5ec2565` development traces selected `official_doc:85101` and `official_doc:85107` for `rfp-tech-score-table`. Neither scoped scoring anchor (`11232658` or `11128791`) appeared in the bounded candidate traces. The aggregate `survived` result therefore cannot establish that a scoring source was selected.
+
+Read-only local probe `9a9ce3` at `30ec2cf` compared the four active source rows under captured routing, using the unchanged evidence judge and two independently worded questions. For a blanket obligation to attach a scoring table, both pairs supplied zero direct grounds. For which items belong in an RFP, the selected pair supplied two direct grounds and the scoped scoring pair supplied zero. This isolates a scope distinction, not a demonstrated product false-positive on the original question. It is neither a new rank measurement nor an answer-quality PASS.
