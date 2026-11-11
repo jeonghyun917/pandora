@@ -3289,6 +3289,17 @@ public class LawAiAnswerService {
 				break;
 			}
 		}
+		LawSemanticChunkRow preceding = at(sorted, currentIndex - 1);
+		if (isRagTarget(chunk.target()) && "target_scope".equals(chunk.sectionType())
+			&& chunk.pageNo() != null && preceding != null && chunk.pageNo().equals(preceding.pageNo())
+			&& preceding.sortOrder() + 1 == chunk.sortOrder()) {
+			String heading = cleanDisplayText(preceding.parentSectionTitle());
+			if (heading.matches("[0-9]{1,3}\\.\\s+\\S.*")
+				&& cleanHwpxText(preceding.chunkText()).lines().findFirst().map(this::cleanDisplayText)
+					.filter(heading::equals).isPresent()) {
+				return List.of(preceding, chunk);
+			}
+		}
 		Map<Long, LawSemanticChunkRow> selected = new java.util.LinkedHashMap<>();
 		List<LawSemanticChunkRow> sameParent = sorted.stream()
 			.filter(candidate -> sameParentSection(chunk, candidate))

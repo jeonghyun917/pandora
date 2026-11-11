@@ -1089,6 +1089,26 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void pageLocalNumberedSectionOwnsItsThresholdNotDistantRepeatedLabel() throws Exception {
+		var scope = new LawSemanticChunkRow(1L, 20L, "official_doc", "20", "사업 안내", "", "", null, "CURRENT",
+			"5", "p.5 대상 사업", "모든 공공사업의 점검 대상을 설명한다.", 5, "", "", 7, "scope", "대상 사업", "target_scope", "PASS", null, null, 4);
+		var publication = new LawSemanticChunkRow(2L, 20L, "official_doc", "20", "사업 안내", "", "", null, "CURRENT",
+			"8", "p.8 5. 결과 공개", "5. 결과 공개\n반기별 결과를 공개한다.", 8, "", "", 11, "publication", "5. 결과 공개", "body", "PASS", null, null, 4);
+		var threshold = new LawSemanticChunkRow(3L, 20L, "official_doc", "20", "사업 안내", "", "", null, "CURRENT",
+			"8", "p.8 대상 사업", "대상사업: 1억원 이상 사업", 8, "", "", 12, "threshold", "대상 사업", "target_scope", "PASS", null, null, 4);
+		var service = service();
+		try {
+			Method enrich = LawAiAnswerService.class.getDeclaredMethod("enrichChunkWithParentContext",
+				LawSemanticChunkRow.class, List.class, String.class);
+			enrich.setAccessible(true);
+			var expanded = (LawSemanticChunkRow) enrich.invoke(service, threshold,
+				List.of(scope, publication, threshold), "결과 공개 대상은 무엇입니까?");
+			assertThat(expanded.chunkText()).contains("반기별 결과를 공개한다.", "1억원 이상 사업")
+				.doesNotContain("모든 공공사업의 점검 대상");
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void parentContextDoesNotMixKnownSourceVersions() throws Exception {
 		var original = new LawSemanticChunkRow(12101L, 20L, "official_doc", "20", "계약 지침",
 			"", "", "20260101", "CURRENT", "25", "제76조", "제76조(계약 조건) 원문 조건",
