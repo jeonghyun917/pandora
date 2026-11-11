@@ -60,11 +60,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.function.ToDoubleFunction;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -112,6 +114,7 @@ public class LawAiAnswerService {
 	private static final List<String> DOCUMENT_TOPIC_PARTICLES = List.of("은", "는", "이", "가");
 	private static final Set<String> LEGAL_REFERENCE_NOUNS = Set.of("법", "특별법", "법률", "시행령", "시행규칙");
 	private static final List<String> LEGAL_AUTHORITY_PARTICLES = List.of("에 따라", "상");
+	private static final Pattern EXPLICIT_LEGAL_YEAR = Pattern.compile("(?<!\\d)(?:19|20)\\d{2}(?!\\d)");
 	private static final Pattern COORDINATED_TITLE_ACTIONS =
 		Pattern.compile("(?<![\\p{L}\\p{N}])(설치|구축)[ ·]운영(?![\\p{L}\\p{N}])");
 	private static final List<String> TRUSTED_DOCUMENT_AGENCY_PREFIXES = List.of(
@@ -1492,8 +1495,9 @@ public class LawAiAnswerService {
 			);
 		}
 		long rerankStart = System.nanoTime();
-		List<LawSemanticChunkRow> rankedChunks = rerankChunks(searchedChunks, normalized.query(), baseScoreByChunkId);
-		Map<String, Double> combinedScoreByChunkId = adjustedScoreMap(rankedChunks, normalized.query(), baseScoreByChunkId);
+		var ranked = rerankChunks(searchedChunks, normalized.query(), baseScoreByChunkId);
+		List<LawSemanticChunkRow> rankedChunks = ranked.chunks();
+		Map<String, Double> combinedScoreByChunkId = ranked.scores();
 		Map<String, Double> metadataScoreByChunkId = metadataScoreMap(rankedChunks, baseScoreByChunkId, combinedScoreByChunkId);
 		timing.rerankMs.addAndGet(elapsedMillis(rerankStart));
 		long intentFilterStart = System.nanoTime();
@@ -1540,8 +1544,9 @@ public class LawAiAnswerService {
 				baseScoreByChunkId = applyAuthoritativeRrfScores(baseScoreByChunkId, hybrid);
 				timing.candidateBuildMs.addAndGet(elapsedMillis(candidateBuildStart));
 				rerankStart = System.nanoTime();
-				rankedChunks = rerankChunks(searchedChunks, normalized.query(), baseScoreByChunkId);
-				combinedScoreByChunkId = adjustedScoreMap(rankedChunks, normalized.query(), baseScoreByChunkId);
+				ranked = rerankChunks(searchedChunks, normalized.query(), baseScoreByChunkId);
+				rankedChunks = ranked.chunks();
+				combinedScoreByChunkId = ranked.scores();
 				metadataScoreByChunkId = metadataScoreMap(rankedChunks, baseScoreByChunkId, combinedScoreByChunkId);
 				timing.rerankMs.addAndGet(elapsedMillis(rerankStart));
 				intentFilterStart = System.nanoTime();
@@ -4528,33 +4533,34 @@ public class LawAiAnswerService {
 		return normalized.substring(0, limit) + "...";
 	}
 
-	private List<LawSemanticChunkRow> rerankChunks(
+	private RankedChunkScores rerankChunks(
 		List<LawSemanticChunkRow> chunks,
 		String query,
 		Map<String, Double> scoreByChunkId
 	) {
 		List<String> terms = queryTerms(query);
 		QuestionIntentProfile profile = QuestionIntentProfile.from(query);
-		return chunks.stream()
-			.sorted(Comparator
-				.comparingDouble((LawSemanticChunkRow chunk) -> rerankedScore(chunk, query, terms, scoreByChunkId, profile))
-				.reversed())
-			.toList();
+		return scoreAndRankChunks(chunks, chunk -> rerankedScore(chunk, query, terms, scoreByChunkId, profile));
 	}
 
-	private Map<String, Double> adjustedScoreMap(
+	RankedChunkScores scoreAndRankChunks(
 		List<LawSemanticChunkRow> chunks,
-		String query,
-		Map<String, Double> scoreByChunkId
+		ToDoubleFunction<LawSemanticChunkRow> score
 	) {
-		List<String> terms = queryTerms(query);
-		QuestionIntentProfile profile = QuestionIntentProfile.from(query);
-		Map<String, Double> adjustedScores = new HashMap<>();
-		for (LawSemanticChunkRow chunk : chunks) {
-			adjustedScores.put(scoreKey(chunk.target(), chunk.chunkId()), rerankedScore(chunk, query, terms, scoreByChunkId, profile));
+		record ScoredChunk(LawSemanticChunkRow chunk, double value) {}
+		var ordered = chunks.stream()
+			.map(chunk -> new ScoredChunk(chunk, score.applyAsDouble(chunk)))
+			.sorted(Comparator.comparingDouble(ScoredChunk::value).reversed())
+			.toList();
+		Map<String, Double> scores = new HashMap<>();
+		for (var candidate : ordered) {
+			var chunk = candidate.chunk();
+			scores.put(scoreKey(chunk.target(), chunk.chunkId()), candidate.value());
 		}
-		return adjustedScores;
+		return new RankedChunkScores(ordered.stream().map(ScoredChunk::chunk).toList(), scores);
 	}
+
+	record RankedChunkScores(List<LawSemanticChunkRow> chunks, Map<String, Double> scores) {}
 
 	private double rerankedScore(
 		LawSemanticChunkRow chunk,
@@ -4563,7 +4569,7 @@ public class LawAiAnswerService {
 		Map<String, Double> scoreByChunkId,
 		QuestionIntentProfile profile
 	) {
-		return adjustedScore(chunk, query, terms, scoreByChunkId)
+		return adjustedScore(chunk, query, terms, scoreByChunkId, profile)
 			+ evidenceReranker.score(chunk, profile);
 	}
 
@@ -4601,13 +4607,13 @@ public class LawAiAnswerService {
 		LawSemanticChunkRow chunk,
 		String query,
 		List<String> terms,
-		Map<String, Double> scoreByChunkId
+		Map<String, Double> scoreByChunkId,
+		QuestionIntentProfile profile
 	) {
 		double score = scoreByChunkId.getOrDefault(scoreKey(chunk.target(), chunk.chunkId()), 0.0);
 		String body = normalizeForMatch(chunk.chunkText());
 		String sectionType = normalizeForMatch(chunk.sectionType());
 		String title = normalizeForMatch(chunk.title() + " " + chunk.parentSectionTitle() + " " + chunk.chunkTitle());
-		QuestionIntentProfile profile = QuestionIntentProfile.from(query);
 		String normalizedQuery = profile.normalizedQuestion();
 		String combinedText = title + body;
 		boolean projectReviewQuestion = isProjectReviewQuestion(terms);
@@ -8865,6 +8871,11 @@ public class LawAiAnswerService {
 	}
 
 	private List<LawSemanticChunkRow> findLexicalChunks(QuestionSearchPlan queryPlan, List<String> targets, boolean includeFuture, RecoveryRoutingSnapshot routing) {
+		return findLexicalChunks(queryPlan, targets, includeFuture, routing, null);
+	}
+
+	private List<LawSemanticChunkRow> findLexicalChunks(QuestionSearchPlan queryPlan, List<String> targets,
+		boolean includeFuture, RecoveryRoutingSnapshot routing, Supplier<Boolean> independentReviewedGround) {
 		String query = queryPlan.question();
 		List<String> keywords = queryPlan.lexicalKeywords();
 		String normalizedQuery = normalizeForMatch(query);
@@ -8887,6 +8898,14 @@ public class LawAiAnswerService {
 			.toList();
 		if (!ragTargets.isEmpty() && !lawTargets.isEmpty()) {
 			// A family-specific fast path must not suppress other requested sources.
+			if (routing != null && routing.sources().revision() == 0 && !routing.pdfSources().isEmpty()
+				&& documentTitleAnchors.isEmpty() && !requiresLawOrVersionSpecificEvidence(query, normalizedQuery, queryPlan.profile())) {
+				var ragCandidates = findLexicalChunks(queryPlan, ragTargets, includeFuture, routing);
+				var familyCandidates = new java.util.ArrayList<>(findLexicalChunks(queryPlan, lawTargets, includeFuture, routing,
+					() -> hasDirectReviewedLexicalGround(query, ragCandidates, routing)));
+				familyCandidates.addAll(ragCandidates);
+				return finishLexicalChunks(familyCandidates, query);
+			}
 			List<LawSemanticChunkRow> familyCandidates = new java.util.ArrayList<>(
 				findLexicalChunks(queryPlan, lawTargets, includeFuture, routing));
 			familyCandidates.addAll(findLexicalChunks(queryPlan, ragTargets, includeFuture, routing));
@@ -9680,12 +9699,15 @@ public class LawAiAnswerService {
                         return finishLexicalChunks(chunks,query);
                     }
                 }
-				chunks.addAll(safeLexicalQuery("law generic text", () -> lawChunkMapper.findSemanticChunksByText(
-					lawTargets,
-					lawTextKeywords,
-					includeFuture,
-					LAW_TEXT_KEYWORD_FETCH_LIMIT
-				), routing));
+				try {
+					chunks.addAll(safeLexicalQuery("law generic text", () -> lawChunkMapper.findSemanticChunksByText(
+						lawTargets, lawTextKeywords, includeFuture, LAW_TEXT_KEYWORD_FETCH_LIMIT
+					), routing));
+				} catch (QueryTimeoutException timeout) {
+					if (independentReviewedGround == null || !independentReviewedGround.get()) throw timeout;
+					log.warn("AI supplemental unmanaged law text lookup timed out; retaining independently direct reviewed evidence. routingRevision={}",
+						routing.revision());
+				}
 			}
 			List<String> lawTitleKeywords = lawTitleKeywords(query);
 			if (!lawTitleKeywords.isEmpty()) {
@@ -9699,6 +9721,28 @@ public class LawAiAnswerService {
 			}
 		}
 		return finishLexicalChunks(chunks, query);
+	}
+
+	private boolean hasDirectReviewedLexicalGround(String query, List<LawSemanticChunkRow> candidates, RecoveryRoutingSnapshot routing) {
+		var reviewed = candidates.stream()
+			.filter(chunk -> "official_doc".equals(chunk.target()))
+			.filter(chunk -> routing.pdfSources().values().stream().anyMatch(source ->
+				source.documentId() == chunk.documentId() && source.title().equals(chunk.title())))
+			.toList();
+		var proof = evidenceJudge.judge(query, reviewed, Map.of(), DEFAULT_LIMIT);
+		return proof.directEvidenceFound() && proof.directEvidenceCount() > 0;
+	}
+
+	private boolean requiresLawOrVersionSpecificEvidence(String query, String normalized, QuestionIntentProfile profile) {
+		return !articleReferencesFromQuery(query).isEmpty()
+			|| EXPLICIT_LEGAL_YEAR.matcher(query).find()
+			|| (profile != null && !profile.preferredTargets().isEmpty()
+				&& profile.preferredTargets().stream().allMatch(this::isLawTarget))
+			|| List.of("법령", "법률", "법규", "법적", "법상", "법에", "관련법", "무슨법", "어떤법",
+				"조문", "조항", "규정", "규칙", "고시", "훈령", "예규", "시행", "개정", "현행", "시점",
+				"장래", "예정", "미래", "내년", "올해", "작년", "현재", "기준일").stream().anyMatch(normalized::contains)
+			|| queryTerms(query).stream().map(term -> normalizeForMatch(stripTrailingJosa(term)))
+				.anyMatch(term -> !term.equals("방법") && looksLikeLawTitle(term));
 	}
 
 	private BoundedDocumentTitleLookup findBoundedDocumentTitleChunks(

@@ -2,9 +2,11 @@ package com.kaces.pandora.ai.answer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.kaces.pandora.common.text.QuestionIntentProfile;
 import com.kaces.pandora.common.text.QuestionSearchPlan;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import com.kaces.pandora.lawdata.persistence.LawChunkMapper;
+import com.kaces.pandora.lawdata.version.SourceVersionRoutingSnapshot;
 import com.kaces.pandora.rag.persistence.RagDocumentMapper;
 import com.kaces.pandora.rag.search.RagChunkSearchIndexService;
 import com.kaces.pandora.semantic.config.LawAiLexicalVariantProperties;
@@ -16,6 +18,26 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
+	@Test
+	void rerankScoresEachCandidateOnceAndPreservesStableOrderAndTargetQualifiedScores() {
+		var firstTie = chunk(910L, "law", "첫 번째", "제1조", "법령 근거");
+		var secondTie = chunk(910L, "official_doc", "두 번째", "기준", "문서 근거");
+		var best = chunk(912L, "admrul", "상위 근거", "제2조", "행정규칙 근거");
+		var low = chunk(913L, "law", "하위 근거", "제3조", "별도 근거");
+		var calls = new java.util.IdentityHashMap<LawSemanticChunkRow, Integer>();
+		var service = service();
+		try {
+			var result = service.scoreAndRankChunks(List.of(firstTie, low, secondTie, best), row -> {
+				calls.merge(row, 1, Integer::sum);
+				return row == best ? 4.0 : row == low ? -1.0 : 2.0;
+			});
+			assertThat(result.chunks()).containsExactly(best, firstTie, secondTie, low);
+			assertThat(result.scores()).containsExactlyInAnyOrderEntriesOf(Map.of(
+				"law:910", 2.0, "official_doc:910", 2.0, "admrul:912", 4.0, "law:913", -1.0));
+			assertThat(calls).hasSize(4).allSatisfy((row, count) -> assertThat(count).isOne());
+		} finally { service.shutdownExecutors(); }
+	}
+
     @Test
     void configuredPdfParagraphNeverUsesCachedAnswerWithoutSelectedRowValidation() throws Exception {
         var service=service();
@@ -567,6 +589,88 @@ class LawAiAnswerServiceEvidenceGateTests {
 			assertThat(findLexicalChunks(service, plan, List.of("admrul", "law"), false)).contains(duty);
 		} finally { service.shutdownExecutors(); }
 	}
+
+	@Test
+	void genericLawTimeoutDoesNotHideIndependentlyDirectReviewedDocumentInMixedSearch() throws Exception {
+		var timeout = new org.springframework.dao.QueryTimeoutException("bounded legacy scan");
+		var generation = "11111111-1111-4111-8111-111111111111";
+		var sourceHash = "a".repeat(64);
+		var manifest = "b".repeat(64);
+		var source = new com.kaces.pandora.rag.recovery.RecoveryPdfSource(generation, 88001,
+			"22222222-2222-4222-8222-222222222222", sourceHash, "c".repeat(64), manifest,
+			"공공시설 보안성 검토 안내", "https://agency.example/review.pdf");
+		var pointer = new com.kaces.pandora.rag.recovery.RecoverySnapshot(88001, 1, generation, sourceHash, "d".repeat(64));
+		var asset = new com.kaces.pandora.rag.recovery.RecoveryAssets(generation, manifest,
+			"rag_recovery_" + generation.replace("-", ""), "e".repeat(64), "f".repeat(64), 1);
+		var routing = new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(1, Map.of(88001L, pointer),
+			Map.of(generation, asset), java.util.Set.of(), asset.lexicalFingerprint(), "recovery_" + generation,
+			com.kaces.pandora.lawdata.version.SourceVersionRoutingSnapshot.empty(), Map.of(generation, source));
+		var direct = chunk(88002, 88001, "official_doc", source.title(), "보안성 검토 대상",
+			"보안성 검토 대상 사업은 정보통신망 또는 정보시스템 구축 사업 및 주요 데이터베이스 구축 사업이다.", null);
+		var irrelevant = chunk(88003, 88001, "official_doc", source.title(), "등록 안내",
+			"로그인한 후 담당자 이름과 연락처를 등록한다.", null);
+		var ragResult = new java.util.concurrent.atomic.AtomicReference<>(direct);
+		var failure = new java.util.concurrent.atomic.AtomicReference<RuntimeException>(timeout);
+		LawChunkMapper law = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
+			LawChunkMapper.class.getClassLoader(), new Class<?>[]{LawChunkMapper.class},
+			(proxy, method, arguments) -> {
+				if (method.getName().equals("findSemanticChunksByText")) throw failure.get();
+				return List.of();
+			});
+		RagDocumentMapper rag = (RagDocumentMapper) java.lang.reflect.Proxy.newProxyInstance(
+			RagDocumentMapper.class.getClassLoader(), new Class<?>[]{RagDocumentMapper.class},
+			(proxy, method, arguments) -> {
+				assertThat(method.getName()).endsWith("Routed");
+				assertThat(arguments[arguments.length - 1]).isSameAs(routing);
+				return List.of(ragResult.get());
+			});
+		var service = service(law, rag);
+		try {
+			var query = QuestionSearchPlan.from("보안 검토 대상 범위가 궁금합니다.");
+			var mixed = List.of("law", "official_doc");
+			var method = LawAiAnswerService.class.getDeclaredMethod("findLexicalChunks",
+				QuestionSearchPlan.class, List.class, boolean.class, routing.getClass());
+			method.setAccessible(true);
+			assertThat(new EvidenceJudge().judge(query.question(), List.of(direct), Map.of(), 5).directEvidenceFound()).isTrue();
+			assertThat(method.invoke(service, query, mixed, false, routing)).isEqualTo(List.of(direct));
+			assertThat(method.invoke(service, query, mixed, true, routing)).isEqualTo(List.of(direct));
+			org.assertj.core.api.Assertions.assertThatThrownBy(() -> method.invoke(service, query, List.of("law"), false, routing))
+				.hasCause(timeout);
+			var explicitArticle = QuestionSearchPlan.from("보안 검토 대상 범위와 근거 조문을 알려 주세요.");
+			org.assertj.core.api.Assertions.assertThatThrownBy(() -> method.invoke(service, explicitArticle, mixed, false, routing))
+				.hasCause(timeout);
+			var explicitFuture = QuestionSearchPlan.from("보안 검토 대상 범위는 내년부터 어떻게 바뀌나요?");
+			org.assertj.core.api.Assertions.assertThatThrownBy(() -> method.invoke(service, explicitFuture, mixed, true, routing))
+				.hasCause(timeout);
+			for (String question : List.of("2027-01-01 보안 검토 대상 범위가 궁금합니다.",
+				"건축법 기준 보안 검토 대상 범위가 궁금합니다.")) {
+				var explicit = QuestionSearchPlan.from(question);
+				org.assertj.core.api.Assertions.assertThatThrownBy(() -> method.invoke(service, explicit, mixed, true, routing))
+					.hasCause(timeout);
+			}
+			var group = "0".repeat(64);
+			var lawRoute = new SourceVersionRoutingSnapshot.Route(group, 1, "law", "law:공공시설법", 91, 91,
+				java.util.Set.of(91L), null, null, null, "1".repeat(64), "2".repeat(64), "model", 1, 0);
+			var lawVersionRouting = new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(1, routing.documents(),
+				routing.assets(), routing.baselineGenerations(), routing.lexicalRevision(), routing.lexicalNamespace(),
+				new SourceVersionRoutingSnapshot(1, Map.of(group, lawRoute)), routing.pdfSources());
+			org.assertj.core.api.Assertions.assertThatThrownBy(() -> method.invoke(service, query, mixed, true, lawVersionRouting))
+				.hasCause(timeout);
+			ragResult.set(irrelevant);
+			org.assertj.core.api.Assertions.assertThatThrownBy(() -> method.invoke(service, query, mixed, false, routing))
+				.hasCause(timeout);
+			ragResult.set(chunk(88004, 88001, "official_doc", "다른 판의 보안성 검토 안내", "보안성 검토 대상",
+				direct.chunkText(), null));
+			org.assertj.core.api.Assertions.assertThatThrownBy(() -> method.invoke(service, query, mixed, false, routing))
+				.hasCause(timeout);
+			ragResult.set(direct);
+			var integrity = new IllegalStateException("captured integrity changed");
+			failure.set(integrity);
+			org.assertj.core.api.Assertions.assertThatThrownBy(() -> method.invoke(service, query, mixed, false, routing))
+				.hasCause(integrity);
+		} finally { service.shutdownExecutors(); }
+	}
+
 	@Test
 	void lexicalFastPathMustPreserveEveryRequestedDocumentFamily() throws Exception {
 		var scope = chunk(99001L, "official_doc", "공공소프트웨어사업 과업심의 가이드",
@@ -4288,7 +4392,8 @@ class LawAiAnswerServiceEvidenceGateTests {
 			LawSemanticChunkRow.class,
 			String.class,
 			List.class,
-			Map.class
+			Map.class,
+			QuestionIntentProfile.class
 		);
 		method.setAccessible(true);
 		return (double) method.invoke(
@@ -4296,7 +4401,8 @@ class LawAiAnswerServiceEvidenceGateTests {
 			chunk,
 			question,
 			QuestionSearchPlan.from(question).lexicalKeywords(),
-			baseScores
+			baseScores,
+			QuestionIntentProfile.from(question)
 		);
 	}
 
