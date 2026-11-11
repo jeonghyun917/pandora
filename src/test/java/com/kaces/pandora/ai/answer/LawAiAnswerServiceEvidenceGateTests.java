@@ -634,6 +634,18 @@ class LawAiAnswerServiceEvidenceGateTests {
 			assertThat(new EvidenceJudge().judge(query.question(), List.of(direct), Map.of(), 5).directEvidenceFound()).isTrue();
 			assertThat(method.invoke(service, query, mixed, false, routing)).isEqualTo(List.of(direct));
 			assertThat(method.invoke(service, query, mixed, true, routing)).isEqualTo(List.of(direct));
+			var authority = chunk(88005, 88001, "official_doc", source.title(), "제7조(검토 기관)",
+				"제7조(검토 기관) ① 국가정보원장은 각급기관의 장이 추진하는 다음 각 호에 해당하는 정보화사업에 "
+					+ "대하여 보안성 검토를 실시한다. 1. 국가안보상 중요한 정보통신망 구축 2. 민감정보 처리 정보시스템 구축", null);
+			var guide = chunk(88006, "official_doc", "정보화사업 보안성 검토 가이드", "보안성 검토 대상",
+				direct.chunkText());
+			String scopeQuestion = "정보통신망 구축 시 보안성 검토 대상 범위를 알려 주세요.";
+			var judged = new EvidenceJudge().judge(scopeQuestion, List.of(guide, authority), Map.of(), 8);
+			assertThat(judged.chunks()).contains(authority);
+			assertThat(service.preferOfficialSecurityReviewTargetEvidence(scopeQuestion, judged.chunks(),
+				List.of(guide, authority), judged.scoreByChunkId(), Map.of(), routing).evidenceChunks()).first().isEqualTo(authority);
+			assertThat(service.preferOfficialSecurityReviewTargetEvidence(scopeQuestion, List.of(guide),
+				List.of(guide, authority), judged.scoreByChunkId(), Map.of(), routing).evidenceChunks()).containsExactly(guide);
 			org.assertj.core.api.Assertions.assertThatThrownBy(() -> method.invoke(service, query, List.of("law"), false, routing))
 				.hasCause(timeout);
 			var explicitArticle = QuestionSearchPlan.from("보안 검토 대상 범위와 근거 조문을 알려 주세요.");

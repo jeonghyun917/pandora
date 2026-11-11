@@ -909,6 +909,35 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void securityReviewScopeCanBeOwnedByTheOperativeActorAndNumberedRuleRatherThanATargetHeading() {
+		String rule = "제7조(검토 기관) ① 국가정보원장은 각급기관의 장이 추진하는 다음 각 호에 해당하는 "
+			+ "정보화사업에 대하여 보안성 검토를 실시한다. 1. 국가안보상 중요한 정보통신망 구축 "
+			+ "2. 민감정보를 처리하는 정보시스템 구축";
+		String question = "정보통신망 구축 시 보안성 검토 대상 범위를 알려 주세요.";
+		var official = chunk(851L, "official_doc", "공공 사이버보안 기준", "제7조(검토 기관)", rule);
+		assertThat(judge.judge(question, List.of(official), Map.of(), 5).directEvidenceFound()).isTrue();
+		var reference = chunk(853L, "reference_doc", "공공 사이버보안 기준 요약", "제7조(검토 기관)", rule);
+		assertThat(judge.judge(question, List.of(reference), Map.of(), 5).directEvidenceFound()).isFalse();
+		for (String scoped : List.of(
+			"2023년 정보통신망 구축 시 보안성 검토 대상 범위를 알려 주세요.",
+			"제9조의 정보통신망 구축 시 보안성 검토 대상 범위를 알려 주세요.",
+			"종전 기본지침에서 정보통신망 구축 시 보안성 검토 대상 범위를 알려 주세요.")) {
+			assertThat(judge.judge(scoped, List.of(official), Map.of(), 5).directEvidenceFound()).isFalse();
+		}
+		for (String variant : List.of(
+			rule.replace("국가정보원장은", "담당자는"),
+			rule.replace("실시한다.", "실시하지 않는다."),
+			rule.replace("다음 각 호에 해당하는 정보화사업에 대하여", "정보화사업의 계획에 대하여"),
+			rule.substring(0, rule.indexOf(" 1.")),
+			rule.substring(0, rule.indexOf("민감정보")),
+			rule.substring(0, rule.indexOf(" 1.")) + " 1. 정보통신망 구축 사업은 제외한다. 2. 추후 공지",
+			rule.replace("제7조(검토 기관)", "안내 예시:"))) {
+			var unsupported = chunk(852L, "official_doc", "공공 사이버보안 기준", "제7조(검토 기관)", variant);
+			assertThat(judge.judge(question, List.of(unsupported), Map.of(), 5).directEvidenceFound()).isFalse();
+		}
+	}
+
+	@Test
 	void securityReviewTargetQuestionAcceptsGuideChunkWithCompactReviewTargetHeading() {
 		LawSemanticChunkRow guideTarget = chunk(
 			1,

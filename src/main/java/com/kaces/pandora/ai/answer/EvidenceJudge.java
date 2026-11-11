@@ -29,6 +29,14 @@ public class EvidenceJudge {
 			+ "소프트웨어사업발주전에사업계획서또는제안요청서에대하여"
 			+ "과업심의위원회의심의를받아야한다(?:[.!?]|$)"
 	);
+	private static final java.util.regex.Pattern SECURITY_REVIEW_SCOPE_ITEM =
+		java.util.regex.Pattern.compile("(?<!\\S)([1-9][0-9]?)[.)]\\s+");
+	private static final java.util.regex.Pattern SECURITY_REVIEW_OPERATIVE_SCOPE = java.util.regex.Pattern.compile(
+		"^(?:제[0-9]+조(?:검토기관|보안성검토기관))?[①②]?"
+			+ "(?:국가정보원장은각급기관의장이|상급기관의장은해당기관및관할하급기관의장이)"
+			+ "추진하는다음각호에해당하는정보화사업에대하여보안성검토를실시한다$");
+	private static final java.util.regex.Pattern EXPLICIT_LEGAL_YEAR =
+		java.util.regex.Pattern.compile("(?<!\\d)(?:19|20)\\d{2}(?:\\d{4})?(?!\\d)");
 	private static final List<String> UI_NAVIGATION_TERMS = List.of(
 		"메뉴", "화면", "클릭", "버튼", "경로", "navigation"
 	);
@@ -505,7 +513,8 @@ public class EvidenceJudge {
 			}
 		}
 		if (isSecurityReviewTargetQuestion(normalizedQuestion)
-			&& !isSecurityReviewTargetAnswerChunk(body, documentTitle, chunkHeading, chunk.chunkText())) {
+			&& !isSecurityReviewTargetAnswerChunk(body, documentTitle, chunkHeading, chunk.chunkText(), chunk.target(),
+				allowsOperativeSecurityScope(profile))) {
 			return false;
 		}
 		if (profile.trafficCrosswalkStopQuestion()) {
@@ -797,7 +806,8 @@ public class EvidenceJudge {
 		boolean preConsultationGeneralScopeChunk = isPreConsultationGeneralScopeChunk(body, chunkHeading);
 		boolean preConsultationSpecificQaChunk = isPreConsultationSpecificQaChunk(body, chunkHeading);
 		boolean securityReviewTargetAnswerChunk = securityReviewTargetQuestion
-			&& isSecurityReviewTargetAnswerChunk(body, documentTitle, chunkHeading, chunk.chunkText());
+			&& isSecurityReviewTargetAnswerChunk(body, documentTitle, chunkHeading, chunk.chunkText(), chunk.target(),
+				allowsOperativeSecurityScope(profile));
 		boolean preferredSection = profile.prefersSection(chunk.sectionType());
 		boolean procurementCatalogContractQuestion = KoreanQueryNormalizer.isProcurementCatalogContractQuestion(profile.normalizedQuestion());
 		boolean procurementCatalogContractChunk = isProcurementCatalogContractContextChunk(body, documentTitle, chunkHeading);
@@ -1516,7 +1526,7 @@ public class EvidenceJudge {
 		boolean guideTitle = title.contains("보안성검토가이드")
 			|| title.contains("정보화사업보안성검토")
 			|| title.contains("정보화사업보안성검토가이드");
-		return guideTitle && isSecurityReviewTargetAnswerChunk(body, title, heading, chunk.chunkText());
+		return guideTitle && isSecurityReviewTargetAnswerChunk(body, title, heading, chunk.chunkText(), target, false);
 	}
 
 	private boolean isExploratoryLookupQuestion(String normalizedQuestion) {
@@ -2926,7 +2936,11 @@ public class EvidenceJudge {
 			&& normalized.contains("대상");
 	}
 
-	private static boolean isSecurityReviewTargetAnswerChunk(String body, String documentTitle, String chunkHeading, String rawBody) {
+	private static boolean isSecurityReviewTargetAnswerChunk(String body, String documentTitle, String chunkHeading,
+		String rawBody, String target, boolean allowOperativeScope) {
+		if (allowOperativeScope && "official_doc".equals(target) && hasOperativeSecurityReviewScope(rawBody)) {
+			return true;
+		}
 		String text = documentTitle + chunkHeading + body;
 		boolean securityReviewContext = text.contains("보안성검토")
 			|| text.contains("정보화사업보안성검토")
@@ -2968,6 +2982,50 @@ public class EvidenceJudge {
 		);
 		boolean adminEntryOnly = firstAdminCue < body.length() && !priorTargetRule;
 		return securityReviewContext && explicitTargetCue && concreteSystemScope && !adminEntryOnly;
+	}
+
+	private boolean allowsOperativeSecurityScope(EvidenceQuestionProfile profile) {
+		return articleReferences(profile.normalizedQuestion()).isEmpty()
+			&& !hasExplicitLegalOrVersionCue(profile.normalizedQuestion(), profile.terms());
+	}
+
+	static boolean hasExplicitLegalOrVersionCue(String question, List<String> terms) {
+		String normalized = normalize(question);
+		return EXPLICIT_LEGAL_YEAR.matcher(normalized).find()
+			|| containsAny(normalized, List.of("법령", "법률", "법규", "법적", "법상", "법에", "관련법", "무슨법", "어떤법",
+				"조문", "조항", "규정", "규칙", "고시", "훈령", "예규", "지침", "가이드", "매뉴얼",
+				"시행", "개정", "현행", "시점", "종전", "과거", "이전판", "장래", "예정", "미래", "내년", "올해",
+				"작년", "현재", "기준일"))
+			|| terms.stream().map(term -> normalize(term).replaceFirst("(?:에서|으로|은|는|이|가|을|를|의)$", ""))
+				.anyMatch(term -> !term.equals("방법") && term.endsWith("법"));
+	}
+
+	static boolean hasOperativeSecurityReviewScope(String rawBody) {
+		if (rawBody == null || rawBody.isBlank()) return false;
+		var items = SECURITY_REVIEW_SCOPE_ITEM.matcher(rawBody);
+		if (!items.find() || !"1".equals(items.group(1)) || items.start() > 420) return false;
+		int firstSentenceEnd = rawBody.indexOf('.');
+		if (firstSentenceEnd < 0 || firstSentenceEnd >= items.start()
+			|| !SECURITY_REVIEW_OPERATIVE_SCOPE.matcher(normalize(rawBody.substring(0, firstSentenceEnd))).matches()) {
+			return false;
+		}
+		int firstStart = items.end();
+		if (!items.find() || !"2".equals(items.group(1))) return false;
+		int firstEnd = items.start();
+		int secondStart = items.end();
+		int secondEnd = items.find() ? items.start() : rawBody.length();
+		if (firstEnd - firstStart > 350 || secondEnd - secondStart > 350) return false;
+		String first = normalize(rawBody.substring(firstStart, firstEnd));
+		String second = normalize(rawBody.substring(secondStart, secondEnd));
+		return first.length() >= 3 && second.length() >= 3
+			&& (isIncludedSecuritySystemScope(first) || isIncludedSecuritySystemScope(second));
+	}
+
+	private static boolean isIncludedSecuritySystemScope(String item) {
+		return containsAny(item, List.of("정보통신망구축", "정보시스템구축", "주요데이터베이스구축",
+			"정보통신기반시설구축", "제어시스템도입"))
+			&& !containsAny(item, List.of("제외", "생략", "예외", "비대상", "해당하지않", "해당하지아니",
+				"여부", "추후공지", "예시", "샘플", "신청서"));
 	}
 
 	private static final java.util.regex.Pattern CROSSWALK_STOP_DUTY = java.util.regex.Pattern.compile(

@@ -114,7 +114,6 @@ public class LawAiAnswerService {
 	private static final List<String> DOCUMENT_TOPIC_PARTICLES = List.of("은", "는", "이", "가");
 	private static final Set<String> LEGAL_REFERENCE_NOUNS = Set.of("법", "특별법", "법률", "시행령", "시행규칙");
 	private static final List<String> LEGAL_AUTHORITY_PARTICLES = List.of("에 따라", "상");
-	private static final Pattern EXPLICIT_LEGAL_YEAR = Pattern.compile("(?<!\\d)(?:19|20)\\d{2}(?!\\d)");
 	private static final Pattern COORDINATED_TITLE_ACTIONS =
 		Pattern.compile("(?<![\\p{L}\\p{N}])(설치|구축)[ ·]운영(?![\\p{L}\\p{N}])");
 	private static final List<String> TRUSTED_DOCUMENT_AGENCY_PREFIXES = List.of(
@@ -1655,7 +1654,8 @@ public class LawAiAnswerService {
 			evidenceChunks,
 			judgeContextChunks,
 			finalScoreByChunkId,
-			combinedScoreByChunkId
+			combinedScoreByChunkId,
+			routing
 		);
 		evidenceChunks = securityReviewPreference.evidenceChunks();
 		finalScoreByChunkId = securityReviewPreference.finalScoreByChunkId();
@@ -6570,6 +6570,18 @@ public class LawAiAnswerService {
 		Map<String, Double> finalScoreByChunkId,
 		Map<String, Double> combinedScoreByChunkId
 	) {
+		return preferOfficialSecurityReviewTargetEvidence(query, evidenceChunks, candidateChunks,
+			finalScoreByChunkId, combinedScoreByChunkId, null);
+	}
+
+	SecurityReviewEvidencePreference preferOfficialSecurityReviewTargetEvidence(
+		String query,
+		List<LawSemanticChunkRow> evidenceChunks,
+		List<LawSemanticChunkRow> candidateChunks,
+		Map<String, Double> finalScoreByChunkId,
+		Map<String, Double> combinedScoreByChunkId,
+		RecoveryRoutingSnapshot routing
+	) {
 		String normalizedQuery = normalizeForMatch(query);
 		if (!isSecurityReviewQuestion(queryTerms(query))) {
 			return new SecurityReviewEvidencePreference(evidenceChunks, finalScoreByChunkId);
@@ -6581,13 +6593,22 @@ public class LawAiAnswerService {
 		if (!normalizedQuery.contains("대상") && !exceptionQuestion) {
 			return new SecurityReviewEvidencePreference(evidenceChunks, finalScoreByChunkId);
 		}
-		List<LawSemanticChunkRow> officialGuideChunks = candidateChunks.stream()
+		var preferredChunks = new java.util.ArrayList<LawSemanticChunkRow>();
+		if (!exceptionQuestion && routing != null && !routing.pdfSources().isEmpty()
+			&& !requiresLawOrVersionSpecificEvidence(query, QuestionIntentProfile.from(query))) {
+			// Only a ground already admitted by the judge can take priority over secondary guides.
+			evidenceChunks.stream()
+				.filter(chunk -> isCapturedReviewedOfficialDoc(chunk, routing))
+				.filter(chunk -> EvidenceJudge.hasOperativeSecurityReviewScope(chunk.chunkText()))
+				.findFirst().ifPresent(preferredChunks::add);
+		}
+		candidateChunks.stream()
 			.filter(chunk -> exceptionQuestion
 				? isOfficialSecurityReviewAccessExceptionChunk(chunk)
 				: isOfficialSecurityReviewGuideTargetChunk(chunk))
 			.limit(2)
-			.toList();
-		if (officialGuideChunks.isEmpty()) {
+			.forEach(preferredChunks::add);
+		if (preferredChunks.isEmpty()) {
 			return new SecurityReviewEvidencePreference(evidenceChunks, finalScoreByChunkId);
 		}
 		Map<String, Double> preferredScores = new HashMap<>(finalScoreByChunkId);
@@ -6596,9 +6617,10 @@ public class LawAiAnswerService {
 			.max()
 			.orElse(0.0);
 		java.util.LinkedHashMap<String, LawSemanticChunkRow> ordered = new java.util.LinkedHashMap<>();
-		for (int i = 0; i < officialGuideChunks.size(); i++) {
-			LawSemanticChunkRow chunk = officialGuideChunks.get(i);
+		for (int i = 0; i < preferredChunks.size(); i++) {
+			LawSemanticChunkRow chunk = preferredChunks.get(i);
 			String key = scoreKey(chunk.target(), chunk.chunkId());
+			if (ordered.containsKey(key)) continue;
 			double currentScore = finalScoreByChunkId.getOrDefault(
 				key,
 				combinedScoreByChunkId.getOrDefault(key, 0.0)
@@ -8899,7 +8921,7 @@ public class LawAiAnswerService {
 		if (!ragTargets.isEmpty() && !lawTargets.isEmpty()) {
 			// A family-specific fast path must not suppress other requested sources.
 			if (routing != null && routing.sources().revision() == 0 && !routing.pdfSources().isEmpty()
-				&& documentTitleAnchors.isEmpty() && !requiresLawOrVersionSpecificEvidence(query, normalizedQuery, queryPlan.profile())) {
+				&& documentTitleAnchors.isEmpty() && !requiresLawOrVersionSpecificEvidence(query, queryPlan.profile())) {
 				var ragCandidates = findLexicalChunks(queryPlan, ragTargets, includeFuture, routing);
 				var familyCandidates = new java.util.ArrayList<>(findLexicalChunks(queryPlan, lawTargets, includeFuture, routing,
 					() -> hasDirectReviewedLexicalGround(query, ragCandidates, routing)));
@@ -9725,24 +9747,22 @@ public class LawAiAnswerService {
 
 	private boolean hasDirectReviewedLexicalGround(String query, List<LawSemanticChunkRow> candidates, RecoveryRoutingSnapshot routing) {
 		var reviewed = candidates.stream()
-			.filter(chunk -> "official_doc".equals(chunk.target()))
-			.filter(chunk -> routing.pdfSources().values().stream().anyMatch(source ->
-				source.documentId() == chunk.documentId() && source.title().equals(chunk.title())))
+			.filter(chunk -> isCapturedReviewedOfficialDoc(chunk, routing))
 			.toList();
 		var proof = evidenceJudge.judge(query, reviewed, Map.of(), DEFAULT_LIMIT);
 		return proof.directEvidenceFound() && proof.directEvidenceCount() > 0;
 	}
 
-	private boolean requiresLawOrVersionSpecificEvidence(String query, String normalized, QuestionIntentProfile profile) {
+	private boolean isCapturedReviewedOfficialDoc(LawSemanticChunkRow chunk, RecoveryRoutingSnapshot routing) {
+		return "official_doc".equals(chunk.target()) && routing.pdfSources().values().stream().anyMatch(source ->
+			source.documentId() == chunk.documentId() && source.title().equals(chunk.title()));
+	}
+
+	private boolean requiresLawOrVersionSpecificEvidence(String query, QuestionIntentProfile profile) {
 		return !articleReferencesFromQuery(query).isEmpty()
-			|| EXPLICIT_LEGAL_YEAR.matcher(query).find()
 			|| (profile != null && !profile.preferredTargets().isEmpty()
 				&& profile.preferredTargets().stream().allMatch(this::isLawTarget))
-			|| List.of("법령", "법률", "법규", "법적", "법상", "법에", "관련법", "무슨법", "어떤법",
-				"조문", "조항", "규정", "규칙", "고시", "훈령", "예규", "시행", "개정", "현행", "시점",
-				"장래", "예정", "미래", "내년", "올해", "작년", "현재", "기준일").stream().anyMatch(normalized::contains)
-			|| queryTerms(query).stream().map(term -> normalizeForMatch(stripTrailingJosa(term)))
-				.anyMatch(term -> !term.equals("방법") && looksLikeLawTitle(term));
+			|| EvidenceJudge.hasExplicitLegalOrVersionCue(query, queryTerms(query));
 	}
 
 	private BoundedDocumentTitleLookup findBoundedDocumentTitleChunks(
