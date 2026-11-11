@@ -91,6 +91,14 @@ public class RagRecoveryCandidateService {
         if(document==null)throw new IllegalStateException("Active document unavailable");
         return storedBaselineHash(document,RecoveryCandidatePlan.baselineHashFor(documentId,documents.findActiveChunksForSourceProof(documentId,true)));
     }
+    void requirePreservedSource(long documentId,String expectedHash) {
+        var document=documents.findSourceProofDocument(documentId,true);
+        if(document==null || !"official_doc".equals(document.documentType()) || !expectedHash.equals(document.fileHash()))
+            throw new IllegalStateException("Preserved original identity changed");
+        try {
+            if(!expectedHash.equals(sha(originals.materialize(document))))throw new IllegalStateException("Preserved original bytes changed");
+        } catch(java.io.IOException unavailable){throw new IllegalStateException("Preserved original unavailable",unavailable);}
+    }
     private String storedBaselineHash(RagDocumentRow document,String chunkHash) {
         long documentId=document.documentId();
         return hash(List.of(document,chunkHash,bounded(recovery.baselineStorageSnapshot(documentId),10001),

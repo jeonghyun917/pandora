@@ -1,5 +1,9 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-11-11 검토 PDF 전용 원자 승격·롤백: 기존 동일 원문 CAS 유지, 새 포인터는 검토 PDF 해시, 복귀는 지정 원본 해시·실제 바이트 확인 후만 허용. 강제 SQL 오류 양방향에서 상태·포인터 원복, 승격 직전 보존 원본 드리프트 RED8705e1→실제 격리 MariaDB+Q63744/740f7c 10/f0/e0/skip0(합성 임베딩, 기준본 Q 영수증 모의); 실제 격리 Q namespace 독립 테스트2PASS/8705e1. 공식 Windows PowerShell start98303/3fe097, assert096568 PID69108(26333/26334, 공유8976과 분리, 정책변경 없음). 전체27626/f9d5fa 2079/f0/e0/skip82, stage92025/414f52 JARdf4eb19ea1252e5be2f77f0306e0a6052df17751a86848243309064d63c129c7. 운영 원문 쓰기·평가 없음. 다음은 보존 기준본 단독 등록, 신뢰된 staging/locators와 실제 승격 선행 게이트.
+
+- 2026-11-11 자산준비 ba5600722d69faf2c07190410671f2f2cf314493 commit/push ccaacc 원격동일. 공식 status dc9500 → stop e96607 → 구 supervisor 종료 dfbecf → deploy49091/8b52b2 KEEPALIVE PID33272/runtime2cdb509e-c0a6-4ca1-a166-11726fe66fe8. 건강734549 root200/DB=Q211658·84248/qreadytrue/qfail0. 해당 배포 전후 Atlas35048/Q8976 불변, 중지예약 조작 없음. 실제 원문 활성화 없음.
+
 - 2026-11-11 검토 PDF 비활성 자산 준비: 정확한 보관 바이트·검토·기존 포인터·멤버 ID를 VALIDATED 영수증에 결속. 결속이 없거나 임베딩 중 corpus revision이 바뀌면 기존 경로 또는 Qdrant 쓰기로 진행하지 않음. RED34ebf7→격리 MariaDB86520/0aa740 10/f0/e0/skip0(임베딩/Q 모의), 전체27522/04a03d 2079/f0/e0/skip82, 공식 stage70982/33438f JAR00495b3822efc043d233420600a22b9f6eefeda55aa760e2155148a975eafb61. 실제 Q 격리·PDF 승격/롤백·평가는 아직 미실행.
 
 - 2026-11-11 어휘 corpus 출처결속 1d159a2096d4eb40052fb458002d6d5fc5c98536 commit/push0d5642 원격동일. 실제격리 기존recovery·PDF12138/0fd066 2PASS, 법령원문전환REDa45b5b→DB15478/d86e9a 2PASS, 집중62289/e099fb9PASS, 전체85457/86ea2c 2078/f0/e0/skip82. 공식stage7821/49b4bc JAR661d9c339ae1675bf8c4985b2495cd7913369ece58783436b8ffe5a0260f10ac, 정상stop79b36f→구supervisor종료c4b169→8080부재→deploy19374/37e4aa PID107292/runtime806944a6-a009-47e8-a38c-a86b7b7650a4. 건강fe7acc root200/DB=Q211658·84248/qreadytrue/qfail0/config47d394b4/indexe39713ce/lexicalbae6f4c1, Atlas108368/Q8976·중지예약보존. 새 PDF는 활성화되지 않음. 다음은 준비바이트·검토·포인터·전체멤버 결속 VALIDATED 영수증 및 pre-Q readback; 실제원문갱신·penalty/후속평가 미실행. [검증 기록](reviewed-pdf-quarantine-20261111.md).

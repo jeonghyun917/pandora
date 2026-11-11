@@ -272,16 +272,20 @@ class RagPdfDraftStoreDatabaseTests {
 
     private static void prepareReviewedAssets(JdbcTemplate db,org.mybatis.spring.SqlSessionTemplate session,DataSourceTransactionManager manager,
             RagRecoveryCandidateService candidates,RecoveryGeneration generation,RagPdfValidatedSourceReader readback,
-            RecoverySnapshot preserved,List<com.kaces.pandora.rag.document.RagDocumentChunkRow> rows) {
+            RecoverySnapshot preserved,List<com.kaces.pandora.rag.document.RagDocumentChunkRow> rows) throws Exception {
         var recovery=session.getMapper(RagRecoveryMapper.class);
         var documents=session.getMapper(com.kaces.pandora.rag.persistence.RagDocumentMapper.class);
         var lexical=session.getMapper(com.kaces.pandora.semantic.lexical.SemanticLexicalMapper.class);
         var index=new com.kaces.pandora.semantic.lexical.SemanticLexicalIndexService(lexical,new com.kaces.pandora.semantic.lexical.KoreanLexicalTokenizer());
         var routing=new RagRecoveryRoutingService(recovery,lexical,manager);routing.configurePdfSources(new RagPdfSourceRoutingReader(db));
         var embeddings=org.mockito.Mockito.mock(com.kaces.pandora.infra.openai.OpenAiEmbeddingClient.class);
-        var q=org.mockito.Mockito.mock(com.kaces.pandora.infra.qdrant.QdrantClient.class);
+        String qTestUrl=System.getenv("PANDORA_RECOVERY_Q_TEST_URL");
+        boolean realQ=qTestUrl!=null;
+        if(realQ)RagRecoveryQdrantIntegrationTests.assertDedicatedServer();
         var properties=new com.kaces.pandora.semantic.config.LawAiProperties(null,
-            new com.kaces.pandora.semantic.config.LawAiProperties.Qdrant("http://127.0.0.1:1","unused-law","unused-rag",3),null,null);
+            new com.kaces.pandora.semantic.config.LawAiProperties.Qdrant(realQ?qTestUrl:"http://127.0.0.1:1","unused-law","unused-rag",3),null,null);
+        var q=realQ?new com.kaces.pandora.infra.qdrant.QdrantClient(properties,new tools.jackson.databind.ObjectMapper()):
+                org.mockito.Mockito.mock(com.kaces.pandora.infra.qdrant.QdrantClient.class);
         var receipts=new RagRecoveryReceiptService(documents,recovery,manager,properties,readback);
         var preparer=new RagRecoveryIndexService(documents,recovery,candidates,receipts,embeddings,q,lexical,index,manager,
                 properties,generation.productSha(),routing,readback);
@@ -315,9 +319,11 @@ class RagPdfDraftStoreDatabaseTests {
         db.update("UPDATE rag_recovery_generations SET validation_evidence='[]' WHERE generation_id=?",id);
         try {assertThatThrownBy(()->preparer.prepareReviewedPdf(id)).isInstanceOf(IllegalStateException.class);}
         finally {db.update("UPDATE rag_recovery_generations SET validation_evidence=? WHERE generation_id=?",evidence,id);}
-        org.mockito.Mockito.verifyNoInteractions(embeddings,q);
+        org.mockito.Mockito.verifyNoInteractions(embeddings);
+        if(!realQ)org.mockito.Mockito.verifyNoInteractions(q);
         assertThat(recovery.findPreparation(id)).isNull();
-        org.mockito.Mockito.when(embeddings.embed(org.mockito.ArgumentMatchers.anyList())).thenReturn(Collections.nCopies(rows.size(),List.of(1.0,2.0,3.0)));
+        org.mockito.Mockito.when(embeddings.embed(org.mockito.ArgumentMatchers.anyList())).thenReturn(Collections.nCopies(rows.size(),List.of(1.0,0.0,0.0)));
+        if(!realQ) {
         org.mockito.Mockito.when(q.ragRecoveryCollection(id)).thenReturn(collection);
         org.mockito.Mockito.when(q.inspectRagRecoveryPoints(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),
             org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyList()))
@@ -325,6 +331,7 @@ class RagPdfDraftStoreDatabaseTests {
                     rows.stream().map(com.kaces.pandora.rag.document.RagDocumentChunkRow::chunkId).collect(java.util.stream.Collectors.toSet())));
         org.mockito.Mockito.when(q.verifyRagRecoveryCollection(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),
             org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyList())).thenReturn("e".repeat(64));
+        }
         try {
             var assets=preparer.prepareReviewedPdf(id);
             assertThat(assets.chunkCount()).isEqualTo(rows.size());
@@ -335,7 +342,84 @@ class RagPdfDraftStoreDatabaseTests {
                 .contains("official","rule");
             preparer.verifyReviewedPdf(assets);
             assertThatThrownBy(()->preparer.verify(assets)).isInstanceOf(IllegalStateException.class);
+            var baseline=org.mockito.Mockito.mock(RagRecoveryBaselineService.class);
+            org.mockito.Mockito.when(baseline.verify(generation.documentId())).thenReturn(new RecoveryBaselineAssets(
+                    generation.documentId(),preserved.activeGeneration(),preserved.baselineHash(),"unused-rag",
+                    properties.openai().embeddingModel(),"a".repeat(64),1));
+            org.mockito.Mockito.doAnswer(call->{candidates.requirePreservedSource(call.getArgument(0),call.getArgument(1));return null;})
+                    .when(baseline).requirePreservedSource(org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.anyString());
+            var promoter=new RagRecoveryPromotionService(preparer,recovery,baseline,manager);
+            var before=routing.capture();
+            var originalPath=Path.of(documents.findSourceProofDocument(generation.documentId(),false).filePath());
+            try {
+                byte[] preservedBytes=Files.readAllBytes(originalPath);
+                org.mockito.Mockito.doAnswer(call->{Files.writeString(originalPath,"Changed during promotion");return null;})
+                        .when(baseline).recheckStored(org.mockito.ArgumentMatchers.eq(generation.documentId()),org.mockito.ArgumentMatchers.any());
+                try {
+                    assertThatThrownBy(()->promoter.promoteReviewedPdf(id,preserved.revision(),assets.manifest()))
+                            .isInstanceOf(IllegalStateException.class).hasMessage("Preserved original bytes changed");
+                } finally {
+                    Files.write(originalPath,preservedBytes);
+                    org.mockito.Mockito.doNothing().when(baseline).recheckStored(org.mockito.ArgumentMatchers.eq(generation.documentId()),org.mockito.ArgumentMatchers.any());
+                }
+            } catch(java.io.IOException unavailable) {throw new AssertionError(unavailable);}
+            assertThat(routing.capture()).isEqualTo(before);
+            assertThatThrownBy(()->promoter.promoteReviewedPdf(id,preserved.revision()+1,assets.manifest()))
+                    .isInstanceOf(IllegalStateException.class);
+            assertThat(routing.capture()).isEqualTo(before);
+            String trigger="fail_pdf_switch_"+UUID.randomUUID().toString().replace("-","");
+            db.execute("CREATE TRIGGER "+trigger+" BEFORE UPDATE ON rag_recovery_routing_epoch FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='PDF switch rollback control'");
+            try {
+                assertThatThrownBy(()->promoter.promoteReviewedPdf(id,preserved.revision(),assets.manifest()))
+                        .hasStackTraceContaining("PDF switch rollback control");
+            } finally {db.execute("DROP TRIGGER "+trigger);}
+            assertThat(routing.capture()).isEqualTo(before);
+            assertThat(recovery.findGeneration(id,false).state()).isEqualTo("INDEX_READY");
+            try {
+                var next=promoter.promoteReviewedPdf(id,preserved.revision(),assets.manifest());
+                assertThat(next.sourceHash()).isEqualTo(generation.sourceHash()).isNotEqualTo(preserved.sourceHash());
+                var after=routing.capture();
+                assertThat(after.documents()).containsEntry(generation.documentId(),next);
+                assertThat(after.pdfSources().get(id).sourceHash()).isEqualTo(generation.sourceHash());
+                assertThat(before.documents()).containsEntry(generation.documentId(),preserved);
+                assertThat(before.pdfSources()).isEmpty();
+                assertThat(documents.findSourceProofDocument(generation.documentId(),false).fileHash()).isEqualTo(preserved.sourceHash());
+                var rollback=new RagRecoveryRollbackService(recovery,documents,routing,baseline,lexical,index,manager);
+                assertThatThrownBy(()->rollback.rollback(generation.documentId(),id,next.revision(),preserved.activeGeneration()))
+                    .isInstanceOf(IllegalStateException.class);
+                assertThatThrownBy(()->rollback.rollbackReviewedPdf(generation.documentId(),id,next.revision()+1,preserved.activeGeneration()))
+                    .isInstanceOf(IllegalStateException.class);
+                String rollbackTrigger="fail_pdf_rollback_"+UUID.randomUUID().toString().replace("-","");
+                db.execute("CREATE TRIGGER "+rollbackTrigger+" BEFORE UPDATE ON rag_recovery_pointers FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='PDF restore rollback control'");
+                try {
+                    assertThatThrownBy(()->rollback.rollbackReviewedPdf(generation.documentId(),id,next.revision(),preserved.activeGeneration()))
+                        .hasStackTraceContaining("PDF restore rollback control");
+                } finally {db.execute("DROP TRIGGER "+rollbackTrigger);}
+                assertThat(routing.capture()).isEqualTo(after);
+                var restored=rollback.rollbackReviewedPdf(generation.documentId(),id,next.revision(),preserved.activeGeneration());
+                assertThat(restored.sourceHash()).isEqualTo(preserved.sourceHash());
+                assertThat(restored.activeGeneration()).isEqualTo(preserved.activeGeneration());
+                var reverted=routing.capture();
+                assertThat(reverted.documents()).containsEntry(generation.documentId(),restored);
+                assertThat(reverted.pdfSources()).isEmpty();
+                assertThat(after.pdfSources().get(id).sourceHash()).isEqualTo(generation.sourceHash());
+                assertThat(new RagPdfOriginalReader(db).open(generation.documentId(),id).source()).isEqualTo(after.pdfSources().get(id));
+            } finally {
+                var rollbackNamespaces=db.queryForList("SELECT CONCAT('recovery_',operation_id) FROM rag_recovery_rollbacks WHERE document_id=?",String.class,generation.documentId());
+                db.update("DELETE FROM rag_recovery_rollbacks WHERE document_id=?",generation.documentId());
+                for(String namespace:rollbackNamespaces)db.update("DELETE FROM semantic_lexical_index_state WHERE index_version=?",namespace);
+                db.update("UPDATE rag_recovery_generations SET state='ACTIVE' WHERE generation_id=?",preserved.activeGeneration());
+                db.update("UPDATE rag_recovery_generations SET state='INDEX_READY' WHERE generation_id=?",id);
+                db.update("UPDATE rag_recovery_pointers SET active_generation=?,source_hash=?,revision=? WHERE document_id=?",
+                        preserved.activeGeneration(),preserved.sourceHash(),preserved.revision(),generation.documentId());
+                db.update("UPDATE rag_recovery_routing_epoch SET revision=0,lexical_generation=NULL,lexical_fingerprint=NULL WHERE singleton_id=1");
+            }
         } finally {
+            if(realQ) {
+                var http=org.springframework.web.client.RestClient.builder().baseUrl(qTestUrl).build();
+                try {http.delete().uri("/collections/{name}",collection).retrieve().toBodilessEntity();}
+                catch(org.springframework.web.client.HttpClientErrorException.NotFound alreadyRemoved) { }
+            }
             db.update("DELETE FROM rag_recovery_embedding_receipts WHERE generation_id=?",id);
             db.update("DELETE FROM rag_recovery_assets WHERE generation_id=?",id);
             db.update("DELETE FROM rag_recovery_preparations WHERE generation_id=?",id);

@@ -45,7 +45,8 @@ class RagRecoveryQdrantIntegrationTests {
             }
         }
     }
-    private void assertDedicatedServer() throws Exception {
+    static void assertDedicatedServer() throws Exception {
+        assertThat(System.getenv("PANDORA_RECOVERY_Q_TEST_URL")).isEqualTo("http://127.0.0.1:26333");
         Path root=Path.of(System.getenv("PANDORA_RECOVERY_Q_TEST_ROOT")).toRealPath();
         assertThat(root.getFileName().toString()).startsWith("qdrant-recovery-test-");
         assertThat(root.getParent().getFileName().toString()).isEqualTo("runtime");

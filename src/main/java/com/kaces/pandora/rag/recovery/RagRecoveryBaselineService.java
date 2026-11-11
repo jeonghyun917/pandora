@@ -54,6 +54,11 @@ public class RagRecoveryBaselineService {
                 || !expected.generationId().equals(current.baseline()) || expected.chunkCount()!=current.rows().size())
             throw new IllegalStateException("Baseline receipt changed");
     }
+    void requirePreservedSource(long documentId,String expectedHash) {
+        if(!TransactionSynchronizationManager.isActualTransactionActive())
+            throw new IllegalStateException("Original recheck requires transaction");
+        candidates.requirePreservedSource(documentId,expectedHash);
+    }
     private Snapshot snapshot(long documentId) {
         if(recovery.lockRoutingEpoch()==null)throw new IllegalStateException("Routing epoch unavailable");
         String hash=candidates.lockedStoredBaselineHash(documentId);

@@ -175,9 +175,15 @@ public class RagRecoveryIndexService {
         });
     }
     RecoveryPreparationReceipt recheckForPromotion(String id) {
+        return recheckForPromotion(id,false);
+    }
+    RecoveryPreparationReceipt recheckForReviewedPdfPromotion(String id) {
+        return recheckForPromotion(id,true);
+    }
+    private RecoveryPreparationReceipt recheckForPromotion(String id,boolean reviewedPdf) {
         if(!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
             throw new IllegalStateException("Promotion recheck requires a transaction");
-        var snapshot=captureLocked(id,false,false);
+        var snapshot=captureLocked(id,false,reviewedPdf);
         if(!snapshot.preparation().equals(recovery.findPreparation(id)))throw new IllegalStateException("Preparation unavailable");
         return snapshot.preparation();
     }

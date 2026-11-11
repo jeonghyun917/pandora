@@ -32,6 +32,8 @@ public interface RagRecoveryMapper {
     int insertPreparation(@Param("receipt") RecoveryPreparationReceipt receipt);
     int changeGenerationState(@Param("id") String id,@Param("expected") String expected,@Param("next") String next);
     int casPointer(@Param("expected") RecoverySnapshot expected,@Param("next") RecoverySnapshot next);
+    int casReviewedPdfPointer(@Param("expected") RecoverySnapshot expected,@Param("next") RecoverySnapshot next);
+    int casPreservedPdfRollbackPointer(@Param("expected") RecoverySnapshot expected,@Param("next") RecoverySnapshot next);
     int casEpoch(@Param("expected") long expected,@Param("generation") String generation,@Param("fingerprint") String fingerprint);
     List<com.kaces.pandora.semantic.lexical.LexicalChunkDocument> findGenerationLexicalChunks(@Param("generationId") String generationId);
     List<com.kaces.pandora.semantic.lexical.LexicalChunkDocument> findGenerationLexicalChunksForSource(

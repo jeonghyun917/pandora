@@ -67,6 +67,12 @@ Files: `rag/recovery/RagPdfGenerationStore.java`, `RagPdfDraftStoreDatabaseTests
 
 ## Task 4: Stable delivery and conditional quality ladder
 
+### Pre-activation continuation: baseline registration and reviewed source authority
+
+- Add a distinct baseline-only registration path for an unmanaged document. Capture the original bytes, exact active DB member/embedding/keyword identity and routing epoch under locks; independently check baseline Qdrant parity outside the transaction. Recheck the same snapshot before atomically storing the generation, memberships, designation, pointer and receipt. Registration must not create a replacement, alter active search results or change the routing epoch. Existing baseline or concurrent import must not be silently overwritten.
+- Keep product SHA, reviewed input hash and original path server-owned, with the existing mutation authorization and default-off gate. Add no caller-controlled trust material. Candidate proof, readiness and transition remain separate operations.
+- Before any real switch, cover captured old/new source lookups including multi-page unit locators, compare new corpus coverage against the original (not merely reviewed excerpts), and verify a real isolated baseline/vector/lexical restore. Newer source evidence is not a blanket scope or penalty claim.
+
 - [ ] One focused final suite and one stable full backend suite after integration; reuse exact-tree evidence across commit/push.
 - [ ] Independent scoped review; fix only Critical/Important scope violations.
 - [ ] Commit/push, official host status and deployment/health with exact artifact identity; Atlas and reservation remain unchanged.

@@ -18,6 +18,12 @@ public class RagRecoveryPromotionService {
         transaction.setIsolationLevel(TransactionDefinition.ISOLATION_SERIALIZABLE);
     }
     public RecoverySnapshot promote(String generationId,long expectedRevision,String expectedManifest) {
+        return promoteBound(generationId,expectedRevision,expectedManifest,false);
+    }
+    RecoverySnapshot promoteReviewedPdf(String generationId,long expectedRevision,String expectedManifest) {
+        return promoteBound(generationId,expectedRevision,expectedManifest,true);
+    }
+    private RecoverySnapshot promoteBound(String generationId,long expectedRevision,String expectedManifest,boolean reviewedPdf) {
         if(generationId==null || !generationId.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
                 || expectedRevision<0 || expectedRevision==Long.MAX_VALUE || expectedManifest==null || !expectedManifest.matches("[0-9a-f]{64}"))
             throw new IllegalArgumentException("Exact promotion identity required");
@@ -25,21 +31,34 @@ public class RagRecoveryPromotionService {
         var assets=recovery.findAssets(generationId);
         if(generation==null || !"INDEX_READY".equals(generation.state()) || !expectedManifest.equals(generation.manifest())
                 || assets==null || !expectedManifest.equals(assets.manifest()))throw new IllegalStateException("Candidate not ready");
+        if(reviewedPdf) {
+            var current=recovery.findPointer(generation.documentId(),false);
+            if(current==null || current.revision()!=expectedRevision || generationId.equals(current.activeGeneration()))
+                throw new IllegalStateException("Stale promotion");
+        }
         var preserved=baseline.verify(generation.documentId());
-        index.verify(assets);
+        if(reviewedPdf)index.verifyReviewedPdf(assets);
+        else index.verify(assets);
         return transaction.execute(status->{
-            var prepared=index.recheckForPromotion(generationId);
+            var prepared=reviewedPdf?index.recheckForReviewedPdfPromotion(generationId):index.recheckForPromotion(generationId);
             baseline.recheckStored(generation.documentId(),preserved);
             var current=recovery.findPointer(generation.documentId(),true);
             var candidate=recovery.findGeneration(generationId,true);
             if(current==null || current.revision()!=expectedRevision || current.activeGeneration().equals(generationId)
-                    || !current.sourceHash().equals(generation.sourceHash()) || !current.baselineHash().equals(generation.baselineHash())
+                    || (!reviewedPdf && !current.sourceHash().equals(generation.sourceHash())) || !current.baselineHash().equals(generation.baselineHash())
                     || candidate==null || !candidate.equals(generation) || !"INDEX_READY".equals(candidate.state())
                     || !assets.equals(recovery.findAssets(generationId)))throw new IllegalStateException("Stale promotion");
-            var next=new RecoverySnapshot(current.documentId(),current.revision()+1,generationId,current.sourceHash(),current.baselineHash());
+            if(reviewedPdf) {
+                var original=recovery.findGeneration(preserved.generationId(),true);
+                if(original==null || original.documentId()!=current.documentId() || !original.baselineHash().equals(current.baselineHash())
+                        || Boolean.TRUE.equals(recovery.isReviewedPdfGeneration(original.id())))
+                    throw new IllegalStateException("Preserved original generation unavailable");
+                baseline.requirePreservedSource(current.documentId(),original.sourceHash());
+            }
+            var next=new RecoverySnapshot(current.documentId(),current.revision()+1,generationId,generation.sourceHash(),current.baselineHash());
             if(recovery.changeGenerationState(current.activeGeneration(),"ACTIVE","RETIRED")!=1
                     || recovery.changeGenerationState(generationId,"INDEX_READY","ACTIVE")!=1
-                    || recovery.casPointer(current,next)!=1
+                    || (reviewedPdf?recovery.casReviewedPdfPointer(current,next):recovery.casPointer(current,next))!=1
                     || recovery.casEpoch(prepared.baseRevision(),generationId,assets.lexicalFingerprint())!=1)
                 throw new IllegalStateException("Promotion compare-and-set failed");
             return next;

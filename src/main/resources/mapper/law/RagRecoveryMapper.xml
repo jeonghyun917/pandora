@@ -45,6 +45,29 @@
       AND #{next.documentId}=document_id AND #{next.sourceHash}=source_hash AND #{next.baselineHash}=baseline_hash
       AND #{next.revision}=revision+1
   </update>
+  <update id="casReviewedPdfPointer">
+    UPDATE rag_recovery_pointers SET revision=#{next.revision},active_generation=#{next.activeGeneration},source_hash=#{next.sourceHash}
+    WHERE document_id=#{expected.documentId} AND revision=#{expected.revision} AND active_generation=#{expected.activeGeneration}
+      AND source_hash=#{expected.sourceHash} AND baseline_hash=#{expected.baselineHash}
+      AND #{next.documentId}=document_id AND #{next.baselineHash}=baseline_hash AND #{next.revision}=revision+1
+      AND EXISTS(SELECT 1 FROM rag_recovery_generations g JOIN rag_pdf_generation_sources b
+        ON b.generation_id=g.generation_id AND b.source_hash=g.source_hash AND b.manifest=g.manifest AND b.product_sha=g.product_sha
+        WHERE g.generation_id=#{next.activeGeneration} AND g.document_id=#{next.documentId} AND g.source_hash=#{next.sourceHash}
+          AND g.baseline_hash=#{next.baselineHash} AND g.state='ACTIVE' AND <include refid="reviewedPdfValidationMarker"/>)
+  </update>
+  <update id="casPreservedPdfRollbackPointer">
+    UPDATE rag_recovery_pointers SET revision=#{next.revision},active_generation=#{next.activeGeneration},source_hash=#{next.sourceHash}
+    WHERE document_id=#{expected.documentId} AND revision=#{expected.revision} AND active_generation=#{expected.activeGeneration}
+      AND source_hash=#{expected.sourceHash} AND baseline_hash=#{expected.baselineHash}
+      AND #{next.documentId}=document_id AND #{next.baselineHash}=baseline_hash AND #{next.revision}=revision+1
+      AND EXISTS(SELECT 1 FROM rag_recovery_generations g
+        JOIN rag_recovery_baselines b ON b.generation_id=g.generation_id AND b.document_id=g.document_id
+        JOIN rag_documents d ON d.document_id=g.document_id AND d.file_hash=g.source_hash AND d.use_yn='Y'
+        LEFT JOIN rag_pdf_generation_sources binding ON binding.generation_id=g.generation_id
+        WHERE g.generation_id=#{next.activeGeneration} AND g.document_id=#{next.documentId} AND g.source_hash=#{next.sourceHash}
+          AND g.baseline_hash=#{next.baselineHash} AND g.state='ACTIVE' AND binding.generation_id IS NULL
+          AND NOT (<include refid="reviewedPdfValidationMarker"/>))
+  </update>
   <update id="casEpoch">
     UPDATE rag_recovery_routing_epoch SET revision=revision+1,lexical_generation=#{generation},lexical_fingerprint=#{fingerprint},published_corpus_revision=corpus_revision
     WHERE singleton_id=1 AND revision=#{expected}
