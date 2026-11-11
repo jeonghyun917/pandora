@@ -629,11 +629,13 @@ class LawAiAnswerServiceEvidenceGateTests {
 			"기관의 장은 검토를 마친 시설에서 망 변경 없는 단순 장비 교체의 보안성 검토 절차를 생략할 수 있다.", null);
 		var submission = chunk(88602, 88600, "official_doc", title, "p.39 제출",
 			"기관의 장은 보안성 검토를 의뢰하는 경우 다음 각 호의 사항이 포함된 문서를 제출하여야 한다. 1. 배치도 2. 비상계획", null);
+		var response = chunk(88604, 88600, "official_doc", title, "검토결과 조치",
+			"기관의 장은 보안성 검토결과를 통보받은 경우 그 결과를 반영하여 보안대책을 보완하여야 한다.", null);
 		var other = chunk(88603, 88601, "official_doc", title, "검토 생략", omission.chunkText(), null);
 		RagDocumentMapper rag = (RagDocumentMapper) java.lang.reflect.Proxy.newProxyInstance(
 			RagDocumentMapper.class.getClassLoader(), new Class<?>[]{RagDocumentMapper.class}, (proxy, mapper, args) ->
 				mapper.getName().equals("findSemanticChunksByDocumentTitleAndTextScopedRouted") && args[4] == routing
-					? List.of(other, omission, submission) : List.of());
+					? List.of(other, omission, submission, response) : List.of());
 		var service = service(null, rag);
 		try {
 			var method = LawAiAnswerService.class.getDeclaredMethod("findLexicalChunks",
@@ -644,6 +646,12 @@ class LawAiAnswerServiceEvidenceGateTests {
 				targets, false, routing)).isEqualTo(List.of(omission));
 			assertThat(method.invoke(service, QuestionSearchPlan.from("보안성 검토 의뢰 때 어떤 문서를 제출합니까?"),
 				targets, false, routing)).isEqualTo(List.of(submission));
+			assertThat(List.of(
+				method.invoke(service, QuestionSearchPlan.from("보안성 검토 의뢰 시 어떤 첨부 자료를 내야 합니까?"),
+					targets, false, routing),
+				method.invoke(service, QuestionSearchPlan.from("보안성 검토 결과를 통보받은 기관은 무엇을 반영합니까?"),
+					targets, false, routing)))
+				.isEqualTo(List.of(List.of(submission),List.of(response)));
 		} finally {
 			service.shutdownExecutors();
 		}

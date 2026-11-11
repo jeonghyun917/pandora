@@ -9804,14 +9804,18 @@ public class LawAiAnswerService {
 		if (!normalizedQuery.contains("보안성검토")) return List.of();
 		boolean omission = normalizedQuery.contains("생략");
 		boolean submission = profile.intentTypes().contains("required_documents")
-			&& normalizedQuery.contains("제출");
-		if (omission == submission) return List.of();
+			&& (normalizedQuery.contains("제출")
+				|| (containsAny(normalizedQuery, "의뢰", "요청")
+					&& containsAny(normalizedQuery, "첨부자료를내야", "첨부문서를내야", "첨부서류를내야")));
+		boolean resultAction = profile.matchedPolicyIds().contains("security_review_result_action");
+		if ((omission ? 1 : 0) + (submission ? 1 : 0) + (resultAction ? 1 : 0) != 1) return List.of();
 		var titles = routing.pdfSources().values().stream().map(source -> source.title())
 			.filter(title -> normalizeForMatch(title).startsWith("국가사이버보안기본지침"))
 			.distinct().limit(2).toList();
 		if (titles.isEmpty()) return List.of();
 		var hints = omission ? List.of("보안성 검토 절차의 이행을 생략할 수 있다")
-			: List.of("제출 문서", "사항이 포함된 문서를 제출하여야 한다");
+			: resultAction ? List.of("검토결과를 통보받은 경우", "검토 결과를 통보받은 경우", "검토결과를 반영하여")
+				: List.of("제출 문서", "사항이 포함된 문서를 제출하여야 한다");
 		return safeLexicalQuery("reviewed security procedure body", () ->
 			ragDocumentMapper.findSemanticChunksByDocumentTitleAndTextScopedRouted(
 				List.of("official_doc"), titles, hints, 12, routing), routing).stream()
