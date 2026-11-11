@@ -909,6 +909,20 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void prioritizesOperativeRequirementsForAnInterrogativeSubmissionObject() {
+		var rule = chunk(852L, "official_doc", "시설 안전 심사 기준", "제7조(제출 문서)",
+			"운영기관의 장은 시설 안전 심사를 의뢰할 경우 다음 각 호의 사항이 포함된 문서를 제출하여야 한다. "
+				+ "1. 배치도 2. 비상대응계획");
+		var timing = chunk(853L, "official_doc", "시설 안전 심사 기준", "심사 일정",
+			"시설 안전 심사 의뢰는 매월 첫째 주에 접수한다.");
+		String question = "시설 안전 심사를 의뢰할 때 어떤 자료를 제출합니까?";
+		assertThat(judge.judge(question, List.of(timing), Map.of(), 5).directEvidenceFound()).isFalse();
+		var result = judge.judge(question, List.of(timing, rule), Map.of(), 5);
+		assertThat(result.directEvidenceFound()).isTrue();
+		assertThat(result.chunks()).first().isEqualTo(rule);
+	}
+
+	@Test
 	void securityReviewScopeCanBeOwnedByTheOperativeActorAndNumberedRuleRatherThanATargetHeading() {
 		String rule = "제7조(검토 기관) ① 국가정보원장은 각급기관의 장이 추진하는 다음 각 호에 해당하는 "
 			+ "정보화사업에 대하여 보안성 검토를 실시한다. 1. 국가안보상 중요한 정보통신망 구축 "
