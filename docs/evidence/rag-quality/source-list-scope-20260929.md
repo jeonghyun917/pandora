@@ -1,5 +1,9 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-11-11 운영 원문·DB·벡터 읽기복사본 기반 실제격리64119/b73f3f PASS1/f0/e0/skip0(136.2s): 기존65청크→새PDF176청크(검토7단위) register/stage/create/validate/prepare/승격/보존원본복귀, 구·신 captured 소비자 분리, 원본행·기존64개1536차원벡터 불변. 기준본27cd7440d9810964f305129820a2faf3303fa316df903980728cac27fa4912b9. 새임베딩만 합성, 외부AI·운영쓰기없음. Q읽기복사 a28647 f343087e943de3993c36ee177cdde74182224ba96a3506a3c7cc0fa3b7bbb896, 현재 공식PDF 직접확인554aec 1255400bytes/SHA2641449f2ce05d6871d733a5a4a9e210d996b9153a9466a74edc73a386502945 동일. 현재게시바이트 일치이지 일반법제도 제재/기관범위 확장 근거 아님.
+
+- 2026-11-11 관리workflow4083fcc1fd014d5761cc23d38cfc723580db9734 push1ebb65→공식stopf83bdd/구supervisor종료19c40a→deploy15617/ec2a22 KEEPALIVE PID105032/runtime1e9c5aae-391f-4bd3-9cea-ea3c70237560. 건강060cd6 root200/새관리경로비인증401/DB=Q211658·84248/qreadytrue/qfail0. Atlas35048/sharedQ8976·중지예약불변, mutationflags기본false 유지.
+
 - 2026-11-11 서버 승인 PDF 관리 경로: 독립 구성 manifest SHA/제품SHA/절대원문경로만 입력권위, 요청은 기존ID/예상manifest·revision만 선택. 전역+PDF 두 기본false gate 및 기존ADMIN/CSRF/Origin 유지. 실제격리DB/Q45072/7b8ef7 6/f0/e0/skip0, API집중79425/f34015 5PASS, 전체50452/2b83f4 2083/f0/e0/skip83; 범위리뷰 C/I없음. stage3003/05e03c JAR51bba38cb3f8ea2516d84fd828156455946a2b5bbd37d1f0f29b2250786f4337. 운영원본469f56 HWPX1896345bytes/SHA3184c8a7328f8dea0a33476c36dce3edd19ed5b142cd400be66c61061a3a080c 일치; 단일READ ONLY 복제6974a9 snapshot90a8216a6e9b9dd926e70b40e9ac7c5090043d80cdc8b7ee738e30a8c353d4d2(문서1/청크65/embedding65/keywordstate64/term11116). 운영쓰기는없음. [관리 계약](../../reviewed-pdf-workflow.md).
 
 - 2026-11-11 4dea0c867b236eb29f6308165a6e6b2072ce5426 push/e5ee53→공식stop373911/구supervisor종료194a91→deploy8855/974675 KEEPALIVE PID65920/runtime59e05fdf-ecc3-4109-993e-f1735530e562. 건강d4cfcc root200/DB=Q211658·84248/qreadytrue/qfail0, Atlas35048/sharedQ8976·중지예약보존.
