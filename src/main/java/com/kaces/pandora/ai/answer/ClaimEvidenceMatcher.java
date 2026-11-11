@@ -25,6 +25,10 @@ public class ClaimEvidenceMatcher {
 	private static final Pattern LITERAL_NOMINAL_MEMBERSHIP = Pattern.compile(
 		"^.+?사업(?:이|가|도)(.+?)에해당(?:하면|하는경우에는)(적용대상사업|대상사업)(?:입니다|이다)$"
 	);
+	private static final Pattern LEADING_PLAIN_ARTICLE_HEADING =
+		Pattern.compile("^제\\s*\\d+\\s*조(?:의\\s*\\d+)?\\s*\\(([가-힣 ]{2,30})\\)\\s+(.+)$", Pattern.DOTALL);
+	private static final Pattern TERMINAL_PERMISSION_PREDICATE =
+		Pattern.compile("(?:^|\\s)([가-힣]{2,30})[을를]\\s+([가-힣]{2,12})할\\s+수\\s+있다\\.$");
 	private static final Pattern COORDINATED_BUSINESS_ISSUER_CONDITION = Pattern.compile(
 		"^([\\p{IsHangul}a-z0-9\\s]{2,80}사업)(?:이|가)\\s+"
 			+ "([\\p{IsHangul}a-z0-9]{2,40}사업)에\\s+해당하고\\s+발주기관이\\s+"
@@ -584,6 +588,10 @@ public class ClaimEvidenceMatcher {
 			String relationContext = sentence.sourceLinkedDuty() == null ? sentence.anchorContext()
 				: sentence.sourceLinkedDuty().mainLiteral();
 			Relation relation = relation(claimSemantics, evidenceSemantics, relationContext);
+			if (relation == Relation.NOT_ENTAILED && sentence.sourceLinkedDuty() == null
+				&& !sentence.scopedListItem() && hasExactBodyUnderRedundantHeading(claim, sentence.text())) {
+				relation = relation(claimSemantics, ClaimSemantics.from(claim), relationContext);
+			}
 			double score = overlap + (coverage * 3.0d)
 				+ (relation == Relation.COMPATIBLE ? 1.5d : 0.0d)
 				+ exactPhraseBonus(claim, sentence.text());
@@ -611,6 +619,24 @@ public class ClaimEvidenceMatcher {
 			return best(contradicted).toMatch(Status.CONTRADICTED);
 		}
 		return Match.insufficient();
+	}
+
+	private static boolean hasExactBodyUnderRedundantHeading(String claim, String source) {
+		var heading = LEADING_PLAIN_ARTICLE_HEADING.matcher(source);
+		if (!heading.matches() || !heading.group(2).equals(claim)) {
+			return false;
+		}
+		// Require the entire heading to repeat the operative object/action, not a condition
+		// or an actor. The printed source stays intact for citation and conflict handling.
+		var action = TERMINAL_PERMISSION_PREDICATE.matcher(claim);
+		if (!action.find()) {
+			return false;
+		}
+		String title = heading.group(1).replace(" ", "");
+		String verb = action.group(2);
+		String object = action.group(1);
+		return title.equals(object + verb)
+			|| (title.equals("계약" + verb) && object.equals("수의계약"));
 	}
 
 	private java.util.Optional<Candidate> aggregateRequiredItemEnumerationCandidate(
