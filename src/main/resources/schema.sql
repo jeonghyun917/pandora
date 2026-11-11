@@ -603,6 +603,22 @@ CREATE TABLE IF NOT EXISTS rag_recovery_generations (
     CONSTRAINT chk_rag_recovery_state CHECK (state IN ('PENDING','VALIDATED','INDEX_READY','ACTIVE','RETIRED','FAILED','STALE'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS rag_pdf_generation_sources (
+    generation_id CHAR(36) NOT NULL,
+    draft_id CHAR(36) NOT NULL,
+    source_hash CHAR(64) NOT NULL,
+    review_hash CHAR(64) NOT NULL,
+    manifest CHAR(64) NOT NULL,
+    prepared_manifest CHAR(64) NOT NULL,
+    prepared_json MEDIUMTEXT NOT NULL,
+    product_sha CHAR(40) NOT NULL,
+    metadata_hash CHAR(64) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (generation_id),
+    CONSTRAINT fk_rag_pdf_generation FOREIGN KEY (generation_id) REFERENCES rag_recovery_generations(generation_id),
+    CONSTRAINT fk_rag_pdf_draft FOREIGN KEY (draft_id) REFERENCES rag_pdf_source_drafts(draft_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS rag_recovery_pointers (
     document_id BIGINT NOT NULL,
     revision BIGINT NOT NULL DEFAULT 0,

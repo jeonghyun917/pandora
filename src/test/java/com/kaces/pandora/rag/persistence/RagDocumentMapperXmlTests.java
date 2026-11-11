@@ -232,7 +232,7 @@ class RagDocumentMapperXmlTests {
 		var params = Map.of("documentTypes", List.of("official_doc"),
 			"keywords", List.of("설치"), "limit", 40,
 			"routing", Map.of("documents", Map.of(7L, Map.of("activeGeneration", "active")),
-				"replacedDocumentIds", List.of(7L), "lexicalNamespace", "captured"));
+				"replacedDocumentIds", List.of(7L), "lexicalNamespace", "captured", "pdfSources", Map.of()));
 		String sql = normalizedSql(statement, params);
 		assertThat(statement.getTimeout()).isEqualTo(3);
 		assertThat(sql).contains("FROM rag_document_chunks prepared_chunk CROSS JOIN",

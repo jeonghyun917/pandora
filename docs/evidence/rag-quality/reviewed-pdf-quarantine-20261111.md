@@ -1,5 +1,7 @@
 # Reviewed PDF quarantine and deterministic preparation
 
+Latest partial Task3 verification: post-fix full66412/565bc3 exit0, 2073/f0/e0/skip81; actual isolated DB92933/5f5d64 exit0 separately. Staged JAR5419d08f722467f0fdbb9c74fe8f96a7d1b35d644cd1d4b3a8050242bc1a9733; official DryRun d6f530 passed. Source-aware original serving, readiness, activation and rollback remain unfinished. No live source update or penalty was executed.
+
 Base: dbb1e8a7355c7a3910ee0706768168e5be586dcb. This checkpoint is not source activation, INDEX_READY, penalty eligibility or an answer-quality PASS.
 
 ## Implemented boundary
@@ -33,6 +35,22 @@ Bounded PDF bytes are stored in the quarantine transaction rather than a separat
 Dense PDF batches can fail closed at the worker output limit. No fallback drops text or raises safety limits. Review coordinates are normalized-extraction line ordinals on physical pages, not native PDF tags or glyph geometry.
 
 ## Remaining before real source replacement
+
+### Task 3 partial foundation (working tree after 1ecc927)
+
+An immutable `RecoveryPdfSource` is captured in the routing transaction and contributes to cache identity. Routed proof/title/body/context queries project the captured source hash/title/URL, not the preserved original's metadata. Unproven issuer/date/path values are cleared. The reader rejects a replacement hash without a published binding and validates generation, draft, source, product, baseline, manifest and metadata receipt together. Old captured snapshots retain the original metadata.
+
+`RagPdfGenerationStore` separately persists fully regenerated reviewed chunks, complete preparation JSON (including multipage line positions) and their immutable source binding in one SERIALIZABLE transaction. It requires existing preserved-baseline routing, writes only inactive chunks and a PENDING generation, and checks exact reuse rather than overwriting. This class is deliberately not a bean or endpoint. No embeddings, readiness receipt, pointer switch or serving authority is created.
+
+Focused routing tests: missing wiring RED6a2720 → GREENd26299, 9/f0/e0. Actual owned DB source-projection RED34d8ff → GREENae9344; binding reader REDd76da5 → GREEN49409a; new persistence API REDa88bc3 → GREENfcebde. Expanded locator-tamper and real SQL-trigger rollback controls passed7479d5. Independent scoped review found the filtered-candidate query could hide wrong-document extra membership: actual DB RED42b421 reproduced silent reuse; complete membership-count verification now rejects it, GREEN5f5d64/92933 exit0 (including real SQL-trigger rollback). The owned DB stopped normally. Stable full backend run96862 is in progress; this is not a full-suite PASS claim.
+
+Initial full96862/a49253 completed with 2073/f0/e1/skip81: the existing SQL test's partial routing Map lacked the newly required `pdfSources`. The fixture now supplies an empty map; the nonnull production invariant was not weakened. Final focus50423/e2e09f passed20/f0/e0; post-fix full66412 is running. Official staged package98131/c611f9 passed, JAR SHA256 `5419d08f722467f0fdbb9c74fe8f96a7d1b35d644cd1d4b3a8050242bc1a9733`. Production code is unchanged since this package; the subsequent change is test fixture data only. Official deployment DryRun d6f530 passed with no8080 listener.
+
+Approved-host official statusbad2b7 confirmed8080/6333 absent and Atlas18080PID108368. After an additional no-process/no-listener guard, official start-qdrant.cmd55686f started Qdrant; read-only healthd6faa1 confirms6333PID8976, law_chunks green211658 and rag_chunks_v4 green84248. Atlas remains108368. No Qdrant process was stopped and no index was rewritten.
+
+The first active-original membership mutation was blocked by the existing global unique-chunk constraint; the corrected regression uses an otherwise unowned foreign-document chunk, which does not alter the protected document baseline. A one-off MariaDB initialization failed with Windows sharing error32 before starting a server; approved-host checks confirmed no23306 listener and exclusive access to that owned ini before a fresh fixture. No execution policy was changed.
+
+Still required: source-owned original/download/materialization and detail metadata, internal index-router wiring, full source-aware vector/lexical/corpus readiness, atomic promotion and rollback, actual isolated Qdrant verification and stable delivery. The old same-original index/promotion guards remain unchanged, so a PENDING PDF generation cannot be passed through them as if it were the preserved original.
 
 Do not bypass the old recovery validator. Existing recovery index preparation explicitly compares the generation source hash to the stored original, and existing proof lookup reads source hash from the original document row. A source-aware generation metadata/original lookup, isolated vector/lexical/corpus preparation, atomic source transition and rollback must be implemented together before activation. Current reviewed plans cannot be passed to the old same-original promotion path.
 

@@ -13,6 +13,11 @@ public class RagRecoveryRoutingService {
     private final SemanticLexicalMapper lexical;
     private final TransactionTemplate transaction;
     private com.kaces.pandora.lawdata.version.SourceVersionRoutingReader sourceRouting;
+    private RagPdfSourceRoutingReader pdfSources;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void configurePdfSources(RagPdfSourceRoutingReader reader) {
+        pdfSources=Objects.requireNonNull(reader);
+    }
     @org.springframework.beans.factory.annotation.Autowired
     public void configureSourceVersionRouting(com.kaces.pandora.lawdata.version.SourceVersionRoutingReader reader) {
         sourceRouting=java.util.Objects.requireNonNull(reader);
@@ -82,6 +87,7 @@ public class RagRecoveryRoutingService {
             }
             return new RecoveryRoutingSnapshot(epoch.revision(),documents,assets,baselineIds,lexicalRevision,
                 epoch.revision()==0 ? null : "recovery_"+epoch.lexicalGeneration(),
-                sourceRouting==null?com.kaces.pandora.lawdata.version.SourceVersionRoutingSnapshot.empty():sourceRouting.captureInTransaction());
+                sourceRouting==null?com.kaces.pandora.lawdata.version.SourceVersionRoutingSnapshot.empty():sourceRouting.captureInTransaction(),
+                pdfSources==null?Map.of():pdfSources.capture(documents,baselineIds));
     }
 }

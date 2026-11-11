@@ -7,7 +7,13 @@ import tools.jackson.databind.ObjectMapper;
 /** Captured once by the server and passed explicitly to every retrieval path. */
 public record RecoveryRoutingSnapshot(long revision, Map<Long,RecoverySnapshot> documents,
         Map<String,RecoveryAssets> assets, Set<String> baselineGenerations, String lexicalRevision, String lexicalNamespace,
-        com.kaces.pandora.lawdata.version.SourceVersionRoutingSnapshot sources) {
+        com.kaces.pandora.lawdata.version.SourceVersionRoutingSnapshot sources,
+        Map<String,RecoveryPdfSource> pdfSources) {
+    public RecoveryRoutingSnapshot(long revision,Map<Long,RecoverySnapshot> documents,Map<String,RecoveryAssets> assets,
+            Set<String> baselineGenerations,String lexicalRevision,String lexicalNamespace,
+            com.kaces.pandora.lawdata.version.SourceVersionRoutingSnapshot sources) {
+        this(revision,documents,assets,baselineGenerations,lexicalRevision,lexicalNamespace,sources,Map.of());
+    }
     public RecoveryRoutingSnapshot(long revision,Map<Long,RecoverySnapshot> documents,Map<String,RecoveryAssets> assets,
             Set<String> baselineGenerations,String lexicalRevision,String lexicalNamespace) {
         this(revision,documents,assets,baselineGenerations,lexicalRevision,lexicalNamespace,
@@ -15,6 +21,7 @@ public record RecoveryRoutingSnapshot(long revision, Map<Long,RecoverySnapshot> 
     }
     public RecoveryRoutingSnapshot {
         documents=Map.copyOf(documents); assets=Map.copyOf(assets); baselineGenerations=Set.copyOf(baselineGenerations);
+        pdfSources=Map.copyOf(pdfSources);
         if(revision<0 || documents.size()>10000 || (lexicalRevision!=null && !lexicalRevision.matches("[0-9a-f]{64}"))) {
             throw new IllegalArgumentException("Bounded routing revision required");
         }
@@ -45,6 +52,17 @@ public record RecoveryRoutingSnapshot(long revision, Map<Long,RecoverySnapshot> 
             }
         }
         if(!active.containsAll(assets.keySet()) || !active.containsAll(baselineGenerations))throw new IllegalStateException("Unbound routing assets");
+        for(var entry:pdfSources.entrySet()) {
+            var source=entry.getValue();
+            var pointer=documents.get(source.documentId());
+            var receipt=assets.get(source.generationId());
+            if(!entry.getKey().equals(source.generationId()) || pointer==null
+                    || baselineGenerations.contains(source.generationId())
+                    || !pointer.activeGeneration().equals(source.generationId())
+                    || !pointer.sourceHash().equals(source.sourceHash()) || receipt==null
+                    || !receipt.manifest().equals(source.manifest()))
+                throw new IllegalStateException("Replacement source is not bound to active captured assets");
+        }
     }
     public Set<Long> replacedDocumentIds() {
         var ids=new TreeSet<Long>();
@@ -55,6 +73,7 @@ public record RecoveryRoutingSnapshot(long revision, Map<Long,RecoverySnapshot> 
         var identity=new ArrayList<Object>(Arrays.asList(revision,new TreeMap<>(documents),new TreeMap<>(assets),
             new TreeSet<>(baselineGenerations),lexicalRevision,lexicalNamespace));
         if(sources.revision()>0)identity.add(sources.cacheIdentity());
+        if(!pdfSources.isEmpty())identity.add(new TreeMap<>(pdfSources));
         return LawHashUtils.sha256(new ObjectMapper().writeValueAsString(identity));
     }
 }

@@ -54,11 +54,33 @@
   <select id="findSourceProofChunksByIdsRouted" resultType="com.kaces.pandora.rag.document.RagSourceProofRow">
     <include refid="sourceProofChunksQuery"/>
   </select>
+  <!-- Captured replacement metadata is separate from the preserved original document row. -->
+  <sql id="capturedRagDocuments">
+    <choose>
+      <when test="routing != null and !routing.pdfSources.isEmpty()">
+        (
+          SELECT base.document_id,base.document_type,base.title,base.source_org,base.published_date,
+            base.source_url,base.file_path,base.file_hash,base.use_yn
+          FROM rag_documents base
+          WHERE base.document_id NOT IN
+          <foreach collection="routing.pdfSources" item="source" open="(" separator="," close=")">#{source.documentId}</foreach>
+          <foreach collection="routing.pdfSources" item="source">
+            UNION ALL
+            SELECT base.document_id,base.document_type,#{source.title} AS title,
+              NULL AS source_org,NULL AS published_date,#{source.sourceUrl} AS source_url,
+              NULL AS file_path,#{source.sourceHash} AS file_hash,base.use_yn
+            FROM rag_documents base WHERE base.document_id=#{source.documentId}
+          </foreach>
+        )
+      </when>
+      <otherwise>rag_documents</otherwise>
+    </choose>
+  </sql>
   <sql id="sourceProofChunksQuery">
     SELECT c.chunk_id AS chunkId, c.document_id AS documentId, c.chunk_version AS chunkVersion,
       c.page_no AS pageNo, c.chunk_text AS chunkText, doc.file_hash AS sourceFileHash,
       c.source_provenance AS sourceProvenance
-    FROM rag_document_chunks c JOIN rag_documents doc ON doc.document_id=c.document_id
+    FROM rag_document_chunks c JOIN <include refid="capturedRagDocuments"/> doc ON doc.document_id=c.document_id
     WHERE doc.use_yn='Y'
       AND c.quality_status IN ('PASS','REVIEW','CONTEXT_ONLY')
       AND <include refid="capturedChunkVisibility"/>
@@ -261,7 +283,7 @@
   <sql id="countChunkSearchQuery">
     SELECT COUNT(*)
     FROM rag_document_chunks c
-    JOIN rag_documents doc ON doc.document_id = c.document_id
+    JOIN <include refid="capturedRagDocuments"/> doc ON doc.document_id = c.document_id
     WHERE doc.document_type = #{documentType}
       AND doc.use_yn = 'Y'
       AND <include refid="capturedChunkVisibility"/>
@@ -308,7 +330,7 @@
       COALESCE(c.source_url, doc.source_url, doc.file_path) AS sourceUrl,
       c.sort_order AS sortOrder
     FROM rag_document_chunks c
-    JOIN rag_documents doc ON doc.document_id = c.document_id
+    JOIN <include refid="capturedRagDocuments"/> doc ON doc.document_id = c.document_id
     WHERE doc.document_type = #{documentType}
       AND doc.use_yn = 'Y'
       AND <include refid="capturedChunkVisibility"/>
@@ -683,7 +705,7 @@
       CAST(NULL AS CHAR) AS parentKey,
       c.chunk_version AS chunkVersion
     FROM rag_document_chunks c
-    JOIN rag_documents doc ON doc.document_id = c.document_id
+    JOIN <include refid="capturedRagDocuments"/> doc ON doc.document_id = c.document_id
     WHERE c.chunk_id IN
     <foreach collection="chunkIds" item="chunkId" open="(" separator="," close=")">
       #{chunkId}
@@ -728,7 +750,7 @@
       c.section_type AS sectionType,
       c.quality_status AS qualityStatus
     FROM rag_document_chunks c
-    JOIN rag_documents doc ON doc.document_id = c.document_id
+    JOIN <include refid="capturedRagDocuments"/> doc ON doc.document_id = c.document_id
     WHERE c.document_id = #{documentId}
       AND doc.use_yn = 'Y'
       AND <include refid="contextChunkQualityFilter"/>
@@ -774,7 +796,7 @@
       CAST(NULL AS CHAR) AS parentKey,
       c.chunk_version AS chunkVersion
     FROM rag_document_chunks c
-    JOIN rag_documents doc ON doc.document_id = c.document_id
+    JOIN <include refid="capturedRagDocuments"/> doc ON doc.document_id = c.document_id
     WHERE c.document_id = #{documentId}
       AND doc.use_yn = 'Y'
       AND <include refid="contextChunkQualityFilter"/>
@@ -929,7 +951,7 @@
       c.section_type AS sectionType,
       c.quality_status AS qualityStatus
     FROM rag_document_chunks c
-    JOIN rag_documents doc ON doc.document_id = c.document_id
+    JOIN <include refid="capturedRagDocuments"/> doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
       AND <include refid="capturedChunkVisibility"/>
       AND <include refid="searchableChunkQualityFilter"/>
@@ -1001,7 +1023,7 @@
       SELECT scored.chunk_id, scored.matched_term_count, scored.term_score
       FROM term_scores scored
       JOIN rag_document_chunks c ON c.chunk_id = scored.chunk_id
-      JOIN rag_documents doc ON doc.document_id = c.document_id
+      JOIN <include refid="capturedRagDocuments"/> doc ON doc.document_id = c.document_id
       WHERE doc.use_yn = 'Y'
         AND <include refid="capturedChunkVisibility"/>
         AND <include refid="searchableChunkQualityFilter"/>
@@ -1042,7 +1064,7 @@
       c.quality_status AS qualityStatus
     FROM matched_terms matched
     JOIN rag_document_chunks c ON c.chunk_id = matched.chunk_id
-    JOIN rag_documents doc ON doc.document_id = c.document_id
+    JOIN <include refid="capturedRagDocuments"/> doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
       AND <include refid="capturedChunkVisibility"/>
       AND <include refid="searchableChunkQualityFilter"/>
@@ -1094,7 +1116,7 @@
       c.section_type AS sectionType,
       c.quality_status AS qualityStatus
     FROM rag_document_chunks c
-    JOIN rag_documents doc ON doc.document_id = c.document_id
+    JOIN <include refid="capturedRagDocuments"/> doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
       AND <include refid="capturedChunkVisibility"/>
       AND <include refid="searchableChunkQualityFilter"/>
@@ -1158,7 +1180,7 @@
         doc.published_date,
         doc.source_url,
         doc.file_path
-      FROM rag_documents doc
+      FROM <include refid="capturedRagDocuments"/> doc
       WHERE doc.use_yn = 'Y'
         <if test="documentTypes != null and documentTypes.size() > 0">
           AND doc.document_type IN
@@ -1269,7 +1291,7 @@
           + (CASE WHEN doc.title LIKE CONCAT('%', #{keyword}, '%') THEN 3 ELSE 0 END)
         </foreach>
         ) AS title_score
-      FROM rag_documents doc
+      FROM <include refid="capturedRagDocuments"/> doc
       WHERE doc.use_yn = 'Y'
         <if test="documentTypes != null and documentTypes.size() > 0">
           AND doc.document_type IN
@@ -1352,7 +1374,7 @@
           + (CASE WHEN doc.title LIKE CONCAT('%', #{keyword}, '%') THEN 3 ELSE 0 END)
         </foreach>
         ) AS title_score
-      FROM rag_documents doc
+      FROM <include refid="capturedRagDocuments"/> doc
       WHERE doc.use_yn = 'Y'
         <if test="documentTypes != null and documentTypes.size() > 0">
           AND doc.document_type IN
@@ -1455,7 +1477,7 @@
       c.section_type AS sectionType,
       c.quality_status AS qualityStatus
     FROM rag_document_chunks c
-    JOIN rag_documents doc ON doc.document_id = c.document_id
+    JOIN <include refid="capturedRagDocuments"/> doc ON doc.document_id = c.document_id
     WHERE doc.use_yn = 'Y'
       AND <include refid="capturedChunkVisibility"/>
       AND <include refid="searchableChunkQualityFilter"/>
@@ -1553,7 +1575,7 @@
           </when>
           <otherwise>0</otherwise>
         </choose> AS provision_anchor_match
-      FROM rag_documents doc
+      FROM <include refid="capturedRagDocuments"/> doc
       JOIN rag_document_chunks c ON c.document_id = doc.document_id
       WHERE doc.use_yn = 'Y'
         AND <include refid="capturedChunkVisibility"/>
@@ -1644,7 +1666,7 @@
           <otherwise>0</otherwise>
         </choose> AS evidence_match_count
       FROM rag_document_chunks c
-      JOIN rag_documents doc ON doc.document_id = c.document_id
+      JOIN <include refid="capturedRagDocuments"/> doc ON doc.document_id = c.document_id
       WHERE doc.use_yn = 'Y'
         AND <include refid="capturedChunkVisibility"/>
         AND <include refid="searchableChunkQualityFilter"/>
@@ -1693,7 +1715,7 @@
       c.chunk_version AS chunkVersion
     FROM ranked_chunks ranked
     JOIN rag_document_chunks c ON c.chunk_id = ranked.chunk_id
-    JOIN rag_documents doc ON doc.document_id = ranked.document_id
+    JOIN <include refid="capturedRagDocuments"/> doc ON doc.document_id = ranked.document_id
     WHERE ranked.document_rank &lt;= #{perDocumentLimit}
     ORDER BY ranked.match_class, ranked.document_id, ranked.sort_order, ranked.chunk_id
     LIMIT #{limit}
