@@ -360,6 +360,26 @@ CREATE TABLE IF NOT EXISTS semantic_batch_job_chunks (
         ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Nonsearchable, insert-only replacement review journal. No serving or promotion references.
+CREATE TABLE IF NOT EXISTS rag_pdf_source_drafts (
+    draft_id CHAR(36) NOT NULL,
+    document_id BIGINT NOT NULL,
+    review_hash CHAR(64) NOT NULL,
+    source_hash CHAR(64) NOT NULL,
+    baseline_hash CHAR(64) NOT NULL,
+    product_sha CHAR(40) NOT NULL,
+    draft_json LONGTEXT NOT NULL,
+    replay_json LONGTEXT NOT NULL,
+    replay_hash CHAR(64) NOT NULL,
+    source_bytes MEDIUMBLOB NOT NULL,
+    state VARCHAR(20) NOT NULL DEFAULT 'STAGED',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (draft_id),
+    UNIQUE KEY uk_rag_pdf_review (review_hash),
+    KEY idx_rag_pdf_document (document_id),
+    CONSTRAINT chk_rag_pdf_draft_state CHECK (state IN ('STAGED'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS rag_documents (
     document_id BIGINT NOT NULL AUTO_INCREMENT COMMENT 'RAG uploaded document id',
     document_type VARCHAR(30) NOT NULL COMMENT 'official_doc, internal_doc, reference_doc',

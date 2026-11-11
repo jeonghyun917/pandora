@@ -6,6 +6,24 @@ import org.junit.jupiter.api.io.TempDir;
 
 class SourcePdfInspectionTests {
     @TempDir Path root;
+    @Test void normalizedDocumentReplayPreservesBlankPhysicalPagesAndSourceIdentity() throws Exception {
+        Path file=root.resolve("full-normalized.pdf");positioned(file,20);
+        try(var pdf=org.apache.pdfbox.Loader.loadPDF(file.toFile())) {
+            pdf.getPages().insertBefore(new org.apache.pdfbox.pdmodel.PDPage(),pdf.getPage(0));
+            pdf.addPage(new org.apache.pdfbox.pdmodel.PDPage());
+            pdf.save(root.resolve("with-blanks.pdf").toFile());
+        }
+        file=root.resolve("with-blanks.pdf");
+        String hash=SourceReferenceInspector.artifactHash(Files.readAllBytes(file));
+        var result=SourcePdfInspection.normalizedDocument(file,hash);
+        assertThat(result.pages()).extracting(com.kaces.pandora.rag.importing.ExtractedPage::pageNo).containsExactly(1,2,3);
+        assertThat(result.pages().get(0).text()).isEmpty();
+        assertThat(result.pages().get(1).text().strip()).isEqualTo("condition 90 score 4");
+        assertThat(result.pages().get(2).text()).isEmpty();
+        Path exact=file;
+        assertThatThrownBy(()->SourcePdfInspection.normalizedDocument(exact,"0".repeat(64)))
+            .isInstanceOf(IllegalStateException.class);
+    }
     @Test void reviewedLineWorkerBindsOriginalAndPhysicalCoordinates() throws Exception {
         Path file=root.resolve("reviewed.pdf");positioned(file,20);
         var hash=SourceReferenceInspector.artifactHash(Files.readAllBytes(file));

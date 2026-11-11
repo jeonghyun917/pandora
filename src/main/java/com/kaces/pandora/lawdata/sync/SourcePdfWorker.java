@@ -28,16 +28,32 @@ public final class SourcePdfWorker {
         boolean positions=args.length==2 && args[1].equals("positions");
         boolean paragraph=args.length==5 && args[1].equals("paragraph");
         boolean reviewed=args.length==6 && args[1].equals("reviewed-lines");
-        if(args.length!=1 && !positions && !paragraph && !reviewed)throw new IllegalArgumentException("Exact worker input/mode required");
+        boolean normalized=args.length==5 && args[1].equals("normalized-pages");
+        if(args.length!=1 && !positions && !paragraph && !reviewed && !normalized)throw new IllegalArgumentException("Exact worker input/mode required");
         Path file=Path.of(args[0]);
         if(!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS) || Files.size(file)>8*1024*1024)throw new IOException("Input bound rejected");
         byte[] bytes;
         try(var input=Files.newInputStream(file)) {bytes=input.readNBytes(8*1024*1024+1);}
         if(bytes.length<5 || bytes.length>8*1024*1024)throw new IOException("Input bound rejected");
-        if(reviewed && !hash(bytes).equals(args[2]))throw new IOException("Reviewed original changed");
+        if((reviewed || normalized) && !hash(bytes).equals(args[2]))throw new IOException("Reviewed original changed");
         try(var document=Loader.loadPDF(bytes)) {
             int pages=document.getNumberOfPages();
             if(document.isEncrypted() || pages<1 || pages>1000)throw new IOException("PDF native bounds rejected");
+            if(normalized) {
+                int first=Integer.parseInt(args[3]),last=Integer.parseInt(args[4]);
+                if(first<1 || last<first || last>pages || last-first>=8)throw new IOException("Normalized page interval rejected");
+                var out=new StringBuilder("PDF_NORMALIZED_PAGES_V1 ").append(args[2]).append(' ').append(first).append(' ').append(last);
+                var stripper=new PDFTextStripper();
+                for(int page=first;page<=last;page++) {
+                    String text=com.kaces.pandora.rag.importing.RagTextExtractor.normalizedPdfPage(document,stripper,page);
+                    if(text.length()>32_768 || text.codePoints().anyMatch(c->Character.isISOControl(c) && c!='\n'))
+                        throw new IOException("Normalized page bound rejected");
+                    out.append(' ').append(text.isEmpty()?"-":Base64.getEncoder().encodeToString(text.getBytes(StandardCharsets.UTF_8)));
+                    if(out.length()>=65_536)throw new IOException("Normalized page output bound rejected");
+                }
+                System.out.println(out);
+                return;
+            }
             if(reviewed) {
                 int page=Integer.parseInt(args[3]), first=Integer.parseInt(args[4]), last=Integer.parseInt(args[5]);
                 if(page<1 || page>pages || first<1 || last<first || last-first>=256)

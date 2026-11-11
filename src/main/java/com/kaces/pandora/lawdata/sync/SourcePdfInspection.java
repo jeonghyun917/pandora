@@ -74,6 +74,44 @@ public final class SourcePdfInspection {
     public static List<String> readReviewedLines(Path file,String hash,int page,int first,int last) {
         return new SourcePdfInspection().reviewedLines(file,hash,page,first,last);
     }
+    /** Offline complete-source replay; every batch is tied to the same original bytes. */
+    public static com.kaces.pandora.rag.importing.ExtractedDocument normalizedDocument(Path file,String hash) {
+        if(hash==null || !hash.matches("[0-9a-f]{64}"))throw new IllegalArgumentException("Exact original hash required");
+        var inspection=new SourcePdfInspection();
+        var identity=inspection.inspect(file);
+        if(!hash.equals(identity.artifactHash()))throw new IllegalStateException("Normalized source identity changed");
+        var pages=new ArrayList<com.kaces.pandora.rag.importing.ExtractedPage>();
+        int characters=0;
+        for(int first=1;first<=identity.pageCount();first+=8) {
+            int last=Math.min(identity.pageCount(),first+7);
+            var response=inspection.run(file,"normalized-pages",hash,Integer.toString(first),Integer.toString(last));
+            String prefix="PDF_NORMALIZED_PAGES_V1 "+hash+" "+first+" "+last+" ";
+            String output=new String(response.bytes(),StandardCharsets.US_ASCII).strip();
+            if(!output.startsWith(prefix))throw new IllegalStateException("Normalized page identity rejected");
+            String[] fields=output.substring(prefix.length()).split(" ",-1);
+            if(fields.length!=last-first+1)throw new IllegalStateException("Normalized page count rejected");
+            for(int offset=0;offset<fields.length;offset++) {
+                String text=decodePage(fields[offset]);
+                characters+=text.length();
+                if(characters>4_000_000)throw new IllegalStateException("Normalized document character bound exceeded");
+                pages.add(new com.kaces.pandora.rag.importing.ExtractedPage(first+offset,text));
+            }
+        }
+        return new com.kaces.pandora.rag.importing.ExtractedDocument(List.copyOf(pages));
+    }
+    private static String decodePage(String encoded) {
+        if("-".equals(encoded))return "";
+        if(encoded.length()>43_692 || !encoded.matches("[A-Za-z0-9+/]+={0,2}"))
+            throw new IllegalStateException("Normalized page encoding rejected");
+        try {
+            String text=StandardCharsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(Base64.getDecoder().decode(encoded))).toString();
+            if(text.length()>32_768 || text.codePoints().anyMatch(c->Character.isISOControl(c) && c!='\n'))
+                throw new IllegalStateException("Normalized page content rejected");
+            return text;
+        } catch(IllegalArgumentException | java.nio.charset.CharacterCodingException invalid) {
+            throw new IllegalStateException("Normalized page encoding rejected",invalid);
+        }
+    }
     private WorkerOutput run(Path file,String... mode) {
         requireReviewedEnvironment(System.getenv());
         if(!WORKERS.tryAcquire())throw new IllegalStateException("PDF inspection capacity unavailable");
