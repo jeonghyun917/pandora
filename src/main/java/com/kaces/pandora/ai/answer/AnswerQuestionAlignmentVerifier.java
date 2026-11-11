@@ -794,6 +794,14 @@ public class AnswerQuestionAlignmentVerifier {
 			List<List<String>> groups = new ArrayList<>();
 			for (int index = 0; index < tokens.length; index++) {
 				String token = normalize(tokens[index]);
+				// A separated nominal condition is a premise, not a requested conclusion.
+				if (index >= 2 && "시".equals(token) && "미준수".equals(normalize(tokens[index - 1]))) {
+					String object = normalize(tokens[index - 2]);
+					if (object.length() >= 2) {
+						groups.add(List.of(object, "미준수시"));
+					}
+					continue;
+				}
 				if (!isConditionTerm(token)) {
 					continue;
 				}

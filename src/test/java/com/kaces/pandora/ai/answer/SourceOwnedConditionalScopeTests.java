@@ -108,6 +108,22 @@ class SourceOwnedConditionalScopeTests {
         var result=new AnswerQuestionAlignmentVerifier().verify("디지털서비스 사업 법령을 준수하지 않으면 어떤 조치가 있나요?",verified,grounds);
         assertThat(result.aligned()).as(result.toString()).isTrue();
     }
+    @Test void compactNoncomplianceConditionStillRequiresTheSourceOwnedTrigger() {
+        var grounds=List.of(ground(SOURCE));
+        String claim=CLAIM.replace("정보화시스템 사업", "디지털서비스 사업");
+        var verifier=new AnswerQuestionAlignmentVerifier();
+        var claimVerifier=new ClaimVerifier();
+        String question="디지털서비스 사업 법령 미준수 시 어떤 조치가 있나요?";
+        var verified=claimVerifier.verifyDetailed(claim,grounds);
+        assertThat(verifier.verify(question,verified,grounds).aligned()).isTrue();
+        for(String incompatible:List.of("디지털서비스 사업 법령 준수 시 어떤 조치가 있나요?",
+            "디지털서비스 사업 법령 미준수 시 개인정보를 공개하면 어떤 조치가 있나요?",
+            "디지털서비스 사업 법령 미준수 시 어떤 운영기준을 적용하나요?")) {
+            assertThat(verifier.verify(incompatible,verified,grounds).aligned()).as(incompatible).isFalse();
+        }
+        var missingTrigger=claimVerifier.verifyDetailed(claim.replace("제1항에 따른 확인결과 ",""),grounds);
+        assertThat(verifier.verify(question,missingTrigger,grounds).aligned()).isFalse();
+    }
     @Test void finalAlignmentCannotDiscardAnotherConditionOrUseAContractBreach() {
         var grounds=List.of(ground(SOURCE));var verified=new ClaimVerifier().verifyDetailed(CLAIM,grounds);
         for(String question:List.of("정보화시스템 법제도 준수안하면 개인정보를 공개하면 어떤 불이익?", "정보화시스템 법제도 준수하면 어떤 불이익?"))
