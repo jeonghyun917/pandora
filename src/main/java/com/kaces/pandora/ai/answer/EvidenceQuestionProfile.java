@@ -13,7 +13,8 @@ record EvidenceQuestionProfile(
 	List<List<String>> intentGroups,
 	List<List<String>> directEvidenceGroups,
 	Set<String> preferredSectionTypes,
-	boolean definitionQuestion
+	boolean definitionQuestion,
+	boolean securityReviewResultAction
 ) {
 
 	EvidenceQuestionProfile {

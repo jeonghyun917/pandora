@@ -487,6 +487,9 @@ public class EvidenceJudge {
 		String chunkHeading
 	) {
 		String normalizedQuestion = profile.normalizedQuestion();
+		if (profile.securityReviewResultAction() && !hasBoundSecurityReviewResultAction(chunk.chunkText())) {
+			return false;
+		}
 		if (isPenaltyConsequenceQuestion(profile)
 			&& isSecurityContractConsequenceOutsideQuestion(profile.normalizedQuestion(), body, documentTitle, chunkHeading)) {
 			return false;
@@ -1482,9 +1485,19 @@ public class EvidenceJudge {
 			score -= 1.8;
 		}
 
+		if (directEvidence && profile.securityReviewResultAction()
+			&& !hasBoundSecurityReviewResultAction(chunk.chunkText())) {
+			directEvidence = false;
+		}
 		return new JudgedChunk(chunk, score, topicAligned, relevant, directEvidence, directEvidenceMatches, bodyDirectEvidenceMatches);
 	}
 
+	private static final java.util.regex.Pattern SECURITY_REVIEW_RESULT_ACTION = java.util.regex.Pattern.compile(
+		"보안성검토결과를통보받(?:은경우|으면)[,，]?(?:그|검토)?결과를반영하여");
+
+	private static boolean hasBoundSecurityReviewResultAction(String rawBody) {
+		return SECURITY_REVIEW_RESULT_ACTION.matcher(String.valueOf(rawBody).replaceAll("\\s+", "")).find();
+	}
 	private List<JudgedChunk> preferCommitteeExpansion(EvidenceQuestionProfile profile, List<JudgedChunk> chunks) {
 		List<String> preferredTerms = profile.preferredCommitteeTerms();
 		if (preferredTerms.isEmpty() || chunks.size() <= 1) {
@@ -3357,7 +3370,8 @@ public class EvidenceJudge {
 			legacy.intentGroups(),
 			legacy.directEvidenceGroups(),
 			legacy.preferredSectionTypes(),
-			legacy.definitionQuestion()
+			legacy.definitionQuestion(),
+			legacy.securityReviewResultAction()
 		);
 	}
 
@@ -3369,14 +3383,17 @@ public class EvidenceJudge {
 		List<List<String>> intentGroups,
 		List<List<String>> directEvidenceGroups,
 		Set<String> preferredSectionTypes,
-		boolean definitionQuestion
+		boolean definitionQuestion,
+		boolean securityReviewResultAction
 	) {
 
 		static QuestionProfile from(String question) {
 			String normalized = normalize(question);
 			QuestionIntentProfile extracted = QuestionIntentProfile.from(question);
 			List<String> terms = extracted.terms().isEmpty() ? queryTerms(question) : extracted.terms();
-			boolean definitionQuestion = isDefinitionQuestion(normalized) || isAiCommitteeFunctionQuestion(normalized);
+			boolean securityReviewResultAction = extracted.matchedPolicyIds().contains("security_review_result_action");
+			boolean definitionQuestion = (isDefinitionQuestion(normalized) && !securityReviewResultAction)
+				|| isAiCommitteeFunctionQuestion(normalized);
 			List<String> requiredTerms = requiredExactTerms(question);
 			if (definitionQuestion && hasNonAcronymConceptTerm(terms, requiredTerms)) {
 				requiredTerms = List.of();
@@ -3419,7 +3436,8 @@ public class EvidenceJudge {
 				intentGroups,
 				directEvidenceGroups,
 				extracted.preferredSectionTypes(),
-				definitionQuestion
+				definitionQuestion,
+				securityReviewResultAction
 			);
 		}
 

@@ -923,6 +923,24 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void distinguishesPostNoticeActionFromSecurityReviewApplicability() {
+		var scope = chunk(854L, "official_doc", "공공 사이버보안 기준", "보안성 검토 대상",
+			"국가정보원 보안성 검토 대상 사업 및 시기: 정보통신망 또는 정보시스템 구축 사업이 해당한다.");
+		var action = chunk(855L, "official_doc", "공공 사이버보안 기준", "검토결과 조치",
+			"운영기관의 장은 보안성 검토결과를 통보받은 경우 그 결과를 반영하여 접근통제 대책을 보완하여야 한다.");
+		String question = "기관의 장은 보안성 검토 결과를 받은 뒤 해당 사업에 무엇을 반영합니까?";
+		assertThat(judge.judge(question, List.of(scope), Map.of(), 5).directEvidenceFound()).isFalse();
+		var unbound = chunk(856L, "official_doc", "공공 사이버보안 기준", "검토결과 조치",
+			"보안성 검토결과를 통보받은 경우 접수대장에 등록한다. 사업 예산은 비용 검토결과를 반영하여 수정한다.");
+		assertThat(judge.judge(question, List.of(unbound), Map.of(), 5).directEvidenceFound()).isFalse();
+		var result = judge.judge(question, List.of(scope, action), Map.of(), 5);
+		assertThat(result.directEvidenceFound()).isTrue();
+		assertThat(result.chunks()).first().isEqualTo(action);
+		assertThat(judge.judge("보안성 검토 대상 시스템은 무엇입니까?", List.of(scope), Map.of(), 5)
+			.directEvidenceFound()).isTrue();
+	}
+
+	@Test
 	void securityReviewScopeCanBeOwnedByTheOperativeActorAndNumberedRuleRatherThanATargetHeading() {
 		String rule = "제7조(검토 기관) ① 국가정보원장은 각급기관의 장이 추진하는 다음 각 호에 해당하는 "
 			+ "정보화사업에 대하여 보안성 검토를 실시한다. 1. 국가안보상 중요한 정보통신망 구축 "
