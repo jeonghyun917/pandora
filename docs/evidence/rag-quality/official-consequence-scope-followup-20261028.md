@@ -43,3 +43,12 @@ Before attempting a source refresh, normal sync was inspected: `LawDocumentWrite
 5. Whole-document freshness repair additionally needs a reviewed inactive **source-version** staging/promotion/rollback workflow (or the ingest owner's equivalent proven path), preserving active search and DB-Q consistency. Do not commandeer18080 or directly update CURRENT/date/source rows.
 
 Product code and deployed artifact are unchanged. Do not rebuild/redeploy or repeat identical code tests for this documentation-only result. The current safe stopping condition is insufficient source applicability proof plus no proven non-disruptive cross-version refresh path, not missing broad user approval.
+## 2025-11 guide reused in the 2026-10 official notice
+
+[KOSA's 2026-10-02 public notice](https://www.sw.or.kr/site/sw/ex/board/View.do?bcIdx=66668&cbIdx=292&searchExt1=) republishes the MSIT/NIPA 2025-11 guide as attachment 2. The downloaded 83-page PDF is 22,784,297 bytes, SHA-256 `5e4d8b803d263310690a5b8e2ae1b625860dbc910aff2f95be0d4882df372411`. The image-only pages were inspected directly without OCR.
+
+- Printed p. 3 (PDF p. 7): the program scope is SW projects issued by the heads of covered public entities.
+- Printed p. 5 (PDF p. 9): when the review identifies noncompliance, the process sends an improvement-recommendation review opinion to the procuring body. For both notice routes, that body reviews whether to incorporate the recommendation; the procedure expressly allows nonacceptance with reasons. RFP revision follows acceptance, not every finding automatically.
+- Printed p. 6 (PDF p. 10): the KRW 100 million threshold applies to the separately described semiannual publication of results, not to the preceding definition of review scope.
+
+This supplies a dated procurement-to-recommendation process reference within public SW. It is not independent authority to compel acceptance or extend the process to every information-system project. No ingestion, oracle change, or evaluation run followed this source review.
