@@ -1778,6 +1778,11 @@ public class LawAiAnswerService {
 			displayContext.contextChunkIdsByKey()
 		);
         grounds=markAdministrativeBasisSupport(grounds,normalized.query(),matchedChunkByKey);
+        var linkedException = linkedPurchaseException(orderedChunks,orderedChunks,normalized.query());
+        if (linkedException != null && judgedEvidence.directEvidenceFound()) {
+            grounds = grounds.stream().map(ground -> ground.chunkId() == linkedException.chunkId()
+                && ground.target().equals(linkedException.target()) ? asRelatedSupport(ground) : ground).toList();
+        }
 		grounds = grounds.stream().map(ground -> {
 			var proof = "law".equals(ground.target()) ? commencementProofs.get(ground.chunkId()) : null;
 			return proof == null ? ground : ground.withOfficialCommencement(proof);
@@ -3822,6 +3827,7 @@ public class LawAiAnswerService {
 		List<LawSemanticChunkRow> finalSelected = forcedFiltered;
 		finalSelected=withAdministrativeSanctionBasisSupport(finalSelected,displayChunks,query,
 			true,MAX_ANSWER_CONTEXT_GROUNDS+1);
+		finalSelected=withLinkedPurchaseException(finalSelected,displayChunks,query,true,MAX_ANSWER_CONTEXT_GROUNDS+1);
 		if (!lexicalVariantProperties.authoritative() || finalSelected.isEmpty()) {
 			return finalSelected;
 		}
@@ -11610,9 +11616,58 @@ public class LawAiAnswerService {
     private List<LawSemanticChunkRow> selectDisplayEvidenceChunks(
         List<LawSemanticChunkRow> ranked,List<LawSemanticChunkRow> candidates,String query,
         boolean directEvidenceFound,int displayLimit) {
-        return withAdministrativeSanctionBasisSupport(
+        int limit = Math.min(DEFAULT_LIMIT+1,displayLimit+1);
+        var selected = withAdministrativeSanctionBasisSupport(
             evidenceCandidateDiversifier.diversify(ranked,displayLimit),candidates,query,
-            directEvidenceFound,Math.min(DEFAULT_LIMIT+1,displayLimit+1));
+            directEvidenceFound,limit);
+        return withLinkedPurchaseException(selected,candidates,query,directEvidenceFound,limit);
+    }
+
+    private List<LawSemanticChunkRow> withLinkedPurchaseException(List<LawSemanticChunkRow> selected,
+        List<LawSemanticChunkRow> candidates, String query, boolean direct, int limit) {
+        if (!direct || selected.isEmpty() || selected.size() >= limit || candidates == null) return selected;
+        var linked = linkedPurchaseException(selected,candidates,query);
+        if (linked == null || selected.stream().anyMatch(row -> row.chunkId() == linked.chunkId()
+            && row.target().equals(linked.target()))) return selected;
+        var result = new java.util.ArrayList<>(selected);
+        result.add(linked);
+        return List.copyOf(result);
+    }
+
+    private LawSemanticChunkRow linkedPurchaseException(List<LawSemanticChunkRow> selected,
+        List<LawSemanticChunkRow> candidates, String query) {
+        String normalized = normalizeForMatch(query);
+        if (!containsAny(normalized,"대상","범위","기준")
+            || containsAny(normalized,"제외","예외","등록","기한")) return null;
+        var profile = QuestionIntentProfile.from(query);
+        if (!profile.matchedPolicyIds().contains("commercial_direct_purchase_authority")) return null;
+        for (var scope : selected) {
+            if (!isCurrentRuleEvidence(scope,query) || profile.policySearchKeywords().stream()
+                .noneMatch(title -> normalizeForMatch(title).equals(normalizeForMatch(scope.title())))) continue;
+            var heading = java.util.regex.Pattern.compile("^제(\\d+)조상용소프트웨어직접구매대상")
+                .matcher(normalizeForMatch(scope.chunkText().split("①",2)[0]));
+            if (!heading.matches() || !scope.chunkText().matches("(?s).*①.+③.+")) continue;
+            String article = "제" + heading.group(1) + "조";
+            for (var row : candidates) {
+                if (!isCurrentRuleEvidence(row,query) || row.documentId() != scope.documentId()
+                    || !java.util.Objects.equals(row.sourceDate(),scope.sourceDate())
+                    || !java.util.Objects.equals(row.chunkVersion(),scope.chunkVersion())) continue;
+                String body = row.chunkText();
+                String[] parts = body.split("[.!?]",2);
+                String lead = normalizeForMatch(parts[0]);
+                if (lead.matches("제\\d+조상용소프트웨어직접구매의?제외국가기관등의장은"
+                    + article + "제1항에해당하는사업에서구매하는" + article
+                    + "제3항의직접구매대상상용소프트웨어가다음각호에해당하는경우직접구매대상에서제외할수있다")
+                    && parts.length == 2 && parts[1].stripLeading().matches("(?s)1[.)]\\s*\\S.*")) return row;
+            }
+        }
+        return null;
+    }
+
+    private boolean isCurrentRuleEvidence(LawSemanticChunkRow row,String query) {
+        return row != null && "admrul".equals(row.target()) && "CURRENT".equals(row.effectiveStatus())
+            && "PASS".equals(row.qualityStatus()) && hasUsefulText(row)
+            && !isForcedExcludedAnswerContextChunk(row,query);
     }
 
     private List<LawSemanticChunkRow> withAdministrativeSanctionBasisSupport(
@@ -11641,11 +11696,14 @@ public class LawAiAnswerService {
         return grounds.stream().map(g->{
             var original=matchedChunkByKey.get(scoreKey(g.target(),g.chunkId()));
             if(original==null || !isAdministrativeSanctionBasis(original.target(),original.effectiveStatus(),original.chunkText()))return g;
-            return
-            new LawAiAnswerGround(g.number(),g.chunkId(),g.documentId(),g.target(),g.title(),g.agencyName(),
+            return asRelatedSupport(g);}).toList();
+    }
+
+    private LawAiAnswerGround asRelatedSupport(LawAiAnswerGround g) {
+        return new LawAiAnswerGround(g.number(),g.chunkId(),g.documentId(),g.target(),g.title(),g.agencyName(),
                 g.categoryName(),g.sourceDate(),g.effectiveStatus(),g.chunkNo(),g.chunkTitle(),g.pageNo(),g.snippet(),
                 g.sourcePath(),g.sourceUrl(),g.score(),g.matchedChildText(),g.parentContextText(),g.contextChunkIds(),
-                g.contextPolicy(),"related_definition");}).toList();
+                g.contextPolicy(),"related_definition");
     }
 
 	private boolean isInformationSystemCompliancePenaltyEvidence(LawSemanticChunkRow chunk) {

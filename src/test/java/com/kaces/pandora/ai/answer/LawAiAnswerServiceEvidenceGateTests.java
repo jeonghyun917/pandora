@@ -910,6 +910,31 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void displayKeepsOnlySourceLinkedPurchaseExceptionAfterDirectScope() throws Exception {
+		String query = "상용소프트웨어 직접구매 대상 사업의 범위는 무엇인가요?";
+		String title = "소프트웨어사업 계약 및 관리감독에 관한 지침";
+		var scope = chunk(83100, 831, "admrul", title, "7",
+			"제7조(상용소프트웨어 직접구매 대상) ① 직접 구매 대상 사업은 일정 규모 이상인 소프트웨어사업으로 한다.③ 직접구매 대상 상용소프트웨어는 제1항에 따른 대상 사업에서 사용되는 상용소프트웨어로 한다.", null);
+		String body = "제8조(상용소프트웨어 직접구매의 제외) ① 국가기관등의 장은 제7조제1항에 해당하는 사업에서 구매하는 제7조제3항의 직접구매 대상 상용소프트웨어가 다음 각 호에 해당하는 경우 직접 구매 대상에서 제외할 수 있다.1. 기존 정보시스템과 통합이 불가능한 경우";
+		var linked = chunk(83101, 831, "admrul", title, "8", body, null);
+		var otherDocument = chunk(83102, 832, "admrul", title, "8", body, null);
+		var wrongReference = chunk(83103, 831, "admrul", title, "8",
+			body.replace("제7조제3항", "제9조제3항"), null);
+		var missingList = chunk(83104, 831, "admrul", title, "8", body.split("[.]",2)[0] + ".", null);
+		var service = service();
+		try {
+			var select = LawAiAnswerService.class.getDeclaredMethod("selectDisplayEvidenceChunks",
+				List.class, List.class, String.class, boolean.class, int.class);
+			select.setAccessible(true);
+			var candidates = List.of(otherDocument, wrongReference, missingList, linked);
+			assertThat(select.invoke(service, List.of(scope), candidates, query, true, 1))
+				.isEqualTo(List.of(scope, linked));
+			assertThat(select.invoke(service, List.of(scope), candidates, query, false, 1))
+				.isEqualTo(List.of(scope));
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void scopedProcedureSelectionPreservesLiteralClosedArticleAfterLongPrefix() throws Exception {
 		var scope = new LawSemanticChunkRow(13401L, 10L, "official_doc", "10", "공공소프트웨어사업 과업심의 가이드",
 			"", "", "20260101", "CURRENT", "5", "적용 대상 사업",
