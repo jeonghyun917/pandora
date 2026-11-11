@@ -591,6 +591,27 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void namedGeneralContractConditionsBoundInspectionLookupBeforeGenericScan() throws Exception {
+		var correction = chunk(88701L,"admrul","물품구매계약 일반조건","검사",
+			"계약담당공무원은 검사에서 계약이행내용이 계약에 위반됨을 발견한 때에는 필요한 시정조치를 하여야 한다.");
+		var broad = new org.springframework.dao.QueryTimeoutException("generic scan");
+		LawChunkMapper mapper = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
+			LawChunkMapper.class.getClassLoader(),new Class<?>[]{LawChunkMapper.class},(proxy,method,args) -> {
+				if (method.getName().equals("findSemanticChunksByText")) throw broad;
+				if (method.getName().equals("findSemanticChunksByDocumentTitleAndText")
+					&& ((List<?>)args[1]).contains("물품구매계약 일반조건")) return List.of(correction);
+				return List.of();
+			});
+		var service=service(mapper,null);
+		try {
+			var named=QuestionSearchPlan.from("물품구매계약 일반조건에 따른 완료 검사에서 계약 위반을 발견하면 어떤 시정조치를 합니까?");
+			assertThat(findLexicalChunks(service,named,List.of("admrul"),false)).containsExactly(correction);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void retrievesOperativeReviewClausesFromRequestPinnedSourceRatherThanGenericHeading() throws Exception {
 		var generation = "33333333-3333-4333-8333-333333333333";
 		var title = "국가 사이버보안 기본지침 (2026. 5. 1.)";

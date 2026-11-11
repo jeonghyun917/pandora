@@ -103,7 +103,7 @@ public class LawAiAnswerService {
 	private static final int RAG_LEXICAL_BATCH_SIZE = 3;
 	private static final int MAX_RAG_TEXT_BATCHES = 2;
 	private static final List<String> DOCUMENT_REFERENCE_NOUNS = List.of(
-		"가이드라인", "가이드북", "정책지침", "시행규칙", "시행세칙", "특별법",
+		"계약일반조건", "계약 일반조건", "가이드라인", "가이드북", "정책지침", "시행규칙", "시행세칙", "특별법",
 		"보고서", "사례집", "매뉴얼", "안내서", "가이드", "시행령", "법률",
 		"규칙", "기준", "고시", "지침", "예규", "규정", "훈령", "세칙", "문서", "자료", "법"
 	);
@@ -112,8 +112,9 @@ public class LawAiAnswerService {
 	);
 	private static final List<String> DOCUMENT_LOCATION_PARTICLES = List.of("에서는", "에서");
 	private static final List<String> DOCUMENT_TOPIC_PARTICLES = List.of("은", "는", "이", "가");
-	private static final Set<String> LEGAL_REFERENCE_NOUNS = Set.of("법", "특별법", "법률", "시행령", "시행규칙");
-	private static final List<String> LEGAL_AUTHORITY_PARTICLES = List.of("에 따라", "상");
+	private static final Set<String> LEGAL_REFERENCE_NOUNS = Set.of(
+		"법", "특별법", "법률", "시행령", "시행규칙", "계약일반조건", "계약 일반조건");
+	private static final List<String> LEGAL_AUTHORITY_PARTICLES = List.of("에 따라", "에 따른", "상");
 	private static final Pattern COORDINATED_TITLE_ACTIONS =
 		Pattern.compile("(?<![\\p{L}\\p{N}])(설치|구축)[ ·]운영(?![\\p{L}\\p{N}])");
 	private static final List<String> TRUSTED_DOCUMENT_AGENCY_PREFIXES = List.of(
@@ -7343,7 +7344,7 @@ public class LawAiAnswerService {
 				String marker = noun + particle;
 				for (int markerIndex = query.indexOf(marker); markerIndex >= 0; markerIndex = query.indexOf(marker, markerIndex + 1)) {
 					String title = cleanDocumentReferenceTitle(query.substring(0, markerIndex + noun.length()));
-					if (title.length() < 4) {
+					if (title.length() < 4 || (noun.endsWith("일반조건") && title.equals(noun))) {
 						continue;
 					}
 					int evidenceStart = markerIndex + marker.length();
