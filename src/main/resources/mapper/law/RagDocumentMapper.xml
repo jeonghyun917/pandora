@@ -748,7 +748,10 @@
       c.content_hash AS contentHash,
       c.parent_section_title AS parentSectionTitle,
       c.section_type AS sectionType,
-      c.quality_status AS qualityStatus
+      c.quality_status AS qualityStatus,
+      CAST(NULL AS CHAR) AS embeddingText,
+      CAST(NULL AS CHAR) AS parentKey,
+      c.chunk_version AS chunkVersion
     FROM rag_document_chunks c
     JOIN <include refid="capturedRagDocuments"/> doc ON doc.document_id = c.document_id
     WHERE c.document_id = #{documentId}

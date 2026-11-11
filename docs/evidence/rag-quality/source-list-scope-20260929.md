@@ -1,5 +1,9 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-11-11 보존 기준본 단독 등록: 비관리 원문의 바이트·전체멤버·검색가능행·embedding link·epoch/corpus를 Q 검사 전후 결속, 기준본/포인터/영수증 원자 저장만 하고 후보·활성청크·epoch 불변. 실제 격리 Q+MariaDB 누락포인트 제어 RED15028/dd76ee는 문서별 조회의 chunkVersion 미투영을 확인; 명시 버전 전달 후18276/523c3d 2/f0/e0/skip0. 기존 DB53408/1ba3f3 원본드리프트·SQL영수증 실패 원복PASS, 범위리뷰 C/I없음. 전체33086/50436c 2080/f0/e0/skip83, stage59814/82bd6b JARb2d1d2339a87aecb47dc5df43043c75744525ba73392bec06b1bc1647ec24789. 운영 읽기fc578d/0a423c 논리DBpandora:3306 문서16 구2023원문 65행(v4 PASS64/CONTEXT_ONLY1), INDEXED64/SUPERSEDED1, 복구포인터없음. 운영 등록·원문전환·평가 미실행.
+
+- 2026-11-11 b08d6ca64ddc6bd53af289a3e5fe16a5d4a7a042 push8c1df7 후 공식 status/stopace532→구supervisor종료b47fbb→deploy88250/0920db KEEPALIVE PID34616/runtime98231fd3-a46f-4297-8748-6722c164781d. 건강29b241 root200/DB=Q211658·84248/qreadytrue/qfail0, Atlas35048/sharedQ8976·중지예약보존.
+
 - 2026-11-11 검토 PDF 전용 원자 승격·롤백: 기존 동일 원문 CAS 유지, 새 포인터는 검토 PDF 해시, 복귀는 지정 원본 해시·실제 바이트 확인 후만 허용. 강제 SQL 오류 양방향에서 상태·포인터 원복, 승격 직전 보존 원본 드리프트 RED8705e1→실제 격리 MariaDB+Q63744/740f7c 10/f0/e0/skip0(합성 임베딩, 기준본 Q 영수증 모의); 실제 격리 Q namespace 독립 테스트2PASS/8705e1. 공식 Windows PowerShell start98303/3fe097, assert096568 PID69108(26333/26334, 공유8976과 분리, 정책변경 없음). 전체27626/f9d5fa 2079/f0/e0/skip82, stage92025/414f52 JARdf4eb19ea1252e5be2f77f0306e0a6052df17751a86848243309064d63c129c7. 운영 원문 쓰기·평가 없음. 다음은 보존 기준본 단독 등록, 신뢰된 staging/locators와 실제 승격 선행 게이트.
 
 - 2026-11-11 자산준비 ba5600722d69faf2c07190410671f2f2cf314493 commit/push ccaacc 원격동일. 공식 status dc9500 → stop e96607 → 구 supervisor 종료 dfbecf → deploy49091/8b52b2 KEEPALIVE PID33272/runtime2cdb509e-c0a6-4ca1-a166-11726fe66fe8. 건강734549 root200/DB=Q211658·84248/qreadytrue/qfail0. 해당 배포 전후 Atlas35048/Q8976 불변, 중지예약 조작 없음. 실제 원문 활성화 없음.

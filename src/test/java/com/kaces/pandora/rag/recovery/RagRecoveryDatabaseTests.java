@@ -134,6 +134,48 @@ class RagRecoveryDatabaseTests {
                     assertThatThrownBy(()->service.create(id,preview.previewHash(),"b".repeat(40))).isInstanceOf(RuntimeException.class);
                     assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM rag_document_chunks WHERE document_id=? AND use_yn='N'",Integer.class,id)).isZero();
                     assertThat(recovery.findPointer(id,false)).isNull();
+                    var manager=new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds);
+                    var q=mock(com.kaces.pandora.infra.qdrant.QdrantClient.class);
+                    var baselineService=new RagRecoveryBaselineService(documents,recovery,service,q,manager,
+                        new com.kaces.pandora.semantic.config.LawAiProperties(null,
+                            new com.kaces.pandora.semantic.config.LawAiProperties.Qdrant("http://127.0.0.1:1","unused-law","unused-rag",3),null,null));
+                    when(q.baselineRagFingerprint(anyList())).thenAnswer(call->{
+                        assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+                        assertThat((List<?>)call.getArgument(0)).hasSize(3);
+                        return "e".repeat(64);
+                    });
+                    assertThatThrownBy(()->baselineService.registerPreserved(id,hash,"0".repeat(64),"b".repeat(40)))
+                        .isInstanceOf(IllegalStateException.class);
+                    verifyNoInteractions(q);
+                    byte[] originalBytes=Files.readAllBytes(file);
+                    doAnswer(call->{Files.writeString(file,"Drift after Q inspection");return "e".repeat(64);})
+                        .when(q).baselineRagFingerprint(anyList());
+                    try {
+                        assertThatThrownBy(()->baselineService.registerPreserved(id,hash,preview.baselineHash(),"b".repeat(40)))
+                            .isInstanceOf(IllegalStateException.class).hasMessage("Preserved original bytes changed");
+                        assertThat(recovery.findPointer(id,false)).isNull();
+                    } finally {Files.write(file,originalBytes);}
+                    doReturn("e".repeat(64)).when(q).baselineRagFingerprint(anyList());
+                    String baselineTrigger="reject_baseline_receipt_"+id;
+                    jdbc.execute("CREATE TRIGGER "+baselineTrigger+" BEFORE INSERT ON rag_recovery_baseline_assets FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='baseline receipt atomicity control'");
+                    try {
+                        assertThatThrownBy(()->baselineService.registerPreserved(id,hash,preview.baselineHash(),"b".repeat(40)))
+                            .hasStackTraceContaining("baseline receipt atomicity control");
+                    } finally {jdbc.execute("DROP TRIGGER "+baselineTrigger);}
+                    assertThat(recovery.findPointer(id,false)).isNull();
+                    assertThat(recovery.findBaseline(id)).isNull();
+                    assertThat(recovery.listGenerations(id)).isEmpty();
+                    var epoch=recovery.findRoutingEpoch();
+                    var receipt=baselineService.registerPreserved(id,hash,preview.baselineHash(),"b".repeat(40));
+                    assertThat(receipt.chunkCount()).isEqualTo(3);
+                    assertThat(recovery.findPointer(id,false)).isEqualTo(new RecoverySnapshot(id,0,receipt.generationId(),hash,preview.baselineHash()));
+                    assertThat(jdbc.queryForList("SELECT chunk_id FROM rag_recovery_members WHERE generation_id=? ORDER BY chunk_id",Long.class,receipt.generationId()))
+                        .containsExactlyElementsOf(oldIds);
+                    assertThat(recovery.findRoutingEpoch()).isEqualTo(epoch);
+                    assertThat(recovery.listGenerations(id)).hasSize(1);
+                    assertThatThrownBy(()->baselineService.registerPreserved(id,hash,preview.baselineHash(),"b".repeat(40)))
+                        .isInstanceOf(IllegalStateException.class);
+                    assertThat(recovery.findBaselineAssets(id)).isEqualTo(receipt);
                 } else {
                     var writeGuard=new RagRecoveryWriteGuard(recovery,new org.springframework.jdbc.datasource.DataSourceTransactionManager(ds));
                     var entered=new java.util.concurrent.CountDownLatch(1);

@@ -56,8 +56,8 @@ public interface RagRecoveryMapper {
     List<Map<String,Object>> keywordTermSnapshot(@Param("documentId") long documentId);
     RecoveryGeneration findByPreviewHash(@Param("documentId") long documentId,@Param("previewHash") String previewHash);
     RecoverySnapshot findPointer(@Param("documentId") long documentId,@Param("lock") boolean lock);
-    void insertGeneration(@Param("generation") RecoveryGeneration generation);
-    void insertPointer(@Param("snapshot") RecoverySnapshot snapshot);
+    int insertGeneration(@Param("generation") RecoveryGeneration generation);
+    int insertPointer(@Param("snapshot") RecoverySnapshot snapshot);
     int insertMembership(@Param("generationId") String generationId,@Param("chunkId") long chunkId);
     void insertInactiveChunk(@Param("chunk") RagDocumentChunkRow chunk);
     long lastChunkId();
