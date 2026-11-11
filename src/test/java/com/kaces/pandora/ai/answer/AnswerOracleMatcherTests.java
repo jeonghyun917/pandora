@@ -8,6 +8,17 @@ import org.junit.jupiter.api.Test;
 class AnswerOracleMatcherTests {
 
 	@Test
+	void requiredTemporalPhraseCannotMatchWithoutItsDirection() {
+		var before = oracleCase(List.of(List.of("시행 전 법률")), List.of(), List.of());
+		assertThat(AnswerOracleMatcher.evaluate("이 법률은 현재 시행 중입니다.", before).passed()).isFalse();
+		assertThat(AnswerOracleMatcher.evaluate("시행 전인 법률입니다.", before).passed()).isTrue();
+
+		var after = oracleCase(List.of(List.of("제출 후 심사")), List.of(), List.of());
+		assertThat(AnswerOracleMatcher.evaluate("제출 전에 심사합니다.", after).passed()).isFalse();
+		assertThat(AnswerOracleMatcher.evaluate("제출 후에 심사합니다.", after).passed()).isTrue();
+	}
+
+	@Test
 	void requiresEveryPropositionAndConditionGroup() {
 		LawAiEvalRequest.EvalCase evalCase = oracleCase(
 			List.of(

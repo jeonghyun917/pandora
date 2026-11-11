@@ -15,6 +15,8 @@ final class ExplicitOracleTermMatcher {
 		"아닙", "아니", "않", "없", "불가"
 	);
 	private static final List<String> CLAUSE_SEPARATORS = List.of("하지만", "그러나", "반면", "다만");
+	private static final Pattern TEMPORAL_DIRECTION = Pattern.compile(
+		"([\\p{L}\\p{N}]{2,})\\s+([전후])(?=\\s|$)");
 	private static final List<String> LOCAL_POLARITY_BRIDGES = List.of(
 		"이라고는", "라고는", "이라고", "라는", "라고", "다고",
 		"한다면", "하면", "할경우", "하는경우", "한경우", "했을경우",
@@ -32,13 +34,36 @@ final class ExplicitOracleTermMatcher {
 	}
 
 	static boolean matches(String answer, String expectedExpression) {
+		return matches(answer, expectedExpression, false);
+	}
+
+	static boolean matchesRequired(String answer, String expectedExpression) {
+		return matches(answer, expectedExpression, true);
+	}
+
+	private static boolean matches(String answer, String expectedExpression, boolean requireTemporalDirection) {
 		if (answer == null || answer.isBlank() || expectedExpression == null || expectedExpression.isBlank()) {
 			return false;
 		}
 		return clauses(answer).stream()
 			.filter(clause -> EvaluationTermMatcher.matchesAnswerTerm(clause, expectedExpression))
 			.filter(clause -> hasMaterialCoverage(clause, expectedExpression))
+			.filter(clause -> !requireTemporalDirection || hasTemporalDirection(clause, expectedExpression))
 			.anyMatch(clause -> hasCompatiblePolarity(clause, expectedExpression));
+	}
+
+	private static boolean hasTemporalDirection(String clause, String expectedExpression) {
+		var directions = TEMPORAL_DIRECTION.matcher(expectedExpression);
+		while (directions.find()) {
+			// Retain the short direction word with its owner, not elsewhere in the clause.
+			String owner = Pattern.quote(directions.group(1));
+			String direction = directions.group(2);
+			if (!Pattern.compile("(?<![\\p{L}\\p{N}])" + owner + "\\s*" + direction
+				+ "(?:에는|에|인|의|까지)?(?![\\p{L}\\p{N}])").matcher(clause).find()) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private static boolean hasMaterialCoverage(String clause, String expectedExpression) {

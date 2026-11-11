@@ -39,7 +39,7 @@ final class AnswerOracleMatcher {
 		List<String> missing = new ArrayList<>();
 		for (List<String> group : groups) {
 			String matchingAlias = group.stream()
-				.filter(alias -> ExplicitOracleTermMatcher.matches(answer, alias))
+				.filter(alias -> ExplicitOracleTermMatcher.matchesRequired(answer, alias))
 				.findFirst()
 				.orElse(null);
 			if (matchingAlias == null) {
