@@ -332,8 +332,29 @@ class RagPdfDraftStoreDatabaseTests {
         org.mockito.Mockito.when(q.verifyRagRecoveryCollection(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),
             org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyList())).thenReturn("e".repeat(64));
         }
+        var trustedRow=db.queryForMap("SELECT q.draft_id,q.draft_json,q.source_bytes FROM rag_pdf_source_drafts q JOIN rag_pdf_generation_sources b ON b.draft_id=q.draft_id WHERE b.generation_id=?",id);
+        var trustedDraft=new tools.jackson.databind.ObjectMapper().readValue((String)trustedRow.get("draft_json"),ReviewedPdfDraft.class);
+        Path trustedSource=Files.createTempFile("pandora-workflow-source-",".pdf"),trustedManifest=Files.createTempFile("pandora-workflow-review-",".json");
+        Files.write(trustedSource,(byte[])trustedRow.get("source_bytes"));
+        String inputJson=new tools.jackson.databind.ObjectMapper().writeValueAsString(new RagPdfTrustedInput.Input(trustedDraft,trustedSource.toString()));
+        Files.writeString(trustedManifest,inputJson);
         try {
-            var assets=preparer.prepareReviewedPdf(id);
+            var baseline=org.mockito.Mockito.mock(RagRecoveryBaselineService.class);
+            org.mockito.Mockito.when(baseline.verify(generation.documentId())).thenReturn(new RecoveryBaselineAssets(
+                    generation.documentId(),preserved.activeGeneration(),preserved.baselineHash(),"unused-rag",
+                    properties.openai().embeddingModel(),"a".repeat(64),1));
+            org.mockito.Mockito.doAnswer(call->{candidates.requirePreservedSource(call.getArgument(0),call.getArgument(1));return null;})
+                    .when(baseline).requirePreservedSource(org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.anyString());
+            var promoter=new RagRecoveryPromotionService(preparer,recovery,baseline,manager);
+            var rollback=new RagRecoveryRollbackService(recovery,documents,routing,baseline,lexical,index,manager);
+            var workflow=new RagPdfWorkflowService(db,manager,documents,recovery,candidates,baseline,preparer,promoter,rollback,
+                    generation.productSha(),true,true,trustedManifest.toString(),com.kaces.pandora.common.text.LawHashUtils.sha256(inputJson));
+            String draftId=(String)trustedRow.get("draft_id");
+            assertThat(workflow.review().reviewHash()).isEqualTo(trustedDraft.reviewHash());
+            assertThat(workflow.stage().id()).isEqualTo(draftId);
+            assertThat(workflow.inspect(draftId).chunks()).isEqualTo(rows.size());
+            assertThatThrownBy(()->workflow.prepare(preserved.activeGeneration())).isInstanceOf(IllegalStateException.class);
+            var assets=workflow.prepare(id);
             assertThat(assets.chunkCount()).isEqualTo(rows.size());
             assertThat(recovery.findGeneration(id,false).state()).isEqualTo("INDEX_READY");
             assertThat(recovery.findPointer(generation.documentId(),false)).isEqualTo(preserved);
@@ -342,13 +363,6 @@ class RagPdfDraftStoreDatabaseTests {
                 .contains("official","rule");
             preparer.verifyReviewedPdf(assets);
             assertThatThrownBy(()->preparer.verify(assets)).isInstanceOf(IllegalStateException.class);
-            var baseline=org.mockito.Mockito.mock(RagRecoveryBaselineService.class);
-            org.mockito.Mockito.when(baseline.verify(generation.documentId())).thenReturn(new RecoveryBaselineAssets(
-                    generation.documentId(),preserved.activeGeneration(),preserved.baselineHash(),"unused-rag",
-                    properties.openai().embeddingModel(),"a".repeat(64),1));
-            org.mockito.Mockito.doAnswer(call->{candidates.requirePreservedSource(call.getArgument(0),call.getArgument(1));return null;})
-                    .when(baseline).requirePreservedSource(org.mockito.ArgumentMatchers.anyLong(),org.mockito.ArgumentMatchers.anyString());
-            var promoter=new RagRecoveryPromotionService(preparer,recovery,baseline,manager);
             var before=routing.capture();
             var originalPath=Path.of(documents.findSourceProofDocument(generation.documentId(),false).filePath());
             try {
@@ -376,7 +390,7 @@ class RagPdfDraftStoreDatabaseTests {
             assertThat(routing.capture()).isEqualTo(before);
             assertThat(recovery.findGeneration(id,false).state()).isEqualTo("INDEX_READY");
             try {
-                var next=promoter.promoteReviewedPdf(id,preserved.revision(),assets.manifest());
+                var next=workflow.promote(id,preserved.revision(),assets.manifest());
                 assertThat(next.sourceHash()).isEqualTo(generation.sourceHash()).isNotEqualTo(preserved.sourceHash());
                 var after=routing.capture();
                 assertThat(after.documents()).containsEntry(generation.documentId(),next);
@@ -384,7 +398,6 @@ class RagPdfDraftStoreDatabaseTests {
                 assertThat(before.documents()).containsEntry(generation.documentId(),preserved);
                 assertThat(before.pdfSources()).isEmpty();
                 assertThat(documents.findSourceProofDocument(generation.documentId(),false).fileHash()).isEqualTo(preserved.sourceHash());
-                var rollback=new RagRecoveryRollbackService(recovery,documents,routing,baseline,lexical,index,manager);
                 assertThatThrownBy(()->rollback.rollback(generation.documentId(),id,next.revision(),preserved.activeGeneration()))
                     .isInstanceOf(IllegalStateException.class);
                 assertThatThrownBy(()->rollback.rollbackReviewedPdf(generation.documentId(),id,next.revision()+1,preserved.activeGeneration()))
@@ -396,7 +409,7 @@ class RagPdfDraftStoreDatabaseTests {
                         .hasStackTraceContaining("PDF restore rollback control");
                 } finally {db.execute("DROP TRIGGER "+rollbackTrigger);}
                 assertThat(routing.capture()).isEqualTo(after);
-                var restored=rollback.rollbackReviewedPdf(generation.documentId(),id,next.revision(),preserved.activeGeneration());
+                var restored=workflow.rollback(generation.documentId(),id,next.revision(),preserved.activeGeneration());
                 assertThat(restored.sourceHash()).isEqualTo(preserved.sourceHash());
                 assertThat(restored.activeGeneration()).isEqualTo(preserved.activeGeneration());
                 var reverted=routing.capture();
@@ -415,6 +428,7 @@ class RagPdfDraftStoreDatabaseTests {
                 db.update("UPDATE rag_recovery_routing_epoch SET revision=0,lexical_generation=NULL,lexical_fingerprint=NULL WHERE singleton_id=1");
             }
         } finally {
+            Files.deleteIfExists(trustedSource);Files.deleteIfExists(trustedManifest);
             if(realQ) {
                 var http=org.springframework.web.client.RestClient.builder().baseUrl(qTestUrl).build();
                 try {http.delete().uri("/collections/{name}",collection).retrieve().toBodilessEntity();}

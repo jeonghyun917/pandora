@@ -1,5 +1,9 @@
 # 원문 번호 목록 범위 보존
 
+- 2026-11-11 서버 승인 PDF 관리 경로: 독립 구성 manifest SHA/제품SHA/절대원문경로만 입력권위, 요청은 기존ID/예상manifest·revision만 선택. 전역+PDF 두 기본false gate 및 기존ADMIN/CSRF/Origin 유지. 실제격리DB/Q45072/7b8ef7 6/f0/e0/skip0, API집중79425/f34015 5PASS, 전체50452/2b83f4 2083/f0/e0/skip83; 범위리뷰 C/I없음. stage3003/05e03c JAR51bba38cb3f8ea2516d84fd828156455946a2b5bbd37d1f0f29b2250786f4337. 운영원본469f56 HWPX1896345bytes/SHA3184c8a7328f8dea0a33476c36dce3edd19ed5b142cd400be66c61061a3a080c 일치; 단일READ ONLY 복제6974a9 snapshot90a8216a6e9b9dd926e70b40e9ac7c5090043d80cdc8b7ee738e30a8c353d4d2(문서1/청크65/embedding65/keywordstate64/term11116). 운영쓰기는없음. [관리 계약](../../reviewed-pdf-workflow.md).
+
+- 2026-11-11 4dea0c867b236eb29f6308165a6e6b2072ce5426 push/e5ee53→공식stop373911/구supervisor종료194a91→deploy8855/974675 KEEPALIVE PID65920/runtime59e05fdf-ecc3-4109-993e-f1735530e562. 건강d4cfcc root200/DB=Q211658·84248/qreadytrue/qfail0, Atlas35048/sharedQ8976·중지예약보존.
+
 - 2026-11-11 보존 기준본 단독 등록: 비관리 원문의 바이트·전체멤버·검색가능행·embedding link·epoch/corpus를 Q 검사 전후 결속, 기준본/포인터/영수증 원자 저장만 하고 후보·활성청크·epoch 불변. 실제 격리 Q+MariaDB 누락포인트 제어 RED15028/dd76ee는 문서별 조회의 chunkVersion 미투영을 확인; 명시 버전 전달 후18276/523c3d 2/f0/e0/skip0. 기존 DB53408/1ba3f3 원본드리프트·SQL영수증 실패 원복PASS, 범위리뷰 C/I없음. 전체33086/50436c 2080/f0/e0/skip83, stage59814/82bd6b JARb2d1d2339a87aecb47dc5df43043c75744525ba73392bec06b1bc1647ec24789. 운영 읽기fc578d/0a423c 논리DBpandora:3306 문서16 구2023원문 65행(v4 PASS64/CONTEXT_ONLY1), INDEXED64/SUPERSEDED1, 복구포인터없음. 운영 등록·원문전환·평가 미실행.
 
 - 2026-11-11 b08d6ca64ddc6bd53af289a3e5fe16a5d4a7a042 push8c1df7 후 공식 status/stopace532→구supervisor종료b47fbb→deploy88250/0920db KEEPALIVE PID34616/runtime98231fd3-a46f-4297-8748-6722c164781d. 건강29b241 root200/DB=Q211658·84248/qreadytrue/qfail0, Atlas35048/sharedQ8976·중지예약보존.

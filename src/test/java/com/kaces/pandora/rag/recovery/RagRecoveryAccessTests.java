@@ -10,6 +10,29 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import com.kaces.pandora.app.auth.*;
 
 class RagRecoveryAccessTests {
+    @Test void reviewedSourceActionsUseExistingAdminAndCsrfBoundary() throws Exception {
+        var legacy=mock(RagRecoveryWorkflowService.class);var pdf=mock(RagPdfWorkflowService.class);
+        var controller=new RagRecoveryController(legacy);controller.configureReviewedPdf(pdf);
+        var mvc=MockMvcBuilders.standaloneSetup(controller).addInterceptors(new RagRecoveryAccessInterceptor()).build();
+        String path="/api/law-data/rag-recovery/reviewed-pdf";
+        for(String action:java.util.List.of("register","stage","create","validate","prepare","promote","rollback"))
+            mvc.perform(post(path+"/"+action).contentType("application/json").content("{}")).andExpect(status().isUnauthorized());
+        var admin=new MockHttpSession();admin.setAttribute(AdminSessionSupport.SESSION_ATTRIBUTE,new AdminSession(1,"admin","admin","ADMIN"));
+        for(String action:java.util.List.of("register","stage","create","validate","prepare","promote","rollback"))
+            mvc.perform(post(path+"/"+action).session(admin).contentType("application/json").content("{}")).andExpect(status().isForbidden());
+        verifyNoInteractions(pdf,legacy);
+        var session=mvc.perform(get("/api/law-data/rag-recovery/session").session(admin)).andExpect(status().isOk()).andReturn().getResponse();
+        String csrf=new tools.jackson.databind.ObjectMapper().readTree(session.getContentAsString()).get("csrfToken").asText();
+        String id="11111111-1111-1111-1111-111111111111",manifest="a".repeat(64);
+        mvc.perform(post(path+"/promote").session(admin).header(RagRecoveryAccessInterceptor.HEADER,csrf).contentType("application/json")
+                .content("{\"generationId\":\""+id+"\",\"expectedRevision\":3,\"expectedManifest\":\""+manifest+"\"}"))
+                .andExpect(status().isOk());
+        verify(pdf).promote(id,3,manifest);
+        when(pdf.stage()).thenThrow(new IllegalStateException("private original C:/internal/file"));
+        var response=mvc.perform(post(path+"/stage").session(admin).header(RagRecoveryAccessInterceptor.HEADER,csrf)
+                .contentType("application/json").content("{}")).andExpect(status().isConflict()).andReturn().getResponse();
+        assertThat(response.getContentAsString()).doesNotContain("private","internal","C:/");
+    }
     @Test void rejectedOperationNeverReturnsProviderMessagesOrInternalPaths() throws Exception {
         var workflow=mock(RagRecoveryWorkflowService.class);
         when(workflow.preview(42)).thenThrow(new IllegalStateException("secret credential C:/internal/private"));
