@@ -612,6 +612,25 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void namedGuidelineAuthorityUsesItsTitleBeforeBroadLawScan() throws Exception {
+		var row = chunk(88708L, "admrul", "공공기관 기록물 보존 지침", "보존기간",
+			"공공기관은 기록물의 보존기간을 정하여야 한다.");
+		var broad = new org.springframework.dao.QueryTimeoutException("generic scan");
+		LawChunkMapper mapper = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
+			LawChunkMapper.class.getClassLoader(), new Class<?>[]{LawChunkMapper.class}, (proxy, method, args) -> {
+				if (method.getName().equals("findSemanticChunksByText")) throw broad;
+				if (method.getName().equals("findSemanticChunksByDocumentTitleAndText")
+					&& ((List<?>)args[1]).contains("공공기관 기록물 보존 지침")) return List.of(row);
+				return List.of();
+			});
+		var service = service(mapper, null);
+		try {
+			var query = QuestionSearchPlan.from("공공기관 기록물 보존 지침에 따라 보존기간은 어떻게 정합니까?");
+			assertThat(findLexicalChunks(service, query, List.of("admrul"), false)).containsExactly(row);
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void retrievesOperativeReviewClausesFromRequestPinnedSourceRatherThanGenericHeading() throws Exception {
 		var generation = "33333333-3333-4333-8333-333333333333";
 		var title = "국가 사이버보안 기본지침 (2026. 5. 1.)";

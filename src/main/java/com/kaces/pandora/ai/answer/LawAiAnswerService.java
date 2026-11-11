@@ -113,7 +113,7 @@ public class LawAiAnswerService {
 	private static final List<String> DOCUMENT_LOCATION_PARTICLES = List.of("에서는", "에서");
 	private static final List<String> DOCUMENT_TOPIC_PARTICLES = List.of("은", "는", "이", "가");
 	private static final Set<String> LEGAL_REFERENCE_NOUNS = Set.of(
-		"법", "특별법", "법률", "시행령", "시행규칙", "계약일반조건", "계약 일반조건");
+		"법", "특별법", "법률", "시행령", "시행규칙", "지침", "계약일반조건", "계약 일반조건");
 	private static final List<String> LEGAL_AUTHORITY_PARTICLES = List.of("에 따라", "에 따른", "상");
 	private static final Pattern COORDINATED_TITLE_ACTIONS =
 		Pattern.compile("(?<![\\p{L}\\p{N}])(설치|구축)[ ·]운영(?![\\p{L}\\p{N}])");
