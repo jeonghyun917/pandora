@@ -7,7 +7,7 @@ import java.util.*;
 import java.util.concurrent.*;
 
 /** Native PDF parsing is confined to an owned, memory-capped JVM with a hard parent deadline. */
-final class SourcePdfInspection {
+public final class SourcePdfInspection {
     record Result(String artifactHash,String textHash,String structureHash,int pageCount,int characterCount) { }
     private record WorkerOutput(String expectedHash,byte[] bytes) { }
     private static final Semaphore WORKERS=new Semaphore(2);
@@ -58,6 +58,21 @@ final class SourcePdfInspection {
         } catch(IllegalArgumentException | java.nio.charset.CharacterCodingException invalid) {
             throw new IllegalStateException("PDF paragraph line encoding rejected",invalid);
         }
+    }
+    List<String> reviewedLines(Path file,String hash,int page,int first,int last) {
+        if(hash==null || !hash.matches("[0-9a-f]{64}") || page<1 || page>1000
+                || first<1 || last<first || last-first>=256)
+            throw new IllegalArgumentException("Invalid reviewed coordinates");
+        var response=run(file,"reviewed-lines",hash,Integer.toString(page),Integer.toString(first),Integer.toString(last));
+        String prefix="PDF_REVIEWED_LINES_V1 "+hash+" "+page+" "+first+" "+last+" ";
+        String output=new String(response.bytes(),StandardCharsets.US_ASCII).strip();
+        if(!output.startsWith(prefix))throw new IllegalStateException("Reviewed line identity rejected");
+        String[] fields=output.substring(prefix.length()).split(" ",-1);
+        if(fields.length!=last-first+1)throw new IllegalStateException("Incomplete reviewed lines");
+        return Arrays.stream(fields).map(SourcePdfInspection::decodeLine).toList();
+    }
+    public static List<String> readReviewedLines(Path file,String hash,int page,int first,int last) {
+        return new SourcePdfInspection().reviewedLines(file,hash,page,first,last);
     }
     private WorkerOutput run(Path file,String... mode) {
         requireReviewedEnvironment(System.getenv());

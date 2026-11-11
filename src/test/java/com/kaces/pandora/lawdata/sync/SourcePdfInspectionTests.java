@@ -6,6 +6,16 @@ import org.junit.jupiter.api.io.TempDir;
 
 class SourcePdfInspectionTests {
     @TempDir Path root;
+    @Test void reviewedLineWorkerBindsOriginalAndPhysicalCoordinates() throws Exception {
+        Path file=root.resolve("reviewed.pdf");positioned(file,20);
+        var hash=SourceReferenceInspector.artifactHash(Files.readAllBytes(file));
+        var inspector=new SourcePdfInspection();
+        assertThat(inspector.reviewedLines(file,hash,1,1,1)).containsExactly("condition 90 score 4");
+        assertThatThrownBy(()->inspector.reviewedLines(file,"0".repeat(64),1,1,1))
+            .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(()->inspector.reviewedLines(file,hash,1,1,2))
+            .isInstanceOf(IllegalStateException.class);
+    }
     @Test void identicalTextAtDifferentCoordinatesCannotHaveEquivalentPositionEvidence() throws Exception {
         Path a=root.resolve("a.pdf"),b=root.resolve("b.pdf");positioned(a,20);positioned(b,40);
         var inspector=new SourcePdfInspection();assertThat(inspector.inspect(a).textHash()).isEqualTo(inspector.inspect(b).textHash());

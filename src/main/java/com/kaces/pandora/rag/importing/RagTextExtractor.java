@@ -51,12 +51,16 @@ public class RagTextExtractor {
 			PDFTextStripper stripper = new PDFTextStripper();
 			List<ExtractedPage> pages = new ArrayList<>();
 			for (int page = 1; page <= document.getNumberOfPages(); page++) {
-				stripper.setStartPage(page);
-				stripper.setEndPage(page);
-				pages.add(new ExtractedPage(page, normalize(stripper.getText(document))));
+				pages.add(new ExtractedPage(page, normalizedPdfPage(document, stripper, page)));
 			}
 			return new ExtractedDocument(pages);
 		}
+	}
+
+	public static String normalizedPdfPage(PDDocument document, PDFTextStripper stripper, int page) throws IOException {
+		stripper.setStartPage(page);
+		stripper.setEndPage(page);
+		return normalize(stripper.getText(document));
 	}
 
 	// 메소드 설명: extractDocx 처리 흐름을 수행합니다.
@@ -298,7 +302,7 @@ public class RagTextExtractor {
 	}
 
 	// 메소드 설명: normalize 처리 흐름을 수행합니다.
-	private String normalize(String value) {
+	private static String normalize(String value) {
 		return value == null ? "" : HwpxTextCleaner.clean(value.replace("\r\n", "\n").replace('\r', '\n'));
 	}
 }

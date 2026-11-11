@@ -27,15 +27,35 @@ public final class SourcePdfWorker {
             throw new IllegalStateException("Effective PDF worker memory caps unavailable");
         boolean positions=args.length==2 && args[1].equals("positions");
         boolean paragraph=args.length==5 && args[1].equals("paragraph");
-        if(args.length!=1 && !positions && !paragraph)throw new IllegalArgumentException("Exact worker input/mode required");
+        boolean reviewed=args.length==6 && args[1].equals("reviewed-lines");
+        if(args.length!=1 && !positions && !paragraph && !reviewed)throw new IllegalArgumentException("Exact worker input/mode required");
         Path file=Path.of(args[0]);
         if(!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS) || Files.size(file)>8*1024*1024)throw new IOException("Input bound rejected");
         byte[] bytes;
         try(var input=Files.newInputStream(file)) {bytes=input.readNBytes(8*1024*1024+1);}
         if(bytes.length<5 || bytes.length>8*1024*1024)throw new IOException("Input bound rejected");
+        if(reviewed && !hash(bytes).equals(args[2]))throw new IOException("Reviewed original changed");
         try(var document=Loader.loadPDF(bytes)) {
             int pages=document.getNumberOfPages();
             if(document.isEncrypted() || pages<1 || pages>1000)throw new IOException("PDF native bounds rejected");
+            if(reviewed) {
+                int page=Integer.parseInt(args[3]), first=Integer.parseInt(args[4]), last=Integer.parseInt(args[5]);
+                if(page<1 || page>pages || first<1 || last<first || last-first>=256)
+                    throw new IOException("Reviewed coordinate bound rejected");
+                var lines=com.kaces.pandora.rag.importing.RagTextExtractor
+                    .normalizedPdfPage(document,new PDFTextStripper(),page).lines().toList();
+                if(last>lines.size())throw new IOException("Missing reviewed lines");
+                var out=new StringBuilder("PDF_REVIEWED_LINES_V1 ").append(args[2]).append(' ')
+                    .append(page).append(' ').append(first).append(' ').append(last);
+                for(String line:lines.subList(first-1,last)) {
+                    if(line.isBlank() || line.length()>4096 || line.codePoints().anyMatch(Character::isISOControl))
+                        throw new IOException("Invalid reviewed line");
+                    out.append(' ').append(Base64.getEncoder().encodeToString(line.getBytes(StandardCharsets.UTF_8)));
+                    if(out.length()>=65_536)throw new IOException("Reviewed output bound rejected");
+                }
+                System.out.println(out);
+                return;
+            }
             if(paragraph) {
                 int page=Integer.parseInt(args[2]), first=Integer.parseInt(args[3]), second=Integer.parseInt(args[4]);
                 var lines=TaggedPdfParagraph.read(document,page,first,second).orElseThrow(()->new IOException("Unbound tagged spans"));
