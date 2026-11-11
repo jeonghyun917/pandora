@@ -646,6 +646,38 @@ class LawAiAnswerServiceEvidenceGateTests {
 				List.of(guide, authority), judged.scoreByChunkId(), Map.of(), routing).evidenceChunks()).first().isEqualTo(authority);
 			assertThat(service.preferOfficialSecurityReviewTargetEvidence(scopeQuestion, List.of(guide),
 				List.of(guide, authority), judged.scoreByChunkId(), Map.of(), routing).evidenceChunks()).containsExactly(guide);
+			var rawRule = new LawSemanticChunkRow(authority.chunkId(), authority.documentId(), authority.target(),
+				authority.externalId(), authority.title(), "", "", "20260101", "CURRENT", "제7조", authority.chunkTitle(),
+				authority.chunkText(), null, "$.reviewedPdf.units[0]", source.sourceUrl(), 1, "9".repeat(64),
+				authority.parentSectionTitle(), "body", "PASS", null, null, 4);
+			var withText = LawAiAnswerService.class.getDeclaredMethod("copyWithChunkText", LawSemanticChunkRow.class, String.class);
+			withText.setAccessible(true);
+			var enriched = (LawSemanticChunkRow) withText.invoke(service, rawRule,
+				"보안성 검토 대상\n" + rawRule.chunkText());
+			var crowded = new java.util.ArrayList<LawSemanticChunkRow>();
+			for (int i = 0; i < 8; i++) {
+				crowded.add(chunk(88100L + i, "official_doc", guide.title(), guide.chunkTitle(), guide.chunkText()));
+			}
+			crowded.add(enriched);
+			var beforeCap = new EvidenceJudge().judge(scopeQuestion, crowded, Map.of(), 8);
+			assertThat(beforeCap.chunks()).contains(enriched);
+			var preserve = LawAiAnswerService.class.getDeclaredMethod("preserveIntentDirectEvidenceChunks",
+				EvidenceJudge.Result.class, List.class, String.class, Map.class, Map.class, routing.getClass(), List.class);
+			preserve.setAccessible(true);
+			var afterCap = (EvidenceJudge.Result) preserve.invoke(service, beforeCap, crowded, scopeQuestion,
+				beforeCap.scoreByChunkId(), Map.of(), routing, List.of(rawRule));
+			assertThat(afterCap.chunks()).hasSize(8).contains(rawRule).doesNotContain(enriched);
+			var noCapturedSource = (EvidenceJudge.Result) preserve.invoke(service, beforeCap, crowded, scopeQuestion,
+				beforeCap.scoreByChunkId(), Map.of(), routing, List.of());
+			assertThat(noCapturedSource.chunks()).doesNotContain(rawRule);
+			String namedSource = "공공시설 점검 보고서에서 보안성 검토 대상 범위를 알려 주세요.";
+			var namedSourcePreserve = (EvidenceJudge.Result) preserve.invoke(service, beforeCap, crowded, namedSource,
+				beforeCap.scoreByChunkId(), Map.of(), routing, List.of(rawRule));
+			assertThat(namedSourcePreserve.chunks()).doesNotContain(rawRule);
+			var guideOnly = new EvidenceJudge().judge(scopeQuestion, crowded.subList(0, 8), Map.of(), 8);
+			var noResurrection = (EvidenceJudge.Result) preserve.invoke(service, guideOnly, crowded, scopeQuestion,
+				guideOnly.scoreByChunkId(), Map.of(), routing, List.of(rawRule));
+			assertThat(noResurrection.chunks()).doesNotContain(rawRule);
 			org.assertj.core.api.Assertions.assertThatThrownBy(() -> method.invoke(service, query, List.of("law"), false, routing))
 				.hasCause(timeout);
 			var explicitArticle = QuestionSearchPlan.from("보안 검토 대상 범위와 근거 조문을 알려 주세요.");

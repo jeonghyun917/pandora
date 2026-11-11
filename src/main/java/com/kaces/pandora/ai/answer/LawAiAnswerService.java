@@ -1493,6 +1493,9 @@ public class LawAiAnswerService {
 				hybrid
 			);
 		}
+		// Only the captured, pre-fallback pool can establish original reviewed-source ownership.
+		List<LawSemanticChunkRow> capturedRawCandidates = routing != null && !routing.pdfSources().isEmpty()
+			? List.copyOf(searchedChunks) : List.of();
 		long rerankStart = System.nanoTime();
 		var ranked = rerankChunks(searchedChunks, normalized.query(), baseScoreByChunkId);
 		List<LawSemanticChunkRow> rankedChunks = ranked.chunks();
@@ -1580,7 +1583,7 @@ public class LawAiAnswerService {
 			judgeContextChunks,
 			normalized.query(),
 			finalScoreByChunkId,
-			combinedScoreByChunkId, routing
+			combinedScoreByChunkId, routing, capturedRawCandidates
 		);
 		finalScoreByChunkId = judgedEvidence.scoreByChunkId();
 		evidenceChunks = judgedEvidence.chunks();
@@ -5579,6 +5582,13 @@ public class LawAiAnswerService {
 	private EvidenceJudge.Result preserveIntentDirectEvidenceChunks(EvidenceJudge.Result judgedEvidence,
 		List<LawSemanticChunkRow> judgeContextChunks,String query,Map<String,Double> finalScoreByChunkId,
 		Map<String,Double> combinedScoreByChunkId,RecoveryRoutingSnapshot routing) {
+		return preserveIntentDirectEvidenceChunks(judgedEvidence, judgeContextChunks, query, finalScoreByChunkId,
+			combinedScoreByChunkId, routing, List.of());
+	}
+
+	private EvidenceJudge.Result preserveIntentDirectEvidenceChunks(EvidenceJudge.Result judgedEvidence,
+		List<LawSemanticChunkRow> judgeContextChunks,String query,Map<String,Double> finalScoreByChunkId,
+		Map<String,Double> combinedScoreByChunkId,RecoveryRoutingSnapshot routing, List<LawSemanticChunkRow> rawCandidates) {
 		if (judgedEvidence == null || judgeContextChunks == null || judgeContextChunks.isEmpty()) {
 			return judgedEvidence;
 		}
@@ -5613,10 +5623,15 @@ public class LawAiAnswerService {
 		if (!restrictToConfiguredPolicyChunks) {
 			preferOwnedDirectPurchaseExclusion(judgedEvidence.chunks(), query, anchoredRuleKeys);
 		}
+		var ownedSecurityRule = restrictToConfiguredPolicyChunks ? null
+			: findJudgedOwnedSecurityScope(query, rawCandidates, judgedEvidence, routing);
+		String ownedSecurityKey = ownedSecurityRule == null ? null : scoreKey(ownedSecurityRule.target(), ownedSecurityRule.chunkId());
+		if (ownedSecurityKey != null) anchoredRuleKeys.add(ownedSecurityKey);
 		if (directEvidenceChunks.isEmpty() && anchoredRuleKeys.isEmpty()) {
 			return judgedEvidence;
 		}
 		LinkedHashMap<String, LawSemanticChunkRow> merged = new LinkedHashMap<>();
+		if (ownedSecurityKey != null) merged.put(ownedSecurityKey, ownedSecurityRule);
 		String noticeQuery = normalizeForMatch(query);
 		if (!restrictToConfiguredPolicyChunks && noticeQuery.contains("수집") && noticeQuery.contains("이용")
 			&& noticeQuery.contains("동의") && containsAny(noticeQuery, "알려", "고지")
@@ -5631,8 +5646,10 @@ public class LawAiAnswerService {
 			&& isProjectReviewScopeQuestion(normalizeForMatch(query), queryTerms(query))
 			&& judgedEvidence.chunks().stream().anyMatch(EvidenceJudge::isNationalSoftwareReviewScope);
 		for (LawSemanticChunkRow chunk : directEvidenceChunks) {
+			String key = scoreKey(chunk.target(), chunk.chunkId());
+			if (key.equals(ownedSecurityKey)) continue;
 			String window = scopeAnchoredReview ? EvidenceJudge.softwareConfirmationReviewSourceWindow(chunk.chunkText()) : "";
-			merged.put(scoreKey(chunk.target(), chunk.chunkId()), window.isBlank() ? chunk : copyWithChunkText(chunk, window));
+			merged.put(key, window.isBlank() ? chunk : copyWithChunkText(chunk, window));
 		}
 		if (!restrictToConfiguredPolicyChunks) {
 			for (LawSemanticChunkRow chunk : judgedEvidence.chunks()) {
@@ -5692,6 +5709,31 @@ public class LawAiAnswerService {
 			Math.max(judgedEvidence.directEvidenceCount(), directEvidenceChunks.size()),
 			judgedEvidence.selectionPolicy() + "+intent_direct_preserve"
 		);
+	}
+
+	private LawSemanticChunkRow findJudgedOwnedSecurityScope(String query, List<LawSemanticChunkRow> rawCandidates,
+		EvidenceJudge.Result judged, RecoveryRoutingSnapshot routing) {
+		if (routing == null || routing.pdfSources().isEmpty() || rawCandidates.isEmpty()
+			|| !judged.directEvidenceFound()) return null;
+		String normalized = normalizeForMatch(query);
+		if (!normalized.contains("대상") || !isSecurityReviewQuestion(queryTerms(query))
+			|| containsAny(normalized, "예외", "제외", "비대상", "면제", "생략", "안해도")
+			|| !documentTitleAnchorKeywords(query).isEmpty()
+			|| requiresLawOrVersionSpecificEvidence(query, QuestionIntentProfile.from(query))) return null;
+		for (var raw : rawCandidates) {
+			if (!isCapturedReviewedOfficialDoc(raw, routing) || !"PASS".equals(raw.qualityStatus())
+				|| raw.sourcePath() == null || !raw.sourcePath().matches("\\$\\.reviewedPdf\\.units\\[[0-9]+\\]")
+				|| raw.contentHash() == null || !raw.contentHash().matches("[0-9a-f]{64}")
+				|| !hasUsefulText(raw) || isForcedExcludedAnswerContextChunk(raw, query)
+				|| !EvidenceJudge.hasOperativeSecurityReviewScope(raw.chunkText())) continue;
+			boolean previouslyAdmitted = judged.chunks().stream().anyMatch(row -> row.chunkId() == raw.chunkId()
+				&& row.documentId() == raw.documentId() && raw.target().equals(row.target())
+				&& raw.title().equals(row.title()) && raw.sourcePath().equals(row.sourcePath())
+				&& raw.contentHash().equals(row.contentHash()) && row.chunkText() != null
+				&& row.chunkText().contains(raw.chunkText()));
+			if (previouslyAdmitted && evidenceJudge.judge(query, List.of(raw), Map.of(), 1).directEvidenceFound()) return raw;
+		}
+		return null;
 	}
 
 	private void preferOwnedDirectPurchaseExclusion(List<LawSemanticChunkRow> judged, String query, Set<String> priorityKeys) {
@@ -6595,6 +6637,7 @@ public class LawAiAnswerService {
 		}
 		var preferredChunks = new java.util.ArrayList<LawSemanticChunkRow>();
 		if (!exceptionQuestion && routing != null && !routing.pdfSources().isEmpty()
+			&& documentTitleAnchorKeywords(query).isEmpty()
 			&& !requiresLawOrVersionSpecificEvidence(query, QuestionIntentProfile.from(query))) {
 			// Only a ground already admitted by the judge can take priority over secondary guides.
 			evidenceChunks.stream()
