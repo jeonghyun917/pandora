@@ -52,3 +52,5 @@ Product code and deployed artifact are unchanged. Do not rebuild/redeploy or rep
 - Printed p. 6 (PDF p. 10): the KRW 100 million threshold applies to the separately described semiannual publication of results, not to the preceding definition of review scope.
 
 This supplies a dated procurement-to-recommendation process reference within public SW. It is not independent authority to compel acceptance or extend the process to every information-system project. No ingestion, oracle change, or evaluation run followed this source review.
+
+Current-corpus check `c10bd8/ef1e8e` found no row for the exact 2025-11 file hash; the normalized title/file-name search found only December 2024 document 6. Its 198 visible v4 rows are 186 PASS and 12 CONTEXT_ONLY, all marked PENDING in the SQL chunk table. That marker is not a reliable statement of actual vector absence: read-only Qdrant lookup `2b0093` confirmed both prior-edition anchors (84723 and 84725) as `official_doc`, document 6, v4, in the live `rag_chunks_v4` collection. The new edition is absent by exact file hash; the prior edition is not wholly unindexed. No new edition was activated or substituted.
