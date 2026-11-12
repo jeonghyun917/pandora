@@ -9805,8 +9805,10 @@ public class LawAiAnswerService {
 		if (focusedLookup && chunks.size() >= MIN_FOCUSED_LEXICAL_CHUNKS) {
 			return finishLexicalChunks(chunks, query);
 		}
+		boolean asksCatalogOrder = normalizedQuery.contains("납품")
+			&& containsAny(normalizedQuery, "요구", "승인", "절차");
 		if (!boundedLawEvidenceMatched && documentTitleAnchors.isEmpty()
-			&& lawTargets.contains("admrul") && isProcurementContractMethodQuestion(normalizedQuery)
+			&& lawTargets.contains("admrul") && (isProcurementContractMethodQuestion(normalizedQuery) || asksCatalogOrder)
 			&& containsAny(normalizedQuery, "디지털카탈로그", "디지털카달로그", "디지털서비스카탈로그", "디지털서비스몰")) {
 			var catalog = safeLexicalQuery("law digital catalog contract and order", () ->
 				lawChunkMapper.findSemanticChunksByDocumentTitleAndText(List.of("admrul"),
