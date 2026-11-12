@@ -9828,6 +9828,19 @@ public class LawAiAnswerService {
 				return finishLexicalChunks(chunks, query);
 			}
 		}
+		if (!boundedLawEvidenceMatched && documentTitleAnchors.isEmpty() && lawTargets.contains("admrul")
+			&& normalizedQuery.contains("공공데이터베이스")
+			&& containsAny(normalizedQuery, "표준화", "표준용어", "표준도메인", "데이터표준")
+			&& !containsAny(normalizedQuery, "내부데이터베이스", "민간", "비공개", "공공데이터베이스가아닌")) {
+			// Topic recall only; the title does not establish applicability or direct support.
+			var standards = safeLexicalQuery("public database standards title and text", () ->
+				lawChunkMapper.findSemanticChunksByDocumentTitleAndText(List.of("admrul"),
+					List.of("데이터베이스 표준화"), lawTextKeywords(query), includeFuture, LAW_TEXT_KEYWORD_FETCH_LIMIT), routing);
+			if (!standards.isEmpty()) {
+				chunks.addAll(standards);
+				return finishLexicalChunks(chunks, query);
+			}
+		}
 		if (!boundedLawEvidenceMatched && !lawTargets.isEmpty() && chunks.isEmpty()) {
 			List<String> entityTitles = profile.entities().stream()
 				.flatMap(entity -> entity.aliases().stream())

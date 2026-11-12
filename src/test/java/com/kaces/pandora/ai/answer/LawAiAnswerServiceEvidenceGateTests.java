@@ -642,6 +642,33 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void explicitPublicDatabaseStandardsRecallApplicableTitleWithoutExpandingInternalQueries() throws Exception {
+		var standard = chunk(88710L, "admrul", "공공기관의 데이터베이스 표준화 지침", "표준 적용",
+			"공공기관의 장은 공공데이터베이스 구축 시 표준용어 및 표준도메인을 적용하여야 한다.");
+		var internal = chunk(88711L, "admrul", "예시기관 공공데이터 관리규정", "표준 적용",
+			"예시기관은 소관 공공데이터베이스에 표준도메인을 적용한다.");
+		LawChunkMapper mapper = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
+			LawChunkMapper.class.getClassLoader(), new Class<?>[]{LawChunkMapper.class}, (proxy, method, args) -> {
+				if (method.getName().equals("findSemanticChunksByDocumentTitleAndText")) {
+					var titles = (List<?>) args[1];
+					if (titles.contains("데이터베이스 표준화")) return List.of(standard);
+					if (titles.contains("공공데이터")) return List.of(internal);
+				}
+				return List.of();
+			});
+		var service = service(mapper, null);
+		try {
+			var publicDb = QuestionSearchPlan.from("공공데이터베이스 구축에 적용할 표준도메인 기준은 무엇입니까?");
+			assertThat(findLexicalChunks(service, publicDb, List.of("admrul"), false)).contains(standard);
+			for (String question : List.of("공공기관 내부 데이터베이스의 표준도메인 기준은 무엇입니까?",
+				"공공데이터베이스가 아닌 민간기업 내부 데이터베이스에 어떤 표준용어를 적용합니까?")) {
+				assertThat(findLexicalChunks(service, QuestionSearchPlan.from(question), List.of("admrul"), false))
+					.doesNotContain(standard);
+			}
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void namedContractAwardStandardUsesBoundedLookupWithoutTreatingBareSuffixAsTitle() throws Exception {
 		var rule = chunk(88709L, "admrul", "경쟁적대화에 의한 계약체결기준", "기본 제안요청서",
 			"기본 제안요청서에는 기본 제안서의 평가요소와 평가방법을 명시하여야 한다.");
