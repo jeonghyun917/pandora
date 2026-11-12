@@ -114,6 +114,30 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void irmDefinitionRecoversOwnedCriterionBeforeGenericDocumentMatches() throws Exception {
+		String title = "정보자원 관리 수준측정 안내";
+		String formula = "정보자원 등록 충실성 = (기한 내 정보자원 등록 완료 수)/(정보자원 등록요청 수) × 100";
+		var criterion = chunk(606, "official_doc", title, "정보자원 등록",
+			"정보자원 등록 충실성: 정보자원 등록요청을 기한 내 이행하였는가? " + formula);
+		var formulaOnly = chunk(607, "official_doc", title, "산식", formula);
+		var menu = chunk(608, "official_doc", "정보자원관리시스템 이용 안내", "메뉴", "IRM 등록 메뉴 안내");
+		var rag = (RagDocumentMapper) java.lang.reflect.Proxy.newProxyInstance(
+			RagDocumentMapper.class.getClassLoader(), new Class<?>[]{RagDocumentMapper.class}, (p, m, args) -> {
+				if (m.getName().equals("findSemanticChunksByDocumentTitleWithTextHints")
+					&& ((List<?>) args[1]).contains("수준측정")) return List.of(formulaOnly, criterion);
+				if (m.getName().equals("findSemanticChunksByHeadingText")) return List.of(menu);
+				return List.of();
+			});
+		var service = service(null, rag);
+		try {
+			assertThat(findLexicalChunks(service, QuestionSearchPlan.from("IRM 등록 충실성 지표는 무엇을 뜻하나요?"),
+				List.of("official_doc"), false)).contains(criterion).doesNotContain(formulaOnly);
+			assertThat(findLexicalChunks(service, QuestionSearchPlan.from("IRM 등록 충실성 점수를 어떻게 계산하나요?"),
+				List.of("official_doc"), false)).doesNotContain(criterion);
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void keepsCommencementCandidateTextExactBeforeAndAfterJudging() throws Exception {
 		var service = service();
 		try {

@@ -9279,6 +9279,20 @@ public class LawAiAnswerService {
 				return finishLexicalChunks(chunks, query);
 			}
 		}
+		if (!ragTargets.isEmpty() && documentTitleAnchors.isEmpty()
+			&& profile.intentTypes().contains("definition")
+			&& EvidenceJudge.isIrmRegistrationFaithfulness(normalizedQuery)
+			&& !containsAny(normalizedQuery, "산식", "계산", "수식")) {
+			var criteria = findRagChunksByDocumentTitleAndHintsThenFilter(
+				ragTargets, List.of("수준평가", "수준측정", "성과측정"),
+				List.of("정보자원 등록 충실성", "정보자원 등록 요청", "기한 내"),
+				row -> isIrmRegistrationSource(row) && EvidenceJudge.hasIrmRegistrationCriterion(row.chunkText()),
+				FOCUSED_RAG_KEYWORD_FETCH_LIMIT, routing);
+			if (!criteria.isEmpty()) {
+				chunks.addAll(criteria);
+				return finishLexicalChunks(chunks, query);
+			}
+		}
 		if (!boundedRagDocumentTitleMatched && intentSpecificLexicalLookup && !ragTargets.isEmpty()) {
 			List<LawSemanticChunkRow> fastIntentChunks = findFastIntentRagChunks(queryPlan, ragTargets, normalizedQuery, routing);
 			if (!fastIntentChunks.isEmpty()) {
