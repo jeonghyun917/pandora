@@ -9,6 +9,17 @@ import org.junit.jupiter.api.Test;
 class QuestionIntentProfileQualityPolicyTests {
 
 	@Test
+	void privacyControllerRoleDoesNotAskForAProcedure() {
+		for (String actor : List.of("개인정보처리자", "개인정보 처리자")) {
+			String duty = actor + "의 접근 권한 관리 의무";
+			assertThat(QuestionIntentProfile.from(duty).intentTypes()).doesNotContain("procedure");
+			assertThat(QuestionIntentProfile.from(duty + "와 신청 방법").intentTypes()).contains("procedure");
+			assertThat(QuestionIntentProfile.from(actor + "가 개인정보를 처리할 때 필요한 조치").intentTypes())
+				.contains("procedure");
+		}
+	}
+
+	@Test
 	void securityReviewTargetPolicyRequiresThreeConcreteOfficialTargetGroups() {
 		QuestionIntentProfile profile = QuestionIntentProfile.from("보안성검토 대상 시스템은?");
 

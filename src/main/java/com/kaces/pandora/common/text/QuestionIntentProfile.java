@@ -33,6 +33,8 @@ public record QuestionIntentProfile(
 	private static final List<String> PROCEDURE_CUES = List.of(
 		"절차", "방법", "신청", "제출", "등록", "조회", "처리", "통보", "언제", "시기", "기한", "기간"
 	);
+	private static final java.util.regex.Pattern PRIVACY_CONTROLLER_ROLE =
+		java.util.regex.Pattern.compile("(?U)개인정보\\s*처리자");
 	private static final List<String> EXPLICIT_PROCEDURE_CUES = List.of(
 		"절차", "방법", "어떻게", "언제", "시기", "기한", "기간"
 	);
@@ -90,7 +92,8 @@ public record QuestionIntentProfile(
 				&& containsAny(normalized, DOCUMENT_PURPOSE_CONTEXT_CUES));
 		boolean suppressProcedureIntent = documentIdentityQuestion
 			|| documentDiscoveryQuestion
-			|| (documentPurposeContextQuestion && !containsAny(normalized, EXPLICIT_PROCEDURE_CUES));
+			|| (documentPurposeContextQuestion && !containsAny(normalized, EXPLICIT_PROCEDURE_CUES))
+			|| procedureCueOnlyInPrivacyControllerRole(question);
 		List<String> terms = queryTerms(question);
 		LinkedHashSet<String> lexical = new LinkedHashSet<>();
 		LinkedHashSet<String> focused = new LinkedHashSet<>();
@@ -253,6 +256,16 @@ public record QuestionIntentProfile(
 		List<String> terms,
 		List<List<String>> directEvidenceGroups
 	) {
+	}
+
+	private static boolean procedureCueOnlyInPrivacyControllerRole(String question) {
+		var role = PRIVACY_CONTROLLER_ROLE.matcher(question);
+		if (!role.find()) return false;
+		String withoutRoleCue = role.replaceAll("개인정보");
+		String normalized = KoreanQueryNormalizer.normalizeForMatch(withoutRoleCue);
+		return !containsAny(normalized, PROCEDURE_CUES)
+			&& !QuestionIntentDictionary.matchesAny(withoutRoleCue, normalized,
+				QuestionIntentDictionary.values("intent.procedure.cues", List.of()));
 	}
 
 	private static void addCommonIntent(
