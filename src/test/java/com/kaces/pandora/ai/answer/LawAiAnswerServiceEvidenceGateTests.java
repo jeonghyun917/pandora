@@ -642,6 +642,28 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void namedContractAwardStandardUsesBoundedLookupWithoutTreatingBareSuffixAsTitle() throws Exception {
+		var rule = chunk(88709L, "admrul", "경쟁적대화에 의한 계약체결기준", "기본 제안요청서",
+			"기본 제안요청서에는 기본 제안서의 평가요소와 평가방법을 명시하여야 한다.");
+		LawChunkMapper mapper = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
+			LawChunkMapper.class.getClassLoader(), new Class<?>[]{LawChunkMapper.class}, (proxy, method, args) -> {
+				if (method.getName().equals("findSemanticChunksByDocumentTitleAndText")) {
+					var titles = (List<?>) args[1];
+					assertThat(titles.contains("계약체결기준")).isFalse();
+					if (titles.contains(rule.title())) return List.of(rule);
+				}
+				return List.of();
+			});
+		var service = service(mapper, null);
+		try {
+			var named = QuestionSearchPlan.from("경쟁적대화에 의한 계약체결기준에 따른 기본 제안요청서의 평가방법 기재사항을 알려 주세요.");
+			assertThat(findLexicalChunks(service, named, List.of("admrul"), false)).containsExactly(rule);
+			var unnamed = QuestionSearchPlan.from("계약체결기준에 따른 제안요청서의 평가방법 기재사항을 알려 주세요.");
+			assertThat(findLexicalChunks(service, unnamed, List.of("admrul"), false)).isEmpty();
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void namedGuidelineAuthorityUsesItsTitleBeforeBroadLawScan() throws Exception {
 		var row = chunk(88708L, "admrul", "공공기관 기록물 보존 지침", "보존기간",
 			"공공기관은 기록물의 보존기간을 정하여야 한다.");
