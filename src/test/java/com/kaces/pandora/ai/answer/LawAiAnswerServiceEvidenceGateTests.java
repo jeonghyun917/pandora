@@ -3998,6 +3998,33 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void collectionNoticeLookupUsesOwnedNoticeBodyAndDoesNotRouteMixedOrDisclosureQuestions() throws Exception {
+		String head = "② 개인정보처리자는 제1항제1호에 따른 동의를 받을 때에는 다음 각 호의 사항을 정보주체에게 알려야 한다.";
+		var collection = chunk(5252L, "law", "개인정보 보호법", "제15조(개인정보의 수집ㆍ이용)",
+			head + "\n1. 개인정보의 수집ㆍ이용 목적\n2. 수집하려는 개인정보의 항목\n③ 기록을 관리한다.", null);
+		var disclosure = chunk(5253L, "law", "개인정보 보호법", "제17조(개인정보의 제공)",
+			head + "\n1. 개인정보를 제공받는 자\n2. 개인정보를 제공받는 자의 개인정보 이용 목적\n③ 기록을 관리한다.", null);
+		var mapper = org.mockito.Mockito.mock(LawChunkMapper.class);
+		org.mockito.Mockito.when(mapper.findSemanticChunksByDocumentTitleAndText(
+			org.mockito.ArgumentMatchers.eq(List.of("law")), org.mockito.ArgumentMatchers.eq(List.of("개인정보 보호법")),
+			org.mockito.ArgumentMatchers.argThat(terms -> terms.contains("동의를 받을 때")),
+			org.mockito.ArgumentMatchers.eq(false), org.mockito.ArgumentMatchers.anyInt()
+		)).thenReturn(List.of(disclosure, collection));
+		var service = service(mapper, org.mockito.Mockito.mock(RagDocumentMapper.class));
+		try {
+			assertThat(findLexicalChunks(service, QuestionSearchPlan.from("앱에서 개인정보 수집 동의를 받기 전에 고지할 사항은 무엇인가요?"),
+				List.of("law"), false)).containsExactly(collection);
+			for (String question : List.of("개인정보를 제3자에게 제공할 때 동의 전에 무엇을 고지하나요?",
+				"개인정보 수집과 제3자 제공에 동의를 받을 때 각각 무엇을 고지하나요?")) {
+				assertThat(findLexicalChunks(service, QuestionSearchPlan.from(question), List.of("law"), false))
+					.doesNotContain(collection);
+			}
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void mixedTargetPolicyLawLookupPrecedesUnrelatedFastRagMatches() throws Exception {
 		String query = "\uC9C0\uB2A5\uC815\uBCF4\uC0AC\uD68C \uC2E4\uD589\uACC4\uD68D\uC758 \uC608\uBE44\uAC80\uD1A0\uB294 \uC5B4\uB5A4 \uC0AC\uC5C5\uC744 \uB300\uC0C1\uC73C\uB85C \uD558\uB294\uAC70\uC57C?";
 		LawSemanticChunkRow directArticle = chunk(

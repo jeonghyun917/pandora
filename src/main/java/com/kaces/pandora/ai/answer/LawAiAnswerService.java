@@ -9125,6 +9125,22 @@ public class LawAiAnswerService {
 			.filter(value -> !isLexicalControlKeyword(value))
 			.distinct()
 			.toList();
+		if (!boundedLawEvidenceMatched && lawTargets.contains("law")
+			&& profile.matchedPolicyIds().contains("privacy_consent_notice")
+			&& normalizedQuery.contains("수집") && !containsAny(normalizedQuery, "제공", "제3자", "목적외")) {
+			List<String> noticeTerms = profile.directEvidenceGroups().stream().flatMap(List::stream)
+				.filter(term -> term.contains(" ")).distinct().limit(12).toList();
+			if (!noticeTerms.isEmpty()) {
+				var collectionNotices = safeLexicalQuery("law collection consent notice",
+					() -> lawChunkMapper.findSemanticChunksByDocumentTitleAndText(List.of("law"),
+						List.of("개인정보 보호법"), noticeTerms, includeFuture, LAW_TEXT_KEYWORD_FETCH_LIMIT), routing)
+					.stream().filter(chunk -> ClaimEvidenceMatcher.hasCollectionConsentNotice(chunk.chunkText())).toList();
+				if (!collectionNotices.isEmpty()) {
+					chunks.addAll(collectionNotices);
+					return finishLexicalChunks(chunks, query);
+				}
+			}
+		}
 		List<String> configuredLawTitleKeywords = new java.util.ArrayList<>(profile.policySearchKeywords());
 		profile.entities().forEach(entity -> configuredLawTitleKeywords.addAll(entity.aliases()));
 		List<String> policyLawTitleKeywords = configuredLawTitleKeywords.stream()
