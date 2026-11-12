@@ -484,6 +484,21 @@ class LawAiAnswerServiceEvidenceGateTests {
         } finally {service.shutdownExecutors();}
     }
 
+    @Test void generationContextKeepsCompleteProcedureThatFitsItsBudget() throws Exception {
+        String lastStep = "검토가 끝나면 담당 기관은 요청 기관에 최종 결과를 통보한다.";
+        String body = "접수 절차. 요청 기관은 신청서를 제출한다. "
+            + "담당 기관은 신청서의 기재 사항을 검토한다. ".repeat(9) + lastStep;
+        var row = chunk(99126L, "official_doc", "업무 안내서", "접수 절차", body);
+        var service = service();
+        try {
+            assertThat(contextSnippet(service, row, "접수 절차를 알려주세요?", body.length()))
+                .contains("요청 기관은 신청서를 제출한다.", lastStep)
+                .doesNotEndWith("...");
+        } finally {
+            service.shutdownExecutors();
+        }
+    }
+
     @Test void autonomyProcedureRetrievesGuideStepsWhenBroadKeywordsMissThem() throws Exception {
         var procedure = chunk(99124L, "official_doc", "자치분권 사전협의 지침", "협의절차",
             "사전협의 요청서 작성·제출, 지방자치 관련성 검토 및 협의 결과서 통보");

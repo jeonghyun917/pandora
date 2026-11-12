@@ -3679,6 +3679,9 @@ public class LawAiAnswerService {
 			return "";
 		}
 		String normalized = cleanDisplayText(text);
+		if (normalized.length() <= limit) {
+			return normalized;
+		}
 		int index = bestSnippetIndex(normalized, query);
 		if (index < 0) {
 			return limitText(normalized, limit);
