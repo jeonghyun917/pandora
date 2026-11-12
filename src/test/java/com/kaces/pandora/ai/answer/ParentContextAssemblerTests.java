@@ -101,6 +101,25 @@ class ParentContextAssemblerTests {
 			.contains("문화체육관광부 검토 대상: 홈페이지 및 웹메일 등 웹기반 정보시스템 구축");
 	}
 
+	@Test
+	void preservesOnlyTheCompleteNumberedParagraphFromTheMatchedLegalChild() {
+		var assembler = new ParentContextAssembler();
+		String prefix = "별도 절차가 적용된다. ".repeat(100);
+		String paragraph = "⑤ 제안요청서에는 다음 각 호의 사항을 명시하여야 한다.1. 과업내용2. 평가방법";
+		String following = " 제6조(입찰공고) 별도의 공고 조건을 명시한다.";
+		var legal = chunk(11, "제안요청서", prefix + paragraph + following);
+		var ground = assembler.toGrounds(List.of(legal), Map.of("law:11", legal), Map.of(),
+			row -> paragraph.substring(2) + following).get(0);
+		assertThat(ground.matchedChildText()).isEqualTo(paragraph);
+
+		var incomplete = chunk(11, "제안요청서", prefix + paragraph.replace("2.", "3.") + following);
+		assertThat(assembler.toGrounds(List.of(incomplete), Map.of(), Map.of(),
+			row -> paragraph.substring(2)).get(0).matchedChildText()).doesNotContain("⑤");
+		var unrelated = chunk(11, "다른 조항", prefix);
+		assertThat(assembler.toGrounds(List.of(legal), Map.of("law:11", unrelated), Map.of(),
+			row -> paragraph.substring(2)).get(0).matchedChildText()).doesNotContain("⑤");
+	}
+
 	private LawSemanticChunkRow chunk(long id, String title, String text) {
 		return new LawSemanticChunkRow(
 			id,

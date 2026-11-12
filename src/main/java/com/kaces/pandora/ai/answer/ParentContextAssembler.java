@@ -6,10 +6,19 @@ import com.kaces.pandora.rag.common.HwpxTextCleaner;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
 @Component
 public class ParentContextAssembler {
+	private static final int CHILD_LIMIT = 1_200;
+	private static final Pattern NUMBERED_DUTY = Pattern.compile(
+		"([①-⑳]\\s*)([^①-⑳.!?\\r\\n]{1,120}다음\\s*각\\s*호의\\s*사항을\\s*명시하여야\\s*한다\\.)"
+			+ "(\\s*1\\.\\s+[^①-⑳]{1,1050}?)(?=\\s*(?:제\\d+조(?:의\\d+)?\\s*\\(|[①-⑳]))"
+	);
+	private static final Pattern LIST_ITEM = Pattern.compile(
+		"\\G\\s*(\\d{1,2})\\.\\s+([^.!?。①-⑳]{1,240}?)(?=\\d{1,2}\\.\\s|\\z)"
+	);
 	public List<LawAiAnswerGround> toGrounds(
 		List<LawSemanticChunkRow> chunks,
 		Map<String, LawSemanticChunkRow> matchedChunkByKey,
@@ -82,6 +91,9 @@ public class ParentContextAssembler {
 		String contextPolicy = parentContextText == null ? "matched_child_only" : "parent_context_expanded";
         boolean literalLegalProof=("law".equals(chunk.target()) || "admrul".equals(chunk.target()))
             && SourceOwnedConditionalScope.original(0,matchedChildText).isPresent();
+		String snippet = snippetFactory == null ? "" : snippetFactory.apply(chunk);
+		String childProof = !literalLegalProof && ("law".equals(chunk.target()) || "admrul".equals(chunk.target()))
+			? selectedNumberedDuty(matchedChildText, snippet) : null;
 		return new LawAiAnswerGround(
 			number,
 			chunk.chunkId(),
@@ -95,16 +107,47 @@ public class ParentContextAssembler {
 			chunk.chunkNo(),
 			cleanHwpxText(chunk.chunkTitle()),
 			chunk.pageNo(),
-			snippetFactory == null ? "" : snippetFactory.apply(chunk),
+			snippet,
 			chunk.sourcePath(),
 			chunk.sourceUrl(),
 			score(scoreByChunkId, matchedKey, displayKey),
-			limitText(literalLegalProof?matchedChildText:cleanDisplayText(matchedChildText), 1_200),
+			childProof == null ? limitText(literalLegalProof?matchedChildText:cleanDisplayText(matchedChildText), CHILD_LIMIT) : childProof,
 			parentContextText == null ? null : limitText(cleanDisplayText(parentContextText), 2_800),
 			contextChunkIds(chunk, matchedChunk, parentContextText == null ? List.of() : explicitContextChunkIds),
 			contextPolicy,
 			normalizeEvidenceRole(evidenceRole)
 		);
+	}
+
+	private static String selectedNumberedDuty(String child, String citation) {
+		if (child == null || child.length() <= CHILD_LIMIT || citation == null || citation.isBlank()) {
+			return null;
+		}
+		var paragraphs = NUMBERED_DUTY.matcher(child);
+		String selected = null;
+		String compactCitation = citation.replaceAll("\\s+", "");
+		while (paragraphs.find()) {
+			String paragraph = paragraphs.group().stripTrailing();
+			if (paragraphs.end() <= CHILD_LIMIT || paragraph.length() > CHILD_LIMIT
+				|| !compactCitation.contains((paragraphs.group(2) + paragraphs.group(3)).replaceAll("\\s+", ""))) {
+				continue;
+			}
+			var items = LIST_ITEM.matcher(paragraphs.group(3).strip());
+			int expected = 1;
+			int end = 0;
+			while (items.find() && Integer.parseInt(items.group(1)) == expected && !items.group(2).isBlank()) {
+				expected++;
+				end = items.end();
+			}
+			if (expected < 3 || end != paragraphs.group(3).strip().length()) {
+				continue;
+			}
+			if (selected != null) {
+				return null;
+			}
+			selected = paragraph;
+		}
+		return selected;
 	}
 
 	private String normalizeEvidenceRole(String role) {
