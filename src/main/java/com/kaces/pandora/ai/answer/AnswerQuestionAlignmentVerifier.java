@@ -22,7 +22,7 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final String CONDITION = "CONDITION";
 	private static final String DIRECT_CONCLUSION = "DIRECT_CONCLUSION";
 	private static final String ANSWER_COVERAGE = "ANSWER_COVERAGE";
-	private static final Pattern TERMINAL_REQUEST = Pattern.compile("(?U)\\s+(알려주세요)[.!?。？]*\\s*\\z");
+	private static final Pattern TERMINAL_REQUEST = Pattern.compile("(?U)\\s+(알려주세요|있습니까)[.!?。？]*\\s*\\z");
 	private static final Pattern CONTRACT_STANDARD_AUTHORITY = Pattern.compile(
 		"(?U)^\\s*([가-힣A-Za-z0-9][가-힣A-Za-z0-9 \\t]{2,88}?계약[ \\t]*체결[ \\t]*기준)"
 			+ "[ \\t]*(?:에[ \\t]*(?:따라|따른)|에서)[ \\t]+(.+)$");
@@ -653,6 +653,8 @@ public class AnswerQuestionAlignmentVerifier {
 			}
 			var terminal = TERMINAL_REQUEST.matcher(rawQuestion == null ? "" : rawQuestion);
 			String requestMarker = terminal.find()
+				&& (terminal.group(1).equals("알려주세요")
+					|| normalize(rawQuestion.substring(0, terminal.start())).endsWith("의무가"))
 				&& !normalize(rawQuestion.substring(0, terminal.start())).contains(terminal.group(1))
 				? terminal.group(1) : "";
 			for (String term : profile.terms()) {

@@ -21,6 +21,19 @@ class AnswerQuestionAlignmentVerifierTests {
 	}
 
 	@Test
+	void terminalDutyQuestionPreservesScopeWithoutTreatingTheEndingAsASubject() {
+		String answer = "접근 권한의 분리가 어려운 정당한 사유가 있는 경우에는 "
+			+ "업무 수행에 필요한 최소한의 접근 권한만 부여하고 접근 권한을 관리해야 한다.";
+		var result = claimResult(supported(answer, answer));
+		String question = "접근 권한의 분리가 어려운 정당한 사유가 있는 경우 접근 권한 관리 의무가 있습니까?";
+		assertThat(verifier.verify(question, result).aligned()).isTrue();
+		assertThat(verifier.verify(question.replace("사유가 있는", "사유가 없는"), result).reasonCode())
+			.isEqualTo("MISSING_CONDITION");
+		assertThat(verifier.verify("다른 기관의 " + question, result).reasonCode())
+			.isEqualTo("MISSING_SUBJECT");
+	}
+
+	@Test
 	void currentEffectQuestionTreatsEffectAsDateRelationNotSubject() {
 		String title = "인공지능 및 데이터 기반 행정 활성화에 관한 법률";
 		String answer = title + " 시행일은 2026년 8월 28일이다.";
