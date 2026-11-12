@@ -3998,6 +3998,31 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void titleFreePrivacyPolicyDisclosureRequiresPurposeAndPublicationInTheSameBody() throws Exception {
+		String title = "개인정보 보호법";
+		String purpose = "개인정보 처리방침에는 개인정보의 처리 목적을 포함하여야 한다.";
+		String publication = "개인정보 처리방침을 정보주체가 쉽게 확인할 수 있도록 공개하여야 한다.";
+		var owner = chunk(5260L, "law", title, "개인정보 처리방침의 수립 및 공개", purpose + "\n" + publication, null);
+		var missingPublication = chunk(5261L, "law", title, "처리 원칙", purpose, null);
+		var missingPurpose = chunk(5262L, "law", title, "처리방침 평가", publication, null);
+		var mapper = org.mockito.Mockito.mock(LawChunkMapper.class);
+		org.mockito.Mockito.when(mapper.findSemanticChunksByDocumentTitleAndText(
+			org.mockito.ArgumentMatchers.eq(List.of("law")), org.mockito.ArgumentMatchers.eq(List.of(title)),
+			org.mockito.ArgumentMatchers.argThat(terms -> terms.contains("개인정보의 처리 목적")),
+			org.mockito.ArgumentMatchers.eq(false), org.mockito.ArgumentMatchers.anyInt()
+		)).thenReturn(List.of(missingPublication, missingPurpose, owner));
+		var service = service(mapper, org.mockito.Mockito.mock(RagDocumentMapper.class));
+		try {
+			assertThat(findLexicalChunks(service, QuestionSearchPlan.from("개인정보 처리방침에서 처리 목적을 어떻게 공개하나요?"),
+				List.of("law"), false)).containsExactly(owner);
+			assertThat(findLexicalChunks(service, QuestionSearchPlan.from("개인정보 처리방침에서 처리 목적을 고지했으면 수집 동의를 생략해도 되나요?"),
+				List.of("law"), false)).doesNotContain(owner);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void collectionNoticeLookupUsesOwnedNoticeBodyAndDoesNotRouteMixedOrDisclosureQuestions() throws Exception {
 		String head = "② 개인정보처리자는 제1항제1호에 따른 동의를 받을 때에는 다음 각 호의 사항을 정보주체에게 알려야 한다.";
 		var collection = chunk(5252L, "law", "개인정보 보호법", "제15조(개인정보의 수집ㆍ이용)",

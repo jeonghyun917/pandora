@@ -9141,6 +9141,24 @@ public class LawAiAnswerService {
 				}
 			}
 		}
+		if (!boundedLawEvidenceMatched && documentTitleAnchors.isEmpty() && lawTargets.contains("law")
+			&& isPrivacyNoticeQuestion(profile) && normalizedQuery.contains("처리방침") && normalizedQuery.contains("처리목적")
+			&& containsAny(normalizedQuery, "공개", "확인", "고지", "알려")
+			&& !containsAny(normalizedQuery, "동의", "제공", "수집출처", "자동화", "평가", "개선권고")) {
+			var policyNotices = safeLexicalQuery("law privacy policy purpose disclosure",
+				() -> lawChunkMapper.findSemanticChunksByDocumentTitleAndText(List.of("law"),
+					List.of("개인정보 보호법"), List.of("개인정보의 처리 목적", "정보주체가 쉽게 확인"),
+					includeFuture, LAW_TEXT_KEYWORD_FETCH_LIMIT), routing).stream().filter(chunk -> {
+					String body = normalizeForMatch(chunk.chunkText());
+					return "개인정보보호법".equals(normalizeForMatch(chunk.title()))
+						&& body.contains("개인정보의처리목적") && body.contains("정보주체가쉽게확인")
+						&& body.contains("공개하여야");
+				}).toList();
+			if (!policyNotices.isEmpty()) {
+				chunks.addAll(policyNotices);
+				return finishLexicalChunks(chunks, query);
+			}
+		}
 		List<String> configuredLawTitleKeywords = new java.util.ArrayList<>(profile.policySearchKeywords());
 		profile.entities().forEach(entity -> configuredLawTitleKeywords.addAll(entity.aliases()));
 		List<String> policyLawTitleKeywords = configuredLawTitleKeywords.stream()
