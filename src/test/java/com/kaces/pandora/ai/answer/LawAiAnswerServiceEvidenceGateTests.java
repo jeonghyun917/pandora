@@ -3534,6 +3534,43 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void explicitArticleKeepsTheNamedLawInsteadOfSameNumberInItsDecree() throws Exception {
+		String title = "지방자치단체를 당사자로 하는 계약에 관한 법률";
+		var statute = chunk(88001L, "law", title, "제31조(입찰 참가자격 제한)", "제31조(입찰 참가자격 제한) 지방자치단체의 장은 참가자격을 제한한다.");
+		var decree = chunk(88002L, "law", title + " 시행령", "제31조(계약서 작성)", "제31조(계약서 작성) 계약서를 작성한다.");
+		LawChunkMapper mapper = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
+			LawChunkMapper.class.getClassLoader(), new Class<?>[]{LawChunkMapper.class}, (proxy, method, args) -> {
+				if (method.getName().equals("findSemanticChunksByDocumentTitleAndText")) return List.of(decree, statute);
+				if (method.getName().equals("findSemanticChunksByText")) throw new AssertionError("Unexpected unscoped lookup");
+				return List.of();
+			});
+		var service = service(mapper, null);
+		try {
+			var question = QuestionSearchPlan.from("지방계약법 제31조의 입찰 참가자격 제한 요건을 알려 주세요.");
+			assertThat(findLexicalChunks(service, question, List.of("law"), false)).containsExactly(statute);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
+	void extractsExplicitLawTitleBeforeArticleWithoutCrossingContractJurisdictions() throws Exception {
+		var service = service();
+		try {
+			assertThat(documentTitleAnchorKeywords(service, "국가를 당사자로 하는 계약에 관한 법률 시행령 제76조의 내용을 알려 주세요."))
+				.containsExactly("국가를 당사자로 하는 계약에 관한 법률 시행령");
+			assertThat(documentTitleAnchorKeywords(service, "국가계약법 시행령 제76조는 어떤 경우에 적용되나요?"))
+				.containsExactly("국가를 당사자로 하는 계약에 관한 법률 시행령");
+			assertThat(documentTitleAnchorKeywords(service, "지방계약법 제31조의 적용 조건은 무엇인가요?"))
+				.containsExactly("지방자치단체를 당사자로 하는 계약에 관한 법률");
+			assertThat(documentTitleAnchorKeywords(service, "제76조가 적용되는 계약인지 알려 주세요.")).isEmpty();
+			assertThat(documentTitleAnchorKeywords(service, "업무 처리 방법 제76조에 무엇이 있나요?")).isEmpty();
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void extractsGuidebookCoreTitleAndEvidenceFromSharedReference() throws Exception {
 		String query = "행정안전부 재난현장 수습활동 가이드북에서 통합지원본부는 어떤 역할을 해?";
 		LawAiAnswerService service = service();

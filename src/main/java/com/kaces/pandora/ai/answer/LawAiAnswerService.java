@@ -115,6 +115,10 @@ public class LawAiAnswerService {
 	private static final Set<String> LEGAL_REFERENCE_NOUNS = Set.of(
 		"법", "특별법", "법률", "시행령", "시행규칙", "지침", "계약체결기준", "계약일반조건", "계약 일반조건");
 	private static final List<String> LEGAL_AUTHORITY_PARTICLES = List.of("에 따라", "에 따른", "상");
+	private static final Pattern NAMED_LAW_BEFORE_ARTICLE = Pattern.compile(
+		"^\\s*[「『]?(?<title>[가-힣0-9·ㆍ ]{2,95}?(?:법률|법)(?:[ \\t]+시행(?:령|규칙))?)[」』]?"
+			+ "[ \\t]+(?<article>제[ \\t]*[0-9]{1,5}[ \\t]*조)"
+	);
 	private static final Pattern COORDINATED_TITLE_ACTIONS =
 		Pattern.compile("(?<![\\p{L}\\p{N}])(설치|구축)[ ·]운영(?![\\p{L}\\p{N}])");
 	private static final List<String> TRUSTED_DOCUMENT_AGENCY_PREFIXES = List.of(
@@ -7416,6 +7420,8 @@ public class LawAiAnswerService {
 		if (query == null || query.isBlank()) {
 			return null;
 		}
+		var explicitLaw = explicitNamedLawReference(query);
+		if (explicitLaw != null) return explicitLaw;
 		DocumentReference best = null;
 		int bestMarkerIndex = Integer.MAX_VALUE;
 		int bestMarkerLength = -1;
@@ -7461,6 +7467,16 @@ public class LawAiAnswerService {
 		java.util.ArrayList<String> particles = new java.util.ArrayList<>(DOCUMENT_LOCATION_PARTICLES);
 		particles.addAll(DOCUMENT_TOPIC_PARTICLES);
 		return particles;
+	}
+
+	private DocumentReference explicitNamedLawReference(String query) {
+		var namedArticle = NAMED_LAW_BEFORE_ARTICLE.matcher(query);
+		if (!namedArticle.find()) return null;
+		String title = cleanDocumentReferenceTitle(namedArticle.group("title"));
+		if (title.length() < 4 || title.endsWith("방법") || title.endsWith("기법") || title.endsWith("사용법")) return null;
+		title = title.replaceFirst("^국가계약법(?=\\s|$)", "국가를 당사자로 하는 계약에 관한 법률")
+			.replaceFirst("^지방계약법(?=\\s|$)", "지방자치단체를 당사자로 하는 계약에 관한 법률");
+		return new DocumentReference(title, namedArticle.start("article"));
 	}
 
 	private String cleanDocumentReferenceTitle(String value) {
@@ -9136,6 +9152,13 @@ public class LawAiAnswerService {
 			List<LawSemanticChunkRow> articleReferenceChunks = chunks.stream()
 				.filter(chunk -> containsArticleReferenceFromQuery(chunk, query))
 				.toList();
+			var explicitLaw = lawTargets.isEmpty() ? null : explicitNamedLawReference(query);
+			if (explicitLaw != null) {
+				String owningTitle = normalizeForMatch(explicitLaw.title());
+				return finishLexicalChunks(articleReferenceChunks.stream()
+					.filter(chunk -> owningTitle.equals(normalizeForMatch(chunk.title())))
+					.toList(), query);
+			}
 			if (!articleReferenceChunks.isEmpty()) {
 				return finishLexicalChunks(articleReferenceChunks, query);
 			}
