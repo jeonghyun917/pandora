@@ -1786,7 +1786,8 @@ public class LawAiAnswerService {
         }
 		grounds = grounds.stream().map(ground -> {
 			var proof = "law".equals(ground.target()) ? commencementProofs.get(ground.chunkId()) : null;
-			return proof == null ? ground : ground.withOfficialCommencement(proof);
+			return proof == null ? ground : ground.withOfficialCommencement(proof,
+				matchedChunkByKey.get(scoreKey(ground.target(), ground.chunkId())));
 		}).toList();
 		grounds = DocumentDiscoveryPolicy.orderGrounds(normalized.query(), grounds);
 		timing.groundsMs.addAndGet(elapsedMillis(groundsStart));

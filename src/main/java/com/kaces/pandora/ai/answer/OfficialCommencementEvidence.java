@@ -165,6 +165,11 @@ record OfficialCommencementEvidence(LocalDate effectiveDate, String clause, Stri
 		return body != null && (anchorHash == null ? compact(body).contains(compact(clause)) : anchorHash.equals(hash(body)));
 	}
 
+	Optional<OfficialCommencementEvidence> projectCitation(String exactBody) {
+		if (sourcePath == null || !covers(exactBody)) return Optional.empty();
+		return Optional.of(new OfficialCommencementEvidence(effectiveDate, clause, sourcePath, hash(clause)));
+	}
+
 	private static String hash(String value) {
 		return com.kaces.pandora.common.text.LawHashUtils.sha256(value);
 	}

@@ -3,6 +3,7 @@ package com.kaces.pandora.ai.answer;
 import static org.assertj.core.api.Assertions.assertThat;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import com.kaces.pandora.lawdata.persistence.LawCommencementSourceRow;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
@@ -80,6 +81,31 @@ class OfficialCommencementEvidenceTests {
 		});
 		assertThat(OfficialCommencementEvidence.resolveFromDetail(anchor,
 			new LawCommencementSourceRow(41,12,4,"61",2,anchorPath,intro,"20260828",detail))).isEmpty();
+	}
+
+	@Test
+	void assembledCitationUsesBoundOfficialClauseInsteadOfTheCleanedAnchor() {
+		String title = "예시법";
+		String intro = "제1조(목적)  이 법은 공공행정의 원칙을 정한다.\n" + "설명 ".repeat(410);
+		String path = "$.법령.조문.조문단위[0]";
+		var anchor = new LawSemanticChunkRow(41,12,"law","60",title,null,null,null,"CURRENT",null,
+			"목적",intro,null,path,null,0,null,null,null,"PASS",null,null,2);
+		String detail = raw(OLD + "," + NEW).replace("\"공포번호\":\"21000\"", "\"법령명_한글\":\"예시법\",\"공포번호\":\"21000\"");
+		var proof = OfficialCommencementEvidence.resolveFromDetail(anchor,
+			new LawCommencementSourceRow(41,12,4,"60",2,path,intro,"20260828",detail)).orElseThrow();
+		var ground = new ParentContextAssembler().toGrounds(List.of(anchor), java.util.Map.of("law:41",anchor),
+			java.util.Map.of(), ignored -> "표시용 본문").get(0);
+		assertThat(proof.covers(ground.matchedChildText())).isFalse();
+		var changed = new LawSemanticChunkRow(41,12,"law","60",title,null,null,null,"CURRENT",null,
+			"목적",intro+" 변경",null,path,null,0,null,null,null,"PASS",null,null,2);
+		assertThat(ground.withOfficialCommencement(proof,changed).officialCommencement()).isNull();
+		var citation = ground.withOfficialCommencement(proof,anchor);
+		assertThat(citation.sourcePath()).isEqualTo(PATH);
+		assertThat(citation.snippet()).isEqualTo(CURRENT);
+		assertThat(citation.matchedChildText()).isEqualTo(CURRENT);
+		var verifier = new ClaimVerifier();
+		assertThat(verifier.verifyDetailed("예시법 시행일은 2026년 8월 28일이다.",List.of(citation)).unsupportedClaims()).isEmpty();
+		assertThat(verifier.verifyDetailed("예시법 시행일은 2026년 2월 27일이다.",List.of(citation)).unsupportedClaims()).hasSize(1);
 	}
 
 	private static String unit(String no, String date, String clause) {

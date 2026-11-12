@@ -1,6 +1,8 @@
 package com.kaces.pandora.ai.answer;
 
 import java.util.List;
+import java.util.Objects;
+import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 
 public record LawAiAnswerGround(
 	int number,
@@ -40,10 +42,24 @@ public record LawAiAnswerGround(
 		if (proof == null || !"law".equals(target) || !proof.covers(matchedChildText)) {
 			return this;
 		}
+		return attachCommencement(proof, matchedChildText);
+	}
+
+	private LawAiAnswerGround attachCommencement(OfficialCommencementEvidence proof, String evidenceBody) {
 		return new LawAiAnswerGround(number, chunkId, documentId, target, title, agencyName, categoryName,
 			sourceDate, effectiveStatus, null, "시행일", null, proof.clause(),
 			proof.sourcePath() == null ? sourcePath : proof.sourcePath(), sourceUrl, score,
-			matchedChildText, null, List.of(), "official_commencement", evidenceRole, proof);
+			evidenceBody, null, List.of(), "official_commencement", evidenceRole, proof);
+	}
+
+	LawAiAnswerGround withOfficialCommencement(OfficialCommencementEvidence proof,
+		LawSemanticChunkRow exactSource) {
+		if (proof == null || exactSource == null || !"law".equals(target) || !target.equals(exactSource.target())
+			|| !"CURRENT".equals(effectiveStatus) || !effectiveStatus.equals(exactSource.effectiveStatus())
+			|| chunkId != exactSource.chunkId() || documentId != exactSource.documentId()
+			|| !Objects.equals(title, exactSource.title()) || !Objects.equals(sourcePath, exactSource.sourcePath())) return this;
+		return proof.projectCitation(exactSource.chunkText())
+			.map(citation -> attachCommencement(citation, citation.clause())).orElse(this);
 	}
 	public LawAiAnswerGround(
 		int number,
