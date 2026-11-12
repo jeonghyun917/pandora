@@ -199,7 +199,7 @@ final class ClaimEvidenceAtomizer {
 		return result;
 	}
 
-	private boolean hasConsecutiveDutyItems(String body) {
+	boolean hasConsecutiveDutyItems(String body) {
 		int next = 1;
 		for (String raw : body.lines().toList()) {
 			String line = raw.strip();

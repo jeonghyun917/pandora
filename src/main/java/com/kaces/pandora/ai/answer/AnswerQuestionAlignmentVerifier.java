@@ -133,12 +133,16 @@ public class AnswerQuestionAlignmentVerifier {
                 scopeRules.stream().filter(rule->rule.owner()==link.groundNumber()).toList()
 			).stream())
 			.toList());
-		if (completeAnswerCoverage && !claimResult.insufficientEvidence() && claimResult.strongClaimCount() == 2
+		if (completeAnswerCoverage && !claimResult.insufficientEvidence()
+			&& (claimResult.strongClaimCount() == 2 || claimResult.strongClaimCount() == 3)
 			&& claimResult.unsupportedClaims().isEmpty() && claimResult.unsupportedNumericClaims().isEmpty()
 			&& claimResult.contradictedClaims().isEmpty()) {
-			addLiteralNumberedDutyCandidate(question, grounds, supportedLinks, alignmentProfile, subjectContextByGround,
-				scopeRules, candidates);
-			if (candidates.stream().noneMatch(candidate -> candidate.missingGroups().isEmpty())) {
+			if (claimResult.strongClaimCount() == 2) {
+				addLiteralNumberedDutyCandidate(question, grounds, supportedLinks, alignmentProfile, subjectContextByGround,
+					scopeRules, candidates);
+			}
+			if (claimResult.strongClaimCount() == supportedLinks.size()
+				&& candidates.stream().noneMatch(candidate -> candidate.missingGroups().isEmpty())) {
 				addLiteralNumberedProvisoCandidate(grounds, supportedLinks, alignmentProfile, scopeRules, candidates);
 			}
 		}
@@ -202,9 +206,9 @@ public class AnswerQuestionAlignmentVerifier {
 	private void addLiteralNumberedProvisoCandidate(List<LawAiAnswerGround> grounds,
 		List<ClaimVerifier.ClaimEvidenceLink> links, AlignmentProfile profile,
 		List<SourceOwnedConditionalScope.Rule> scopeRules, List<CandidateResult> candidates) {
-		if (grounds == null || links.size() != 2) return;
-		var main = links.get(0);
-		var exception = links.get(1);
+		if (grounds == null || (links.size() != 2 && links.size() != 3)) return;
+		var main = links.get(links.size() - 2);
+		var exception = links.get(links.size() - 1);
 		if (main.groundNumber() <= 0 || main.groundNumber() != exception.groundNumber()) return;
 		String mainText = foldedWhitespace(main.claim());
 		String exceptionText = foldedWhitespace(exception.claim());
@@ -219,10 +223,51 @@ public class AnswerQuestionAlignmentVerifier {
 			.collect(java.util.stream.Collectors.joining("\\s+"));
 		var located = Pattern.compile("(?m)^[ \\t]*[1-9][0-9]?\\.[ \\t]+" + exact + "[ \\t]*(?=\\R|$)")
 			.matcher(owners.get(0).matchedChildText());
-		if (!located.find() || located.find()) return;
+		if (!located.find()) return;
+		int start = located.start(), end = located.end();
+		if (located.find()) return;
+		String actor = "";
+		if (links.size() == 3) {
+			var header = links.get(0);
+			if (header.groundNumber() != main.groundNumber()) return;
+			actor = verifiedParagraphActor(owners.get(0).matchedChildText(), start, end, header, exceptionText);
+			if (actor.isEmpty()) return;
+		}
 		// Only the subject check receives the exact owning item. The proviso still owns the predicate and conditions.
-		candidates.add(assessAtom(exceptionText, exceptionText, profile, normalize(item), true,
+		candidates.add(assessAtom(exceptionText, exceptionText, profile, normalize(actor + " " + item), true,
 			scopeRules.stream().filter(rule -> rule.owner() == main.groundNumber()).toList()));
+	}
+
+	private static final Pattern CLOSED_FIRST_DUTY_PARAGRAPH = Pattern.compile(
+		"(?m)(?:^|(?<=\\)))[ \\t]*①[ \\t]+([^①-⑳※*]{2,480}?)\\R"
+			+ "([ \\t]*1\\.[ \\t]+[^①-⑳※*]{2,1400}?)(?=^[ \\t]*②[ \\t]+)");
+
+	private String verifiedParagraphActor(String child, int itemStart, int itemEnd,
+		ClaimVerifier.ClaimEvidenceLink header, String proviso) {
+		var paragraphs = CLOSED_FIRST_DUTY_PARAGRAPH.matcher(child);
+		while (paragraphs.find()) {
+			if (itemStart < paragraphs.start(2) || itemEnd > paragraphs.end(2)) continue;
+			String literal = foldedWhitespace(paragraphs.group(1))
+				.replaceFirst(" <개정 [0-9., ]+>$", "");
+			String key = literal.replaceAll("\\s+", "");
+			if (!literal.endsWith("한다.") || literal.indexOf('.') != literal.length() - 1
+				|| !literal.contains("다음 각 호의 ")
+				|| !key.equals(foldedWhitespace(header.claim()).replaceAll("\\s+", ""))
+				|| !key.equals(foldedWhitespace(header.evidenceSentence()).replaceAll("\\s+", ""))
+				|| !atomizer.hasConsecutiveDutyItems(paragraphs.group(2))) return "";
+			int conditionEnd = proviso.lastIndexOf("경우에는 ");
+			if (conditionEnd < 0) return "";
+			var parser = new KoreanEvidenceAtomParser();
+			// A quoted local definition is not a second actor. The full literal was already checked above.
+			var owner = parser.parse(literal.replaceAll(
+				"\\(이하\\s*이\\s*조에서\\s*[“\"][가-힣A-Za-z0-9 ]{1,40}[”\"](?:이)?라\\s*한다\\)", ""));
+			var consequence = parser.parse(proviso.substring(conditionEnd + "경우에는 ".length()));
+			if (owner.parseStatus() != EvidenceAtom.ParseStatus.COMPLETE || owner.subjects().size() != 1
+				|| owner.modality() != EvidenceAtom.Modality.REQUIRED
+				|| consequence.modality() != EvidenceAtom.Modality.REQUIRED || !consequence.subjects().isEmpty()) return "";
+			return owner.subjects().iterator().next();
+		}
+		return "";
 	}
 
 	private static String foldedWhitespace(String text) {

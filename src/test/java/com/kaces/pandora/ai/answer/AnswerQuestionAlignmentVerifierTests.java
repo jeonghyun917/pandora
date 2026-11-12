@@ -10,6 +10,30 @@ class AnswerQuestionAlignmentVerifierTests {
 	private final AnswerQuestionAlignmentVerifier verifier = new AnswerQuestionAlignmentVerifier();
 
 	@Test
+	void closedNumberedProvisoInheritsOnlyItsVerifiedParagraphOwner() {
+		String header = "개인정보처리자는 추가 정보(이하이 조에서 “추가정보”라 한다)에 대하여 "
+			+ "다음 각 호의 안전성 확보 조치를 해야 한다.";
+		String item = "가명정보와 추가정보에 대한 접근 권한의 분리.";
+		String premise = "다만, 접근 권한의 분리가 어려운 정당한 사유가 있는 경우에는 ";
+		String duty = "업무 수행에 필요한 최소한의 접근 권한만 부여하고 접근 권한을 관리해야 한다.";
+		String question = "개인정보처리자의 접근 권한의 분리가 어려운 정당한 사유가 있는 경우 접근 권한 관리 의무";
+		for (String control : List.of("owned", "separated", "explicit actor")) {
+			String consequence = control.equals("explicit actor") ? "관리책임자는 " + duty : duty;
+			String body = "① " + header + "\n1. 안전성 확보 조치\n"
+				+ (control.equals("separated") ? "② 관리책임자는 다음 각 호의 조치를 해야 한다.\n1. " : "2. ")
+				+ item + " " + premise + consequence + "\n② 처리 현황을 기록한다.";
+			var ground = new LawAiAnswerGround(1, 12, 2, "law", "정보 처리 시행령", null, null, null,
+				"CURRENT", "제5조", "안전성 조치", null, body, null, null, 0);
+			var checked = new ClaimVerifier().verifyDetailed(header + "\n" + item + " " + premise + consequence, List.of(ground));
+			assertThat(checked.supportedStrongClaimCount()).as(control).isEqualTo(3);
+			assertThat(verifier.verify(question, checked, List.of(ground)).aligned()).as(control).isEqualTo(control.equals("owned"));
+			assertThat(verifier.verify(question.replace("사유가 있는", "사유가 없는"), checked, List.of(ground)).aligned())
+				.isFalse();
+			assertThat(verifier.verify(question + " 및 신청 방법", checked, List.of(ground)).aligned()).isFalse();
+		}
+	}
+
+	@Test
 	void verifiedProvisoUsesScopeOnlyFromItsOwnNumberedItem() {
 		String scope = "가명정보와 추가정보에 대한 접근 권한의 분리.";
 		String proviso = "다만, 접근 권한의 분리가 어려운 정당한 사유가 있는 경우에는 "
