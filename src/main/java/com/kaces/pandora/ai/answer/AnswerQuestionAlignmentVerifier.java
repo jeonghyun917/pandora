@@ -22,6 +22,7 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final String CONDITION = "CONDITION";
 	private static final String DIRECT_CONCLUSION = "DIRECT_CONCLUSION";
 	private static final String ANSWER_COVERAGE = "ANSWER_COVERAGE";
+	private static final Pattern TERMINAL_REQUEST = Pattern.compile("(?U)\\s+(알려주세요)[.!?。？]*\\s*\\z");
 	private static final Pattern DIRECT_CONCLUSION_PATTERN = Pattern.compile(
 		"(?:입니다|합니다|한다|된다|됩니다|아니다|없습니다|있습니다|"
 			+ "하여야\s*한다|해야\s*한다|할\s*수\s*있다|할\s*수\s*없다|"
@@ -476,6 +477,7 @@ public class AnswerQuestionAlignmentVerifier {
 			);
 			List<List<String>> subjectGroups = subjectGroups(
 				questionProfile,
+				question,
 				conditionGroups,
 				relationRequirements.size() == 1
 					&& relationRequirements.get(0).kind() == RelationKind.LEXICAL
@@ -559,6 +561,7 @@ public class AnswerQuestionAlignmentVerifier {
 
 		private static List<List<String>> subjectGroups(
 			QuestionIntentProfile profile,
+			String rawQuestion,
 			List<List<String>> conditionGroups,
 			ClassificationFrame classificationFrame
 		) {
@@ -595,9 +598,14 @@ public class AnswerQuestionAlignmentVerifier {
 					}
 				}
 			}
+			var terminal = TERMINAL_REQUEST.matcher(rawQuestion == null ? "" : rawQuestion);
+			String requestMarker = terminal.find()
+				&& !normalize(rawQuestion.substring(0, terminal.start())).contains(terminal.group(1))
+				? terminal.group(1) : "";
 			for (String term : profile.terms()) {
 				String normalized = normalize(term);
 				if (normalized.length() < 2
+					|| normalized.equals(requestMarker)
 					|| (Set.of("효력", "법은", "법률은").contains(normalized) && profile.normalizedQuestion().contains("언제부터효력")
 						&& OfficialCommencementEvidence.isCurrentLookup(profile.normalizedQuestion()))
 					|| classificationFrame.matchesRelationTerm(normalized)

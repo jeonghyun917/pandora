@@ -33,6 +33,15 @@ class AnswerQuestionAlignmentVerifierTests {
 	}
 
 	@Test
+	void terminalPoliteRequestDoesNotBecomeAnAnswerSubject() {
+		String answer = "제안요청서에는 평가요소와 평가방법을 기재하여야 한다.";
+		var verified = claimResult(supported(answer, answer));
+		assertThat(verifier.verify("제안요청서의 평가요소와 평가방법 기재 의무", verified).aligned()).isTrue();
+		assertThat(verifier.verify("제안요청서의 평가요소와 평가방법 기재 의무를 알려주세요.", verified).aligned()).isTrue();
+		assertThat(verifier.verify("제안요청서의 별도 배점표 첨부 의무를 알려주세요.", verified).aligned()).isFalse();
+	}
+
+	@Test
 	void negativeQuestionAntecedentRemainsARequiredConditionNotAnAnswerSubject() {
 		String question = "행정시스템 법제도를 준수하지 않으면 어떤 불이익이 있나요?";
 		String conditional = "행정시스템 법제도를 준수하지 않으면 행정시스템 법제도 보완 조치를 통보합니다.";
