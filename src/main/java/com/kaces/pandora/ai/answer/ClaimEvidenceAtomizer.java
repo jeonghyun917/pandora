@@ -169,7 +169,31 @@ final class ClaimEvidenceAtomizer {
 			? java.util.stream.Stream.of(fragment) : closedMarkedAnnotations(fragment.text()).stream())
 			.flatMap(fragment -> fragment.literalOnly()
 				? java.util.stream.Stream.of(fragment) : closedWrappedRatios(fragment.text()).stream())
+			.flatMap(fragment -> fragment.literalOnly()
+				? java.util.stream.Stream.of(fragment) : closedNumberedProvisos(fragment.text()).stream())
 			.toList();
+	}
+
+	private static final Pattern WRAPPED_NUMBERED_PROVISO = Pattern.compile(
+		"(?m)^[ \\t]*[1-9][0-9]?\\.[ \\t]+[^.!?\\r\\n]{2,240}\\.[ \\t]+"
+			+ "(다만,[^.!?①-⑳※*\\r\\n]{2,240}(?:\\R[ \\t]*"
+			+ "(?![ \\t]|[0-9]{1,2}[.)]|[가-힣][.)][ \\t]|제[ \\t]*[0-9]+[ \\t]*조)"
+			+ "[^.!?①-⑳※*□○•\\r\\n]{2,240}){1,5}(?:해야|하여야)[ \\t]+한다\\.)"
+			+ "(?=[ \\t]*(?:\\R|$))");
+
+	private List<SourceFragment> closedNumberedProvisos(String text) {
+		Matcher proviso = WRAPPED_NUMBERED_PROVISO.matcher(text);
+		List<SourceFragment> result = new ArrayList<>();
+		int copied = 0;
+		while (proviso.find()) {
+			String literal = proviso.group(1).replaceAll("\\s+", " ");
+			if (!literal.matches(".*\\s경우(?:에는|에|는)?\\s.+")) { continue; }
+			result.add(new SourceFragment(text.substring(copied, proviso.start(1)), false));
+			result.add(new SourceFragment(literal, true));
+			copied = proviso.end(1);
+		}
+		if (copied < text.length()) { result.add(new SourceFragment(text.substring(copied), false)); }
+		return result;
 	}
 
 	record SourceFragment(String text, boolean literalOnly) { }

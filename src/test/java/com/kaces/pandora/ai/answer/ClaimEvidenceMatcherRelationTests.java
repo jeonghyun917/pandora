@@ -8,6 +8,23 @@ import org.junit.jupiter.api.Test;
 class ClaimEvidenceMatcherRelationTests {
 
 	private final ClaimEvidenceMatcher matcher = new ClaimEvidenceMatcher();
+
+	@Test
+	void wrappedNumberedProvisoRetainsItsWholeLiteralCondition() {
+		String trigger = "다만, 별도 담당자를 둘 여력이 없는 경우 등\n"
+			+ " 접근 권한의 분리가 어려운 정당한 사유가 있는 경우에는 ";
+		String duty = "업무 수행에 필요한 최소한의 접근 권한만 부여하고 접근 권한의 보유\n"
+			+ " 현황을 기록으로 보관하는 등 접근 권한을 관리ㆍ통제해야 한다.";
+		String body = "3. 가명정보와 추가정보에 대한 접근 권한의 분리. " + trigger + duty;
+		String literal = (trigger + duty).replaceAll("\\s+", " ");
+		assertThat(matcher.match(literal, List.of(ground(body))).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(duty.replaceAll("\\s+", " "), List.of(ground(body))).status())
+			.isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		String broken = body.replace(" 현황을", "4. 현황을");
+		assertThat(matcher.match(literal, List.of(ground(broken))).status())
+			.isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
 	@Test
 	void registeredItemScopeCannotBeOmittedFromTheOwnedDeliveryDuty() {
 		String scope = "디지털서비스몰에 등록된 계약품목에 대하여";
