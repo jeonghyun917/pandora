@@ -3504,6 +3504,21 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void keepsAudienceQualifierWhileLookingUpTheGuideTitle() throws Exception {
+		var service = service();
+		try {
+			assertThat(documentTitleAnchorKeywords(service, "공공기관용 기록물 보존 안내서는 무엇인가요?"))
+				.containsExactly("공공기관용 기록물 보존 안내서", "기록물 보존 안내서");
+			assertThat(documentTitleAnchorKeywords(service, "공공기관용 기록물 보존 규정에서 보존기간은 얼마인가요?"))
+				.doesNotContain("기록물 보존 규정");
+			assertThat(documentTitleAnchorKeywords(service, "공공기관용품 관리 안내서는 무엇인가요?"))
+				.doesNotContain("품 관리 안내서");
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void namedGuideLookupPreservesTheTitleAcrossCoordinatedPunctuation() throws Exception {
 		var service = service();
 		try {

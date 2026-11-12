@@ -7502,7 +7502,7 @@ public class LawAiAnswerService {
 		if (core.length() >= 8 && !core.equals(withoutReferencePrefix)) {
 			anchors.add(core);
 		}
-		String guideAlias = core.replaceFirst("^공공기관의\\s+", "");
+		String guideAlias = core.replaceFirst("^공공기관(?:의|용)\\s+", "");
 		boolean scopedGuide = !guideAlias.equals(core) && guideAlias.length() >= 8
 			&& List.of("가이드라인", "가이드", "안내서", "매뉴얼").stream().anyMatch(guideAlias::endsWith);
 		if (scopedGuide) anchors.add(guideAlias);
