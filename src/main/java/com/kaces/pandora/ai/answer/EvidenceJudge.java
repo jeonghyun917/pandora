@@ -89,6 +89,7 @@ public class EvidenceJudge {
 			|| searchableChunks.stream().anyMatch(chunk -> requiresCommencementOwnership(profile, chunk));
 		List<JudgedChunk> directSupportingChunks = topicAlignedChunks.stream()
 			.filter(chunk -> !isIrmRegistrationFaithfulness(profile.normalizedQuestion()))
+			.filter(chunk -> !isCctvGuideApplicabilityQuestion(profile.normalizedQuestion()))
 			.filter(chunk -> chunk.bodyDirectEvidenceMatches() > 0)
 			.filter(chunk -> !missingRequestedArticleOwnership(profile, chunk.chunk(), normalize(chunk.chunk().title())))
 			.filter(chunk -> !unverifiedCommencement(profile, chunk.chunk(), commencementEvidence))
@@ -1496,7 +1497,21 @@ public class EvidenceJudge {
 			&& !hasOperativeSecurityReviewOmission(body)) {
 			directEvidence = false;
 		}
+		if (directEvidence && isCctvGuideApplicabilityQuestion(profile.normalizedQuestion())
+			&& !CCTV_GUIDE_APPLICABILITY.matcher(chunk.chunkText() == null ? "" : chunk.chunkText()).find()) {
+			directEvidence = false;
+		}
 		return new JudgedChunk(chunk, score, topicAligned, relevant, directEvidence, directEvidenceMatches, bodyDirectEvidenceMatches);
+	}
+
+	private static final java.util.regex.Pattern CCTV_GUIDE_APPLICABILITY = java.util.regex.Pattern.compile(
+		"(?:^|[.!?\\r\\n])\\s*(?:이|본)\\s*(?:가이드라인|가이드|안내서|매뉴얼)(?:은|는)"
+			+ "[^.!?]{1,180}?(?:기관|지방자치단체|사업자|기업)(?:에|에게)\\s*적용(?:한다|된다|합니다|됩니다)(?:[.]|$)");
+
+	private static boolean isCctvGuideApplicabilityQuestion(String query) {
+		return containsAny(query, List.of("영상정보처리기기", "cctv"))
+			&& containsAny(query, List.of("가이드", "안내서", "매뉴얼"))
+			&& containsAny(query, List.of("적용대상", "적용범위"));
 	}
 
 	private static final java.util.regex.Pattern SECURITY_REVIEW_RESULT_ACTION = java.util.regex.Pattern.compile(

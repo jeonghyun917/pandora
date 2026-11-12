@@ -2398,6 +2398,24 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void namedCctvGuideApplicabilityRequiresAnOwnedScopeStatement() {
+		String title = "고정형 영상정보처리기기 설치 운영 안내서";
+		var scope = chunk(710, "official_doc", title, "적용 대상",
+			"이 안내서는 고정형 영상정보처리기기를 운영하는 지방자치단체에 적용한다.");
+		var retention = chunk(711, "official_doc", title, "보관 및 파기",
+			"공공기관은 고정형 영상정보처리기기의 영상 보관기간을 정하고 관리책임자를 지정한다.");
+		var purpose = chunk(712, "official_doc", title, "목적",
+			"이 안내서는 공공기관의 고정형 영상정보처리기기 설치 목적과 보관기간을 쉽게 설명하기 위하여 작성하였다.");
+		String applicability = title + "에서는 어떤 기관을 적용 대상으로 정하나요?";
+		assertThat(judge.judge(applicability, List.of(retention), Map.of(), 8).directEvidenceCount()).isZero();
+		assertThat(judge.judge(applicability, List.of(purpose), Map.of(), 8).directEvidenceCount()).isZero();
+		assertThat(judge.judge(applicability, List.of(retention, purpose), Map.of(), 8).directEvidenceFound()).isFalse();
+		assertThat(judge.judge(applicability, List.of(scope), Map.of(), 8).directEvidenceCount()).isEqualTo(1);
+		assertThat(judge.judge("공공기관 CCTV 영상의 보관기간과 관리책임자는?", List.of(retention), Map.of(), 8)
+			.directEvidenceCount()).isEqualTo(1);
+	}
+
+	@Test
 	void cctvPublicPlaceExceptionQuestionAcceptsOfficialTermEvidence() {
 		LawSemanticChunkRow procedureOnly = chunk(
 			1,
