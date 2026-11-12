@@ -1,6 +1,7 @@
 package com.kaces.pandora.semantic.lexical;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -11,11 +12,35 @@ import static org.mockito.Mockito.when;
 
 import com.kaces.pandora.common.text.QuestionSearchPlan;
 import com.kaces.pandora.semantic.config.LawAiLexicalVariantProperties;
+import com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.dao.QueryTimeoutException;
 
 class GroupBalancedBm25SearchServiceTests {
+	@Test
+	void routedShadowTimeoutReturnsNoPartialHitsButAuthoritativeTimeoutPropagates() {
+		var bm25 = mock(KoreanBm25SearchService.class);
+		var snapshot = new RecoveryRoutingSnapshot(0, Map.of(), Map.of(), Set.of(), null, null);
+		var targets = List.of("official_doc");
+		var plan = QuestionSearchPlan.from("공공기관 원문 보존 의무는?");
+		var timeout = new QueryTimeoutException("posting lookup timed out");
+		when(bm25.search(anyString(), anyList(), eq(targets), eq(20), eq(snapshot)))
+			.thenReturn(List.of(new LexicalSearchHit("official_doc", 123, 45, 1, 1, List.of("원문"))))
+			.thenThrow(timeout);
+		var shadow = service(bm25, new LawAiLexicalVariantProperties(true, false, 4, 60.0));
+		var result = shadow.search(plan, targets, 20, snapshot);
+		assertThat(result.status()).isEqualTo(GroupBalancedBm25SearchService.Status.FAILED);
+		assertThat(result.reasonCodes()).containsExactly("VARIANT_SEARCH_TIMEOUT");
+		assertThat(result.fusedHits()).isEmpty();
+
+		var authoritative = service(bm25, new LawAiLexicalVariantProperties(true, true, 4, 60.0));
+		assertThatThrownBy(() -> authoritative.search(plan, targets, 20, snapshot)).isSameAs(timeout);
+	}
+
 	@Test void routedVariantsKeepSnapshotAndDoNotHideAssetFailures() {
 		var bm25=mock(KoreanBm25SearchService.class);
 		var snapshot=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(0,java.util.Map.of(),java.util.Map.of(),java.util.Set.of(),null,null);

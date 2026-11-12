@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -110,11 +111,13 @@ public class GroupBalancedBm25SearchService {
 				hitCounts.put(variant.id(), hits == null ? 0 : hits.size());
 			}
 		} catch (RuntimeException exception) {
-			if(routing!=null)throw exception;
+			boolean routedShadowTimeout = routing != null && !properties.authoritative()
+				&& exception instanceof QueryTimeoutException;
+			if (routing != null && !routedShadowTimeout) throw exception;
 			log.warn("Group-balanced BM25 shadow failed closed. failureType={}", exception.getClass().getSimpleName());
 			return result(
 				Status.FAILED,
-				List.of("VARIANT_SEARCH_FAILED"),
+				List.of(routedShadowTimeout ? "VARIANT_SEARCH_TIMEOUT" : "VARIANT_SEARCH_FAILED"),
 				hashes, hitCounts, List.of(), planningMillis, elapsedMillis(searchStarted), 0
 			);
 		}
