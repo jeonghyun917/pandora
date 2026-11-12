@@ -1268,6 +1268,16 @@ public class EvidenceJudge {
 			}
 		}
 		String catalogContext = documentTitle + chunkHeading + body;
+		boolean asksCommercialPurchaseExemption = procurementCatalogContractQuestion
+			&& profile.normalizedQuestion().contains("직접구매")
+			&& containsAny(profile.normalizedQuestion(), List.of("상용sw", "상용소프트웨어"))
+			&& containsAny(profile.normalizedQuestion(), List.of("제외", "면제", "비대상", "예외"));
+		if (asksCommercialPurchaseExemption && procurementCatalogContractChunk
+			&& !body.contains("직접구매")) {
+			directEvidence = false;
+			relevant = false;
+			topicAligned = false;
+		}
 		boolean mallOnlyDirectPurchaseExclusion = chunkHeading.contains("직접구매")
 			&& isProcurementExclusionChunk("", chunkHeading);
 		if (procurementCatalogContractQuestion && procurementContractMethodQuestion

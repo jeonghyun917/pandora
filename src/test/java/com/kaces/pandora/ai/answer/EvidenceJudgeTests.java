@@ -2086,6 +2086,19 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void distinguishesDigitalServiceCatalogContractMethodFromSoftwarePurchaseExemption() {
+		var catalog = chunk(8123, "admrul", "디지털서비스 카탈로그계약 업무처리규정", "계약체결", """
+			제3조(적용범위) 디지털서비스몰에 카탈로그계약으로 등록하는 디지털서비스에 관하여는 별도의 기준에서 따로 정한 것을 제외하고는 이 규정이 정하는 바에 따른다.
+			제10조(계약체결) 계약담당공무원은 카탈로그의 적정성을 검토하여 수의계약을 체결할 수 있다.
+			제11조(디지털서비스몰 상품등록) 계약담당공무원은 카탈로그계약을 체결하고 디지털서비스몰에 등록하여야 한다.
+			""");
+		String contract = "디지털서비스 카탈로그로 서비스를 구매할 때 어떤 계약 방식을 적용하나요?";
+		String exemption = "디지털서비스 카탈로그에 상품이 등록되면 상용 소프트웨어 직접구매 의무가 면제되나요?";
+		assertThat(judge.judge(contract, List.of(catalog), Map.of(), 3).chunks()).containsExactly(catalog);
+		assertThat(judge.judge(exemption, List.of(catalog), Map.of(), 3).directEvidenceFound()).isFalse();
+	}
+
+	@Test
 	void ownedAccessExceptionSurvivesAdjacentReportingItems() {
 		String q = "가명정보 복원용 추가 정보에 접근 권한을 부여할 수 있는 예외 사유는 무엇인가요?";
 		String access = "3. 가명정보와 추가정보에 대한 접근 권한의 분리. 다만, 접근 권한의 분리가 어려운 정당한 사유가 있는 경우에는 업무 수행에 필요한 최소한의 접근 권한만 부여하고 접근 권한의 보유 현황을 기록으로 보관하는 등 접근 권한을 관리ㆍ통제해야 한다.";
