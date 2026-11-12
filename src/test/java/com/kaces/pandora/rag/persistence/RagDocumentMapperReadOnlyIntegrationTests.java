@@ -8,6 +8,7 @@ import org.apache.ibatis.datasource.unpooled.UnpooledDataSource;
 import org.apache.ibatis.io.Resources;
 import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.session.Configuration;
+import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactoryBuilder;
 import org.apache.ibatis.transaction.jdbc.JdbcTransactionFactory;
 import org.junit.jupiter.api.Test;
@@ -16,7 +17,17 @@ import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 @EnabledIfSystemProperty(named = "pandora.readonly-db-test", matches = "true")
 class RagDocumentMapperReadOnlyIntegrationTests {
 	@Test
-	void bothQueriesMapAnActiveSourceVersionThroughJdbc() throws Exception {
+	void titleHintsFindActiveSourceWithFileNameSeparators() throws Exception {
+		try (var session = readOnlySession()) {
+			session.getConnection().setReadOnly(true);
+			var mapper = session.getMapper(RagDocumentMapper.class);
+			var rows = mapper.findSemanticChunksByDocumentTitleWithTextHints(List.of("official_doc"),
+				List.of("정보화사업 사전협의 안내서"), List.of("사전협의 대상사업", "사전협의 신청", "발주 전"), 80);
+			assertThat(rows).extracting(row -> row.chunkId()).contains(87020L, 87028L);
+		}
+	}
+
+	private SqlSession readOnlySession() throws Exception {
 		String password = System.getenv("PANDORA_DB_PASSWORD");
 		if (password == null || password.isBlank()) password = "pandora";
 		var dataSource = new UnpooledDataSource("org.mariadb.jdbc.Driver",
@@ -27,7 +38,12 @@ class RagDocumentMapperReadOnlyIntegrationTests {
 		try (var input = Resources.getResourceAsStream(resource)) {
 			new XMLMapperBuilder(input, configuration, resource, configuration.getSqlFragments()).parse();
 		}
-		try (var session = new SqlSessionFactoryBuilder().build(configuration).openSession()) {
+		return new SqlSessionFactoryBuilder().build(configuration).openSession();
+	}
+
+	@Test
+	void bothQueriesMapAnActiveSourceVersionThroughJdbc() throws Exception {
+		try (var session = readOnlySession()) {
 			var connection = session.getConnection();
 			connection.setReadOnly(true);
 			try (var statement = connection.createStatement()) {

@@ -1374,7 +1374,8 @@
         <foreach collection="titleKeywords" item="keyword" separator=" + ">
           (CASE WHEN doc.title = #{keyword} THEN 8 ELSE 0 END)
           + (CASE WHEN doc.title LIKE CONCAT(#{keyword}, '%') THEN 5 ELSE 0 END)
-          + (CASE WHEN doc.title LIKE CONCAT('%', #{keyword}, '%') THEN 3 ELSE 0 END)
+          + (CASE WHEN doc.title LIKE CONCAT('%', #{keyword}, '%')
+                    OR doc.title LIKE CONCAT('%', REPLACE(#{keyword}, ' ', '+'), '%') THEN 3 ELSE 0 END)
         </foreach>
         ) AS title_score
       FROM <include refid="capturedRagDocuments"/> doc
@@ -1387,7 +1388,8 @@
         </if>
         AND (
         <foreach collection="titleKeywords" item="keyword" separator=" OR ">
-          doc.title LIKE CONCAT('%', #{keyword}, '%')
+          (doc.title LIKE CONCAT('%', #{keyword}, '%')
+           OR doc.title LIKE CONCAT('%', REPLACE(#{keyword}, ' ', '+'), '%'))
         </foreach>
         )
       ORDER BY title_score DESC, doc.document_type, doc.title
