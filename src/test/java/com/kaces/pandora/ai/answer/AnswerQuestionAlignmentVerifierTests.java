@@ -52,6 +52,22 @@ class AnswerQuestionAlignmentVerifierTests {
 	}
 
 	@Test
+	void treatsExactNamedContractStandardAsSourceNotAnOperativeManagementDuty() {
+		String body = "③ 제안요청서에는 다음 각 호의 사항을 명시하여야 한다.1. 계약조건2. 평가요소와 평가방법";
+		String title = "경쟁적 대화에 의한 계약체결기준";
+		var owner = new LawAiAnswerGround(1, 12, 2, "admrul", "(계약예규) " + title, null, null, null,
+			"CURRENT", "제5조", "제안요청서", null, body, null, null, 0);
+		var checked = new ClaimVerifier().verifyDetailed(body, List.of(owner));
+		String obligation = "제안요청서의 평가요소와 평가방법 기재 의무를 알려주세요.";
+		assertThat(verifier.verify(title + "에 따라 " + obligation, checked, List.of(owner)).aligned()).isTrue();
+		assertThat(verifier.verify("협상에 의한 계약체결기준에 따라 " + obligation, checked, List.of(owner)).aligned()).isFalse();
+		assertThat(verifier.verify(title + "에 따라 제안요청서의 평가방법 관리 기준을 알려주세요.",
+			checked, List.of(owner)).aligned()).isFalse();
+		assertThat(verifier.verify(title + "에 따라 제안요청서의 별도 배점표 첨부 의무를 알려주세요.",
+			checked, List.of(owner)).aligned()).isFalse();
+	}
+
+	@Test
 	void terminalPoliteRequestDoesNotBecomeAnAnswerSubject() {
 		String answer = "제안요청서에는 평가요소와 평가방법을 기재하여야 한다.";
 		var verified = claimResult(supported(answer, answer));

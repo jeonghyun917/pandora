@@ -23,6 +23,9 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final String DIRECT_CONCLUSION = "DIRECT_CONCLUSION";
 	private static final String ANSWER_COVERAGE = "ANSWER_COVERAGE";
 	private static final Pattern TERMINAL_REQUEST = Pattern.compile("(?U)\\s+(알려주세요)[.!?。？]*\\s*\\z");
+	private static final Pattern CONTRACT_STANDARD_AUTHORITY = Pattern.compile(
+		"(?U)^\\s*([가-힣A-Za-z0-9][가-힣A-Za-z0-9 \\t]{2,88}?계약[ \\t]*체결[ \\t]*기준)"
+			+ "[ \\t]*(?:에[ \\t]*(?:따라|따른)|에서)[ \\t]+(.+)$");
 	private static final Pattern DIRECT_CONCLUSION_PATTERN = Pattern.compile(
 		"(?:입니다|합니다|한다|된다|됩니다|아니다|없습니다|있습니다|"
 			+ "하여야\s*한다|해야\s*한다|할\s*수\s*있다|할\s*수\s*없다|"
@@ -115,11 +118,7 @@ public class AnswerQuestionAlignmentVerifier {
 		if (supportedLinks.isEmpty()) {
 			return AlignmentResult.failed("NO_SUPPORTED_CLAIMS", List.of(SUBJECT, RELATION));
 		}
-		if (!alignmentProfile.answerClaimGroups().isEmpty() && supportedLinks.stream()
-			.flatMap(link -> atomizer.atomizeForAlignment(link.claim()).stream())
-			.map(AnswerQuestionAlignmentVerifier::normalize)
-			.noneMatch(atom -> alignmentProfile.answerClaimGroups().stream()
-				.allMatch(group -> group.stream().anyMatch(atom::contains)))) {
+		if (!hasAnswerClaimCoverage(supportedLinks, alignmentProfile)) {
 			return AlignmentResult.failed("MISSING_ANSWER_COVERAGE", List.of(ANSWER_COVERAGE));
 		}
 		boolean completeAnswerCoverage = hasCompleteAnswerCoverage(supportedLinks, alignmentProfile);
@@ -137,7 +136,7 @@ public class AnswerQuestionAlignmentVerifier {
 		if (completeAnswerCoverage && !claimResult.insufficientEvidence() && claimResult.strongClaimCount() == 2
 			&& claimResult.unsupportedClaims().isEmpty() && claimResult.unsupportedNumericClaims().isEmpty()
 			&& claimResult.contradictedClaims().isEmpty()) {
-			addLiteralNumberedDutyCandidate(grounds, supportedLinks, alignmentProfile, subjectContextByGround,
+			addLiteralNumberedDutyCandidate(question, grounds, supportedLinks, alignmentProfile, subjectContextByGround,
 				scopeRules, candidates);
 		}
 		for (CandidateResult candidate : candidates) {
@@ -159,7 +158,15 @@ public class AnswerQuestionAlignmentVerifier {
 		return AlignmentResult.failed(reasonCode(best.missingGroups()), best.missingGroups());
 	}
 
-	private void addLiteralNumberedDutyCandidate(List<LawAiAnswerGround> grounds,
+	private boolean hasAnswerClaimCoverage(List<ClaimVerifier.ClaimEvidenceLink> links, AlignmentProfile profile) {
+		return profile.answerClaimGroups().isEmpty() || links.stream()
+			.flatMap(link -> atomizer.atomizeForAlignment(link.claim()).stream())
+			.map(AnswerQuestionAlignmentVerifier::normalize)
+			.anyMatch(atom -> profile.answerClaimGroups().stream()
+				.allMatch(group -> group.stream().anyMatch(atom::contains)));
+	}
+
+	private void addLiteralNumberedDutyCandidate(String question, List<LawAiAnswerGround> grounds,
 		List<ClaimVerifier.ClaimEvidenceLink> links, AlignmentProfile profile,
 		Map<Integer, String> subjectContext, List<SourceOwnedConditionalScope.Rule> scopeRules,
 		List<CandidateResult> candidates) {
@@ -174,6 +181,15 @@ public class AnswerQuestionAlignmentVerifier {
 		var parts = ParentContextAssembler.exactNumberedDutyParts(owner.matchedChildText());
 		if (parts.size() != 2 || !parts.get(0).equals(header.claim()) || !parts.get(0).equals(header.evidenceSentence())
 			|| !parts.get(1).equals(items.claim()) || !parts.get(1).equals(items.evidenceSentence())) return;
+		var authority = CONTRACT_STANDARD_AUTHORITY.matcher(question == null ? "" : question);
+		if (authority.matches()) {
+			if (!"admrul".equals(owner.target()) || !"CURRENT".equals(owner.effectiveStatus())
+				|| owner.title() == null
+				|| !normalize(authority.group(1)).equals(normalize(owner.title().replaceFirst("^\\s*\\(계약예규\\)\\s*", "")))) return;
+			// The exact source title satisfies the authority reference, not an operative predicate.
+			profile = AlignmentProfile.from(authority.group(2));
+			if (!profile.usable() || !hasAnswerClaimCoverage(links, profile) || !hasCompleteAnswerCoverage(links, profile)) return;
+		}
 		// Re-evaluate the proven original paragraph using the same subject, relation and condition checks.
 		String paragraph = owner.matchedChildText();
 		candidates.add(assessAtom(paragraph, paragraph, profile, subjectContext.getOrDefault(owner.number(), ""), true,
