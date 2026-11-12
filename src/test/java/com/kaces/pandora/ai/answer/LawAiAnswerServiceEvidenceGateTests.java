@@ -760,6 +760,10 @@ class LawAiAnswerServiceEvidenceGateTests {
 		try {
 			String query = "개인정보 수집·이용 동의를 받기 전에 정보주체에게 어떤 사항을 고지해야 합니까?";
 			assertThat(snippet(service,row,query)).isEqualTo(paragraph);
+			String stored = paragraph.replaceAll("(?m)^(\\d\\.) ", "$1  ");
+			var storedRow = chunk(99128L, "law", "개인정보 보호법", "개인정보의 수집ㆍ이용",
+				"① 개인정보 수집ㆍ이용의 근거를 열거한다.\n" + stored + "\n③ 다음 항의 별도 조치.");
+			assertThat(snippet(service,storedRow,query)).isEqualTo(stored);
 			assertThat(snippet(service,row,"개인정보를 제3자에게 제공할 때 어떤 사항을 알려야 하나요?"))
 				.isNotEqualTo(paragraph);
 		} finally { service.shutdownExecutors(); }

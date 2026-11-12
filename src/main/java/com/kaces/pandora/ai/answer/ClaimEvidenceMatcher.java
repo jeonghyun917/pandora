@@ -467,9 +467,10 @@ public class ClaimEvidenceMatcher {
 		var items = noticeItems(0, source);
 		var complete = items.stream()
 			.filter(item -> item.literal().lines().anyMatch(line ->
-				line.replace("ㆍ", "·").equals("1. 개인정보의 수집·이용 목적")))
+				line.replace("ㆍ", "·").matches("1\\.\\h+개인정보의 수집·이용 목적")))
 			.filter(item -> item.itemText().contains("동의를 거부할 권리"))
-			.filter(item -> item.literal().contains("\n4. " + item.itemText()))
+			.filter(item -> item.literal().lines().anyMatch(line ->
+				line.matches("4\\.\\h+" + Pattern.quote(item.itemText()))))
 			.filter(item -> items.stream().noneMatch(next -> next.literal().startsWith(item.literal() + "\n")))
 			.toList();
 		return complete.size() == 1 && complete.get(0).literal().length() <= 460 ? complete.get(0).literal() : "";
