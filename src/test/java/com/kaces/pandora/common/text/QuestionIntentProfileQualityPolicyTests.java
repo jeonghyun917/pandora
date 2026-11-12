@@ -383,6 +383,7 @@ class QuestionIntentProfileQualityPolicyTests {
 	void cctvPublicPlacePolicyRequiresTheProhibitionAndLegalExceptionTogether() {
 		for (String question : List.of(
 			"개인정보보호위원회 CCTV 안내서에서 공개된 장소에 CCTV를 설치할 수 있는 예외는?",
+			"공개 장소에서 시설 안전을 위해 CCTV를 설치할 수 있는 조건은?",
 			"공개된 장소에 CCTV를 설치하는 건 원칙적으로 가능한가?"
 		)) {
 			QuestionIntentProfile profile = QuestionIntentProfile.from(question);
@@ -398,6 +399,15 @@ class QuestionIntentProfileQualityPolicyTests {
 					"법정 예외 사유"
 				)
 			);
+		}
+	}
+
+	@Test
+	void fixedCameraLocationAliasDoesNotInferPublicScope() {
+		for (String location : List.of("비공개 장소에서", "공개되지 않은 장소에서", "공개 장소가 아닌 곳에서",
+			"공개 장소에 해당하지 않는 곳에서", "공개 장소와 비공개 장소에서", "시설에서")) {
+			assertThat(QuestionIntentProfile.from(location + " CCTV를 설치할 수 있나요?").matchedPolicyIds())
+				.as(location).doesNotContain("cctv_public_place_exception");
 		}
 	}
 

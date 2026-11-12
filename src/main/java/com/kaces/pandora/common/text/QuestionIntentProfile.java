@@ -71,7 +71,8 @@ public record QuestionIntentProfile(
 		"관련", "관한", "대한", "적용되는", "적용할", "참고할"
 	);
 
-	public static QuestionIntentProfile from(String question) {
+	public static QuestionIntentProfile from(String rawQuestion) {
+		String question = canonicalCameraLocation(rawQuestion);
 		String normalized = KoreanQueryNormalizer.normalizeForMatch(question);
 		LinkedHashSet<String> matchedPolicyIds = new LinkedHashSet<>(
 			QuestionIntentDictionary.matchedPolicyIds(question, normalized)
@@ -999,6 +1000,17 @@ public record QuestionIntentProfile(
 	private static boolean isTvingSmishingQuestion(String normalized) {
 		return (normalized.contains("티빙") || normalized.contains("tving"))
 			&& normalized.contains("스미싱");
+	}
+
+	private static String canonicalCameraLocation(String question) {
+		if (question == null || !question.contains("공개")) return question;
+		String normalized = KoreanQueryNormalizer.normalizeForMatch(question);
+		if (!containsAny(normalized, List.of("cctv", "영상정보처리기기")) || !normalized.contains("설치")
+			|| containsAny(normalized, List.of("비공개", "공개되지", "공개장소가아니", "공개된장소가아니",
+				"공개장소에해당하지", "공개장소에해당안"))) {
+			return question;
+		}
+		return question.replaceAll("(?<![\\p{L}\\p{N}])공개[ \\t]+장소(?=에)", "공개된 장소");
 	}
 
 	private static boolean isCctvPublicPlaceExceptionQuestion(String normalized) {
