@@ -484,6 +484,30 @@ class LawAiAnswerServiceEvidenceGateTests {
         } finally {service.shutdownExecutors();}
     }
 
+    @Test void autonomyProcedureRetrievesGuideStepsWhenBroadKeywordsMissThem() throws Exception {
+        var procedure = chunk(99124L, "official_doc", "자치분권 사전협의 지침", "협의절차",
+            "사전협의 요청서 작성·제출, 지방자치 관련성 검토 및 협의 결과서 통보");
+        var headingNoise = chunk(99125L, "official_doc", "정보화사업 사전협의 안내서", "협의절차",
+            "정보화사업 사전협의는 별도 절차로 진행한다.");
+        var rag = (RagDocumentMapper) java.lang.reflect.Proxy.newProxyInstance(
+            RagDocumentMapper.class.getClassLoader(), new Class<?>[]{RagDocumentMapper.class}, (proxy, method, args) -> {
+                if (method.getName().equals("findSemanticChunksByHeadingText")) return List.of(headingNoise);
+                return method.getName().equals("findSemanticChunksByDocumentTitleWithTextHints")
+                    && ((List<?>) args[1]).contains("자치분권 사전협의 지침")
+                    && ((List<?>) args[2]).contains("사전협의 요청서")
+                    ? List.of(procedure) : List.of();
+            });
+        var service = service(null, rag);
+        try {
+            assertThat(findLexicalChunks(service, QuestionSearchPlan.from(
+                "자치분권 사전협의는 어떤 절차로 진행되나요?"), List.of("official_doc"), false)).contains(procedure);
+            assertThat(findLexicalChunks(service, QuestionSearchPlan.from(
+                "정보화사업 사전협의는 어떤 절차로 진행되나요?"), List.of("official_doc"), false)).doesNotContain(procedure);
+        } finally {
+            service.shutdownExecutors();
+        }
+    }
+
     @Test void pseudonymStorageLookupUsesTheDecreeTitleBeforeBroadLawScan() throws Exception {
         var provision=chunk(99113L,"law","개인정보 보호법 시행령","가명정보에 대한 안전성 확보조치",
             "추가정보는 가명정보와 분리하여 저장하고, 추가정보가 불필요하게 된 경우에는 파기하여야 한다.");

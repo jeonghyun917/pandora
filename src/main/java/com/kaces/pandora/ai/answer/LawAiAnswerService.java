@@ -9263,6 +9263,19 @@ public class LawAiAnswerService {
                 }
 			}
 		}
+		if (!ragTargets.isEmpty() && documentTitleAnchors.isEmpty()
+			&& isAutonomyPreConsultationProcedureQuestion(normalizedQuery)
+			&& !AutonomyFollowUpEvidence.asksDeadline(normalizedQuery)) {
+			var scopedProcedure = findRagChunksByDocumentTitleAndHintsThenFilter(
+				ragTargets, List.of("자치분권 사전협의 지침"),
+				List.of("협의절차", "사전협의 요청서", "지방자치 관련성 검토", "협의 결과서"),
+				this::isAutonomyPreConsultationProcedureEvidence, FOCUSED_RAG_KEYWORD_FETCH_LIMIT, routing);
+			if (!scopedProcedure.isEmpty()
+				&& evidenceJudge.judge(query, scopedProcedure, Map.of(), 8).directEvidenceFound()) {
+				chunks.addAll(scopedProcedure);
+				return finishLexicalChunks(chunks, query);
+			}
+		}
 		if (!boundedRagDocumentTitleMatched && intentSpecificLexicalLookup && !ragTargets.isEmpty()) {
 			List<LawSemanticChunkRow> fastIntentChunks = findFastIntentRagChunks(queryPlan, ragTargets, normalizedQuery, routing);
 			if (!fastIntentChunks.isEmpty()) {
