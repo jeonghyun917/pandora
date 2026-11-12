@@ -9,6 +9,22 @@ class ClaimEvidenceMatcherRelationTests {
 
 	private final ClaimEvidenceMatcher matcher = new ClaimEvidenceMatcher();
 	@Test
+	void registeredItemScopeCannotBeOmittedFromTheOwnedDeliveryDuty() {
+		String scope = "디지털서비스몰에 등록된 계약품목에 대하여";
+		String source = "계약담당공무원은 제11조에 따라 " + scope
+			+ " 수요기관의 장이 계약담당공무원의 승인을 거쳐 나라장터를 통하여 계약상대자에게 납품을 요구하도록 하여야 한다.";
+		var grounds = List.of(ground("디지털서비스 카탈로그계약 업무처리규정", source));
+		assertThat(matcher.match(source, grounds).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(source.replace("제11조에 따라 ", ""), grounds).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		for (String claim : List.of(source.replace("제11조에 따라 " + scope + " ", ""),
+			source.replace("등록된 계약품목", "모든 계약품목"), source.replace("디지털서비스몰", "종합쇼핑몰"))) {
+			assertThat(matcher.match(claim, grounds).status()).as(claim)
+				.isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		}
+	}
+
+	@Test
 	void conditionalNoticeItemMustComeFromItsOwnNumberedParagraph() {
 		String head = "② 개인정보처리자는 제1항제1호에 따른 동의를 받을 때에는 다음 각 호의 사항을 정보주체에게 알려야 한다.";
 		String item = "1. 개인정보의 수집ㆍ이용 목적";
