@@ -7,6 +7,21 @@ import org.junit.jupiter.api.Test;
 class KoreanQueryNormalizerTests {
 
 	@Test
+	void priorConsultationOmissionDoesNotInjectApplicabilityVocabulary() {
+		assertThat(KoreanQueryNormalizer.expandSearchKeywords(
+			"공공기관의 사전협의 신청이 누락되면 누가 통보해야 하나요?"))
+			.contains("사전 협의")
+			.doesNotContain("사전협의의 대상사업", "예산과목 및 계약방식과 관계없이");
+	}
+
+	@Test
+	void priorConsultationMixedQuestionRetainsExplicitApplicabilityVocabulary() {
+		assertThat(KoreanQueryNormalizer.expandSearchKeywords(
+			"사전협의 대상사업은 무엇이고 신청 누락 시 누가 통보해야 하나요?"))
+			.contains("사전 협의", "사전협의의 대상사업", "예산과목 및 계약방식과 관계없이");
+	}
+
+	@Test
 	void stripsColloquialDefinitionSuffixesFromCoreTerms() {
 		assertThat(KoreanQueryNormalizer.normalizeQueryTerm("인공지능위원회라는건")).isEqualTo("인공지능위원회");
 		assertThat(KoreanQueryNormalizer.normalizeQueryTerm("인공지능위원회라는건 뭐야?")).isEqualTo("인공지능위원회");

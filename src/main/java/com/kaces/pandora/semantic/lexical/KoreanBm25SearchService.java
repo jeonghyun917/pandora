@@ -91,7 +91,8 @@ public class KoreanBm25SearchService {
 		if (revision == null || terms.isEmpty()) {
 			return List.of();
 		}
-		List<String> postingTerms = selectPostingTerms(revision, terms, namespace);
+		List<String> postingTerms = selectPostingTerms(revision, terms, namespace,
+			KoreanQueryNormalizer.isPriorConsultationOmissionOnly(query));
 		if (postingTerms.isEmpty()) {
 			return List.of();
 		}
@@ -108,11 +109,21 @@ public class KoreanBm25SearchService {
 		return results;
 	}
 
-	private List<String> selectPostingTerms(String revision, List<String> terms, String namespace) {
+	private List<String> selectPostingTerms(String revision, List<String> terms, String namespace, boolean consultationOmission) {
 		List<SemanticLexicalMapper.TermStatisticRow> statistics = namespace==null ? mapper.findTermStatistics(revision, terms)
 			: mapper.findRecoveryTermStatistics(namespace,revision,terms);
 		if (statistics == null || statistics.isEmpty()) {
 			return List.of();
+		}
+		if (consultationOmission) {
+			var relation = List.of("사전협의", "누락");
+			var frequencies = relation.stream().map(term -> statistics.stream()
+				.filter(statistic -> statistic != null && term.equals(statistic.term()))
+				.mapToLong(SemanticLexicalMapper.TermStatisticRow::documentFrequency).findFirst().orElse(0)).toList();
+			if (frequencies.get(0) > 0 && frequencies.get(1) > 0
+				&& frequencies.get(0) <= MAX_POSTING_DOCUMENT_BUDGET - frequencies.get(1)) {
+				return relation;
+			}
 		}
 		List<String> selected = new ArrayList<>();
 		long postingBudget = 0;
@@ -134,6 +145,12 @@ public class KoreanBm25SearchService {
 	}
 
 	private List<String> queryTerms(String query, List<String> plannedKeywords) {
+		if (KoreanQueryNormalizer.isPriorConsultationOmissionOnly(query)) {
+			// Expanding the isolated procedure name loses the omission context and adds scope terms.
+			return tokenizer.tokenize(query).keySet().stream()
+				.map(term -> term.startsWith("누락") ? "누락" : term)
+				.distinct().limit(properties.maxQueryTerms()).toList();
+		}
 		Set<String> terms = new LinkedHashSet<>();
 		List<String> sources = new ArrayList<>();
 		sources.add(query);

@@ -207,10 +207,12 @@ public final class KoreanQueryNormalizer {
 		}
 		if (normalized.contains("사전협의")) {
 			keywords.add("사전 협의");
-			keywords.add("사전협의의 대상사업");
-			keywords.add("사전협의 대상사업");
-			keywords.add("대상기관이 추진하는 모든 정보화사업");
-			keywords.add("예산과목 및 계약방식과 관계없이");
+			if (!isPriorConsultationOmissionOnly(normalized)) {
+				keywords.add("사전협의의 대상사업");
+				keywords.add("사전협의 대상사업");
+				keywords.add("대상기관이 추진하는 모든 정보화사업");
+				keywords.add("예산과목 및 계약방식과 관계없이");
+			}
 		}
 		if (normalized.contains("기타공공기관") || normalized.contains("기타공공")) {
 			keywords.add("기타공공기관");
@@ -219,12 +221,6 @@ public final class KoreanQueryNormalizer {
 			keywords.add("중앙 공공기관");
 			keywords.add("대상기관");
 			keywords.add("대상기관이 추진하는 모든 정보화사업");
-		}
-		if (normalized.contains("사전협의") && (normalized.contains("공공기관") || normalized.contains("대상"))) {
-			keywords.add("사전협의의 대상사업");
-			keywords.add("사전협의 대상사업");
-			keywords.add("대상기관이 추진하는 모든 정보화사업");
-			keywords.add("예산과목 및 계약방식과 관계없이");
 		}
 		if (normalized.contains("과업심의")) {
 			keywords.add("과업 심의");
@@ -290,6 +286,13 @@ public final class KoreanQueryNormalizer {
 			keywords.add("운전자");
 			keywords.add("차의 운전자");
 		}
+	}
+
+	public static boolean isPriorConsultationOmissionOnly(String question) {
+		String normalized = normalizeForMatch(question);
+		return normalized.contains("사전협의")
+			&& containsAny(normalized, List.of("누락", "미이행", "미신청", "미등록"))
+			&& !containsAny(normalized, List.of("대상", "적용범위", "어떤사업", "어느사업"));
 	}
 
 	public static boolean isProcurementCatalogContractQuestion(String value) {

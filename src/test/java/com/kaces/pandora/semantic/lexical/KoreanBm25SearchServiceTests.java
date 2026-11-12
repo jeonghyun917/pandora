@@ -17,6 +17,33 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class KoreanBm25SearchServiceTests {
+	@Test
+	void explicitConsultationOmissionKeepsBothRelationTermsWithinPostingBudget() {
+		var mapper = mock(SemanticLexicalMapper.class);
+		when(mapper.findReadyRevision()).thenReturn("revision-a");
+		when(mapper.findTermStatistics(eq("revision-a"), anyList())).thenReturn(List.of(
+			new SemanticLexicalMapper.TermStatisticRow("누가", 600),
+			new SemanticLexicalMapper.TermStatisticRow("발주", 710),
+			new SemanticLexicalMapper.TermStatisticRow("누락", 1314),
+			new SemanticLexicalMapper.TermStatisticRow("사전협의", 2130)));
+		when(mapper.findBm25TermMatches(eq("revision-a"), eq(List.of("사전협의", "누락")), eq(List.of("admrul"))))
+			.thenReturn(List.of(match("admrul", 17, 24, "누락", 2, 1314, 30000, 100, 100)));
+
+		assertThat(service(mapper).search("발주 시 사전협의 신청 누락은 누가 통보하나요?", List.of("admrul"), 10))
+			.extracting(LexicalSearchHit::chunkId).containsExactly(17L);
+	}
+	@Test
+	void omissionQuestionDoesNotReintroduceApplicabilityTermsWhenExpandingIndividualTokens() {
+		var mapper = mock(SemanticLexicalMapper.class);
+		when(mapper.findReadyRevision()).thenReturn("revision-a");
+		String question = "사전협의 신청 누락을 확인하면 누가 통보하나요?";
+		service(mapper).search(question, List.of("admrul"), 10);
+
+		@SuppressWarnings("unchecked")
+		ArgumentCaptor<List<String>> terms = ArgumentCaptor.forClass(List.class);
+		verify(mapper).findTermStatistics(eq("revision-a"), terms.capture());
+		assertThat(terms.getValue()).contains("사전협의", "누락").doesNotContain("예산과목", "계약방식");
+	}
 	@Test void capturedNamespaceUsesOnlyItsPostingsAndReportsDisappearance() {
 		var mapper=mock(SemanticLexicalMapper.class);
 		String namespace="recovery_00000000-0000-0000-0000-000000000001", revision="e".repeat(64);
