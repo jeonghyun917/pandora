@@ -9091,12 +9091,12 @@ public class LawAiAnswerService {
 				var familyCandidates = new java.util.ArrayList<>(findLexicalChunks(queryPlan, lawTargets, includeFuture, routing,
 					() -> hasDirectReviewedLexicalGround(query, ragCandidates, routing)));
 				familyCandidates.addAll(ragCandidates);
-				return finishLexicalChunks(familyCandidates, query);
+				return finishLexicalChunks(familyCandidates, query, true);
 			}
 			List<LawSemanticChunkRow> familyCandidates = new java.util.ArrayList<>(
 				findLexicalChunks(queryPlan, lawTargets, includeFuture, routing));
 			familyCandidates.addAll(findLexicalChunks(queryPlan, ragTargets, includeFuture, routing));
-			return finishLexicalChunks(familyCandidates, query);
+			return finishLexicalChunks(familyCandidates, query, documentTitleAnchors.isEmpty());
 		}
 		boolean strictDocumentEvidenceLookup = isStrictDocumentEvidenceAnchorQuestion(query, normalizedQuery)
 			&& !documentTitleAnchors.isEmpty();
@@ -10592,7 +10592,12 @@ public class LawAiAnswerService {
 	}
 
 	private List<LawSemanticChunkRow> finishLexicalChunks(List<LawSemanticChunkRow> chunks, String query) {
-		return chunks.stream()
+		return finishLexicalChunks(chunks, query, false);
+	}
+
+	private List<LawSemanticChunkRow> finishLexicalChunks(
+		List<LawSemanticChunkRow> chunks, String query, boolean preserveMixedFamilies) {
+		var ranked = chunks.stream()
 			.collect(java.util.stream.Collectors.toMap(
 				chunk -> scoreKey(chunk.target(), chunk.chunkId()),
 				chunk -> chunk,
@@ -10603,9 +10608,21 @@ public class LawAiAnswerService {
 			.stream()
 			.map(chunk -> new LexicalScore(chunk, keywordScore(chunk, query)))
 			.sorted(Comparator.comparingDouble(LexicalScore::score).reversed())
-			.limit(KEYWORD_CANDIDATE_LIMIT)
 			.map(LexicalScore::chunk)
 			.toList();
+		var top = ranked.subList(0, Math.min(KEYWORD_CANDIDATE_LIMIT, ranked.size()));
+		if (!preserveMixedFamilies || top.size() == ranked.size()) return top;
+		boolean leadingLaw = isLawTarget(top.get(0).target());
+		if (top.stream().anyMatch(row -> isLawTarget(row.target()) != leadingLaw)) return top;
+		// Keep a small fallback from the requested family only when the cutoff would erase it.
+		var omitted = ranked.subList(top.size(), ranked.size()).stream()
+			.filter(row -> isLawTarget(row.target()) != leadingLaw)
+			.limit(2)
+			.toList();
+		if (omitted.isEmpty()) return top;
+		var balanced = new java.util.ArrayList<>(top.subList(0, top.size() - omitted.size()));
+		balanced.addAll(omitted);
+		return List.copyOf(balanced);
 	}
 
 	private record LexicalScore(LawSemanticChunkRow chunk, double score) {}
