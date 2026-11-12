@@ -85,7 +85,9 @@ public class EvidenceJudge {
 		List<JudgedChunk> directEvidenceChunks = topicAlignedChunks.stream()
 			.filter(JudgedChunk::directEvidence)
 			.toList();
+		boolean cctvGuidePurpose = isCctvGuidePurposeQuestion(profile.normalizedQuestion());
 		boolean directEvidenceRequired = !profile.directEvidenceGroups().isEmpty()
+			|| cctvGuidePurpose
 			|| DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(profile.normalizedQuestion())
 			|| (isIrmRegistrationFaithfulness(profile.normalizedQuestion()) && !directEvidenceChunks.isEmpty())
 			|| searchableChunks.stream().anyMatch(chunk -> requiresCommencementOwnership(profile, chunk));
@@ -93,11 +95,12 @@ public class EvidenceJudge {
 			.filter(chunk -> !DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(profile.normalizedQuestion()))
 			.filter(chunk -> !isIrmRegistrationFaithfulness(profile.normalizedQuestion()))
 			.filter(chunk -> !isCctvGuideApplicabilityQuestion(profile.normalizedQuestion()))
+			.filter(chunk -> !cctvGuidePurpose)
 			.filter(chunk -> chunk.bodyDirectEvidenceMatches() > 0)
 			.filter(chunk -> !missingRequestedArticleOwnership(profile, chunk.chunk(), normalize(chunk.chunk().title())))
 			.filter(chunk -> !unverifiedCommencement(profile, chunk.chunk(), commencementEvidence))
 			.toList();
-		List<JudgedChunk> exploratoryLookupChunks = isExploratoryLookupQuestion(profile.normalizedQuestion())
+		List<JudgedChunk> exploratoryLookupChunks = !cctvGuidePurpose && isExploratoryLookupQuestion(profile.normalizedQuestion())
 			? judgedChunks.stream()
 				.filter(chunk -> matchesExploratoryLookup(profile, chunk.chunk()))
 				.toList()
@@ -108,7 +111,8 @@ public class EvidenceJudge {
 			directSupportingChunks,
 			requestedLimit
 		);
-		List<JudgedChunk> directEvidenceWithExploratorySupport = !directEvidenceChunks.isEmpty()
+		List<JudgedChunk> directEvidenceWithExploratorySupport = cctvGuidePurpose ? directEvidenceChunks
+			: !directEvidenceChunks.isEmpty()
 			? withSupportingExploratoryChunks(profile, directEvidenceChunks, judgedChunks, requestedLimit)
 			: List.of();
 		boolean directEvidenceFound = directEvidenceRequired && (!directEvidenceChunks.isEmpty()
@@ -1541,6 +1545,14 @@ public class EvidenceJudge {
 			&& !CCTV_GUIDE_APPLICABILITY.matcher(chunk.chunkText() == null ? "" : chunk.chunkText()).find()) {
 			directEvidence = false;
 		}
+		if (isCctvGuidePurposeQuestion(profile.normalizedQuestion())) {
+			boolean owned = !tableOfContents && !suppressEvidenceNoise
+				&& containsAny(documentTitle, List.of("영상정보처리기기", "cctv"))
+				&& containsAny(documentTitle, List.of("가이드", "안내서", "매뉴얼"))
+				&& DirectEvidenceSelectionPolicy.matchesExplicitAuthority(chunk, profile.explicitDocumentTitles())
+				&& CCTV_GUIDE_PURPOSE.matcher(String.valueOf(chunk.chunkText())).find();
+			return new JudgedChunk(chunk, score, owned, owned, owned, owned ? 1 : 0, owned ? 1 : 0);
+		}
 		if (DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(profile.normalizedQuestion())) {
 			boolean owned = !tableOfContents && !suppressEvidenceNoise
 				&& !containsAny(chunkHeading, List.of("작성예시", "체크리스트", "서식"))
@@ -1560,6 +1572,21 @@ public class EvidenceJudge {
 		return containsAny(query, List.of("영상정보처리기기", "cctv"))
 			&& containsAny(query, List.of("가이드", "안내서", "매뉴얼"))
 			&& containsAny(query, List.of("적용대상", "적용범위"));
+	}
+
+	private static final java.util.regex.Pattern CCTV_GUIDE_PURPOSE_QUESTION = java.util.regex.Pattern.compile(
+		"(?:가이드라인|가이드|안내서|매뉴얼)(?:은|는|의)?(?:마련목적|제정목적|발간목적|왜마련|왜만들|어떤취지로만들)"
+			+ "[가-힣]{0,22}$");
+	private static final java.util.regex.Pattern CCTV_GUIDE_PURPOSE = java.util.regex.Pattern.compile(
+		"(?:^|[.!?\\r\\n])\\s*(?:이|본)\\s*(?:가이드라인|가이드|안내서|매뉴얼)(?:은|는)"
+			+ "[^.!?]{0,180}?(?:영상정보처리기기|영상정보|CCTV)[^.!?]{1,180}?목적으로\\s*(?:합니다|한다)(?:[.]|$)",
+		java.util.regex.Pattern.CASE_INSENSITIVE);
+
+	private static boolean isCctvGuidePurposeQuestion(String query) {
+		return containsAny(query, List.of("영상정보처리기기", "cctv"))
+			&& !isCctvGuideApplicabilityQuestion(query)
+			&& !containsAny(query, List.of("보관기간", "관리책임자", "촬영범위", "촬영시간"))
+			&& CCTV_GUIDE_PURPOSE_QUESTION.matcher(query).find();
 	}
 
 	private static final java.util.regex.Pattern SECURITY_REVIEW_RESULT_ACTION = java.util.regex.Pattern.compile(

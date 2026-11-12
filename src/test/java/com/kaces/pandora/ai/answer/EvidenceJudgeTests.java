@@ -2495,6 +2495,25 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void namedCctvGuidePurposeRequiresAnOwnedPurposeStatement() {
+		String title = "고정형 영상정보처리기기 설치 운영 안내서";
+		var purpose = chunk(713, "official_doc", title, "제정 목적",
+			"제정 목적\n이 안내서는 공공기관의 고정형 영상정보처리기기 설치·운영 기준을 설명함을 목적으로 합니다.");
+		var cover = chunk(714, "official_doc", title, "표지",
+			"고정형 영상정보처리기기 설치 운영 안내서. 제정 목적과 보관기간.");
+		var retention = chunk(715, "official_doc", title, "보관 및 파기",
+			"공공기관은 고정형 영상정보처리기기의 영상 보관기간을 정하고 관리책임자를 지정한다.");
+		for (String tail : List.of("의 마련 목적이 무엇인가요?", "는 왜 마련됐나요?", "는 어떤 취지로 만들었나요?")) {
+			var result = judge.judge(title + tail, List.of(retention, cover, purpose), Map.of(), 8);
+			assertThat(result.directEvidenceCount()).as(tail).isEqualTo(1);
+			assertThat(result.chunks()).as(tail).containsExactly(purpose);
+			assertThat(judge.judge(title + tail, List.of(retention, cover), Map.of(), 8).directEvidenceFound()).isFalse();
+		}
+		assertThat(judge.judge(title + "에서 영상 보관기간은 어떻게 정하나요?",
+			List.of(retention), Map.of(), 8).directEvidenceFound()).isTrue();
+	}
+
+	@Test
 	void namedCctvGuideApplicabilityRequiresAnOwnedScopeStatement() {
 		String title = "고정형 영상정보처리기기 설치 운영 안내서";
 		var scope = chunk(710, "official_doc", title, "적용 대상",
