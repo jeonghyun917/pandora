@@ -10,6 +10,27 @@ class AnswerQuestionAlignmentVerifierTests {
 	private final AnswerQuestionAlignmentVerifier verifier = new AnswerQuestionAlignmentVerifier();
 
 	@Test
+	void collectionConsentNoticeDoesNotAnswerThirdPartyProvisionNotice() {
+		String collection = "개인정보처리자는 제1항제1호에 따른 동의를 받을 때에는 다음 각 호의 사항을 정보주체에게 알려야 한다.\n"
+			+ "1. 개인정보의 수집ㆍ이용 목적\n2. 수집하려는 개인정보의 항목\n"
+			+ "3. 개인정보의 보유 및 이용 기간\n4. 동의를 거부할 권리가 있다는 사실";
+		String provision = "개인정보처리자는 개인정보를 제3자에게 제공하기 위해 동의를 받을 때에는 "
+			+ "개인정보를 제공받는 자와 그 이용 목적 및 동의를 거부할 권리를 정보주체에게 알려야 한다.";
+		String question = "개인정보를 제3자에게 제공하는 데 동의를 받을 때 알려야 할 사항은 무엇인가요?";
+		for (String body : List.of(collection, provision)) {
+			var ground = new LawAiAnswerGround(1, 12, 2, "law", "개인정보 보호법", null, null, null,
+				"CURRENT", null, null, null, body, null, null, 0);
+			var checked = new ClaimVerifier().verifyDetailed(body, List.of(ground));
+			assertThat(checked.supportedStrongClaimCount()).isPositive();
+			assertThat(verifier.verify(question, checked, List.of(ground)).aligned()).isEqualTo(body.equals(provision));
+			if (body.equals(collection)) {
+				assertThat(verifier.verify("개인정보 수집·이용에 동의를 받을 때 정보주체에게 알려야 할 사항은 무엇인가요?",
+					checked, List.of(ground)).aligned()).isTrue();
+			}
+		}
+	}
+
+	@Test
 	void closedNumberedProvisoInheritsOnlyItsVerifiedParagraphOwner() {
 		String header = "개인정보처리자는 추가 정보(이하이 조에서 “추가정보”라 한다)에 대하여 "
 			+ "다음 각 호의 안전성 확보 조치를 해야 한다.";

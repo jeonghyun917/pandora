@@ -118,6 +118,18 @@ public class AnswerQuestionAlignmentVerifier {
 		if (supportedLinks.isEmpty()) {
 			return AlignmentResult.failed("NO_SUPPORTED_CLAIMS", List.of(SUBJECT, RELATION));
 		}
+		String questionScope = normalize(question);
+		if (questionScope.contains("개인정보") && questionScope.contains("동의")
+			&& thirdPartyProvision(questionScope)
+			&& AlignmentProfile.containsAny(questionScope, "고지", "알려", "안내")
+			&& supportedLinks.stream()
+				.flatMap(link -> atomizer.atomizeForAlignment(link.claim()).stream())
+				.map(this::directProposition)
+				.map(AnswerQuestionAlignmentVerifier::normalize)
+				.noneMatch(claim -> thirdPartyProvision(claim)
+					&& claim.contains("동의") && AlignmentProfile.containsAny(claim, "고지", "알려", "안내"))) {
+			return AlignmentResult.failed("MISSING_CONDITION", List.of(CONDITION));
+		}
 		if (!hasAnswerClaimCoverage(supportedLinks, alignmentProfile)) {
 			return AlignmentResult.failed("MISSING_ANSWER_COVERAGE", List.of(ANSWER_COVERAGE));
 		}
@@ -163,6 +175,10 @@ public class AnswerQuestionAlignmentVerifier {
 				.thenComparingInt(candidate -> reasonPriority(candidate.missingGroups())))
 			.orElseThrow();
 		return AlignmentResult.failed(reasonCode(best.missingGroups()), best.missingGroups());
+	}
+
+	private static boolean thirdPartyProvision(String normalized) {
+		return AlignmentProfile.containsAny(normalized, "제3자", "제삼자") && normalized.contains("제공");
 	}
 
 	private boolean hasAnswerClaimCoverage(List<ClaimVerifier.ClaimEvidenceLink> links, AlignmentProfile profile) {
