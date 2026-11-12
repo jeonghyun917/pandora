@@ -1529,7 +1529,8 @@ public class LawAiAnswerService {
 		Map<String, Double> finalScoreByChunkId = judgedEvidence.scoreByChunkId();
 		List<LawSemanticChunkRow> evidenceChunks = judgedEvidence.chunks();
 		boolean intentDirectEvidenceMissing = shouldRequireIntentDirectEvidence(normalized.query(), queryPlan.profile())
-			&& intentDirectEvidenceChunks(judgeContextChunks, normalized.query()).isEmpty();
+			&& intentDirectEvidenceChunks(judgeContextChunks, normalized.query()).isEmpty()
+			&& !hasBoundCommencementEvidence(normalized.query(), evidenceChunks, commencementProofs);
 		if ((judgedEvidence.directEvidenceRequired() && judgedEvidence.directEvidenceCount() == 0)
 			|| intentDirectEvidenceMissing) {
 			long fallbackStart = System.nanoTime();
@@ -1679,7 +1680,7 @@ public class LawAiAnswerService {
 					judgedEvidence.conceptEvidenceRequired(), false, 0, 0, 0, "commencement_unverified");
 			}
 		}
-		String weakEvidenceReason = weakEvidenceRejectionReason(queryPlan, judgedEvidence, evidenceChunks);
+		String weakEvidenceReason = weakEvidenceRejectionReason(queryPlan, judgedEvidence, evidenceChunks, commencementProofs);
 		if (weakEvidenceReason != null) {
 			String noGroundMessage = weakEvidenceDiagnosticMessage(
 				weakEvidenceReason,
@@ -2003,15 +2004,13 @@ public class LawAiAnswerService {
 		return weakEvidenceRejectionReason(
 			queryPlan,
 			judgedEvidence,
-			judgedEvidence == null ? List.of() : judgedEvidence.chunks()
+			judgedEvidence == null ? List.of() : judgedEvidence.chunks(),
+			Map.of()
 		);
 	}
 
-	private String weakEvidenceRejectionReason(
-		QuestionSearchPlan queryPlan,
-		EvidenceJudge.Result judgedEvidence,
-		List<LawSemanticChunkRow> finalEvidenceChunks
-	) {
+	String weakEvidenceRejectionReason(QuestionSearchPlan queryPlan, EvidenceJudge.Result judgedEvidence,
+		List<LawSemanticChunkRow> finalEvidenceChunks, Map<Long, OfficialCommencementEvidence> commencementProofs) {
 		if (judgedEvidence == null) {
 			return "Evidence Judge 결과가 없어 답변 생성을 중단했습니다.";
 		}
@@ -2027,7 +2026,8 @@ public class LawAiAnswerService {
 		if (finalEvidenceChunks != null
 			&& !finalEvidenceChunks.isEmpty()
 			&& shouldRequireIntentDirectEvidence(question, profile)
-			&& intentDirectEvidenceChunks(finalEvidenceChunks, question).isEmpty()) {
+			&& intentDirectEvidenceChunks(finalEvidenceChunks, question).isEmpty()
+			&& !hasBoundCommencementEvidence(question, finalEvidenceChunks, commencementProofs)) {
 			return "질문의 핵심 의도에 직접 답하는 근거가 없어 답변 생성을 중단했습니다.";
 		}
 		if ("exploratory_lookup".equals(policy)) {
@@ -8348,6 +8348,13 @@ public class LawAiAnswerService {
 			proofs.clear();
 		}
 		return evidenceJudge.judge(query, chunks, scores, limit, proofs);
+	}
+
+	private boolean hasBoundCommencementEvidence(String question, List<LawSemanticChunkRow> chunks,
+		Map<Long, OfficialCommencementEvidence> proofs) {
+		return !proofs.isEmpty() && retainVerifiedCommencement(chunks, proofs).stream()
+			.anyMatch(chunk -> "CURRENT".equals(chunk.effectiveStatus())
+				&& evidenceJudge.requiresCommencementOwnership(question, chunk));
 	}
 
 	private List<LawSemanticChunkRow> retainVerifiedCommencement(List<LawSemanticChunkRow> chunks,

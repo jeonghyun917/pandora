@@ -149,6 +149,36 @@ class LawAiAnswerServiceEvidenceGateTests {
 		}
 	}
 
+	@Test
+	void passesBoundCommencementProofThroughTheDirectIntentGate() {
+		String title = "인공지능 및 데이터 기반 행정 활성화에 관한 법률";
+		String body = "제1조(목적) 이 법은 공공행정의 원칙을 정한다.";
+		String path = "$.법령.조문.조문단위[0]";
+		var row = new LawSemanticChunkRow(81,12,"law","60",title,null,null,null,"CURRENT",null,"목적",body,
+			null,path,null,0,null,null,"article","PASS",null,null,2);
+		String raw = """
+			{"법령":{"기본정보":{"법령명_한글":"%s","공포번호":"21000","공포일자":"20260227","시행일자":"20260828"},
+			"부칙":{"부칙단위":[{"부칙공포번호":"21000","부칙공포일자":"20260227","부칙내용":[["제1조(시행일) 이 법은 공포 후 6개월이 경과한 날부터 시행한다."]]}]}}}
+			""".formatted(title);
+		var source = new com.kaces.pandora.lawdata.persistence.LawCommencementSourceRow(81,12,4,"60",2,path,body,"20260828",raw);
+		var proof = OfficialCommencementEvidence.resolveFromDetail(row,source).orElseThrow();
+		var plan = QuestionSearchPlan.from("인공지능 데이터 기반 행정 활성화 법의 시행일은 언제인가요?");
+		var judged = new EvidenceJudge().judge(plan.question(), List.of(row), Map.of(), 5, Map.of(81L,proof));
+		assertThat(judged.directEvidenceCount()).isEqualTo(1);
+		var service = service();
+		try {
+			assertThat(service.weakEvidenceRejectionReason(plan,judged,List.of(row),Map.of())).isNotNull();
+			assertThat(service.weakEvidenceRejectionReason(plan,judged,List.of(row),Map.of(82L,proof))).isNotNull();
+			var other = new LawSemanticChunkRow(81,12,"law","60","다른행정법",null,null,null,"CURRENT",null,"목적",body,
+				null,path,null,0,null,null,"article","PASS",null,null,2);
+			assertThat(service.weakEvidenceRejectionReason(plan,judged,List.of(other),Map.of(81L,proof))).isNotNull();
+			var stale = new LawSemanticChunkRow(81,12,"law","60",title,null,null,null,"CURRENT",null,"목적",body + " 변경",
+				null,path,null,0,null,null,"article","PASS",null,null,2);
+			assertThat(service.weakEvidenceRejectionReason(plan,judged,List.of(stale),Map.of(81L,proof))).isNotNull();
+			assertThat(service.weakEvidenceRejectionReason(plan,judged,List.of(row),Map.of(81L,proof))).isNull();
+		} finally { service.shutdownExecutors(); }
+	}
+
     @Test void explicitPreconsultationCorrectionNormIsASearchCandidateNotAutomaticGeneralScopeProof() throws Exception {
         String norm="협의기관의 장은 사전협의 미이행, 사전협의 신청 미등록, 사전협의 검토결과의 미반영, 사업산출물의 사전협의시스템 미등록 등에 대하여 신청기관에 시정을 요구할 수 있으며, 신청기관의 장은 이를 반영하고 이행결과를 협의기관의 장에게 제출하여야 한다.";
         var correction=chunk(99401L,"admrul","전자정부 성과관리 지침","사전협의 이행실태의 점검",norm);
