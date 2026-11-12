@@ -11,6 +11,21 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class AnswerVerificationServiceTests {
+	@Test
+	void restoresOnlyListMarkerWhitespaceFromOneExactLegalParagraph() {
+		var service = new AnswerVerificationService(new AnswerGuard(), new ClaimVerifier());
+		String source = "③ 제안요청서에는 다음 각 호의 사항을 명시하여야 한다.1. 계약조건2. 평가요소와 평가방법";
+		var ground = new LawAiAnswerGround(1, 1, 1, "admrul", "계약 업무 예규", null, null,
+			null, "CURRENT", "제5조", "제안요청서", null, source, null, null, 0);
+		String question = "제안요청서의 평가요소와 평가방법 기재 의무를 알려주세요.";
+		String formatted = source.replace("1. ", "\n1. ").replace("2. ", " 2. ");
+		assertThat(service.verify(question, formatted, List.of(ground)).insufficientEvidence()).isFalse();
+		for (String changed : List.of(formatted.replace("평가방법", "배점표"),
+			formatted.replace("2.", "3."), formatted + "\n3. 별도 배점표")) {
+			assertThat(service.verify(question, changed, List.of(ground)).insufficientEvidence()).isTrue();
+		}
+	}
+
     @Test void boundVerifierUsesTheSameCapturedRoutingWithoutThreadLocalState() {
         var claims=mock(ClaimVerifier.class);
         var routing=new com.kaces.pandora.rag.recovery.RecoveryRoutingSnapshot(0,java.util.Map.of(),java.util.Map.of(),java.util.Set.of(),null,null);

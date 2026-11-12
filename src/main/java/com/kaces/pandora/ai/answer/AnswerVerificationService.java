@@ -1,11 +1,13 @@
 package com.kaces.pandora.ai.answer;
 
 import java.util.List;
+import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
 public class AnswerVerificationService {
+	private static final Pattern BEFORE_NUMBERED_ITEM = Pattern.compile("[ \\t\\r\\n]+(?=\\d{1,2}\\.[ \\t])");
 
 	private final AnswerGuard answerGuard;
 	private final ClaimVerifier claimVerifier;
@@ -53,11 +55,26 @@ public class AnswerVerificationService {
 
 	public Result verify(String question, String answer, List<LawAiAnswerGround> grounds) {
 		String guardedAnswer = answerGuard.guard(answer, grounds);
-		ClaimVerifier.VerificationResult claimResult = verifyClaims(guardedAnswer, grounds);
+		ClaimVerifier.VerificationResult claimResult = verifyClaims(restoreNumberedDutyLayout(guardedAnswer, grounds), grounds);
 		AnswerQuestionAlignmentVerifier.AlignmentResult alignmentResult = claimResult.insufficientEvidence()
 			? AnswerQuestionAlignmentVerifier.AlignmentResult.claimInsufficient()
 			: alignmentVerifier.verify(question, claimResult, grounds);
 		return new Result(guardedAnswer, claimResult, alignmentResult);
+	}
+
+	private static String restoreNumberedDutyLayout(String answer, List<LawAiAnswerGround> grounds) {
+		if (answer == null || answer.length() > 2_400 || grounds == null) return answer;
+		String comparable = BEFORE_NUMBERED_ITEM.matcher(answer).replaceAll("");
+		String match = null;
+		for (var ground : grounds) {
+			if (ground == null || !("law".equals(ground.target()) || "admrul".equals(ground.target()))) continue;
+			String source = ground.matchedChildText();
+			if (ParentContextAssembler.exactNumberedDutyParts(source).isEmpty()
+				|| !comparable.equals(BEFORE_NUMBERED_ITEM.matcher(source).replaceAll(""))) continue;
+			if (match != null) return answer;
+			match = source;
+		}
+		return match == null ? answer : match;
 	}
 
 	boolean isInsufficientEvidenceAnswer(String answer) {
