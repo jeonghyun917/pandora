@@ -170,8 +170,48 @@ final class ClaimEvidenceAtomizer {
 			.flatMap(fragment -> fragment.literalOnly()
 				? java.util.stream.Stream.of(fragment) : closedWrappedRatios(fragment.text()).stream())
 			.flatMap(fragment -> fragment.literalOnly()
+				? java.util.stream.Stream.of(fragment) : closedWrappedDutyHeaders(fragment.text()).stream())
+			.flatMap(fragment -> fragment.literalOnly()
 				? java.util.stream.Stream.of(fragment) : closedNumberedProvisos(fragment.text()).stream())
 			.toList();
+	}
+
+	private static final Pattern WRAPPED_DUTY_HEADER = Pattern.compile(
+		"(?m)^[ \\t]*제[0-9]+조(?:의[0-9]+)?[ \\t]*\\([^\\r\\n()]{1,80}\\)[ \\t]+①[ \\t]+"
+			+ "([^①-⑳※*]{2,480}?(?:해야|하여야)[ \\t]+한다\\.)[ \\t]*\\R"
+			+ "([ \\t]*1\\.[ \\t]+[^①-⑳※*]{2,1400}?)(?=^[ \\t]*②[ \\t]+)");
+	private static final Pattern DUTY_ITEM_START = Pattern.compile("([1-9][0-9]?)\\.[ \\t]+\\S.*");
+
+	private List<SourceFragment> closedWrappedDutyHeaders(String text) {
+		var header = WRAPPED_DUTY_HEADER.matcher(text);
+		List<SourceFragment> result = new ArrayList<>();
+		int copied = 0;
+		while (header.find()) {
+			String body = header.group(1);
+			String literal = body.replaceAll("\\s+", " ");
+			if (body.lines().count() < 2 || !safeLegalWrap(body) || !literal.contains("다음 각 호의 ")
+				|| !hasConsecutiveDutyItems(header.group(2))) continue;
+			result.add(new SourceFragment(text.substring(copied, header.start(1)), false));
+			result.add(new SourceFragment(literal, true));
+			copied = header.end(1);
+		}
+		if (copied < text.length()) result.add(new SourceFragment(text.substring(copied), false));
+		return result;
+	}
+
+	private boolean hasConsecutiveDutyItems(String body) {
+		int next = 1;
+		for (String raw : body.lines().toList()) {
+			String line = raw.strip();
+			var item = DUTY_ITEM_START.matcher(line);
+			if (item.matches()) {
+				if (Integer.parseInt(item.group(1)) != next++) return false;
+			} else if (next == 1 || sourceContinuationBoundary(line)
+				|| line.matches("^제[ \\t]*[0-9]+[ \\t]*조.*")) {
+				return false;
+			}
+		}
+		return next >= 3;
 	}
 
 	private static final Pattern WRAPPED_NUMBERED_PROVISO = Pattern.compile(

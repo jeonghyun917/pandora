@@ -10,6 +10,22 @@ class ClaimEvidenceMatcherRelationTests {
 	private final ClaimEvidenceMatcher matcher = new ClaimEvidenceMatcher();
 
 	@Test
+	void wrappedDutyHeaderNeedsAClosedConsecutiveList() {
+		String raw = "개인정보처리자는 법 제28조의4 제1항에 따라\n"
+			+ "가명정보를 원래의 상태로 복원하기 위한 추가 정보(이하 이 조에서 “추가정보”라 한다)에 대하여\n"
+			+ "다음 각 호의 안전성 확보 조치를 해야 한다.";
+		String claim = raw.replaceAll("\\s+", " ");
+		String source = "제29조의5(가명정보에 대한 안전성 확보 조치) ① " + raw
+			+ "\n1. 안전성 확보 조치\n2. 추가정보의 분리 보관\n3. 접근 권한의 분리\n② 처리 현황을 기록한다.";
+		assertThat(matcher.match(claim, List.of(ground(source))).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		for (String broken : List.of(source.replace("\n2.", "\n4."), source.substring(0, source.indexOf("\n②")))) {
+			assertThat(matcher.match(claim, List.of(ground(broken))).status())
+				.isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		}
+	}
+
+	@Test
 	void wrappedNumberedProvisoRetainsItsWholeLiteralCondition() {
 		String trigger = "다만, 별도 담당자를 둘 여력이 없는 경우 등\n"
 			+ " 접근 권한의 분리가 어려운 정당한 사유가 있는 경우에는 ";
