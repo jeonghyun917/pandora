@@ -308,8 +308,7 @@ public class AnswerQuestionAlignmentVerifier {
 		if (!configuredPolicyBridgeMatched
 			&& !configuredAnswerCoverageBridgeMatched
 			&& !profile.conditionGroups().stream()
-			.allMatch(group -> group.stream().allMatch(normalizedClaimProposition::contains)
-                || SourceOwnedConditionalScope.provesLegalCondition(claimProposition,group,scopeRules))) {
+			.allMatch(group -> matchesCondition(claimProposition, normalizedClaimProposition, group, scopeRules))) {
 			missing.add(CONDITION);
 		}
 		if (claimHasRelation
@@ -421,6 +420,17 @@ public class AnswerQuestionAlignmentVerifier {
 			return "MISSING_DIRECT_CONCLUSION";
 		}
 		return "MISSING_RELATION";
+	}
+
+	private static boolean matchesCondition(String claim, String normalizedClaim, List<String> group,
+		List<SourceOwnedConditionalScope.Rule> scopeRules) {
+		if (group.size() == 3 && group.get(2).startsWith("경우")
+			&& (group.get(1).equals("있는") || group.get(1).equals("없는"))) {
+			// Do not satisfy the polarity of this premise with a word from a different premise.
+			return normalizedClaim.contains(String.join("", group));
+		}
+		return group.stream().allMatch(normalizedClaim::contains)
+			|| SourceOwnedConditionalScope.provesLegalCondition(claim, group, scopeRules);
 	}
 
 	private static String normalize(String value) {
