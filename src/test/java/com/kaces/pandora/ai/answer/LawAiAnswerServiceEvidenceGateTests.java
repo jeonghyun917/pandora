@@ -3101,6 +3101,30 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void reviewerNotificationNeedsSenderAndRecipientInTheSameSourceClause() {
+		String question = "보안성 검토 기관이 심사를 끝낸 뒤 결과 통보를 누구에게 하나요?";
+		var recipient = chunk(1L, "official_doc", "정보화사업 보안성 검토 지침", "검토결과 조치",
+			"사업기관의 장은 보안성 검토결과를 통보받은 경우 보안대책을 보완하여야 한다.", 1);
+		var sender = chunk(2L, "official_doc", "정보화사업 보안성 검토 지침", "결과 통보",
+			"보안성 검토 기관은 검토 결과를 의뢰기관에 통보하여야 한다.", 2);
+		var reverse = chunk(3L, "official_doc", "정보화사업 보안성 검토 지침", "보완 보고",
+			"사업기관의 장은 보완 결과를 보안성 검토 기관에 통보하여야 한다.", 3);
+		var service = service();
+		try {
+			var plan = QuestionSearchPlan.from(question);
+			var judge = new EvidenceJudge();
+			var incomplete = List.of(recipient, reverse);
+			var complete = List.of(sender);
+			assertThat(service.weakEvidenceRejectionReason(plan, judge.judge(question, incomplete, Map.of(), 8), incomplete, Map.of()))
+				.isNotNull();
+			assertThat(service.weakEvidenceRejectionReason(plan, judge.judge(question, complete, Map.of(), 8), complete, Map.of()))
+				.isNull();
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void filtersInformationSystemPreConsultationTargetAwayFromProjectReviewNoise() throws Exception {
 		String question = "공공기관 정보화사업도 사전협의를 받아야 하나?";
 		LawSemanticChunkRow projectReviewNoise = chunk(

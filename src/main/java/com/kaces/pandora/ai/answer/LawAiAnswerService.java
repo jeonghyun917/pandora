@@ -2024,6 +2024,14 @@ public class LawAiAnswerService {
 			return "Selected evidence does not contain the configured anchor for the question's core entity.";
 		}
 		String question = queryPlan == null ? "" : queryPlan.question();
+		String normalizedQuestion = normalizeForMatch(question);
+		if (normalizedQuestion.contains("보안성검토")
+			&& containsAny(normalizedQuestion, "누구에게", "어느기관에", "어느부서에", "통보대상")
+			&& containsAny(normalizedQuestion, "결과통보", "결과를통보", "결과를알려", "결과를어느")
+			&& !containsAny(normalizedQuestion, "통보받", "조치결과", "보완결과")
+			&& (finalEvidenceChunks == null || finalEvidenceChunks.stream().noneMatch(this::hasReviewResultSenderClause))) {
+			return "보안성 검토 결과의 발신자와 수신자를 함께 확인할 수 있는 직접근거가 없습니다.";
+		}
 		if (finalEvidenceChunks != null
 			&& !finalEvidenceChunks.isEmpty()
 			&& shouldRequireIntentDirectEvidence(question, profile)
@@ -2047,6 +2055,18 @@ public class LawAiAnswerService {
 			return "관련 근거는 있었지만 질문에 직접 답하는 근거가 없어 답변 생성을 중단했습니다.";
 		}
 		return null;
+	}
+
+	private static final Pattern REVIEW_RESULT_SENDER = Pattern.compile(
+		"(?:보안성검토(?:실시|수행)?기관(?:의장)?|보안성검토담당(?:자|부서)|국가정보원장)(?:은|는|이|가)"
+			+ "[^.!?;。]{0,72}(?:보안성)?검토결과(?:를|는|는해당)"
+			+ "[^.!?;。]{0,40}(?:기관|부서|기관의장|담당자)(?:에|에게)[^.!?;。]{0,12}(?:통보|송부|통지)"
+			+ "(?:한다|하여야|해야|할수|한다는|하도록)"
+	);
+
+	private boolean hasReviewResultSenderClause(LawSemanticChunkRow chunk) {
+		return chunk != null && chunk.chunkText() != null
+			&& REVIEW_RESULT_SENDER.matcher(chunk.chunkText().replaceAll("\\s+", "")).find();
 	}
 
 	private boolean requiresStrictEvidence(QuestionIntentProfile profile, String query) {
