@@ -7390,11 +7390,17 @@ public class LawAiAnswerService {
 				: LEGAL_REFERENCE_NOUNS.contains(noun)
 					? java.util.stream.Stream.concat(DOCUMENT_LOCATION_PARTICLES.stream(), LEGAL_AUTHORITY_PARTICLES.stream()).toList()
 					: DOCUMENT_LOCATION_PARTICLES;
+			if ("지침".equals(noun)) {
+				particles = java.util.stream.Stream.concat(particles.stream(), java.util.stream.Stream.of("의")).toList();
+			}
 			for (String particle : particles) {
 				String marker = noun + particle;
 				for (int markerIndex = query.indexOf(marker); markerIndex >= 0; markerIndex = query.indexOf(marker, markerIndex + 1)) {
 					String title = cleanDocumentReferenceTitle(query.substring(0, markerIndex + noun.length()));
 					if (title.length() < 4 || (noun.endsWith("일반조건") && title.equals(noun))) {
+						continue;
+					}
+					if ("의".equals(particle) && normalizeForMatch(title).length() - noun.length() < 4) {
 						continue;
 					}
 					int evidenceStart = markerIndex + marker.length();

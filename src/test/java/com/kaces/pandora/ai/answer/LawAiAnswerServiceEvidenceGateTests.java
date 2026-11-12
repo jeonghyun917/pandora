@@ -627,6 +627,10 @@ class LawAiAnswerServiceEvidenceGateTests {
 		try {
 			var query = QuestionSearchPlan.from("공공기관 기록물 보존 지침에 따라 보존기간은 어떻게 정합니까?");
 			assertThat(findLexicalChunks(service, query, List.of("admrul"), false)).containsExactly(row);
+			var possessive = QuestionSearchPlan.from("공공기관 기록물 보존 지침의 보존기간 기준을 알려 주세요.");
+			assertThat(findLexicalChunks(service, possessive, List.of("admrul"), false)).containsExactly(row);
+			var unnamed = QuestionSearchPlan.from("이 지침의 보존기간 기준을 알려 주세요.");
+			assertThat(findLexicalChunks(service, unnamed, List.of("admrul"), false)).isEmpty();
 		} finally { service.shutdownExecutors(); }
 	}
 
