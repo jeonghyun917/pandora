@@ -14,6 +14,20 @@ class DirectEvidenceSelectionPolicyTests {
 	private final DirectEvidenceSelectionPolicy policy = new DirectEvidenceSelectionPolicy();
 
 	@Test
+	void omittedApplicationRoleQuestionRequiresBothDutiesUnderTheSameTrigger() {
+		String question = "정보화사업 사전협의 신청 누락 발견 이후 통보 주체와 즉시 신청 주체는 누구인가요?";
+		var complete = chunk(21L, "CURRENT", "admrul",
+			"정보화사업의 사전협의 신청 누락이 있는 경우에는 협의기관의 장은 해당기관의 장에게 이를 통보하고, 해당기관의 장은 즉시 신청하여야 한다.");
+		var reversed = chunk(22L, "CURRENT", "admrul",
+			"정보화사업의 사전협의 신청 누락이 있는 경우에는 해당기관의 장은 협의기관의 장에게 이를 통보하고, 협의기관의 장은 즉시 신청하여야 한다.");
+		var unconditioned = chunk(23L, "CURRENT", "admrul",
+			"협의기관의 장은 해당기관의 장에게 이를 통보하고, 해당기관의 장은 즉시 신청하여야 한다.");
+		var result = policy.apply(question, QuestionIntentProfile.from(question), List.of(),
+			List.of(reversed, unconditioned, complete), Map.of(), Set.of("admrul"), 10);
+		assertThat(result.chunks()).extracting(LawSemanticChunkRow::chunkId).containsExactly(21L);
+	}
+
+	@Test
 	void neverReintroducesNonSearchableQualityAsDirectEvidence() {
 		String question = "계약상대자는 완료 후 통지해야 하는가?";
 		for (String quality : List.of("CONTEXT_ONLY", "REJECT")) {

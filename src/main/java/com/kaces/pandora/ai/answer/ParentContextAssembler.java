@@ -96,6 +96,10 @@ public class ParentContextAssembler {
 		String snippet = snippetFactory == null ? "" : snippetFactory.apply(chunk);
 		String childProof = !literalLegalProof && ("law".equals(chunk.target()) || "admrul".equals(chunk.target()))
 			? selectedNumberedDuty(matchedChildText, snippet) : null;
+		if (childProof == null && matchedChildText != null && matchedChildText.length() > CHILD_LIMIT) {
+			var owned = DirectEvidenceSelectionPolicy.consultationOmissionClause(matchedChunk == null ? chunk : matchedChunk);
+			if (!owned.isEmpty() && owned.equals(snippet)) childProof = owned;
+		}
 		return new LawAiAnswerGround(
 			number,
 			chunk.chunkId(),

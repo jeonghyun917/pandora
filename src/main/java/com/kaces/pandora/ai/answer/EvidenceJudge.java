@@ -86,9 +86,11 @@ public class EvidenceJudge {
 			.filter(JudgedChunk::directEvidence)
 			.toList();
 		boolean directEvidenceRequired = !profile.directEvidenceGroups().isEmpty()
+			|| DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(profile.normalizedQuestion())
 			|| (isIrmRegistrationFaithfulness(profile.normalizedQuestion()) && !directEvidenceChunks.isEmpty())
 			|| searchableChunks.stream().anyMatch(chunk -> requiresCommencementOwnership(profile, chunk));
 		List<JudgedChunk> directSupportingChunks = topicAlignedChunks.stream()
+			.filter(chunk -> !DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(profile.normalizedQuestion()))
 			.filter(chunk -> !isIrmRegistrationFaithfulness(profile.normalizedQuestion()))
 			.filter(chunk -> !isCctvGuideApplicabilityQuestion(profile.normalizedQuestion()))
 			.filter(chunk -> chunk.bodyDirectEvidenceMatches() > 0)
@@ -1538,6 +1540,14 @@ public class EvidenceJudge {
 		if (directEvidence && isCctvGuideApplicabilityQuestion(profile.normalizedQuestion())
 			&& !CCTV_GUIDE_APPLICABILITY.matcher(chunk.chunkText() == null ? "" : chunk.chunkText()).find()) {
 			directEvidence = false;
+		}
+		if (DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(profile.normalizedQuestion())) {
+			boolean owned = !tableOfContents && !suppressEvidenceNoise
+				&& !containsAny(chunkHeading, List.of("작성예시", "체크리스트", "서식"))
+				&& !missingRequestedArticleOwnership(profile, chunk, documentTitle)
+				&& DirectEvidenceSelectionPolicy.matchesExplicitAuthority(chunk, profile.explicitDocumentTitles())
+				&& DirectEvidenceSelectionPolicy.provesConsultationOmissionRoles(chunk);
+			return new JudgedChunk(chunk, score, owned, owned, owned, owned ? 1 : 0, owned ? 1 : 0);
 		}
 		return new JudgedChunk(chunk, score, topicAligned, relevant, directEvidence, directEvidenceMatches, bodyDirectEvidenceMatches);
 	}
@@ -3442,7 +3452,10 @@ public class EvidenceJudge {
 			legacy.directEvidenceGroups(),
 			legacy.preferredSectionTypes(),
 			legacy.definitionQuestion(),
-			legacy.securityReviewResultAction()
+			legacy.securityReviewResultAction(),
+			DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(question)
+				? com.kaces.pandora.common.text.DocumentSearchAnchorExtractor.explicitDocumentTitles(question)
+				: List.of()
 		);
 	}
 

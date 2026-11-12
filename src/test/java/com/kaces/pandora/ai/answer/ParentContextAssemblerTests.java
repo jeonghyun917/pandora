@@ -12,6 +12,20 @@ class ParentContextAssemblerTests {
 	private final ParentContextAssembler assembler = new ParentContextAssembler();
 
 	@Test
+	void preservesTheSelectedConditionalDutiesOnlyFromTheMatchedChild() {
+		String prefix = "별도 절차가 적용된다. ".repeat(100);
+		String clause = "사전협의 신청 누락이 있는 경우에는 협의기관의 장은 해당기관의 장에게 이를 통보하고, 해당기관의 장은 즉시 신청하여야 한다.";
+		var source = new LawSemanticChunkRow(12L, 1L, "admrul", "test", "규정", "기관", null,
+			null, "CURRENT", "제13조", "신청 절차", prefix + clause, null, null, null, 1,
+			"hash", "제13조", "article");
+		var neighborOnly = chunk(11, "다른 근거", prefix);
+		assertThat(assembler.toGrounds(List.of(source), Map.of(), Map.of(), row -> clause)
+			.get(0).matchedChildText()).isEqualTo(clause);
+		assertThat(assembler.toGrounds(List.of(source), Map.of("admrul:12", neighborOnly), Map.of(), row -> clause)
+			.get(0).matchedChildText()).doesNotContain(clause);
+	}
+
+	@Test
 	void separatesMatchedChildFromExpandedParentContext() {
 		LawSemanticChunkRow child = chunk(9, "적용 대상 사업", "국가기관 등이 발주하는 모든 SW사업은 과업심의 대상이다.");
 		LawSemanticChunkRow parent = chunk(

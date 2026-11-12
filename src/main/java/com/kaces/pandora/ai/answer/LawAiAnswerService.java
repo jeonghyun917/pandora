@@ -1472,7 +1472,7 @@ public class LawAiAnswerService {
 			documentExpansionAuthoritative(hybrid)
 		);
 		searchedChunks = applyLexicalVariantAuthority(searchedChunks, bm25VariantChunks, bm25Variant);
-		searchedChunks = preserveIrmRegistrationCandidate(searchedChunks, bm25Chunks, normalized.query());
+		searchedChunks = preserveOwnedLexicalCandidate(searchedChunks, bm25Chunks, normalized.query());
 		Map<String, Double> baseScoreByChunkId = baseScoreMap(searchedChunks, vectorScoreByChunkId, keywordScoreByChunkId);
 		baseScoreByChunkId = applyAuthoritativeRrfScores(baseScoreByChunkId, hybrid);
 		timing.candidateBuildMs.addAndGet(elapsedMillis(candidateBuildStart));
@@ -4309,6 +4309,10 @@ public class LawAiAnswerService {
 	}
 
 	private String snippet(LawSemanticChunkRow chunk, String query) {
+		if (DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(query)) {
+			String clause = DirectEvidenceSelectionPolicy.consultationOmissionClause(chunk);
+			if (!clause.isEmpty()) return clause;
+		}
 		String submission = completeReviewedSubmissionSnippet(chunk, query, 460);
 		if (!submission.isBlank()) return submission;
 		String securityReviewTargets = completeSecurityReviewTargetSnippet(chunk, query, 900);
@@ -6232,9 +6236,16 @@ public class LawAiAnswerService {
 		return finishLexicalChunks(chunks, queryPlan.question());
 	}
 
-	private List<LawSemanticChunkRow> preserveIrmRegistrationCandidate(
+	private List<LawSemanticChunkRow> preserveOwnedLexicalCandidate(
 		List<LawSemanticChunkRow> control, List<LawSemanticChunkRow> lexical, String query
 	) {
+		if (DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(query)) {
+			var candidates = lexical.stream().limit(20)
+				.filter(DirectEvidenceSelectionPolicy::provesConsultationOmissionRoles).toList();
+			var direct = evidenceJudge.judge(query, candidates, Map.of(), 2);
+			return direct.directEvidenceCount() == 1 && direct.chunks().size() == 1
+				? mergeChunks(control, direct.chunks()) : control;
+		}
 		if (!EvidenceJudge.isIrmRegistrationFaithfulness(normalizeForMatch(query))) {
 			return control;
 		}

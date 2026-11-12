@@ -1,6 +1,8 @@
 package com.kaces.pandora.ai.answer;
 
 import com.kaces.pandora.common.text.QuestionIntentProfile;
+import com.kaces.pandora.common.text.KoreanQueryNormalizer;
+import com.kaces.pandora.common.text.DocumentSearchAnchorExtractor;
 import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 import com.kaces.pandora.rag.chunk.RagChunkQualityStatus;
 import java.util.ArrayList;
@@ -10,10 +12,20 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
 @Component
 public class DirectEvidenceSelectionPolicy {
+
+	private static final String OMISSION_TRIGGER = "사전협의신청누락이있는경우에는?";
+	private static final String CONSULTING_AUTHORITY = "협의기관의장은";
+	private static final Pattern CONSULTATION_OMISSION_DUTIES = Pattern.compile(
+		"(?:(?:정보화사업의)?" + OMISSION_TRIGGER + CONSULTING_AUTHORITY + "|" + CONSULTING_AUTHORITY
+			+ "(?:국가종합전자조달시스템상발주현황을상시모니터링하여)?(?:정보화사업의)?"
+			+ OMISSION_TRIGGER + ")"
+			+ "(?:해당중앙행정기관등또는지방자치단체등|해당기관)의장에게이를통보하고,"
+			+ "해당기관의장은즉시신청하여야한다\\.");
 
 	private final KoreanEvidenceAtomParser parser;
 	private final QuestionPropositionTemplateFactory templateFactory;
@@ -124,11 +136,48 @@ public class DirectEvidenceSelectionPolicy {
 				return "DIRECT_ATOM_REJECTED_CONTRADICTION";
 			}
 		}
+		if (asksConsultationOmissionProcedure(question)) {
+			return provesConsultationOmissionRoles(candidate)
+				&& matchesExplicitAuthority(candidate, DocumentSearchAnchorExtractor.explicitDocumentTitles(question))
+				? null : "DIRECT_ATOM_REJECTED_SEMANTIC_MISMATCH";
+		}
 		if (atoms.isEmpty() || atoms.stream().noneMatch(atom ->
 			semanticMatcher.match(template, atom).status() == ClaimEvidenceMatcher.Status.SUPPORTED)) {
 			return "DIRECT_ATOM_REJECTED_SEMANTIC_MISMATCH";
 		}
 		return null;
+	}
+
+	static boolean provesConsultationOmissionRoles(LawSemanticChunkRow candidate) {
+		return !consultationOmissionClause(candidate).isEmpty();
+	}
+
+	static boolean matchesExplicitAuthority(LawSemanticChunkRow candidate, List<String> titles) {
+		return titles.isEmpty() || (titles.size() == 1 && candidate != null
+			&& KoreanQueryNormalizer.normalizeForMatch(titles.get(0))
+				.equals(KoreanQueryNormalizer.normalizeForMatch(candidate.title())));
+	}
+
+	static String consultationOmissionClause(LawSemanticChunkRow candidate) {
+		if (candidate == null || !("law".equals(candidate.target()) || "admrul".equals(candidate.target()))
+			|| !"CURRENT".equals(candidate.effectiveStatus()) || candidate.chunkText() == null) return "";
+		String owned = "";
+		for (String raw : candidate.chunkText().split("(?<=[.!?])|(?=[①-⑳])")) {
+			String clause = raw.strip().replaceFirst("^[①-⑳]\\s*", "");
+			if (clause.length() > 460
+				|| !CONSULTATION_OMISSION_DUTIES.matcher(clause.replaceAll("\\s+", "")).matches()) continue;
+			if (!owned.isEmpty()) return "";
+			owned = clause;
+		}
+		return owned;
+	}
+
+	static boolean asksConsultationOmissionProcedure(String question) {
+		String text = KoreanQueryNormalizer.normalizeForMatch(question);
+		return text.contains("사전협의") && text.contains("신청") && text.contains("누락")
+			&& text.contains("통보") && (text.contains("누가") || text.contains("주체")
+				|| (text.contains("절차") && text.contains("통보와신청")))
+			&& !text.contains("제재") && !text.contains("처벌");
 	}
 
 	private List<EvidenceAtom> evidenceAtoms(LawSemanticChunkRow chunk) {

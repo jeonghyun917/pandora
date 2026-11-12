@@ -19,6 +19,27 @@ import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
 	@Test
+	void boundedLexicalAdmissionRequiresOwnedOmissionProcedureAndAuthority() throws Exception {
+		var control = chunk(710, "admrul", "다른 지침", "사업계획", "사업계획서를 제출한다.");
+		var exact = new LawSemanticChunkRow(711L, 711L, "admrul", "fixture", "전자정부 성과관리 지침",
+			"기관", "행정규칙", null, "CURRENT", "제13조", "사전협의 신청",
+			"사전협의 신청 누락이 있는 경우에는 협의기관의 장은 해당기관의 장에게 이를 통보하고, 해당기관의 장은 즉시 신청하여야 한다.",
+			null, null, null, 1, "fixture-hash", "제13조", "article");
+		var service = service();
+		try {
+			var merge = LawAiAnswerService.class.getDeclaredMethod("preserveOwnedLexicalCandidate", List.class, List.class, String.class);
+			merge.setAccessible(true);
+			String question = "사전협의 신청 누락 시 통보와 신청 절차는?";
+			assertThat(merge.invoke(service, List.of(control), List.of(exact), question)).isEqualTo(List.of(control, exact));
+			assertThat(merge.invoke(service, List.of(control), List.of(exact), "전자정부법 시행령에 따른 " + question))
+				.isEqualTo(List.of(control));
+			assertThat(merge.invoke(service, List.of(control), List.of(exact), "사전협의가 누락된 사업은 어떤 조치를 받나요?"))
+				.isEqualTo(List.of(control));
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+	@Test
 	void rerankScoresEachCandidateOnceAndPreservesStableOrderAndTargetQualifiedScores() {
 		var firstTie = chunk(910L, "law", "첫 번째", "제1조", "법령 근거");
 		var secondTie = chunk(910L, "official_doc", "두 번째", "기준", "문서 근거");
@@ -65,7 +86,7 @@ class LawAiAnswerServiceEvidenceGateTests {
 			"정보자원 품질 정합성. 정비율 = 기한 내 품질보완 완료 수/품질보완 요청 수 × 100");
 		var service = service();
 		try {
-			var merge = LawAiAnswerService.class.getDeclaredMethod("preserveIrmRegistrationCandidate",
+			var merge = LawAiAnswerService.class.getDeclaredMethod("preserveOwnedLexicalCandidate",
 				List.class,List.class,String.class);
 			merge.setAccessible(true);
 			String query = "정보자원관리시스템 등록 충실성은 어떻게 측정하나요?";

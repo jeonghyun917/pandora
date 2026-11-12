@@ -74,15 +74,16 @@ public final class DocumentSearchAnchorExtractor {
 	}
 
 	private static List<String> explicitTitleTerms(String question) {
+		return cleanTerms(explicitDocumentTitles(question).stream()
+			.flatMap(title -> java.util.Arrays.stream(title.split("\\s+"))).toList(), MAX_TITLE_TERMS);
+	}
+
+	public static List<String> explicitDocumentTitles(String question) {
+		if (question == null || question.isBlank()) return List.of();
 		List<String> titles = new ArrayList<>();
 		Matcher suffix = TITLE_SUFFIX.matcher(question);
 		while (suffix.find()) {
-			String title = suffix.group(1).replaceAll("\\s+", " ").trim();
-			if (title.contains(" ")) {
-				titles.addAll(List.of(title.split("\\s+")));
-			} else {
-				titles.add(title);
-			}
+			titles.add(suffix.group(1));
 		}
 		return cleanTerms(titles, MAX_TITLE_TERMS);
 	}

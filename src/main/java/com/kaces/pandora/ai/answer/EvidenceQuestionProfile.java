@@ -14,7 +14,8 @@ record EvidenceQuestionProfile(
 	List<List<String>> directEvidenceGroups,
 	Set<String> preferredSectionTypes,
 	boolean definitionQuestion,
-	boolean securityReviewResultAction
+	boolean securityReviewResultAction,
+	List<String> explicitDocumentTitles
 ) {
 
 	EvidenceQuestionProfile {
@@ -24,6 +25,7 @@ record EvidenceQuestionProfile(
 		conceptGroups = immutableGroups(conceptGroups);
 		intentGroups = immutableGroups(intentGroups);
 		directEvidenceGroups = immutableGroups(directEvidenceGroups);
+		explicitDocumentTitles = immutableList(explicitDocumentTitles);
 		preferredSectionTypes = preferredSectionTypes == null ? Set.of() : Set.copyOf(preferredSectionTypes);
 	}
 

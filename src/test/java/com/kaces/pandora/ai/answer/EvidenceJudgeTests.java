@@ -13,6 +13,30 @@ class EvidenceJudgeTests {
 	// 메소드 설명: EvidenceJudge 처리 흐름을 수행합니다.
 	private final EvidenceJudge judge = new EvidenceJudge();
 	@Test
+	void priorConsultationOmissionRolesRequireAnOwnedConditionalRule() {
+		var exact = new LawSemanticChunkRow(120L, 120L, "admrul", "fixture", "전자정부 성과관리 지침",
+			"기관", "행정규칙", null, "CURRENT", "제13조", "사전협의 신청",
+			"제안요청서는 첨부 서류에 포함된다. 협의기관의 장은 국가종합전자조달시스템상 발주현황을 상시 모니터링하여 정보화사업의 사전협의 신청 누락이 있는 경우에는 해당 중앙행정기관등 또는 지방자치단체등의 장에게 이를 통보하고, 해당기관의 장은 즉시 신청하여야 한다.",
+			null, null, null, 1, "fixture-hash", "제13조", "article");
+		var reversed = chunk(121, "admrul", "전자정부 성과관리 지침", "사전협의 신청",
+			"사전협의 신청 누락이 있는 경우에는 해당기관의 장은 협의기관의 장에게 이를 통보하고, 협의기관의 장은 즉시 신청하여야 한다.",
+			"제13조", "article");
+		for (String q : List.of("사전협의 신청 누락 발견 이후 통보 주체와 즉시 신청 주체는 누구인가요?",
+			"사전협의 신청 누락 시 통보와 신청 절차는?")) {
+			var result = judge.judge(q, List.of(reversed, exact), Map.of(), 8);
+			assertThat(result.directEvidenceCount()).as(q).isEqualTo(1);
+			assertThat(result.chunks()).extracting(LawSemanticChunkRow::chunkId).containsExactly(120L);
+		}
+		assertThat(judge.judge("사전협의가 누락된 사업은 어떤 조치를 받나요?", List.of(exact), Map.of(), 8)
+			.directEvidenceCount()).isZero();
+		assertThat(judge.judge("전자정부법 시행령에 따른 사전협의 신청 누락 시 통보와 신청 절차는?",
+			List.of(exact), Map.of(), 8).directEvidenceCount()).isZero();
+		assertThat(judge.judge("전자정부 성과관리 지침에 따른 사전협의 신청 누락 시 통보와 신청 절차는?",
+			List.of(exact), Map.of(), 8).directEvidenceCount()).isOne();
+		assertThat(judge.judge("전자정부 성과관리 지침 제14조에 따른 사전협의 신청 누락 시 통보와 신청 절차는?",
+			List.of(exact), Map.of(), 8).directEvidenceCount()).isZero();
+	}
+	@Test
 	void irrelevantPenaltyCoverageCannotBecomeDirectThroughCrossChunkFallback() {
 		var source = chunk(102, "admrul", "국토교통부 전자정부 구현에 관한 규정", "제1조(목적) (7/12)",
 			"제29조(사업관리) ① 사업주관부서의 장은 정보화사업관련 법령 및 규정이 정한 바에 따라 사업관리를 철저히 하여야 한다. "
