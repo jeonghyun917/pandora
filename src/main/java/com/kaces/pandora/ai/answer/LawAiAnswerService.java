@@ -6772,6 +6772,9 @@ public class LawAiAnswerService {
 
 	private List<LawSemanticChunkRow> filterByQuestionIntent(List<LawSemanticChunkRow> chunks, String query) {
 		String normalizedQuery = normalizeForMatch(query);
+		if (AutonomyFollowUpEvidence.asksDeadline(normalizedQuery)) {
+			return chunks.stream().filter(AutonomyFollowUpEvidence::ownsDeadline).toList();
+		}
 		List<String> terms = queryTerms(query);
 		List<String> requiredTerms = requiredExactTermsForQuery(query, terms);
 		List<LawSemanticChunkRow> candidates = chunks;

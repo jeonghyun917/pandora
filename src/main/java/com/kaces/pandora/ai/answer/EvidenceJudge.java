@@ -966,9 +966,10 @@ public class EvidenceJudge {
 		boolean officialReportBodyQuestion = isOfficialReportBodyQuestion(profile);
 		boolean autonomyPreConsultationEvidence = isAutonomyPreConsultationEvidence(text);
 		boolean autonomyPreConsultationProcedureEvidence = isAutonomyPreConsultationProcedureEvidence(text);
-		boolean effectiveAutonomyPreConsultationEvidence = autonomyPreConsultationProcedureQuestion
-			? autonomyPreConsultationProcedureEvidence
-			: autonomyPreConsultationEvidence;
+		boolean autonomyFollowUpQuestion = AutonomyFollowUpEvidence.asksDeadline(profile.normalizedQuestion());
+		boolean effectiveAutonomyPreConsultationEvidence = autonomyFollowUpQuestion
+			? AutonomyFollowUpEvidence.ownsDeadline(chunk)
+			: autonomyPreConsultationProcedureQuestion ? autonomyPreConsultationProcedureEvidence : autonomyPreConsultationEvidence;
 		boolean publicDataCustomSupportEvidence = isPublicDataCustomSupportEvidence(text);
 		boolean publicDataStandardizationEvidence = isPublicDataStandardizationEvidence(text);
 		boolean publicDataAiManagementEvidence = isPublicDataAiManagementEvidence(text);

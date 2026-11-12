@@ -3075,6 +3075,32 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void selectsOwnedAutonomyFollowUpDeadlineInsteadOfInitialSubmissionOrForm() throws Exception {
+		String title = "자치분권 사전협의 지침";
+		var initial = chunk(1L, "official_doc", title, "요청서 작성·제출",
+			"사전협의 요청서 작성·제출. 중앙행정기관의 장은 관계기관 협의 또는 입법예고 때 요청서를 제출한다. 지방자치 관련성 검토 후 결과 통보서를 송부한다.", 20);
+		var followUp = chunk(2L, "official_doc", title, "추가협의",
+			"자치분권 사전협의 지침. 검토의견이 개선권고인 경우 행정안전부장관은 개선권고 요청서를 통보한다. 소관 중앙행정기관의 장은 개선권고 요청서를 접수한 후 7일 이내 개선권고 반영 결과서를 작성하여 행정안전부장관에게 송부한다.", 22);
+		var form = chunk(3L, "official_doc", title, "서식 4",
+			"자치분권 사전협의 개선권고 반영 결과서. 접수 일자. 소관 기관. 의견 및 반영 결과.", 40);
+		var software = chunk(4L, "law", "소프트웨어 진흥법", "제57조",
+			"국가기관등의 장은 개선 권고를 받은 때에는 그 권고를 받은 날부터 1개월 이내에 조치 결과를 과학기술정보통신부장관에게 통보하여야 한다.", 1);
+		var service = service();
+		try {
+			var pool = List.of(initial, followUp, form, software);
+			String question = "자치분권 사전협의에서 개선권고 요청서를 받으면 반영 결과서를 언제까지 보내야 하나요?";
+			var filtered = filterByQuestionIntent(service, pool, question);
+			assertThat(filtered).containsExactly(followUp);
+			assertThat(new EvidenceJudge().judge(question, filtered, java.util.Map.of(), 8).chunks())
+				.containsExactly(followUp);
+			assertThat(filterByQuestionIntent(service, pool, "자치분권 사전협의 전체 절차는 어떻게 진행하나요?"))
+				.contains(initial);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void filtersInformationSystemPreConsultationTargetAwayFromProjectReviewNoise() throws Exception {
 		String question = "공공기관 정보화사업도 사전협의를 받아야 하나?";
 		LawSemanticChunkRow projectReviewNoise = chunk(

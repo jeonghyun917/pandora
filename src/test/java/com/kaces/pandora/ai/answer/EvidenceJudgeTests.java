@@ -2383,6 +2383,16 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void publicSoftwareRecommendationDoesNotInheritAutonomyDeadline() {
+		var autonomy = chunk(1, "official_doc", "자치분권 사전협의 지침", "추가협의",
+			"자치분권 사전협의 지침. 검토의견이 개선권고인 경우 행정안전부장관은 개선권고 요청서를 통보한다. 소관 중앙행정기관의 장은 개선권고 요청서를 접수한 후 7일 이내 개선권고 반영 결과서를 작성하여 행정안전부장관에게 송부한다.");
+		var result = judge.judge("공공 소프트웨어사업 법제도 위반 개선권고를 받으면 7일 안에 회신해야 하나요?",
+			List.of(autonomy), Map.of(), 8);
+		assertThat(result.directEvidenceCount()).isZero();
+		assertThat(result.chunks()).doesNotContain(autonomy);
+	}
+
+	@Test
 	void autonomyPreConsultationProcedureQuestionAcceptsExtractedProcedureFlowPage() {
 		LawSemanticChunkRow procedureFlow = chunk(
 			1,
