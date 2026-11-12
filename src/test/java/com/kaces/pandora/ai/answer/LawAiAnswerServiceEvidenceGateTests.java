@@ -642,6 +642,22 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void genericPublicInstitutionScopeAddsGuideTitleAliasWithoutStrippingNamedOwner() throws Exception {
+		var service = service();
+		try {
+			var anchors = LawAiAnswerService.class.getDeclaredMethod("documentTitleAnchorKeywords", String.class);
+			anchors.setAccessible(true);
+			String title = "전자기록물 보존 실무 안내서";
+			assertThat((List<String>) anchors.invoke(service, "공공기관의 " + title + "에서는 보존 기준을 어떻게 설명합니까?"))
+				.contains("공공기관의 " + title, title);
+			assertThat((List<String>) anchors.invoke(service, "예시연구원의 " + title + "에서는 보존 기준을 어떻게 설명합니까?"))
+				.contains("예시연구원의 " + title).doesNotContain(title);
+			assertThat((List<String>) anchors.invoke(service, "공공기관의 기록물 관리 규정에서는 보존 기준을 어떻게 설명합니까?"))
+				.doesNotContain("기록물 관리 규정");
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void explicitPublicDatabaseStandardsRecallApplicableTitleWithoutExpandingInternalQueries() throws Exception {
 		var standard = chunk(88710L, "admrul", "공공기관의 데이터베이스 표준화 지침", "표준 적용",
 			"공공기관의 장은 공공데이터베이스 구축 시 표준용어 및 표준도메인을 적용하여야 한다.");

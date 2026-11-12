@@ -7452,8 +7452,12 @@ public class LawAiAnswerService {
 		if (core.length() >= 8 && !core.equals(withoutReferencePrefix)) {
 			anchors.add(core);
 		}
+		String guideAlias = core.replaceFirst("^공공기관의\\s+", "");
+		boolean scopedGuide = !guideAlias.equals(core) && guideAlias.length() >= 8
+			&& List.of("가이드라인", "가이드", "안내서", "매뉴얼").stream().anyMatch(guideAlias::endsWith);
+		if (scopedGuide) anchors.add(guideAlias);
 		// Search aliases retain all title words; only conventional coordination punctuation changes.
-		for (String candidate : List.of(title, withoutReferencePrefix, core)) {
+		for (String candidate : List.of(title, withoutReferencePrefix, core, scopedGuide ? guideAlias : "")) {
 			if (candidate.length() >= 8 && COORDINATED_TITLE_ACTIONS.matcher(candidate).find()) {
 				anchors.add(COORDINATED_TITLE_ACTIONS.matcher(candidate).replaceAll("$1·운영"));
 				anchors.add(COORDINATED_TITLE_ACTIONS.matcher(candidate).replaceAll("$1 운영"));
