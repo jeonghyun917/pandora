@@ -177,9 +177,7 @@ public class EvidenceJudge {
 					|| !java.util.Objects.equals(source.chunkVersion(), row.chunkVersion())) {
 					continue;
 				}
-				String clause = catalogClause(row, CATALOG_REQUISITION_CLAUSE);
-				if (clause.contains("디지털서비스몰에등록된계약품목")
-					&& clause.contains("수요기관의장이계약담당공무원의승인을거쳐나라장터를통하여계약상대자에게납품을요구하도록하여야한다")) {
+				if (hasCatalogRequisitionDuty(row)) {
 					var supplemented = new ArrayList<>(selected);
 					supplemented.add(candidate);
 					return supplemented;
@@ -192,6 +190,13 @@ public class EvidenceJudge {
 	private static String catalogClause(LawSemanticChunkRow row, java.util.regex.Pattern pattern) {
 		var matcher = pattern.matcher(row.chunkText() == null ? "" : row.chunkText());
 		return matcher.find() ? normalize(matcher.group(1)) : "";
+	}
+
+	private static boolean hasCatalogRequisitionDuty(LawSemanticChunkRow row) {
+		String clause = catalogClause(row, CATALOG_REQUISITION_CLAUSE);
+		return clause.startsWith("계약담당공무원은")
+			&& clause.contains("디지털서비스몰에등록된계약품목에대하여")
+			&& clause.endsWith("수요기관의장이계약담당공무원의승인을거쳐나라장터를통하여계약상대자에게납품을요구하도록하여야한다");
 	}
 
 	private List<JudgedChunk> withScopeAnchoredReviewRule(
@@ -1268,6 +1273,18 @@ public class EvidenceJudge {
 			}
 		}
 		String catalogContext = documentTitle + chunkHeading + body;
+		String orderQuery = profile.normalizedQuestion();
+		boolean catalogOrderOnly = containsAny(orderQuery, List.of("디지털카탈로그", "디지털카달로그", "디지털서비스카탈로그", "디지털서비스몰"))
+			&& orderQuery.contains("납품") && containsAny(orderQuery, List.of("요구", "요청", "승인", "절차"))
+			&& !procurementContractMethodQuestion
+			&& !containsAny(orderQuery, List.of("계약체결", "직접구매", "취소", "변경", "연기", "납기", "한도", "금액", "수량", "기간"));
+		if (catalogOrderOnly && "admrul".equals(chunk.target())
+			&& documentTitle.contains("디지털서비스카탈로그계약업무처리규정")) {
+			directEvidence = requiredTermsMatched && !criticalConceptMissing && !tableOfContents
+				&& hasCatalogRequisitionDuty(chunk);
+			relevant = directEvidence;
+			topicAligned = directEvidence;
+		}
 		boolean asksCommercialPurchaseExemption = procurementCatalogContractQuestion
 			&& profile.normalizedQuestion().contains("직접구매")
 			&& containsAny(profile.normalizedQuestion(), List.of("상용sw", "상용소프트웨어"))

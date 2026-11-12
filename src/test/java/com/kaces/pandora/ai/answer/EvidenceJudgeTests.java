@@ -2121,6 +2121,21 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void selectsOwnedRequisitionRatherThanContractForOrderApproval() {
+		String title = "디지털서비스 카탈로그계약 업무처리규정";
+		String clause = "제30조(납품요구) ① 계약담당공무원은 디지털서비스몰에 등록된 계약품목에 대하여 "
+			+ "수요기관의 장이 계약담당공무원의 승인을 거쳐 나라장터를 통하여 계약상대자에게 납품을 요구하도록 하여야 한다.";
+		var order = chunkInDocument(8130, 81, "catalog", "admrul", title, "납품요구", clause);
+		var contract = chunkInDocument(8131, 81, "catalog", "admrul", title, "계약체결",
+			"제10조(계약체결) 계약담당공무원은 디지털서비스몰 카탈로그의 적정성을 검토하여 수의계약을 체결할 수 있다.");
+		var scopeMissing = chunkInDocument(8132, 81, "catalog", "admrul", title, "납품요구",
+			clause.replace("디지털서비스몰에 등록된 계약품목에 대하여 ", ""));
+		var r = judge.judge("디지털서비스 카탈로그 납품 승인 절차?", List.of(contract, order, scopeMissing), Map.of(), 5);
+		assertThat(r.directEvidenceCount()).isEqualTo(1);
+		assertThat(r.chunks()).containsExactly(order);
+	}
+
+	@Test
 	void preservesAnApprovedCatalogRequisitionOnlyAsSameSourceSupport() {
 		String title = "디지털서비스 카탈로그계약 업무처리규정";
 		String q = "디지털 카탈로그로 구매할 때 계약방식이 수의계약인가요?";
