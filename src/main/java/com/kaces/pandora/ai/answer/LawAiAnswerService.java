@@ -9807,7 +9807,7 @@ public class LawAiAnswerService {
 		}
 		if (!boundedLawEvidenceMatched && documentTitleAnchors.isEmpty()
 			&& lawTargets.contains("admrul") && isProcurementContractMethodQuestion(normalizedQuery)
-			&& containsAny(normalizedQuery, "디지털카탈로그", "디지털카달로그", "디지털서비스몰")) {
+			&& containsAny(normalizedQuery, "디지털카탈로그", "디지털카달로그", "디지털서비스카탈로그", "디지털서비스몰")) {
 			var catalog = safeLexicalQuery("law digital catalog contract and order", () ->
 				lawChunkMapper.findSemanticChunksByDocumentTitleAndText(List.of("admrul"),
 					List.of("디지털서비스 카탈로그계약"), List.of("수의계약", "납품요구"), includeFuture,

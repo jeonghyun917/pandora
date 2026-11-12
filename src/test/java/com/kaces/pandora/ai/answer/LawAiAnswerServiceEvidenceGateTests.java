@@ -408,6 +408,8 @@ class LawAiAnswerServiceEvidenceGateTests {
             assertThat(findLexicalChunks(service,QuestionSearchPlan.from("디지털 카탈로그를 이용하면 계약방식이 수의계약으로 정해지나요?"),List.of("admrul"),false))
                 .contains(contract,order);
             assertThat(includeFutureSeen.get()).isFalse();
+            assertThat(findLexicalChunks(service,QuestionSearchPlan.from("디지털서비스 카탈로그에서 계약 방식은 어떻게 정해지나요?"),List.of("admrul"),false))
+                .contains(contract,order);
             assertThat(findLexicalChunks(service,QuestionSearchPlan.from("디지털 카탈로그에서 조달할 때 계약방법은?"),List.of("law","admrul"),true))
                 .contains(contract,order);
             assertThat(includeFutureSeen.get()).isTrue();
