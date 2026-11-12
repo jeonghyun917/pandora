@@ -60,14 +60,15 @@ public class EvidenceJudge {
 		if (chunks == null || chunks.isEmpty()) {
 			return new Result(List.of(), Map.of(), false, false, false, false, 0, 0, 0, "empty");
 		}
+		EvidenceQuestionProfile profile = buildQuestionProfile(question);
 		List<LawSemanticChunkRow> searchableChunks = chunks.stream()
 			.filter(chunk -> chunk != null && RagChunkQualityStatus.from(chunk.qualityStatus()).searchable())
+			.filter(chunk -> !AutonomyFollowUpEvidence.outsideRecommendationScope(profile.normalizedQuestion(), chunk))
 			.toList();
 		if (searchableChunks.isEmpty()) {
 			return new Result(List.of(), Map.of(), false, false, false, false, 0, 0, 0, "quality_filtered");
 		}
 
-		EvidenceQuestionProfile profile = buildQuestionProfile(question);
 		List<JudgedChunk> judgedChunks = searchableChunks.stream()
 			.map(chunk -> judgeChunk(profile, chunk, baseScoreByChunkId.getOrDefault(scoreKey(chunk), 0.0),
 				unverifiedCommencement(profile, chunk, commencementEvidence),

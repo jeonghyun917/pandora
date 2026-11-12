@@ -19,10 +19,18 @@ final class AutonomyFollowUpEvidence {
 	}
 
 	static boolean ownsDeadline(LawSemanticChunkRow chunk) {
-		if (!"official_doc".equals(chunk.target()) || chunk.title() == null || chunk.chunkText() == null
-			|| !chunk.title().replaceAll("\\s+", "").contains("자치분권사전협의")) {
-			return false;
-		}
-		return REPORT_CLAUSE.matcher(chunk.chunkText().replaceAll("[\\s『』「」]", "")).find();
+		return isGuide(chunk) && chunk.chunkText() != null
+			&& REPORT_CLAUSE.matcher(chunk.chunkText().replaceAll("[\\s『』「」]", "")).find();
+	}
+
+	static boolean outsideRecommendationScope(String query, LawSemanticChunkRow chunk) {
+		return query.contains("개선권고") && !query.contains("자치분권")
+			&& (query.contains("소프트웨어사업") || query.contains("sw사업"))
+			&& isGuide(chunk);
+	}
+
+	private static boolean isGuide(LawSemanticChunkRow chunk) {
+		return "official_doc".equals(chunk.target()) && chunk.title() != null
+			&& chunk.title().replaceAll("\\s+", "").contains("자치분권사전협의");
 	}
 }
