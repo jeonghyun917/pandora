@@ -127,7 +127,8 @@ public class AnswerQuestionAlignmentVerifier {
 				.map(this::directProposition)
 				.map(AnswerQuestionAlignmentVerifier::normalize)
 				.noneMatch(claim -> thirdPartyProvision(claim)
-					&& claim.contains("동의") && AlignmentProfile.containsAny(claim, "고지", "알려", "안내"))) {
+					&& claim.contains("동의") && AlignmentProfile.containsAny(claim, "고지", "알려", "안내"))
+			&& !hasOwnedProvisionNoticeReference(supportedLinks, grounds)) {
 			return AlignmentResult.failed("MISSING_CONDITION", List.of(CONDITION));
 		}
 		if (!hasAnswerClaimCoverage(supportedLinks, alignmentProfile)) {
@@ -179,6 +180,44 @@ public class AnswerQuestionAlignmentVerifier {
 
 	private static boolean thirdPartyProvision(String normalized) {
 		return AlignmentProfile.containsAny(normalized, "제3자", "제삼자") && normalized.contains("제공");
+	}
+
+	private static final String PROVISION_NOTICE_HEADER =
+		"개인정보처리자는제1항제1호에따른동의를받을때에는다음각호의사항을정보주체에게알려야한다";
+
+	private static boolean hasOwnedProvisionNoticeReference(
+		List<ClaimVerifier.ClaimEvidenceLink> links, List<LawAiAnswerGround> grounds
+	) {
+		if (grounds == null) return false;
+		for (var link : links) {
+			if (!PROVISION_NOTICE_HEADER.equals(normalize(link.claim()))
+				|| !PROVISION_NOTICE_HEADER.equals(normalize(link.evidenceSentence()))) continue;
+			var owners = grounds.stream().filter(g -> g != null && g.number() == link.groundNumber()).toList();
+			if (owners.size() != 1) continue;
+			var owner = owners.get(0);
+			String child = owner.matchedChildText();
+			if (!"law".equals(owner.target()) || !"CURRENT".equals(owner.effectiveStatus())
+				|| !"direct".equals(owner.evidenceRole()) || owner.documentId() <= 0 || owner.chunkId() <= 0
+				|| child == null || child.length() > 4000) continue;
+			var lines = child.lines().map(String::strip).filter(line -> !line.isEmpty()).toList();
+			int notice = -1;
+			for (int i = 0; i < lines.size(); i++) {
+				if (!lines.get(i).startsWith("②")) continue;
+				String firstSentence = lines.get(i).substring(1).split("\\.", 2)[0];
+				if (!PROVISION_NOTICE_HEADER.equals(normalize(firstSentence))) continue;
+				if (notice >= 0) { notice = -1; break; }
+				notice = i;
+			}
+			if (notice < 3) continue;
+			String opening = lines.get(notice - 3);
+			if (!opening.startsWith("①") || !normalize(opening.replaceFirst("\\s*<[^<>]*>\\s*$", "")).matches(
+				"개인정보처리자는다음각호의어느하나에해당(?:되는|하는)경우(?:에는)?"
+					+ "정보주체의개인정보를제3자에게제공(?:공유를포함한다이하같다)?할수있다")
+				|| !lines.get(notice - 2).matches("1\\.\\s*정보주체의 동의를 받은 경우")
+				|| !lines.get(notice - 1).matches("2\\.\\s*[^①②③]+")) continue;
+			return true;
+		}
+		return false;
 	}
 
 	private boolean hasAnswerClaimCoverage(List<ClaimVerifier.ClaimEvidenceLink> links, AlignmentProfile profile) {

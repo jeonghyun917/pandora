@@ -10,6 +10,33 @@ class AnswerQuestionAlignmentVerifierTests {
 	private final AnswerQuestionAlignmentVerifier verifier = new AnswerQuestionAlignmentVerifier();
 
 	@Test
+	void provisionNoticeReferenceMustResolveToItsOwnFirstItem() {
+		String question = "개인정보를 제3자에게 제공하는 데 동의를 받을 때 알려야 할 사항은 무엇인가요?";
+		String opening = "① 개인정보처리자는 다음 각 호의 어느 하나에 해당하는 경우 정보주체의 개인정보를 제3자에게 제공할 수 있다.\n";
+		String consent = "정보주체의 동의를 받은 경우";
+		String other = "법률에 특별한 규정이 있는 경우";
+		String notice = "② 개인정보처리자는 제1항제1호에 따른 동의를 받을 때에는 다음 각 호의 사항을 정보주체에게 알려야 한다.\n"
+			+ "1. 개인정보를 제공받는 자\n2. 개인정보를 제공받는 자의 개인정보 이용 목적\n"
+			+ "3. 제공하는 개인정보의 항목\n4. 개인정보를 제공받는 자의 개인정보 보유 및 이용 기간\n"
+			+ "5. 동의를 거부할 권리가 있다는 사실\n";
+		String premise = opening + "1. " + consent + "\n2. " + other + "\n";
+		for (String control : List.of("owned", "wrong item", "adjacent article", "duplicate item")) {
+			String context = switch (control) {
+				case "wrong item" -> opening + "1. " + other + "\n2. " + consent + "\n";
+				case "adjacent article" -> premise + "제18조(별도 고지)\n";
+				case "duplicate item" -> premise + "1. " + other + "\n";
+				default -> premise;
+			};
+			var ground = new LawAiAnswerGround(1, 12, 2, "law", "개인정보 보호법", null, null, null,
+				"CURRENT", null, null, null, context + notice + "③ 삭제", null, null, 0);
+			var checked = new ClaimVerifier().verifyDetailed(notice, List.of(ground));
+			assertThat(checked.supportedStrongClaimCount()).as(control).isPositive();
+			assertThat(verifier.verify(question, checked, List.of(ground)).aligned())
+				.as(control).isEqualTo(control.equals("owned"));
+		}
+	}
+
+	@Test
 	void collectionConsentNoticeDoesNotAnswerThirdPartyProvisionNotice() {
 		String collection = "개인정보처리자는 제1항제1호에 따른 동의를 받을 때에는 다음 각 호의 사항을 정보주체에게 알려야 한다.\n"
 			+ "1. 개인정보의 수집ㆍ이용 목적\n2. 수집하려는 개인정보의 항목\n"
