@@ -1131,7 +1131,16 @@ public class EvidenceJudge {
 			relevant = false;
 			topicAligned = false;
 		}
-		if (targetScopeQuestion && formOrChecklistNoise && !directTargetPhrase && !securityReviewTargetAnswerChunk
+		boolean pseudonymAccessExceptionQuestion = pseudonymAdditionalInfoQuestion
+			&& profile.normalizedQuestion().contains("접근권한")
+			&& containsAny(profile.normalizedQuestion(), List.of("예외", "정당한사유", "분리가어려"));
+		if (pseudonymAccessExceptionQuestion && formOrChecklistNoise) {
+			if (!SourceOwnedNumberedDuty.provesAccessException(chunk.target(), chunk.chunkText())) {
+				directEvidence = false;
+				relevant = false;
+				topicAligned = false;
+			}
+		} else if (targetScopeQuestion && formOrChecklistNoise && !directTargetPhrase && !securityReviewTargetAnswerChunk
 			&& !documentAnchoredDirectEvidence
 			&& !(directEvidence && isPseudonymStorageDutyQuestion(profile.normalizedQuestion())
 				&& SourceOwnedNumberedDuty.provesSeparateStorage(chunk.target(), chunk.chunkText()))) {

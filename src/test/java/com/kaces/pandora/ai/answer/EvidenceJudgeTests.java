@@ -2086,6 +2086,28 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void ownedAccessExceptionSurvivesAdjacentReportingItems() {
+		String q = "가명정보 복원용 추가 정보에 접근 권한을 부여할 수 있는 예외 사유는 무엇인가요?";
+		String access = "3. 가명정보와 추가정보에 대한 접근 권한의 분리. 다만, 접근 권한의 분리가 어려운 정당한 사유가 있는 경우에는 업무 수행에 필요한 최소한의 접근 권한만 부여하고 접근 권한의 보유 현황을 기록으로 보관하는 등 접근 권한을 관리ㆍ통제해야 한다.";
+		String body = """
+			① 개인정보처리자는 가명정보 및 가명정보를 원래의 상태로 복원하기 위한 추가 정보(이하 이 조에서 "추가정보"라 한다)에 대하여 다음 각 호의 안전성 확보 조치를 해야 한다.
+			1. 제30조에 따른 안전성 확보 조치
+			2. 가명정보와 추가정보의 분리 보관. 다만, 추가정보가 불필요한 경우에는 추가정보를 파기해야 한다.
+			%s
+			② 기록하여야 하는 사항은 다음과 같다.
+			1. 가명처리한 개인정보의 항목
+			""".formatted(access);
+		var owned = chunk(8120, "law", "개인정보 보호법 시행령", "결합전문기관의 관리ㆍ감독 등", body);
+		var storageOnly = chunk(8121, "law", "개인정보 보호법 시행령", "안전조치",
+			body.replace(access, "3. 접근 권한의 분리."));
+		var checklist = chunk(8122, "official_doc", "가명정보 실무 자료", "안전조치",
+			body.replace("안전성 확보 조치를 해야 한다.", "안전성 확보 조치를 참고할 수 있다."));
+		assertThat(judge.judge(q, List.of(storageOnly), Map.of(), 3).directEvidenceFound()).isFalse();
+		assertThat(judge.judge(q, List.of(checklist), Map.of(), 3).directEvidenceFound()).isFalse();
+		assertThat(judge.judge(q, List.of(owned), Map.of(), 3).chunks()).containsExactly(owned);
+	}
+
+	@Test
 	void preservesAnApprovedCatalogRequisitionOnlyAsSameSourceSupport() {
 		String title = "디지털서비스 카탈로그계약 업무처리규정";
 		String q = "디지털 카탈로그로 구매할 때 계약방식이 수의계약인가요?";

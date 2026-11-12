@@ -16,6 +16,11 @@ final class SourceOwnedNumberedDuty {
 	private static final Pattern NEXT_PARAGRAPH = Pattern.compile("(?m)^[ \\t]*②[ \\t]+");
 	private static final Pattern STORAGE = Pattern.compile(
 		"^([가-힣]{2,30})(?:와|과) ([가-힣]{2,30})의 분리 보관\\.");
+	private static final Pattern ACCESS_EXCEPTION = Pattern.compile(
+		"가명정보와추가정보에대한접근권한의분리[.]다만,(?:[^.!?]{0,140}등)?"
+			+ "접근권한의분리가어려운정당한사유가있는경우에는"
+			+ "업무수행에필요한최소한의접근권한만부여하고접근권한의보유현황을기록으로보관하는등"
+			+ "접근권한을관리[ㆍ·･]통제해야한다[.]");
 
 	private SourceOwnedNumberedDuty() {}
 
@@ -37,15 +42,23 @@ final class SourceOwnedNumberedDuty {
 			if (ground.number() <= 0 || ground.chunkId() <= 0 || ground.documentId() <= 0
 				|| !"direct".equals(ground.evidenceRole())
 				|| !isSupportedTarget(ground.target())) continue;
-			appendRules(result, ground.number(), ground.matchedChildText());
+			appendRules(result, ground.number(), ground.matchedChildText(), false);
 		}
 		return List.copyOf(result);
 	}
 
 	static boolean provesSeparateStorage(String target, String matchedChild) {
+		return provesPseudonymDuty(target, matchedChild, false);
+	}
+
+	static boolean provesAccessException(String target, String matchedChild) {
+		return provesPseudonymDuty(target, matchedChild, true);
+	}
+
+	private static boolean provesPseudonymDuty(String target, String matchedChild, boolean accessException) {
 		if (!isSupportedTarget(target)) return false;
 		var rules = new ArrayList<Rule>();
-		appendRules(rules, 0, matchedChild);
+		appendRules(rules, 0, matchedChild, accessException);
 		return rules.stream().anyMatch(rule -> rule.first().equals("가명정보") && rule.second().equals("추가정보"));
 	}
 
@@ -53,7 +66,7 @@ final class SourceOwnedNumberedDuty {
 		return target != null && List.of("law", "admrul", "official_doc").contains(target);
 	}
 
-	private static void appendRules(List<Rule> result, int ownerNumber, String source) {
+	private static void appendRules(List<Rule> result, int ownerNumber, String source, boolean accessException) {
 		if (source == null || source.length() > 4000) return;
 		var owner = OWNER.matcher(source);
 		while (owner.find()) {
@@ -82,6 +95,7 @@ final class SourceOwnedNumberedDuty {
 			String tail = canonical(itemText.substring(storage.end()));
 			if (!tail.isEmpty() && !tail.matches("다만,?" + Pattern.quote(second)
 				+ "(?:이|가)불필요한경우에는" + Pattern.quote(second) + "(?:을|를)파기해야한다[.]")) continue;
+			if (accessException && !ACCESS_EXCEPTION.matcher(canonical(list.substring(ends.get(2)))).matches()) continue;
 			result.add(new Rule(ownerNumber, owner.group(1), owner.group(2), first, second, storage.group()));
 		}
 	}
