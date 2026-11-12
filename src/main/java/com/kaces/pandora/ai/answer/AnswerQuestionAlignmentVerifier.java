@@ -125,7 +125,7 @@ public class AnswerQuestionAlignmentVerifier {
 		boolean completeAnswerCoverage = hasCompleteAnswerCoverage(supportedLinks, alignmentProfile);
 		Map<Integer, String> subjectContextByGround = subjectContextByGround(grounds);
 		List<SourceOwnedConditionalScope.Rule> scopeRules=SourceOwnedConditionalScope.index(grounds);
-		List<CandidateResult> candidates = supportedLinks.stream()
+		List<CandidateResult> candidates = new ArrayList<>(supportedLinks.stream()
 			.flatMap(link -> assess(
 				link,
 				alignmentProfile,
@@ -133,7 +133,13 @@ public class AnswerQuestionAlignmentVerifier {
 				completeAnswerCoverage,
                 scopeRules.stream().filter(rule->rule.owner()==link.groundNumber()).toList()
 			).stream())
-			.toList();
+			.toList());
+		if (completeAnswerCoverage && !claimResult.insufficientEvidence() && claimResult.strongClaimCount() == 2
+			&& claimResult.unsupportedClaims().isEmpty() && claimResult.unsupportedNumericClaims().isEmpty()
+			&& claimResult.contradictedClaims().isEmpty()) {
+			addLiteralNumberedDutyCandidate(grounds, supportedLinks, alignmentProfile, subjectContextByGround,
+				scopeRules, candidates);
+		}
 		for (CandidateResult candidate : candidates) {
 			if (candidate.missingGroups().isEmpty()) {
 				if (!completeAnswerCoverage) {
@@ -151,6 +157,27 @@ public class AnswerQuestionAlignmentVerifier {
 				.thenComparingInt(candidate -> reasonPriority(candidate.missingGroups())))
 			.orElseThrow();
 		return AlignmentResult.failed(reasonCode(best.missingGroups()), best.missingGroups());
+	}
+
+	private void addLiteralNumberedDutyCandidate(List<LawAiAnswerGround> grounds,
+		List<ClaimVerifier.ClaimEvidenceLink> links, AlignmentProfile profile,
+		Map<Integer, String> subjectContext, List<SourceOwnedConditionalScope.Rule> scopeRules,
+		List<CandidateResult> candidates) {
+		if (grounds == null || links.size() != 2) return;
+		var header = links.get(0);
+		var items = links.get(1);
+		if (header.groundNumber() <= 0 || header.groundNumber() != items.groundNumber()) return;
+		var owners = grounds.stream().filter(g -> g != null && g.number() == header.groundNumber()).toList();
+		if (owners.size() != 1) return;
+		var owner = owners.get(0);
+		if (!("law".equals(owner.target()) || "admrul".equals(owner.target()))) return;
+		var parts = ParentContextAssembler.exactNumberedDutyParts(owner.matchedChildText());
+		if (parts.size() != 2 || !parts.get(0).equals(header.claim()) || !parts.get(0).equals(header.evidenceSentence())
+			|| !parts.get(1).equals(items.claim()) || !parts.get(1).equals(items.evidenceSentence())) return;
+		// Re-evaluate the proven original paragraph using the same subject, relation and condition checks.
+		String paragraph = owner.matchedChildText();
+		candidates.add(assessAtom(paragraph, paragraph, profile, subjectContext.getOrDefault(owner.number(), ""), true,
+			scopeRules.stream().filter(rule -> rule.owner() == owner.number()).toList()));
 	}
 
 	private Map<Integer, String> subjectContextByGround(List<LawAiAnswerGround> grounds) {

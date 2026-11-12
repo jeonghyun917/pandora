@@ -33,6 +33,25 @@ class AnswerQuestionAlignmentVerifierTests {
 	}
 
 	@Test
+	void verifiesAnExactNumberedDutyWithoutJoiningDifferentGrounds() {
+		String body = "⑤ 제안요청서에는 다음 각 호의 사항을 명시하여야 한다.1. 과업내용2. 평가요소와 평가방법";
+		String question = "제안요청서의 평가요소와 평가방법 기재 의무를 알려주세요.";
+		var ground = new LawAiAnswerGround(1, 12, 2, "admrul", "계약 업무 예규", null, null, null,
+			"CURRENT", "제5조", "제안요청서", null, body, null, null, 0);
+		var checked = new ClaimVerifier().verifyDetailed(body, List.of(ground));
+		assertThat(checked.supportedStrongClaimCount()).isEqualTo(2);
+		assertThat(verifier.verify(question, checked, List.of(ground)).aligned()).isTrue();
+		assertThat(verifier.verify(question, checked, List.of()).aligned()).isFalse();
+		var header = checked.evidenceLinks().get(0);
+		var item = checked.evidenceLinks().get(1);
+		var wrongOwner = new ClaimVerifier.ClaimEvidenceLink(item.claim(), item.relation(), 2,
+			item.evidenceSentence(), item.overlapCount(), item.coverage(), item.score());
+		assertThat(verifier.verify(question, claimResult(header, wrongOwner), List.of(ground)).aligned()).isFalse();
+		assertThat(verifier.verify("제안요청서의 별도 배점표 첨부 의무를 알려주세요.",
+			checked, List.of(ground)).aligned()).isFalse();
+	}
+
+	@Test
 	void terminalPoliteRequestDoesNotBecomeAnAnswerSubject() {
 		String answer = "제안요청서에는 평가요소와 평가방법을 기재하여야 한다.";
 		var verified = claimResult(supported(answer, answer));

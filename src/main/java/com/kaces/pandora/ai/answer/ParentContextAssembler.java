@@ -12,10 +12,12 @@ import org.springframework.stereotype.Component;
 @Component
 public class ParentContextAssembler {
 	private static final int CHILD_LIMIT = 1_200;
-	private static final Pattern NUMBERED_DUTY = Pattern.compile(
+	private static final String NUMBERED_DUTY_TEXT =
 		"([①-⑳]\\s*)([^①-⑳.!?\\r\\n]{1,120}다음\\s*각\\s*호의\\s*사항을\\s*명시하여야\\s*한다\\.)"
-			+ "(\\s*1\\.\\s+[^①-⑳]{1,1050}?)(?=\\s*(?:제\\d+조(?:의\\d+)?\\s*\\(|[①-⑳]))"
-	);
+			+ "(\\s*1\\.\\s+[^①-⑳]{1,1050}?)";
+	private static final Pattern NUMBERED_DUTY = Pattern.compile(
+		NUMBERED_DUTY_TEXT + "(?=\\s*(?:제\\d+조(?:의\\d+)?\\s*\\(|[①-⑳]))");
+	private static final Pattern EXACT_NUMBERED_DUTY = Pattern.compile(NUMBERED_DUTY_TEXT);
 	private static final Pattern LIST_ITEM = Pattern.compile(
 		"\\G\\s*(\\d{1,2})\\.\\s+([^.!?。①-⑳]{1,240}?)(?=\\d{1,2}\\.\\s|\\z)"
 	);
@@ -132,14 +134,7 @@ public class ParentContextAssembler {
 				|| !compactCitation.contains((paragraphs.group(2) + paragraphs.group(3)).replaceAll("\\s+", ""))) {
 				continue;
 			}
-			var items = LIST_ITEM.matcher(paragraphs.group(3).strip());
-			int expected = 1;
-			int end = 0;
-			while (items.find() && Integer.parseInt(items.group(1)) == expected && !items.group(2).isBlank()) {
-				expected++;
-				end = items.end();
-			}
-			if (expected < 3 || end != paragraphs.group(3).strip().length()) {
+			if (!consecutiveItems(paragraphs.group(3))) {
 				continue;
 			}
 			if (selected != null) {
@@ -148,6 +143,25 @@ public class ParentContextAssembler {
 			selected = paragraph;
 		}
 		return selected;
+	}
+
+	static List<String> exactNumberedDutyParts(String body) {
+		if (body == null || body.length() > CHILD_LIMIT) return List.of();
+		var paragraph = EXACT_NUMBERED_DUTY.matcher(body.strip());
+		if (!paragraph.matches() || !consecutiveItems(paragraph.group(3))) return List.of();
+		return List.of(paragraph.group(2).strip(), paragraph.group(3).strip().replaceFirst("^1\\.\\s+", ""));
+	}
+
+	private static boolean consecutiveItems(String text) {
+		String list = text.strip();
+		var items = LIST_ITEM.matcher(list);
+		int expected = 1;
+		int end = 0;
+		while (items.find() && Integer.parseInt(items.group(1)) == expected && !items.group(2).isBlank()) {
+			expected++;
+			end = items.end();
+		}
+		return expected >= 3 && end == list.length();
 	}
 
 	private String normalizeEvidenceRole(String role) {
