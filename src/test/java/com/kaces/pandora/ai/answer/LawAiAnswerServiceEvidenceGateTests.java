@@ -746,6 +746,26 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void collectionConsentCitationKeepsAllItemsFromOneOwnedParagraph() throws Exception {
+		String paragraph = """
+			② 개인정보처리자는 제1항제1호에 따른 동의를 받을 때에는 다음 각 호의 사항을 정보주체에게 알려야 한다.
+			1. 개인정보의 수집ㆍ이용 목적
+			2. 수집하려는 개인정보의 항목
+			3. 개인정보의 보유 및 이용 기간
+			4. 동의를 거부할 권리가 있다는 사실 및 동의 거부에 따른 불이익이 있는 경우에는 그 불이익의 내용
+			""".strip();
+		var row = chunk(99127L, "law", "개인정보 보호법", "개인정보의 수집ㆍ이용",
+			"① 개인정보 수집ㆍ이용의 근거를 열거한다.\n" + paragraph + "\n③ 다음 항의 별도 조치.");
+		var service = service();
+		try {
+			String query = "개인정보 수집·이용 동의를 받기 전에 정보주체에게 어떤 사항을 고지해야 합니까?";
+			assertThat(snippet(service,row,query)).isEqualTo(paragraph);
+			assertThat(snippet(service,row,"개인정보를 제3자에게 제공할 때 어떤 사항을 알려야 하나요?"))
+				.isNotEqualTo(paragraph);
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void mixedLexicalPoolDoesNotLoseAnEntireRequestedSourceFamily() throws Exception {
 		var first = chunk(98001L, "admrul", "데이터베이스 표준화 지침", "표준화", "표준화 지침을 적용한다.");
 		var second = chunk(98002L, "admrul", "데이터베이스 표준화 지침", "표준용어", "표준용어를 적용한다.");

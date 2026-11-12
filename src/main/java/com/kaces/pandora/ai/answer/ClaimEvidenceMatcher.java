@@ -463,6 +463,18 @@ public class ClaimEvidenceMatcher {
 				.equals("개인정보의수집이용목적"));
 	}
 
+	static String completeCollectionNoticeCitation(String source) {
+		var items = noticeItems(0, source);
+		var complete = items.stream()
+			.filter(item -> item.literal().lines().anyMatch(line ->
+				line.replace("ㆍ", "·").equals("1. 개인정보의 수집·이용 목적")))
+			.filter(item -> item.itemText().contains("동의를 거부할 권리"))
+			.filter(item -> item.literal().contains("\n4. " + item.itemText()))
+			.filter(item -> items.stream().noneMatch(next -> next.literal().startsWith(item.literal() + "\n")))
+			.toList();
+		return complete.size() == 1 && complete.get(0).literal().length() <= 460 ? complete.get(0).literal() : "";
+	}
+
 	private static List<NoticeItem> noticeItems(int owner, String source) {
 		if (source == null) return List.of();
 		List<NoticeItem> result = new ArrayList<>();

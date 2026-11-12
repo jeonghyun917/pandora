@@ -4316,6 +4316,14 @@ public class LawAiAnswerService {
 	}
 
 	private String snippet(LawSemanticChunkRow chunk, String query) {
+		String normalized = normalizeForMatch(query);
+		if ("law".equals(chunk.target()) && "CURRENT".equals(chunk.effectiveStatus())
+			&& "개인정보보호법".equals(normalizeForMatch(chunk.title()))
+			&& normalized.contains("수집") && !containsAny(normalized, "제공", "제3자", "목적외")
+			&& QuestionIntentProfile.from(query).matchedPolicyIds().contains("privacy_consent_notice")) {
+			String notice = ClaimEvidenceMatcher.completeCollectionNoticeCitation(chunk.chunkText());
+			if (!notice.isBlank()) return notice;
+		}
 		if (DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(query)) {
 			String clause = DirectEvidenceSelectionPolicy.consultationOmissionClause(chunk);
 			if (!clause.isEmpty()) return clause;
