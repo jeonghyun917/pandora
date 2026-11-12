@@ -138,6 +138,9 @@ public class AnswerQuestionAlignmentVerifier {
 			&& claimResult.contradictedClaims().isEmpty()) {
 			addLiteralNumberedDutyCandidate(question, grounds, supportedLinks, alignmentProfile, subjectContextByGround,
 				scopeRules, candidates);
+			if (candidates.stream().noneMatch(candidate -> candidate.missingGroups().isEmpty())) {
+				addLiteralNumberedProvisoCandidate(grounds, supportedLinks, alignmentProfile, scopeRules, candidates);
+			}
 		}
 		for (CandidateResult candidate : candidates) {
 			if (candidate.missingGroups().isEmpty()) {
@@ -194,6 +197,36 @@ public class AnswerQuestionAlignmentVerifier {
 		String paragraph = owner.matchedChildText();
 		candidates.add(assessAtom(paragraph, paragraph, profile, subjectContext.getOrDefault(owner.number(), ""), true,
 			scopeRules.stream().filter(rule -> rule.owner() == owner.number()).toList()));
+	}
+
+	private void addLiteralNumberedProvisoCandidate(List<LawAiAnswerGround> grounds,
+		List<ClaimVerifier.ClaimEvidenceLink> links, AlignmentProfile profile,
+		List<SourceOwnedConditionalScope.Rule> scopeRules, List<CandidateResult> candidates) {
+		if (grounds == null || links.size() != 2) return;
+		var main = links.get(0);
+		var exception = links.get(1);
+		if (main.groundNumber() <= 0 || main.groundNumber() != exception.groundNumber()) return;
+		String mainText = foldedWhitespace(main.claim());
+		String exceptionText = foldedWhitespace(exception.claim());
+		if (!mainText.endsWith(".") || !exceptionText.startsWith("다만, ") || !exceptionText.endsWith(".")
+			|| !mainText.equals(foldedWhitespace(main.evidenceSentence()))
+			|| !exceptionText.equals(foldedWhitespace(exception.evidenceSentence()))) return;
+		var owners = grounds.stream().filter(ground -> ground != null && ground.number() == main.groundNumber()).toList();
+		if (owners.size() != 1 || owners.get(0).matchedChildText() == null) return;
+		String item = mainText + " " + exceptionText;
+		if (item.length() > 1200) return;
+		String exact = java.util.Arrays.stream(item.split(" ")).map(Pattern::quote)
+			.collect(java.util.stream.Collectors.joining("\\s+"));
+		var located = Pattern.compile("(?m)^[ \\t]*[1-9][0-9]?\\.[ \\t]+" + exact + "[ \\t]*(?=\\R|$)")
+			.matcher(owners.get(0).matchedChildText());
+		if (!located.find() || located.find()) return;
+		// Only the subject check receives the exact owning item. The proviso still owns the predicate and conditions.
+		candidates.add(assessAtom(exceptionText, exceptionText, profile, normalize(item), true,
+			scopeRules.stream().filter(rule -> rule.owner() == main.groundNumber()).toList()));
+	}
+
+	private static String foldedWhitespace(String text) {
+		return text == null ? "" : text.strip().replaceAll("\\s+", " ");
 	}
 
 	private Map<Integer, String> subjectContextByGround(List<LawAiAnswerGround> grounds) {

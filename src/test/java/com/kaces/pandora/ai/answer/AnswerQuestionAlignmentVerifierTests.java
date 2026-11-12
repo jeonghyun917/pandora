@@ -10,6 +10,24 @@ class AnswerQuestionAlignmentVerifierTests {
 	private final AnswerQuestionAlignmentVerifier verifier = new AnswerQuestionAlignmentVerifier();
 
 	@Test
+	void verifiedProvisoUsesScopeOnlyFromItsOwnNumberedItem() {
+		String scope = "가명정보와 추가정보에 대한 접근 권한의 분리.";
+		String proviso = "다만, 접근 권한의 분리가 어려운 정당한 사유가 있는 경우에는 "
+			+ "업무 수행에 필요한 최소한의 접근 권한만 부여하고 접근 권한을 관리해야 한다.";
+		String draft = "3. " + scope + " " + proviso;
+		String question = "가명정보와 추가정보에 대한 접근 권한의 분리가 어려운 정당한 사유가 있는 경우 접근 권한 관리 의무";
+		for (String body : List.of(draft, "3. " + scope + "\n4. " + proviso)) {
+			var ground = new LawAiAnswerGround(1, 12, 2, "law", "정보 처리 시행령", null, null, null,
+				"CURRENT", "제5조", "안전성 조치", null, body, null, null, 0);
+			var checked = new ClaimVerifier().verifyDetailed(draft, List.of(ground));
+			assertThat(checked.supportedStrongClaimCount()).isEqualTo(2);
+			assertThat(verifier.verify(question, checked, List.of(ground)).aligned()).isEqualTo(body.equals(draft));
+			assertThat(verifier.verify(question.replace("사유가 있는", "사유가 없는"), checked, List.of(ground)).aligned())
+				.isFalse();
+		}
+	}
+
+	@Test
 	void existenceConditionDoesNotBorrowNegationFromAnotherPremise() {
 		String answer = "별도 담당자를 둘 여력이 없는 경우 등 접근 권한의 분리가 어려운 정당한 사유가 있는 경우에는 "
 			+ "업무 수행에 필요한 최소한의 접근 권한만 부여하고 접근 권한을 관리해야 한다.";
