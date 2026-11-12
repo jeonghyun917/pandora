@@ -80,6 +80,8 @@ public class GroundedAnswerRepairService {
 			);
 		}
 		if (!initial.insufficientEvidence()) {
+			var completed = completeCollectionNotice(question, initial, safeGrounds);
+			if (completed != null) return result(completed, true, true, "COLLECTION_NOTICE_COMPLETED", 4);
 			return result(initial, false, false, "INITIAL_OK", 0);
 		}
 		if (hasContradictionOrConflict(initial.claimResult())) {
@@ -175,6 +177,33 @@ public class GroundedAnswerRepairService {
 				droppedTargetScope ? "SOURCE_SCOPE_NOT_PRESERVED" : "REWRITE_VERIFICATION_FAILED", selectedAtoms.size());
 		}
 		return result(reverified, true, true, "REWRITE_ACCEPTED", selectedAtoms.size());
+	}
+
+	private AnswerVerificationService.Result completeCollectionNotice(String question,
+		AnswerVerificationService.Result initial, List<LawAiAnswerGround> grounds) {
+		String query = normalize(question);
+		if (!query.contains("수집") || !query.contains("동의")
+			|| !(query.contains("어떤사항") || query.contains("어떤내용") || query.contains("고지사항")
+				|| query.contains("알려야할사항") || query.contains("알려야할내용"))
+			|| List.of("제공", "제3자", "목적외", "거부", "불이익", "기간", "수집항목", "수집목적", "이용목적")
+				.stream().anyMatch(query::contains)
+			|| !QuestionIntentProfile.from(question).matchedPolicyIds().contains("privacy_consent_notice")
+			|| hasContradictionOrConflict(initial.claimResult())) return null;
+		var sources = grounds.stream()
+			.filter(g -> "law".equals(g.target()) && "CURRENT".equals(g.effectiveStatus())
+				&& "direct".equals(g.evidenceRole()) && "개인정보보호법".equals(normalize(g.title())))
+			.map(g -> ClaimEvidenceMatcher.completeCollectionNoticeCitation(g.matchedChildText()))
+			.filter(s -> !s.isBlank()).toList();
+		if (sources.size() != 1) return null;
+		String literal = sources.get(0);
+		var items = literal.lines().filter(line -> line.matches("[1-4]\\.\\h+.+"))
+			.map(line -> normalize(line.replaceFirst("^[1-4]\\.\\h+", ""))).toList();
+		if (items.size() != 4) return null;
+		String current = normalize(initial.verifiedAnswer());
+		if (items.stream().allMatch(current::contains)) return null;
+		var verified = verificationService.verify(question, literal, grounds);
+		String output = normalize(verified.verifiedAnswer());
+		return !verified.insufficientEvidence() && items.stream().allMatch(output::contains) ? verified : null;
 	}
 
 	private Result verifiedCoverageWithoutRewrite(String question, String draft, List<String> atoms,

@@ -14,6 +14,39 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class GroundedAnswerRepairServiceTests {
+	@Test
+	void completesOnlyWholeCollectionNoticeFromOneVerifiedDirectGround() {
+		String notice = """
+			② 개인정보처리자는 제1항제1호에 따른 동의를 받을 때에는 다음 각 호의 사항을 정보주체에게 알려야 한다. 다음 각 호의 어느 하나의 사항을 변경하는 경우에도 이를 알리고 동의를 받아야 한다.
+			1.  개인정보의 수집ㆍ이용 목적
+			2.  수집하려는 개인정보의 항목
+			3.  개인정보의 보유 및 이용 기간
+			4.  동의를 거부할 권리가 있다는 사실 및 동의 거부에 따른 불이익이 있는 경우에는 그 불이익의 내용
+			""".strip();
+		var ground = new LawAiAnswerGround(1, 42, 4, "law", "개인정보 보호법", null, null, null,
+			"CURRENT", null, "개인정보의 수집ㆍ이용", null, notice, null, null, 1,
+			"① 개인정보처리자는 동의를 받은 경우 개인정보를 수집할 수 있다.\n" + notice
+				+ "\n③ 개인정보처리자는 당초 수집 목적과 합리적으로 관련된 범위에서 개인정보를 이용할 수 있다.",
+			null, List.of(), null, "direct");
+		String partial = notice.replace("2.  수집하려는 개인정보의 항목\n", "");
+		var service = new GroundedAnswerRepairService(realVerificationService(), null);
+		String full = "개인정보 수집·이용 동의를 받기 전에 정보주체에게 어떤 사항을 고지해야 합니까?";
+		assertThat(ClaimEvidenceMatcher.completeCollectionNoticeCitation(notice)).isEqualTo(notice);
+		var literalResult = realVerificationService().verify(full, notice, List.of(ground));
+		assertThat(literalResult.insufficientEvidence()).isFalse();
+		assertThat(literalResult.verifiedAnswer()).contains("수집하려는 개인정보의 항목",
+			"개인정보의 수집ㆍ이용 목적", "개인정보의 보유 및 이용 기간", "불이익이 있는 경우");
+		var completed = service.verifyAndRepair(full, partial, List.of(ground));
+		assertThat(completed.insufficientEvidence()).isFalse();
+		assertThat(completed.verification().verifiedAnswer()).contains("수집하려는 개인정보의 항목",
+			"불이익이 있는 경우");
+		for (String scoped : List.of("개인정보 수집 동의에서 거부권에 대해 어떤 사항을 고지해야 하나요?",
+			"개인정보 제3자 제공 동의에 대해 어떤 사항을 고지해야 하나요?")) {
+			assertThat(service.verifyAndRepair(scoped, partial, List.of(ground)).verification().verifiedAnswer())
+				.doesNotContain("수집하려는 개인정보의 항목");
+		}
+	}
+
     @Test void rejectedLiteralRewritesReportOnlyTheFailedBoundaryWithoutEchoingOutput() {
         var grounds=List.of(SourceOwnedConditionalScopeTests.ground(SourceOwnedConditionalScopeTests.SOURCE));
         var outputs=java.util.Map.of(
