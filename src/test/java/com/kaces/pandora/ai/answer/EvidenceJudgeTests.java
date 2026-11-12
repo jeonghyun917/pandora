@@ -2514,6 +2514,25 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void namedCameraGuideIdentitySelectsOwnedIntroductionNotOperatingRules() {
+		String title = "고정형 영상정보처리기기 설치 운영 안내서";
+		var introduction = chunk(716, "official_doc", title, "들어가며",
+			"이 안내서는 공공기관의 고정형 영상정보처리기기 설치·운영 및 개인영상정보 보호에 대하여 "
+				+ "업무담당자가 준수사항을 쉽게 이해할 수 있도록 기준을 제시함을 목적으로 합니다.");
+		var operations = chunk(717, "official_doc", title, "보관 및 파기",
+			"고정형 영상정보처리기기의 보관기간을 정하고 관리책임자를 지정한다.");
+		var cover = chunk(718, "official_doc", title, "표지", title);
+		var privateIntro = chunk(719, "official_doc", title, "민간 사업자용",
+			"이 안내서는 민간 사업자의 고정형 영상정보처리기기 설치·운영 기준을 제시함을 목적으로 합니다. 참고: 공공기관.");
+		for (String ending : List.of("는 어떤 문서인가?", "는 어떤 문서인가요?", "는 뭐야?")) {
+			String question = "공공기관용 " + title + ending;
+			assertThat(judge.judge(question, List.of(operations, cover, privateIntro, introduction), Map.of(), 8).chunks())
+				.containsExactly(introduction);
+			assertThat(judge.judge(question, List.of(operations, cover, privateIntro), Map.of(), 8).directEvidenceFound()).isFalse();
+		}
+	}
+
+	@Test
 	void namedCctvGuideApplicabilityRequiresAnOwnedScopeStatement() {
 		String title = "고정형 영상정보처리기기 설치 운영 안내서";
 		var scope = chunk(710, "official_doc", title, "적용 대상",

@@ -85,7 +85,7 @@ public class EvidenceJudge {
 		List<JudgedChunk> directEvidenceChunks = topicAlignedChunks.stream()
 			.filter(JudgedChunk::directEvidence)
 			.toList();
-		boolean cctvGuidePurpose = isCctvGuidePurposeQuestion(profile.normalizedQuestion());
+		boolean cctvGuidePurpose = asksCctvGuideIntroduction(profile.normalizedQuestion());
 		boolean directEvidenceRequired = !profile.directEvidenceGroups().isEmpty()
 			|| cctvGuidePurpose
 			|| DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(profile.normalizedQuestion())
@@ -1545,12 +1545,14 @@ public class EvidenceJudge {
 			&& !CCTV_GUIDE_APPLICABILITY.matcher(chunk.chunkText() == null ? "" : chunk.chunkText()).find()) {
 			directEvidence = false;
 		}
-		if (isCctvGuidePurposeQuestion(profile.normalizedQuestion())) {
+		if (asksCctvGuideIntroduction(profile.normalizedQuestion())) {
+			var purpose = CCTV_GUIDE_PURPOSE.matcher(String.valueOf(chunk.chunkText()));
 			boolean owned = !tableOfContents && !suppressEvidenceNoise
 				&& containsAny(documentTitle, List.of("영상정보처리기기", "cctv"))
 				&& containsAny(documentTitle, List.of("가이드", "안내서", "매뉴얼"))
 				&& DirectEvidenceSelectionPolicy.matchesExplicitAuthority(chunk, profile.explicitDocumentTitles())
-				&& CCTV_GUIDE_PURPOSE.matcher(String.valueOf(chunk.chunkText())).find();
+				&& purpose.find()
+				&& (!profile.normalizedQuestion().contains("공공기관") || normalize(purpose.group()).contains("공공기관"));
 			return new JudgedChunk(chunk, score, owned, owned, owned, owned ? 1 : 0, owned ? 1 : 0);
 		}
 		if (DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(profile.normalizedQuestion())) {
@@ -1577,6 +1579,9 @@ public class EvidenceJudge {
 	private static final java.util.regex.Pattern CCTV_GUIDE_PURPOSE_QUESTION = java.util.regex.Pattern.compile(
 		"(?:가이드라인|가이드|안내서|매뉴얼)(?:은|는|의)?(?:마련목적|제정목적|발간목적|왜마련|왜만들|어떤취지로만들)"
 			+ "[가-힣]{0,22}$");
+	private static final java.util.regex.Pattern CCTV_GUIDE_IDENTITY_QUESTION = java.util.regex.Pattern.compile(
+		"(?:가이드라인|가이드|안내서|매뉴얼)(?:은|는|이|가)?"
+			+ "(?:뭐야|뭔가요|무엇인가(?:요)?|(?:어떤|무슨)문서(?:인가(?:요)?|야))$");
 	private static final java.util.regex.Pattern CCTV_GUIDE_PURPOSE = java.util.regex.Pattern.compile(
 		"(?:^|[.!?\\r\\n])\\s*(?:이|본)\\s*(?:가이드라인|가이드|안내서|매뉴얼)(?:은|는)"
 			+ "[^.!?]{0,180}?(?:영상정보처리기기|영상정보|CCTV)[^.!?]{1,180}?목적으로\\s*(?:합니다|한다)(?:[.]|$)",
@@ -1587,6 +1592,12 @@ public class EvidenceJudge {
 			&& !isCctvGuideApplicabilityQuestion(query)
 			&& !containsAny(query, List.of("보관기간", "관리책임자", "촬영범위", "촬영시간"))
 			&& CCTV_GUIDE_PURPOSE_QUESTION.matcher(query).find();
+	}
+
+	private static boolean asksCctvGuideIntroduction(String query) {
+		return isCctvGuidePurposeQuestion(query)
+			|| (containsAny(query, List.of("영상정보처리기기", "cctv"))
+				&& CCTV_GUIDE_IDENTITY_QUESTION.matcher(query).find());
 	}
 
 	private static final java.util.regex.Pattern SECURITY_REVIEW_RESULT_ACTION = java.util.regex.Pattern.compile(
