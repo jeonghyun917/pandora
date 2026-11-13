@@ -14,6 +14,26 @@ class EvidenceJudgeTests {
 	private final EvidenceJudge judge = new EvidenceJudge();
 
 	@Test
+	void priorConsultationCorrectionRequiresSourceOwnedFailureAndDiscretion() {
+		String title = "전자정부 성과관리 지침";
+		String clause = "협의기관의 장은 사전협의 미이행, 사전협의 신청 미등록 등에 대하여 신청기관에 시정을 요구할 수 있으며, 신청기관의 장은 이행결과를 제출하여야 한다.";
+		var exact = currentConsultationCorrection(411, title, clause);
+		var wrongOwner = currentConsultationCorrection(412, title, clause.replace("협의기관의 장은", "사업자의 장은"));
+		var wrongCondition = currentConsultationCorrection(413, title, clause.replace("사전협의 미이행", "운영계획 변경"));
+		var wrongStrength = currentConsultationCorrection(414, title, clause.replace("요구할 수 있으며", "요구하여야 하며"));
+		String q = "사전협의 대상 사업에서 신청기관이 사전협의를 이행하지 않으면 시정을 요구할 수 있나요?";
+		assertThat(judge.judge(q, List.of(wrongOwner, wrongCondition, wrongStrength, exact), Map.of(), 8)
+			.chunks()).containsExactly(exact);
+		assertThat(judge.judge("공공 정보화사업에서 관련 법령을 위반하면 무슨 제재를 받나요?",
+			List.of(exact), Map.of(), 8).directEvidenceCount()).isZero();
+	}
+
+	private LawSemanticChunkRow currentConsultationCorrection(long id, String title, String clause) {
+		return new LawSemanticChunkRow(id, id, "admrul", String.valueOf(id), title, null, null, null,
+			"CURRENT", "18", "제18조(이행실태 점검)", clause, null, null, null, 1, "hash-" + id, null, "article");
+	}
+
+	@Test
 	void explicitConsultationApplicabilityUsesScopedEvidenceRatherThanProcedure() {
 		var scope = chunk(381, "2024년 정보화사업 사전협의 안내자료", "대상 사업",
 			"사전협의의 대상사업은 예산과목 및 계약방식과 관계없이 대상기관이 추진하는 모든 정보화사업이다.");

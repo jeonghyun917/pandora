@@ -90,6 +90,7 @@ public class EvidenceJudge {
 		boolean directEvidenceRequired = !profile.directEvidenceGroups().isEmpty()
 			|| cctvGuidePurpose
 			|| reportBasedCorrection
+			|| asksPriorConsultationCorrection(profile.normalizedQuestion())
 			|| DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(profile.normalizedQuestion())
 			|| (isIrmRegistrationFaithfulness(profile.normalizedQuestion()) && !directEvidenceChunks.isEmpty())
 			|| searchableChunks.stream().anyMatch(chunk -> requiresCommencementOwnership(profile, chunk));
@@ -1579,6 +1580,13 @@ public class EvidenceJudge {
 				&& DirectEvidenceSelectionPolicy.provesConsultationOmissionRoles(chunk);
 			return new JudgedChunk(chunk, score, owned, owned, owned, owned ? 1 : 0, owned ? 1 : 0);
 		}
+		if (asksPriorConsultationCorrection(profile.normalizedQuestion())) {
+			boolean owned = !tableOfContents && !suppressEvidenceNoise
+				&& !missingRequestedArticleOwnership(profile, chunk, documentTitle)
+				&& DirectEvidenceSelectionPolicy.matchesExplicitAuthority(chunk, profile.explicitDocumentTitles())
+				&& provesPriorConsultationCorrection(chunk);
+			return new JudgedChunk(chunk, score, owned, owned, owned, owned ? 1 : 0, owned ? 1 : 0);
+		}
 		if (asksReportBasedCorrection(profile.normalizedQuestion())) {
 			boolean owned = !tableOfContents && !suppressEvidenceNoise
 				&& ("law".equals(chunk.target()) || "admrul".equals(chunk.target()))
@@ -1588,6 +1596,22 @@ public class EvidenceJudge {
 			return new JudgedChunk(chunk, score, owned, owned, owned, owned ? 1 : 0, owned ? 1 : 0);
 		}
 		return new JudgedChunk(chunk, score, topicAligned, relevant, directEvidence, directEvidenceMatches, bodyDirectEvidenceMatches);
+	}
+
+	private static boolean asksPriorConsultationCorrection(String question) {
+		return containsAny(question, List.of("사전협의미이행", "사전협의불이행",
+			"사전협의를이행하지않", "사전협의를하지않"))
+			&& question.contains("시정")
+			&& !containsAny(question, List.of("과태료", "처벌", "제재", "입찰제한", "면제", "생략", "자치분권"));
+	}
+
+	private static boolean provesPriorConsultationCorrection(LawSemanticChunkRow chunk) {
+		if (!"admrul".equals(chunk.target()) || !"CURRENT".equals(chunk.effectiveStatus())
+			|| !"전자정부성과관리지침".equals(normalize(chunk.title())) || chunk.chunkText() == null) return false;
+		return java.util.Arrays.stream(chunk.chunkText().split("[.!?。]|(?=[①-⑳])"))
+			.map(EvidenceJudge::normalize)
+			.anyMatch(clause -> clause.startsWith("협의기관의장은사전협의미이행")
+				&& clause.contains("신청기관에시정을요구할수있"));
 	}
 
 	private boolean asksReportBasedCorrection(String question) {
