@@ -12,6 +12,26 @@ import org.junit.jupiter.api.Test;
 
 class AnswerVerificationServiceTests {
 	@Test
+	void namedProvisionMustBelongToTheGroundSupportingTheOperativeClaim() {
+		var service = new AnswerVerificationService(new AnswerGuard(), new ClaimVerifier());
+		String claim = "과학기술정보통신부장관은 제1항에 따른 확인결과 국가기관등의 장이 이 법 또는 관련 법령을 위반하였다고 인정하는 경우에는 개선을 권고할 수 있다.";
+		var ground = new LawAiAnswerGround(1, 1, 1, "law", "소프트웨어 진흥법", null, null, null,
+			"CURRENT", "제57조", "제57조(소프트웨어사업 관리ㆍ감독 및 개선권고)", null, claim, null, null, 0);
+		String question = "소프트웨어 진흥법 제57조에 따라 국가기관등의 장이 관련 법령을 위반하였다고 인정하는 경우 과학기술정보통신부장관은 개선을 권고할 수 있나요?";
+		assertThat(service.verify(question, claim, List.of(ground)).insufficientEvidence()).isFalse();
+		for (String wrong : List.of(question.replace("제57조", "제58조"),
+			question.replace("소프트웨어 진흥법", "소프트웨어 진흥법 시행령"),
+			question.replace("과학기술정보통신부장관", "행정안전부장관"),
+			question.replace("국가기관등의 장이", "민간기업의 장이"))) {
+			assertThat(service.verify(wrong, claim, List.of(ground)).insufficientEvidence()).as(wrong).isTrue();
+		}
+		var decoy = new LawAiAnswerGround(2, 2, 1, "law", "소프트웨어 진흥법", null, null, null,
+			"CURRENT", "제58조", "제58조(별도 자료)", null, "실적을 관리한다.", null, null, 0);
+		assertThat(service.verify(question.replace("제57조", "제58조"), claim, List.of(ground, decoy))
+			.insufficientEvidence()).isTrue();
+	}
+
+	@Test
 	void correctionPermissionBindsAuthorityRecipientAndTrigger() {
 		var service = new AnswerVerificationService(new AnswerGuard(), new ClaimVerifier());
 		String source = "협의기관의 장은 사전협의 미이행, 사전협의 신청 미등록 등에 대하여 신청기관에 시정을 요구할 수 있으며, "

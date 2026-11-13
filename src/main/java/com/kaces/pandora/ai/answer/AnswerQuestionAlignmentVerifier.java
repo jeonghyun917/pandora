@@ -20,6 +20,9 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final String SUBJECT = "SUBJECT";
 	private static final String RELATION = "RELATION";
 	private static final String CONDITION = "CONDITION";
+	private static final Pattern LEADING_STATUTE_CITATION = Pattern.compile(
+		"^\\s*「?(?<title>[가-힣0-9 ]{2,70}법(?:\\s+시행령|\\s+시행규칙)?)」?\\s+"
+			+ "(?<article>제\\s*\\d{1,4}\\s*조(?:의\\s*\\d{1,3})?)에\\s+따라\\s+(?<question>.+)$");
 	private static final String CORRECTION_AUTHORITY = "(?<actor>[가-힣]{2,24})의\\s*장(?:은|이)";
 	private static final String CORRECTION_RECIPIENT = "(?<recipient>[가-힣]{2,24}?)에(?:게)?";
 	private static final String CORRECTION_QUESTION_END = "\\s+시정을\\s+요구할\\s+수\\s+있(?:나요|습니까)\\s*[?？]?$";
@@ -174,17 +177,24 @@ public class AnswerQuestionAlignmentVerifier {
 			return AlignmentResult.failed("MISSING_CONDITION", List.of(SUBJECT, CONDITION));
 		}
 		Map<Integer, String> subjectContextByGround = subjectContextByGround(grounds);
+		var citation = LEADING_STATUTE_CITATION.matcher(question == null ? "" : question);
+		boolean cited = citation.matches();
+		AlignmentProfile operativeProfile = cited ? AlignmentProfile.from(citation.group("question")) : alignmentProfile;
 		List<SourceOwnedConditionalScope.Rule> scopeRules=SourceOwnedConditionalScope.index(grounds);
 		List<CandidateResult> candidates = new ArrayList<>(supportedLinks.stream()
+			.filter(link -> !cited || (grounds != null && grounds.stream().anyMatch(g -> g != null
+				&& g.number() == link.groundNumber() && "law".equals(g.target())
+				&& normalize(citation.group("title")).equals(normalize(g.title()))
+				&& normalize(citation.group("article")).equals(normalize(g.chunkNo())))))
 			.flatMap(link -> assess(
 				link,
-				alignmentProfile,
-				subjectContextByGround.getOrDefault(link.groundNumber(), ""),
+				operativeProfile,
+				cited ? "" : subjectContextByGround.getOrDefault(link.groundNumber(), ""),
 				completeAnswerCoverage,
                 scopeRules.stream().filter(rule->rule.owner()==link.groundNumber()).toList()
 			).stream())
 			.toList());
-		if (completeAnswerCoverage && !claimResult.insufficientEvidence()
+		if (!cited && completeAnswerCoverage && !claimResult.insufficientEvidence()
 			&& (claimResult.strongClaimCount() == 2 || claimResult.strongClaimCount() == 3)
 			&& claimResult.unsupportedClaims().isEmpty() && claimResult.unsupportedNumericClaims().isEmpty()
 			&& claimResult.contradictedClaims().isEmpty()) {
@@ -198,7 +208,7 @@ public class AnswerQuestionAlignmentVerifier {
 				addLiteralNumberedProvisoCandidate(grounds, supportedLinks, alignmentProfile, scopeRules, candidates);
 			}
 		}
-		if (completeAnswerCoverage && !claimResult.insufficientEvidence()
+		if (!cited && completeAnswerCoverage && !claimResult.insufficientEvidence()
 			&& (claimResult.strongClaimCount() == 2 || claimResult.strongClaimCount() == 4)
 			&& supportedLinks.size() == claimResult.strongClaimCount()
 			&& claimResult.unsupportedClaims().isEmpty() && claimResult.unsupportedNumericClaims().isEmpty()
@@ -215,6 +225,9 @@ public class AnswerQuestionAlignmentVerifier {
 				}
 				return AlignmentResult.aligned(candidate.claim());
 			}
+		}
+		if (candidates.isEmpty()) {
+			return AlignmentResult.failed("MISSING_SUBJECT", List.of(SUBJECT));
 		}
 		CandidateResult best = candidates.stream()
 			.min(Comparator
