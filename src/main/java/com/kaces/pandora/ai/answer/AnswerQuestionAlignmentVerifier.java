@@ -23,6 +23,8 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final String DIRECT_CONCLUSION = "DIRECT_CONCLUSION";
 	private static final String ANSWER_COVERAGE = "ANSWER_COVERAGE";
 	private static final Pattern TERMINAL_REQUEST = Pattern.compile("(?U)\\s+(알려주세요|있습니까)[.!?。？]*\\s*\\z");
+	private static final Pattern REPORT_DUTY_QUESTION = Pattern.compile(
+		"^((?:단계별)?[가-힣A-Za-z0-9]{1,35}결과보고서)에따른시정조치의무$");
 	private static final Pattern CONTRACT_STANDARD_AUTHORITY = Pattern.compile(
 		"(?U)^\\s*([가-힣A-Za-z0-9][가-힣A-Za-z0-9 \\t]{2,88}?계약[ \\t]*체결[ \\t]*기준)"
 			+ "[ \\t]*(?:에[ \\t]*(?:따라|따른)|에서)[ \\t]+(.+)$");
@@ -671,6 +673,13 @@ public class AnswerQuestionAlignmentVerifier {
 					? classificationFrame
 					: ClassificationFrame.empty()
 			);
+			var reportDuty = REPORT_DUTY_QUESTION.matcher(questionProfile.normalizedQuestion());
+			if (reportDuty.matches()) {
+				subjectGroups = subjectGroups.stream().filter(group -> !group.equals(List.of("따른"))).toList();
+				relationRequirements = new ArrayList<>(relationRequirements);
+				relationRequirements.add(new RelationRequirement(RelationKind.LEXICAL,
+					List.of(reportDuty.group(1) + "에따라시정조치")));
+			}
 			List<List<String>> policyBridgeGroups = configuredPolicyBridgeGroups(
 				questionProfile,
 				question,

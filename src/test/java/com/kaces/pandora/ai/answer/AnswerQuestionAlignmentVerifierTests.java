@@ -7,6 +7,18 @@ import org.junit.jupiter.api.Test;
 
 class AnswerQuestionAlignmentVerifierTests {
 
+	@Test
+	void reportConnectiveIsNotASubjectButTheReportIdentityIsRequired() {
+		String body = "관리기관과 사업자는 단계별 점검결과보고서에 따라 시정조치를 수행하여야 한다.";
+		var ground = new LawAiAnswerGround(1,1,1,"admrul","시설 운영 규정",null,null,null,
+			"CURRENT",null,null,null,body,null,null,1);
+		var checked = new ClaimVerifier().verifyDetailed(body, List.of(ground));
+		var verifier = new AnswerQuestionAlignmentVerifier();
+		assertThat(verifier.verify("단계별 점검결과보고서에 따른 시정조치 의무",checked,List.of(ground)).aligned()).isTrue();
+		assertThat(verifier.verify("단계별 안전결과보고서에 따른 시정조치 의무",checked,List.of(ground)).aligned()).isFalse();
+		assertThat(verifier.verify("점검결과보고서를 받은 경우 시정조치 의무",checked,List.of(ground)).aligned()).isFalse();
+	}
+
 	private final AnswerQuestionAlignmentVerifier verifier = new AnswerQuestionAlignmentVerifier();
 
 	@Test
