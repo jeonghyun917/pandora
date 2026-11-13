@@ -3273,6 +3273,22 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void preservesTheWholeConditionedConsultationDutyInContextAndCitation() throws Exception {
+		String duty = "행정기관등의 장은 다른 행정기관등과의 상호연계 또는 공동이용과 관련한 "
+			+ "전자정부사업 및 지역정보화사업을 추진할 때에는 중앙사무관장기관의 장과 사전에 협의하여야 한다.";
+		String body = "① " + duty + " ② " + "사전협의 대상사업의 결과와 적용범위를 검토한다. ".repeat(30);
+		var row = chunk(99164L,"law","전자정부법","제67조(사전협의)",body);
+		var svc = service();
+		try {
+			String q = "공공기관 정보화사업은 어떤 경우 사전협의 대상인가요?";
+			assertThat(contextSnippet(svc,row,q,180)).contains(duty).hasSizeLessThanOrEqualTo(180);
+			var citation = LawAiAnswerService.class.getDeclaredMethod("snippet",LawSemanticChunkRow.class,String.class);
+			citation.setAccessible(true);
+			assertThat((String) citation.invoke(svc,row,q)).contains(duty);
+		} finally { svc.shutdownExecutors(); }
+	}
+
+	@Test
 	void recoversOperativePublicInstitutionConsultationGroundsBeforeFiltering() throws Exception {
 		var statute=chunk(99160L,"law","전자정부법","제67조(사전협의)",
 			"행정기관등의 장은 다른 행정기관등과의 상호연계 또는 공동이용과 관련한 전자정부사업 및 지역정보화사업을 추진할 때에는 사전에 협의하여야 한다.");

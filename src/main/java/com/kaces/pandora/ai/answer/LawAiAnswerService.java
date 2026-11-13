@@ -3696,6 +3696,8 @@ public class LawAiAnswerService {
 	}
 
 	private String contextSnippet(LawSemanticChunkRow chunk, String query, int limit) {
+		String consultationDuty = completePublicInstitutionConsultationDuty(chunk, query, limit);
+		if (!consultationDuty.isEmpty()) return consultationDuty;
 		String reportDuty = completeReportDutySnippet(chunk, query, limit);
 		if (!reportDuty.isEmpty()) return reportDuty;
 		String submission = completeReviewedSubmissionSnippet(chunk, query, limit);
@@ -3718,6 +3720,22 @@ public class LawAiAnswerService {
 			return "";
 		}
 		return value;
+	}
+
+	private String completePublicInstitutionConsultationDuty(LawSemanticChunkRow chunk, String query, int limit) {
+		if (!asksPublicInstitutionConsultationScope(normalizeForMatch(query))
+			|| !"PASS".equals(chunk.qualityStatus()) || !"law".equals(chunk.target())
+			|| !isOperativePublicInstitutionConsultationSource(chunk)) return "";
+		var matcher = java.util.regex.Pattern.compile(
+			"(?m)(?:^|[①])\\s*(행정기관등의 장은[^.!?。①-⑳]{1,420}사전에 협의하여야 한다\\.)")
+			.matcher(chunk.chunkText());
+		if (!matcher.find()) return "";
+		String literal = matcher.group(1).replaceAll("\\s+", " ").trim();
+		String normalized = normalizeForMatch(literal);
+		if (matcher.find() || literal.length() > limit
+			|| !normalized.contains("다른행정기관등과의상호연계또는공동이용과관련한")
+			|| !normalized.contains("전자정부사업및지역정보화사업을추진할때")) return "";
+		return literal;
 	}
 
 	private String openDutyContextWindow(String body, String query, int limit) {
@@ -4318,6 +4336,8 @@ public class LawAiAnswerService {
 	}
 
 	private String snippet(LawSemanticChunkRow chunk, String query) {
+		String consultationDuty = completePublicInstitutionConsultationDuty(chunk, query, 320);
+		if (!consultationDuty.isEmpty()) return consultationDuty;
 		String reportDuty = completeReportDutySnippet(chunk, query, 320);
 		if (!reportDuty.isEmpty()) return reportDuty;
 		String normalized = normalizeForMatch(query);
