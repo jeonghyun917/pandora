@@ -12,6 +12,23 @@ import org.junit.jupiter.api.Test;
 
 class AnswerVerificationServiceTests {
 	@Test
+	void correctionPermissionBindsAuthorityRecipientAndTrigger() {
+		var service = new AnswerVerificationService(new AnswerGuard(), new ClaimVerifier());
+		String source = "협의기관의 장은 사전협의 미이행, 사전협의 신청 미등록 등에 대하여 신청기관에 시정을 요구할 수 있으며, "
+			+ "신청기관의 장은 이를 반영하고 이행결과를 협의기관의 장에게 제출하여야 한다.";
+		var ground = new LawAiAnswerGround(1, 1, 1, "admrul", "전자정부 성과관리 지침", null, null,
+			null, "CURRENT", "제18조", "사전협의 이행관리", null, source, null, null, 0);
+		var cases = java.util.Map.of(
+			"사전협의를 이행하지 않은 신청기관에 협의기관의 장이 시정을 요구할 수 있나요?", true,
+			"사전협의 미이행에 대하여 협의기관의 장은 신청기관에 시정을 요구할 수 있나요?", true,
+			"사전협의 미이행에 대하여 신청기관의 장은 협의기관에 시정을 요구할 수 있나요?", false,
+			"사전협의 이행에 대하여 협의기관의 장은 신청기관에 시정을 요구할 수 있나요?", false);
+		org.assertj.core.api.SoftAssertions.assertSoftly(check -> cases.forEach((question, aligned) ->
+			check.assertThat(!service.verify(question, source, List.of(ground)).insufficientEvidence())
+				.as(question).isEqualTo(aligned)));
+	}
+
+	@Test
 	void restoresOnlyListMarkerWhitespaceFromOneExactLegalParagraph() {
 		var service = new AnswerVerificationService(new AnswerGuard(), new ClaimVerifier());
 		String source = "③ 제안요청서에는 다음 각 호의 사항을 명시하여야 한다.1. 계약조건2. 평가요소와 평가방법";

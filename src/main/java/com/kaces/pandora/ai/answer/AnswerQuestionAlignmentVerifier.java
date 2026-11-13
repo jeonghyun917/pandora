@@ -20,6 +20,18 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final String SUBJECT = "SUBJECT";
 	private static final String RELATION = "RELATION";
 	private static final String CONDITION = "CONDITION";
+	private static final String CORRECTION_AUTHORITY = "(?<actor>[가-힣]{2,24})의\\s*장(?:은|이)";
+	private static final String CORRECTION_RECIPIENT = "(?<recipient>[가-힣]{2,24}?)에(?:게)?";
+	private static final String CORRECTION_QUESTION_END = "\\s+시정을\\s+요구할\\s+수\\s+있(?:나요|습니까)\\s*[?？]?$";
+	private static final Pattern NOMINAL_CORRECTION_QUESTION = Pattern.compile(
+		"^(?<trigger>[가-힣 ]{2,80})에\\s+대하여\\s+" + CORRECTION_AUTHORITY
+			+ "\\s+" + CORRECTION_RECIPIENT + CORRECTION_QUESTION_END);
+	private static final Pattern VERBAL_CORRECTION_QUESTION = Pattern.compile(
+		"^(?<trigger>[가-힣 ]{2,70})을?를?\\s+이행하지\\s+않은\\s+" + CORRECTION_RECIPIENT
+			+ "\\s+" + CORRECTION_AUTHORITY + CORRECTION_QUESTION_END);
+	private static final Pattern CORRECTION_PERMISSION = Pattern.compile(
+		"^" + CORRECTION_AUTHORITY + "\\s+[^.!?;]{1,240}?\\s+등에\\s+대하여\\s+"
+			+ CORRECTION_RECIPIENT + "\\s+시정을\\s+요구할\\s+수\\s+있(?:다|으며)(?=[.,\\s]|$)");
 	private static final String DIRECT_CONCLUSION = "DIRECT_CONCLUSION";
 	private static final String ANSWER_COVERAGE = "ANSWER_COVERAGE";
 	private static final Pattern IRM_DEFINITION_REQUEST = Pattern.compile(
@@ -150,6 +162,17 @@ public class AnswerQuestionAlignmentVerifier {
 			return AlignmentResult.failed("MISSING_ANSWER_COVERAGE", List.of(ANSWER_COVERAGE));
 		}
 		boolean completeAnswerCoverage = hasCompleteAnswerCoverage(supportedLinks, alignmentProfile);
+		var correctionQuestion = correctionQuestion(question);
+		if (correctionQuestion != null) {
+			for (var link : supportedLinks) {
+				if (!claimResult.insufficientEvidence() && completeAnswerCoverage
+					&& correctionQuestion.matches(directProposition(link.claim()))
+					&& correctionQuestion.matches(directProposition(link.evidenceSentence()))) {
+					return AlignmentResult.aligned(link.claim());
+				}
+			}
+			return AlignmentResult.failed("MISSING_CONDITION", List.of(SUBJECT, CONDITION));
+		}
 		Map<Integer, String> subjectContextByGround = subjectContextByGround(grounds);
 		List<SourceOwnedConditionalScope.Rule> scopeRules=SourceOwnedConditionalScope.index(grounds);
 		List<CandidateResult> candidates = new ArrayList<>(supportedLinks.stream()
@@ -544,6 +567,27 @@ public class AnswerQuestionAlignmentVerifier {
 
 	private boolean matchesAllGroups(String text, List<List<String>> groups) {
 		return !groups.isEmpty() && groups.stream().allMatch(group -> group.stream().anyMatch(text::contains));
+	}
+
+	private static CorrectionQuestion correctionQuestion(String question) {
+		if (question == null) return null;
+		var nominal = NOMINAL_CORRECTION_QUESTION.matcher(question.strip());
+		if (nominal.matches()) {
+			return new CorrectionQuestion(nominal.group("actor"), nominal.group("recipient"), normalize(nominal.group("trigger")));
+		}
+		var verbal = VERBAL_CORRECTION_QUESTION.matcher(question.strip());
+		if (!verbal.matches()) return null;
+		String object = verbal.group("trigger").replaceFirst("[을를]$", "");
+		return new CorrectionQuestion(verbal.group("actor"), verbal.group("recipient"), normalize(object) + "미이행");
+	}
+
+	private record CorrectionQuestion(String actor, String recipient, String trigger) {
+		boolean matches(String proposition) {
+			var permission = CORRECTION_PERMISSION.matcher(proposition);
+			return permission.find() && actor.equals(permission.group("actor"))
+				&& recipient.equals(permission.group("recipient"))
+				&& KoreanEvidenceAtomParser.correctionTriggers(proposition).contains(trigger);
+		}
 	}
 
 	private boolean hasDirectConclusion(
