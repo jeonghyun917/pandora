@@ -1,5 +1,11 @@
 # Development 24: applicable sources and first observed loss
 
+## 2026-11-13 — legacy correction claim boundary
+
+Product `b09a8c7` (push `824737`): the simplified permission-only fixture did not reproduce the issue; the official mixed permission/duty sentence reproduced trigger deletion being accepted (RED 7122). The matcher now requires the original enumerated triggers on matching candidates before legacy entailment. Exact original remains supported; complete deletion, partial deletion and polarity substitution are rejected. Focused 427/0 (11930); host full and staged package 70282: 2180, zero failures/errors, 85 skipped. The sandbox attempt was cancelled after JVM test initialization stalled; no test settings changed.
+
+Official supervisor 52910 and health `c2fd81`: HTTP 200, PID 31804, runtime `6f9c1f8b-5dbd-4804-a421-f0588ec9a5ab`, SHA-256 `be2dc01fc388425b941b8b05bd1fa7822e1678f05375f75007340c2f1d839f76`. DB/Qdrant counts 211658/84248 match, ready/zero failures, unchanged index and lexical revisions and protected Atlas/Qdrant PIDs. Next: use a fresh local source-grounded contrast for scoped correction question alignment and separately verify any remaining general penalty scope against direct source evidence. Do not infer broad penalty eligibility or replay failed evaluations.
+
 ## 2026-11-13 — correction trigger transport
 
 Product `96db620` preserves the source-owned enumerated correction grounds in semantic parsing. RED 79400; focused 168 and full 2179 (zero failures/errors, 85 skipped) in 69472. The active-source component contrast extracted four conditions from the original and isolated permission clause, zero after deleting the trigger. Final alignment still rejected both the original and trigger-deleted answers; escalation of permission to duty remained unsupported. No answer PASS or penalty eligibility.
