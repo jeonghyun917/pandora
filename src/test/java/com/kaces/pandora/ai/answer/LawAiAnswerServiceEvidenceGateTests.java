@@ -3313,6 +3313,37 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void recoversOnlySourceOwnedPriorConsultationCorrection() throws Exception {
+		var correction = chunk(99170L,"admrul","전자정부 성과관리 지침","제18조(점검)",
+			"협의기관의 장은 사전협의 미이행 등에 대하여 신청기관에 시정을 요구할 수 있다.");
+		var noise = chunk(99171L,"admrul",correction.title(),"제4조(대상)",
+			"사전협의 대상사업과 시정을 요구하는 경우의 서식을 안내한다.");
+		var mapper = (LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),
+			new Class<?>[]{LawChunkMapper.class},(proxy,method,args)->{
+				if (method.getName().equals("findSemanticChunksByDocumentTitleAndText")
+					&& List.of(correction.title()).equals(args[1])
+					&& List.of("사전협의 미이행", "시정을 요구").equals(args[2])
+					&& Integer.valueOf(20).equals(args[4])) return List.of(noise, correction);
+				return List.of();
+			});
+		var service = service(mapper,null);
+		try {
+			var query = QuestionSearchPlan.from("신청기관이 사전협의를 하지 않으면 시정 요구는 누가 할 수 있나요?");
+			assertThat(findLexicalChunks(service,query,List.of("admrul"),false)).containsExactly(correction);
+			var scopeGuide = chunk(99172L,"official_doc","정보화사업 사전협의 안내서","대상사업",
+				"사전협의 대상사업은 대상기관이 추진하는 모든 정보화사업이다.");
+			assertThat(filterByQuestionIntent(service,List.of(scopeGuide,correction),
+				"전자정부사업 사전협의 미이행을 확인한 협의기관은 시정을 요구할 수 있습니까?"))
+				.contains(correction);
+			for (String control : List.of("정보화사업에서 일반 법령을 위반하면 시정 조치를 받나요?",
+				"개인정보 보호법상 사전협의 불이행 시 시정 요구가 가능한가요?")) {
+				assertThat(findLexicalChunks(service,QuestionSearchPlan.from(control),List.of("admrul"),false))
+					.doesNotContain(correction);
+			}
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void recoversOperativePublicInstitutionConsultationGroundsBeforeFiltering() throws Exception {
 		var statute=chunk(99160L,"law","전자정부법","제67조(사전협의)",
 			"행정기관등의 장은 다른 행정기관등과의 상호연계 또는 공동이용과 관련한 전자정부사업 및 지역정보화사업을 추진할 때에는 사전에 협의하여야 한다.");

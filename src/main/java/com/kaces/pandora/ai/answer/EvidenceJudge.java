@@ -1598,7 +1598,7 @@ public class EvidenceJudge {
 		return new JudgedChunk(chunk, score, topicAligned, relevant, directEvidence, directEvidenceMatches, bodyDirectEvidenceMatches);
 	}
 
-	private static boolean asksPriorConsultationCorrection(String question) {
+	static boolean asksPriorConsultationCorrection(String question) {
 		return containsAny(question, List.of("사전협의미이행", "사전협의불이행",
 			"사전협의를이행하지않", "사전협의를하지않"))
 			&& question.contains("시정")

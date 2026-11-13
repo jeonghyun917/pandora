@@ -6891,6 +6891,10 @@ public class LawAiAnswerService {
 
 	private List<LawSemanticChunkRow> filterByQuestionIntent(List<LawSemanticChunkRow> chunks, String query) {
 		String normalizedQuery = normalizeForMatch(query);
+		if (EvidenceJudge.asksPriorConsultationCorrection(normalizedQuery)) {
+			var judged = evidenceJudge.judge(query, chunks, Map.of(), chunks.size());
+			if (judged.directEvidenceFound()) return judged.chunks();
+		}
 		if (AutonomyFollowUpEvidence.asksDeadline(normalizedQuery)) {
 			return chunks.stream().filter(AutonomyFollowUpEvidence::ownsDeadline).toList();
 		}
@@ -9281,6 +9285,15 @@ public class LawAiAnswerService {
 			&& articleReferencesFromQuery(query).isEmpty()
 			&& documentTitleAnchors.stream().map(this::normalizeForMatch).allMatch(
 				title -> "공공기관운영법".equals(title) || "공공기관의운영에관한법률".equals(title));
+		if (lawTargets.contains("admrul") && documentTitleAnchors.isEmpty()
+			&& articleReferencesFromQuery(query).isEmpty()
+			&& EvidenceJudge.asksPriorConsultationCorrection(normalizedQuery)) {
+			var candidates = safeLexicalQuery("prior consultation correction",
+				() -> lawChunkMapper.findSemanticChunksByDocumentTitleAndText(List.of("admrul"),
+					List.of("전자정부 성과관리 지침"), List.of("사전협의 미이행", "시정을 요구"), false, 20), routing);
+			var judged = evidenceJudge.judge(query, candidates, Map.of(), 20);
+			if (judged.directEvidenceFound()) return finishLexicalChunks(judged.chunks(), query);
+		}
 		if (!lawTargets.isEmpty() && (documentTitleAnchors.isEmpty() || classificationTitleOnly)
 			&& asksPublicInstitutionConsultationScope(normalizedQuery)) {
 			var operative = safeLexicalQuery("public institution consultation scope",
