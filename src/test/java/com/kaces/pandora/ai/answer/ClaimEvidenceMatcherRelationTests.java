@@ -10,6 +10,20 @@ class ClaimEvidenceMatcherRelationTests {
 	private final ClaimEvidenceMatcher matcher = new ClaimEvidenceMatcher();
 
 	@Test
+	void correctionPermissionCannotLoseItsEnumeratedGrounds() {
+		String conditions = "사전협의 미이행, 사전협의 신청 미등록, 사전협의 검토결과의 미반영, 사업산출물의 사전협의시스템 미등록";
+		String source = "협의기관의 장은 " + conditions + " 등에 대하여 신청기관에 시정을 요구할 수 있으며, "
+			+ "신청기관의 장은 이를 반영하고 이행결과를 협의기관의 장에게 제출하여야 한다.";
+		var grounds = List.of(ground(source));
+		assertThat(matcher.match(source, grounds).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		for (String claim : List.of(source.replace(conditions + " 등에 대하여 ", ""),
+			source.replace(", 사전협의 검토결과의 미반영", ""), source.replace("미반영", "반영"))) {
+			assertThat(matcher.match(claim, grounds).status()).as(claim)
+				.isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		}
+	}
+
+	@Test
 	void wrappedDutyHeaderNeedsAClosedConsecutiveList() {
 		String raw = "개인정보처리자는 법 제28조의4 제1항에 따라\n"
 			+ "가명정보를 원래의 상태로 복원하기 위한 추가 정보(이하 이 조에서 “추가정보”라 한다)에 대하여\n"

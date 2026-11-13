@@ -579,6 +579,11 @@ public class ClaimEvidenceMatcher {
 				|| !numbersInOrder(orderedClaimNumbers, sentence.orderedNumbers())) {
 				continue;
 			}
+			var correctionTriggers = KoreanEvidenceAtomParser.correctionTriggers(sentence.text());
+			if (!correctionTriggers.isEmpty()
+				&& !correctionTriggers.equals(KoreanEvidenceAtomParser.correctionTriggers(claim))) {
+				continue;
+			}
 			ClaimSemantics evidenceSemantics = ClaimSemantics.from(sentence.text());
 			if (sentence.sourceLinkedDuty() != null) {
 				evidenceSemantics = evidenceSemantics.withInheritedDutyContext(sentence.sourceLinkedDuty());

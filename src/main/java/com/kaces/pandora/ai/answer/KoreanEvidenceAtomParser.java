@@ -159,13 +159,7 @@ public class KoreanEvidenceAtomParser {
 		conditions.addAll(matches(source, POST_CONDITION, 1));
 		conditions.addAll(matches(source, COMPLETION_TIME_CONDITION, 1));
 		conditions.addAll(matches(source, LEADING_PAST_CASE_CONDITION, 1));
-		Matcher correction = CORRECTION_TRIGGER_LIST.matcher(source);
-		if (correction.find()) {
-			for (String item : correction.group("items").split("[,，]")) {
-				String trigger = KoreanQueryNormalizer.normalizeForMatch(item);
-				if (!trigger.isBlank()) conditions.add(trigger);
-			}
-		}
+		conditions.addAll(correctionTriggers(source));
 		Matcher nominalCase = NOMINAL_CASE_CONDITION.matcher(source);
 		while (nominalCase.find()) {
 			conditions.add(KoreanQueryNormalizer.normalizeForMatch(nominalCase.group(1)));
@@ -399,6 +393,13 @@ public class KoreanEvidenceAtomParser {
 			}
 		}
 		return false;
+	}
+
+	static List<String> correctionTriggers(String source) {
+		Matcher correction = CORRECTION_TRIGGER_LIST.matcher(source);
+		if (!correction.find()) return List.of();
+		return java.util.Arrays.stream(correction.group("items").split("[,，]"))
+			.map(KoreanQueryNormalizer::normalizeForMatch).filter(trigger -> !trigger.isBlank()).toList();
 	}
 
 	private String canonical(String value) {
