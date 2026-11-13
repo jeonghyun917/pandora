@@ -1,5 +1,11 @@
 # Development 24: applicable sources and first observed loss
 
+## 2026-11-13 — correction trigger transport
+
+Product `96db620` preserves the source-owned enumerated correction grounds in semantic parsing. RED 79400; focused 168 and full 2179 (zero failures/errors, 85 skipped) in 69472. The active-source component contrast extracted four conditions from the original and isolated permission clause, zero after deleting the trigger. Final alignment still rejected both the original and trigger-deleted answers; escalation of permission to duty remained unsupported. No answer PASS or penalty eligibility.
+
+Official stage 63592 and supervised app-dev deployment 34338; read-only health `6fed75`: HTTP 200, PID 12852, runtime `b2bef87f-d9c5-42dc-a7b9-d8c71d9b7bf1`, JAR `2bafa628b938c3bf5b37f6bb68b5f110121e86d8f9bd9f369be49349ea8ec2dc`. DB/Qdrant counts match (law 211658, RAG 84248), ready, zero search failures. Atlas 18080 and Qdrant retained PIDs 29688 and 24268. Next: isolate the legacy claim match that still accepts deletion of the source-owned trigger before considering any alignment work; do not replay failed evaluations.
+
 ## Current-build search checkpoint: 734b803
 
 Correction condition transport diagnostic `9edeeb` on staged `f85ef89`: the atomizer preserves the full literal and the trigger-deleted variant separately, but legacy claim matching links both to the same source sentence with coverage 1.0. The Korean semantic parser extracts both subjects/actions yet gives both versions empty conditions and AMBIGUOUS_MIXED_MODALITY; the isolated permission lead parses as COMPLETE/PERMITTED but still with empty conditions and receives legacy support 0/1. Therefore merely splitting at the permission/duty boundary is insufficient: the enumerated failure list governed by the correction predicate must remain explicitly owned before any alignment adjustment. No product, verifier, runtime, or gate change.
