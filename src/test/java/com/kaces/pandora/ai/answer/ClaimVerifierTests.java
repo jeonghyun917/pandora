@@ -8,6 +8,20 @@ import org.junit.jupiter.api.Test;
 class ClaimVerifierTests {
 
 	@Test
+	void readsExactItemFromClosedFlattenedLegalListWithoutDroppingItsCondition() {
+		String item = "중앙행정기관 및 지방자치단체의 정보화업무를 출연, 위임 또는 위탁받은 공공기관의 전자정부사업";
+		String body = "제4조(대상사업) ① 사전협의 대상사업은 다음 각 호의 사업을 말한다."
+			+ "1. 다음 각 목을 포함하는 전자정부사업가. 공동 업무의 정보화 사업나. 기관 간 연계 사업다. "
+			+ item + "라. 별도로 지정하는 사업2. 지역정보화사업";
+		var grounds = List.of(ground("전자정부 성과관리 지침", "대상사업", body));
+		assertThat(verifier.verifyDetailed(item, grounds).supportedStrongClaimCount()).isOne();
+		assertThat(verifier.verifyDetailed(item.replace("출연, 위임 또는 위탁받은 ", ""), grounds)
+			.supportedStrongClaimCount()).isZero();
+		assertThat(verifier.verifyDetailed(item, List.of(ground("전자정부 성과관리 지침", "대상사업",
+			body.replace("사업라.", "사업마.")))).supportedStrongClaimCount()).isZero();
+	}
+
+	@Test
 	void doesNotDropTheAuthorizedActorFromAnOperativeException() {
 		String clause = "시설의 안전 및 관리, 화재 예방을 위하여 정당한 권한을 가진 자가 설치·운영하는 경우";
 		var grounds = List.of(ground("시설 관리 지침", "설치 제한", "3. " + clause));

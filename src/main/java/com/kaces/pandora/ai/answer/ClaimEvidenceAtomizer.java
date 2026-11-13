@@ -172,6 +172,8 @@ final class ClaimEvidenceAtomizer {
 			.flatMap(fragment -> fragment.literalOnly()
 				? java.util.stream.Stream.of(fragment) : closedWrappedActorPermissions(fragment.text()).stream())
 			.flatMap(fragment -> fragment.literalOnly()
+				? java.util.stream.Stream.of(fragment) : closedFlattenedLegalItems(fragment.text()).stream())
+			.flatMap(fragment -> fragment.literalOnly()
 				? java.util.stream.Stream.of(fragment) : closedWrappedDutyHeaders(fragment.text()).stream())
 			.flatMap(fragment -> fragment.literalOnly()
 				? java.util.stream.Stream.of(fragment) : closedNumberedProvisos(fragment.text()).stream())
@@ -248,6 +250,25 @@ final class ClaimEvidenceAtomizer {
 
 	static String foldWrappedRatios(String text) {
 		return WRAPPED_PERCENT_RATIO.matcher(text).replaceAll(match -> match.group().replaceAll("\\s+", " ").trim());
+	}
+
+	private static final Pattern CLOSED_FLATTENED_LEGAL_ITEMS = Pattern.compile(
+		"다음 각 호의 사업을 말한다\\.\\h*1\\.\\h+다음 각 목을 포함하는 [가-힣 ]{2,40}"
+			+ "가\\.\\h+([^.!?。\\r\\n]{2,350}?)나\\.\\h+([^.!?。\\r\\n]{2,350}?)"
+			+ "다\\.\\h+([^.!?。\\r\\n]{2,350}?)라\\.\\h+([^.!?。\\r\\n]{2,350}?)(?=2\\.\\h+)");
+
+	private List<SourceFragment> closedFlattenedLegalItems(String text) {
+		Matcher list = CLOSED_FLATTENED_LEGAL_ITEMS.matcher(text);
+		List<SourceFragment> result = new ArrayList<>();
+		int copied = 0;
+		while (list.find()) {
+			if (list.group().replaceAll("[가나다라]\\.\\h+", "").chars().filter(c -> c == '.').count() != 2) continue;
+			if (list.start(1) > copied) result.add(new SourceFragment(text.substring(copied, list.start(1)), false));
+			for (int i = 1; i <= 4; i++) result.add(new SourceFragment(list.group(i).strip(), true));
+			copied = list.end();
+		}
+		if (copied < text.length()) result.add(new SourceFragment(text.substring(copied), false));
+		return result;
 	}
 
 	private List<SourceFragment> closedWrappedActorPermissions(String text) {
