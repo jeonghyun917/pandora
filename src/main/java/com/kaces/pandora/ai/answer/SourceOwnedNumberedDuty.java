@@ -24,7 +24,7 @@ final class SourceOwnedNumberedDuty {
 
 	private SourceOwnedNumberedDuty() {}
 
-	record Rule(int owner, String actor, String particle, String first, String second, String literal) {
+	record Rule(int owner, String actor, String particle, String first, String second, String literal, String exceptionItem) {
 		boolean matches(String claim) {
 			return claim != null && claim.length() <= 250
 				&& canonical(claim).matches(Pattern.quote(canonical(actor + particle + second))
@@ -53,6 +53,14 @@ final class SourceOwnedNumberedDuty {
 
 	static boolean provesAccessException(String target, String matchedChild) {
 		return provesPseudonymDuty(target, matchedChild, true);
+	}
+
+	static String accessExceptionCitation(String target, String matchedChild) {
+		if (!isSupportedTarget(target)) return "";
+		var rules = new ArrayList<Rule>();
+		appendRules(rules, 0, matchedChild, true);
+		return rules.size() == 1 && rules.get(0).first().equals("가명정보") && rules.get(0).second().equals("추가정보")
+			? rules.get(0).exceptionItem() : "";
 	}
 
 	private static boolean provesPseudonymDuty(String target, String matchedChild, boolean accessException) {
@@ -96,7 +104,8 @@ final class SourceOwnedNumberedDuty {
 			if (!tail.isEmpty() && !tail.matches("다만,?" + Pattern.quote(second)
 				+ "(?:이|가)불필요한경우에는" + Pattern.quote(second) + "(?:을|를)파기해야한다[.]")) continue;
 			if (accessException && !ACCESS_EXCEPTION.matcher(canonical(list.substring(ends.get(2)))).matches()) continue;
-			result.add(new Rule(ownerNumber, owner.group(1), owner.group(2), first, second, storage.group()));
+			result.add(new Rule(ownerNumber, owner.group(1), owner.group(2), first, second, storage.group(),
+				accessException ? list.substring(starts.get(2)).strip() : ""));
 		}
 	}
 

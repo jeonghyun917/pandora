@@ -4321,6 +4321,14 @@ public class LawAiAnswerService {
 		String reportDuty = completeReportDutySnippet(chunk, query, 320);
 		if (!reportDuty.isEmpty()) return reportDuty;
 		String normalized = normalizeForMatch(query);
+		if (("CURRENT".equals(chunk.effectiveStatus())
+			|| ("official_doc".equals(chunk.target()) && chunk.effectiveStatus() == null))
+			&& "PASS".equals(chunk.qualityStatus())
+			&& normalized.contains("가명정보") && normalized.contains("추가정보") && normalized.contains("접근권한")
+			&& containsAny(normalized, "예외", "정당한사유", "분리하기어려", "분리가어려")) {
+			String exception = SourceOwnedNumberedDuty.accessExceptionCitation(chunk.target(), chunk.chunkText());
+			if (!exception.isEmpty() && exception.length() <= 460) return exception;
+		}
 		if ("law".equals(chunk.target()) && "CURRENT".equals(chunk.effectiveStatus())
 			&& "개인정보보호법".equals(normalizeForMatch(chunk.title()))
 			&& normalized.contains("수집") && !containsAny(normalized, "제공", "제3자", "목적외")

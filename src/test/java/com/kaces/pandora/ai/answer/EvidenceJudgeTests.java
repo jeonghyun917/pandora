@@ -2155,6 +2155,9 @@ class EvidenceJudgeTests {
 		assertThat(judge.judge(q, List.of(storageOnly), Map.of(), 3).directEvidenceFound()).isFalse();
 		assertThat(judge.judge(q, List.of(checklist), Map.of(), 3).directEvidenceFound()).isFalse();
 		assertThat(judge.judge(q, List.of(owned), Map.of(), 3).chunks()).containsExactly(owned);
+		assertThat(SourceOwnedNumberedDuty.accessExceptionCitation("law", body)).isEqualTo(access);
+		assertThat(SourceOwnedNumberedDuty.accessExceptionCitation("law", body + "\n" + body)).isEmpty();
+		assertThat(SourceOwnedNumberedDuty.accessExceptionCitation("law", storageOnly.chunkText())).isEmpty();
 	}
 
 	@Test
