@@ -3188,6 +3188,27 @@ class EvidenceJudgeTests {
 			null, null, null);
 	}
 
+	@Test
+	void procurementRecommendationRetainsItsScopeWithoutMakingScopeAnIndependentRemedy() {
+		var remedy = chunk(901, "law", "소프트웨어 진흥법", "제57조(소프트웨어사업 관리ㆍ감독 및 개선권고)",
+			"① 과학기술정보통신부장관은 국가기관등의 장이 소프트웨어사업을 추진하는 경우 이 법 또는 관련 법령을 준수하였는지를 확인할 수 있다. "
+			+ "② 과학기술정보통신부장관은 제1항에 따른 확인결과 국가기관등의 장이 이 법 또는 관련 법령을 위반하였다고 인정하는 경우에는 개선을 권고할 수 있다.");
+		var scope = chunk(902, "admrul", "소프트웨어사업 계약 및 관리감독에 관한 지침", "제34조(소프트웨어사업 관리ㆍ감독 대상 및 기준)",
+			"① 법 제57조제5항에 따른 소프트웨어사업 관리ㆍ감독대상은 영 제21조 각 호에 따른 국가기관등의 장이 "
+			+ "「국가를 당사자로 하는 계약에 관한 법률」 또는 「지방자치단체를 당사자로 하는 계약에 관한 법률」에 따라 소프트웨어사업을 추진하는 경우로 한다.");
+		var judge = new EvidenceJudge();
+		String question = "국가기관이 국가계약법에 따라 발주한 소프트웨어사업에서 관련 법령 위반이 확인되면 어떤 개선권고를 할 수 있나요?";
+		var dispatch = chunk(903, "law", "소프트웨어 진흥법 시행령", "제64조(공제조합의 회계) 등",
+			"제66조(업무의 위탁) 15. 법 제57조제1항부터 제4항까지의 규정에 따른 소프트웨어사업의 추진에 대한 법령 준수여부 확인을 위한 자료의 수집 및 검토, "
+			+ "법령 위반사항에 대한 개선 권고 문서의 발송 지원, 개선 권고에 따라 국가기관등의 장이 통보한 조치 결과의 접수");
+		var result = judge.judge(question, List.of(remedy, scope, dispatch), java.util.Map.of(), 8);
+		assertThat(result.chunks()).extracting(LawSemanticChunkRow::chunkId).containsExactly(901L, 902L);
+		assertThat(result.directEvidenceCount()).isEqualTo(1);
+		assertThat(judge.judge(question, List.of(scope), java.util.Map.of(), 8).directEvidenceCount()).isZero();
+		assertThat(judge.judge("민간 정보시스템 구축 사업의 모든 법령 위반에 개선권고가 자동 적용되나요?",
+			List.of(remedy, scope), java.util.Map.of(), 8).directEvidenceCount()).isZero();
+	}
+
 	private LawSemanticChunkRow chunk(long id, String title, String text) {
 		return chunk(id, title, "p." + id, text);
 	}
