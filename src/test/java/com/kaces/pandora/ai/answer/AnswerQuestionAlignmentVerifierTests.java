@@ -15,6 +15,14 @@ class AnswerQuestionAlignmentVerifierTests {
 			"CURRENT",null,null,null,body,null,null,1));
 		var checked = new ClaimVerifier().verifyDetailed(body,grounds);
 		assertThat(verifier.verify("보안성 검토를 의뢰할 때 첨부해야 할 문서는 무엇입니까?",checked,grounds).aligned()).isTrue();
+		var nominal = verifier.verify("보안성 검토를 의뢰할 때 제출 문서", checked, grounds);
+		assertThat(nominal.aligned()).as("%s", nominal).isTrue();
+		assertThat(verifier.verify("보안성 검토를 생략할 때 제출 문서", checked, grounds).aligned()).isFalse();
+		String unrelated = "보안성 검토를 의뢰할 경우 수수료를 제출하여야 한다.";
+		var unrelatedGrounds = List.of(new LawAiAnswerGround(1,1,1,"official_doc","시설 관리 지침",null,null,null,
+			"CURRENT",null,null,null,unrelated,null,null,1));
+		assertThat(verifier.verify("보안성 검토를 의뢰할 때 제출 문서",
+			new ClaimVerifier().verifyDetailed(unrelated, unrelatedGrounds), unrelatedGrounds).aligned()).isFalse();
 		assertThat(verifier.verify("보안성 검토를 생략할 때 첨부해야 할 문서는 무엇입니까?",checked,grounds).aligned()).isFalse();
 		assertThat(verifier.verify("보안성 검토를 의뢰할 때 첨부해야 할 문서와 통보 후 보완 조치는 무엇입니까?",
 			checked,grounds).aligned()).isFalse();

@@ -31,6 +31,8 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final Pattern TERMINAL_REQUEST = Pattern.compile("(?U)\\s+(알려주세요|있습니까|무엇입니까)[.!?。？]*\\s*\\z");
 	private static final Pattern REPORT_DUTY_QUESTION = Pattern.compile(
 		"^((?:단계별)?[가-힣A-Za-z0-9]{1,35}결과보고서)에따른시정조치의무$");
+	private static final Pattern NOMINAL_SUBMISSION_LIST = Pattern.compile(
+		"(?U)\\s+제출\\s+(문서|서류|자료)[.?？]*\\s*\\z");
 	private static final Pattern CONTRACT_STANDARD_AUTHORITY = Pattern.compile(
 		"(?U)^\\s*([가-힣A-Za-z0-9][가-힣A-Za-z0-9 \\t]{2,88}?계약[ \\t]*체결[ \\t]*기준)"
 			+ "[ \\t]*(?:에[ \\t]*(?:따라|따른)|에서)[ \\t]+(.+)$");
@@ -831,10 +833,15 @@ public class AnswerQuestionAlignmentVerifier {
 						&& profile.intentTypes().contains("required_documents")))
 				&& !normalize(rawQuestion.substring(0, terminal.start())).contains(terminal.group(1))
 				? terminal.group(1) : "";
+			var nominalSubmission = NOMINAL_SUBMISSION_LIST.matcher(rawQuestion == null ? "" : rawQuestion);
+			String submissionObject = nominalSubmission.find()
+				&& !normalize(rawQuestion.substring(0, nominalSubmission.start())).contains(nominalSubmission.group(1))
+				? nominalSubmission.group(1) : "";
 			for (String term : profile.terms()) {
 				String normalized = normalize(term);
 				if (normalized.length() < 2
 					|| normalized.equals(requestMarker)
+					|| normalized.equals(submissionObject)
 					|| (Set.of("효력", "법은", "법률은").contains(normalized) && profile.normalizedQuestion().contains("언제부터효력")
 						&& OfficialCommencementEvidence.isCurrentLookup(profile.normalizedQuestion()))
 					|| classificationFrame.matchesRelationTerm(normalized)
@@ -945,6 +952,12 @@ public class AnswerQuestionAlignmentVerifier {
 				conditionGroups
 			);
 			addRequestedMetaPredicateRequirement(requirements, question);
+			if (NOMINAL_SUBMISSION_LIST.matcher(question == null ? "" : question).find()) {
+				addLexicalRequirement(requirements, List.of(
+					"문서를제출하여야한다", "문서를제출해야한다",
+					"서류를제출하여야한다", "서류를제출해야한다",
+					"자료를제출하여야한다", "자료를제출해야한다"));
+			}
 			if (containsAny(normalizedQuestion, "할수있", "가능한가", "가능한지", "허용")) {
 				addLexicalRequirement(requirements,
 					List.of("할수있", "가능", "허용", "할수없", "불가능", "금지"));
