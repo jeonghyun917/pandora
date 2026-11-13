@@ -8,6 +8,24 @@ import org.junit.jupiter.api.Test;
 class AnswerQuestionAlignmentVerifierTests {
 
 	@Test
+	void nominalWorkTriggerMustKeepTheObjectAndActionTogether() {
+		String question = "기존에 운영 중인 공공데이터베이스를 개선할 때 공통표준 적용 의무가 있습니까?";
+		String prefix = "기존에 운영 중인 공공데이터베이스는 ";
+		String clause = prefix + "데이터베이스 개선 업무 추진 시 공통표준을 적용하여야 한다.";
+		var result = verifier.verify(question, claimResult(supported(clause, clause)));
+		assertThat(result.aligned()).as("%s", result).isTrue();
+		for (String wrong : List.of(
+			prefix + "데이터베이스 개선 업무와 무관하게 공통표준을 적용하여야 한다.",
+			prefix + "네트워크 개선 업무 추진 시 공통표준을 적용하여야 한다.",
+			prefix + "민간 데이터베이스 개선 업무 추진 시 공통표준을 적용하여야 한다.",
+			prefix + "데이터베이스 개선 업무 추진 시 기관표준을 적용하여야 한다.",
+			prefix + "데이터베이스 개선 업무 추진 시 공통표준 적용을 검토하여야 한다.")) {
+			assertThat(verifier.verify(question, claimResult(supported(wrong, wrong))).aligned())
+				.as("%s", wrong).isFalse();
+		}
+	}
+
+	@Test
 	void eventCutoffRetainsTheNamedEventAndBeforeOperator() {
 		String question = "기존에 운영 중인 공공데이터베이스는 전면 재구축 전까지 어떻게 표준화된 데이터로 연계하나요?";
 		String clause = "기존에 운영 중인 공공데이터베이스는 해당 정보시스템을 전면 재구축하기 전까지 "

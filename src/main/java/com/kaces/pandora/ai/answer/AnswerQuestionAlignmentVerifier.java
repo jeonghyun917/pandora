@@ -596,6 +596,20 @@ public class AnswerQuestionAlignmentVerifier {
 			String event = String.join("", group.subList(0, group.size() - 1));
 			return normalizedClaim.contains(event + "전까지") || normalizedClaim.contains(event + "하기전까지");
 		}
+		if (group.size() == 2 && group.get(0).matches("[가-힣]{2,30}[을를]")
+			&& group.get(1).matches("[가-힣]{2,20}할")) {
+			String object = group.get(0).substring(0, group.get(0).length() - 1);
+			String action = group.get(1).substring(0, group.get(1).length() - 1);
+			String trigger = action + "업무추진시";
+			if (normalizedClaim.contains(object + trigger)
+				|| (object.startsWith("공공") && object.length() >= 7
+					&& normalizedClaim.contains(object + "는")
+					&& Pattern.compile("(?:는|하며[,，])\\s+(?:[가-힣]{2,20}\\s+등\\s+)?"
+						+ Pattern.quote(object.substring(2)) + "\\s+" + Pattern.quote(action)
+						+ "\\s+업무\\s+추진\\s+시(?=\\s|[,，])").matcher(claim).find())) {
+				return true;
+			}
+		}
 		if (group.size() == 1 && group.get(0).endsWith("시")) {
 			String nominal = group.get(0);
 			String event = nominal.substring(0, nominal.length() - 1);
@@ -965,6 +979,14 @@ public class AnswerQuestionAlignmentVerifier {
 				conditionGroups
 			);
 			addRequestedMetaPredicateRequirement(requirements, question);
+			var applicationDuty = Pattern.compile("(?U)\\s([가-힣]{2,25})\\s+적용\\s+의무가\\s+있습니까[?？]*\\s*\\z")
+				.matcher(question == null ? "" : question);
+			if (applicationDuty.find()) {
+				String object = applicationDuty.group(1);
+				addLexicalRequirement(requirements, List.of(
+					object + "을적용하여야한다", object + "를적용하여야한다",
+					object + "을적용해야한다", object + "를적용해야한다"));
+			}
 			if (NOMINAL_SUBMISSION_LIST.matcher(question == null ? "" : question).find()) {
 				addLexicalRequirement(requirements, List.of(
 					"문서를제출하여야한다", "문서를제출해야한다",
