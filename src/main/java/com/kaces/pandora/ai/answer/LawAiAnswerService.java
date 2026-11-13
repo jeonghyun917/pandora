@@ -1791,6 +1791,7 @@ public class LawAiAnswerService {
 			evidenceRoleForSelectionPolicy(judgedEvidence.selectionPolicy()),
 			displayContext.contextChunkIdsByKey()
 		);
+        grounds=preserveProcurementScopeRole(grounds, judgedEvidence.chunks());
         grounds=markAdministrativeBasisSupport(grounds,normalized.query(),matchedChunkByKey);
 		if (asksConsultationClassification(normalized.query()) && hasConsultationOperativePair(orderedChunks)) {
 			grounds = grounds.stream().map(g -> consultationDefinitionKind(
@@ -12098,7 +12099,20 @@ public class LawAiAnswerService {
             return asRelatedSupport(g);}).toList();
     }
 
-    private LawAiAnswerGround asRelatedSupport(LawAiAnswerGround g) {
+    static List<LawAiAnswerGround> preserveProcurementScopeRole(List<LawAiAnswerGround> grounds,
+        List<LawSemanticChunkRow> selected) {
+        if (grounds.size() < 2 || selected.size() < 2) return grounds;
+        var authority = selected.stream().filter(EvidenceJudge::isSwRecommendationAuthority)
+            .filter(row -> grounds.stream().anyMatch(g -> "direct".equals(g.evidenceRole())
+                && g.chunkId() == row.chunkId() && g.target().equals(row.target()))).findFirst();
+        if (authority.isEmpty()) return grounds;
+        var scope = selected.stream().filter(EvidenceJudge::isSwRecommendationScope).toList();
+        if (scope.isEmpty()) return grounds;
+        return grounds.stream().map(g -> scope.stream().anyMatch(row ->
+            g.chunkId() == row.chunkId() && g.target().equals(row.target())) ? asRelatedSupport(g) : g).toList();
+    }
+
+    private static LawAiAnswerGround asRelatedSupport(LawAiAnswerGround g) {
         return new LawAiAnswerGround(g.number(),g.chunkId(),g.documentId(),g.target(),g.title(),g.agencyName(),
                 g.categoryName(),g.sourceDate(),g.effectiveStatus(),g.chunkNo(),g.chunkTitle(),g.pageNo(),g.snippet(),
                 g.sourcePath(),g.sourceUrl(),g.score(),g.matchedChildText(),g.parentContextText(),g.contextChunkIds(),

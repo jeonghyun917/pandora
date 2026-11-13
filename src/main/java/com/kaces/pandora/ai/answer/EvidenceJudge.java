@@ -188,14 +188,14 @@ public class EvidenceJudge {
 		return selected.stream().anyMatch(item -> scoreKey(item.chunk()).equals(scoreKey(candidate.chunk())));
 	}
 
-	private static boolean isSwRecommendationAuthority(LawSemanticChunkRow chunk) {
+	static boolean isSwRecommendationAuthority(LawSemanticChunkRow chunk) {
 		String body = normalize(chunk.chunkText());
 		return "law".equals(chunk.target()) && normalize(chunk.title()).equals("소프트웨어진흥법")
 			&& body.contains("국가기관등의장이소프트웨어사업을추진")
 			&& body.contains("위반하였다고인정하는경우에는개선을권고할수있다");
 	}
 
-	private static boolean isSwRecommendationScope(LawSemanticChunkRow chunk) {
+	static boolean isSwRecommendationScope(LawSemanticChunkRow chunk) {
 		String body = normalize(chunk.chunkText()).replace("ㆍ", "");
 		return "admrul".equals(chunk.target())
 			&& normalize(chunk.title()).equals("소프트웨어사업계약및관리감독에관한지침")

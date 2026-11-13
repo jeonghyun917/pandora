@@ -3204,6 +3204,14 @@ class EvidenceJudgeTests {
 		var result = judge.judge(question, List.of(remedy, scope, dispatch), java.util.Map.of(), 8);
 		assertThat(result.chunks()).extracting(LawSemanticChunkRow::chunkId).containsExactly(901L, 902L);
 		assertThat(result.directEvidenceCount()).isEqualTo(1);
+		var assembled = new ParentContextAssembler().toGrounds(result.chunks(), java.util.Map.of(),
+			result.scoreByChunkId(), LawSemanticChunkRow::chunkText,
+			LawAiAnswerService.evidenceRoleForSelectionPolicy(result.selectionPolicy()));
+		assertThat(LawAiAnswerService.preserveProcurementScopeRole(assembled, result.chunks()))
+			.extracting(LawAiAnswerGround::evidenceRole).containsExactly("direct", "related_definition");
+		assertThat(LawAiAnswerService.preserveProcurementScopeRole(
+			assembled.subList(1, 2), List.of(scope))).extracting(LawAiAnswerGround::evidenceRole)
+			.containsExactly("direct");
 		assertThat(judge.judge(question, List.of(scope), java.util.Map.of(), 8).directEvidenceCount()).isZero();
 		assertThat(judge.judge("민간 정보시스템 구축 사업의 모든 법령 위반에 개선권고가 자동 적용되나요?",
 			List.of(remedy, scope), java.util.Map.of(), 8).directEvidenceCount()).isZero();
