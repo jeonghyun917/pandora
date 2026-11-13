@@ -60,6 +60,9 @@ public class KoreanEvidenceAtomParser {
 			+ "[\\p{IsHangul}A-Za-z0-9]{0,20}(?:사항|사유|사실)(?:이|가)\\s+"
 			+ "(?:있|없)(?:을\\s+경우(?:에는|에|만)?|으면))(?=\\s|[,，]|$)"
 	);
+	private static final Pattern CORRECTION_TRIGGER_LIST = Pattern.compile(
+		"^협의기관의\\s*장은\\s+(?<items>[^.!?;()]{1,240}?)\\s+등에\\s+대하여\\s+신청기관에\\s+시정을\\s+요구할\\s+수\\s+있"
+	);
 	private static final Pattern NOMINAL_CASE_CONDITION = Pattern.compile(
 		"(?:^|\\s)([\\p{IsHangul}A-Za-z0-9]{2,40})의\\s+경우(?:에는|에|만)?(?=\\s|[,，]|$)"
 	);
@@ -156,6 +159,13 @@ public class KoreanEvidenceAtomParser {
 		conditions.addAll(matches(source, POST_CONDITION, 1));
 		conditions.addAll(matches(source, COMPLETION_TIME_CONDITION, 1));
 		conditions.addAll(matches(source, LEADING_PAST_CASE_CONDITION, 1));
+		Matcher correction = CORRECTION_TRIGGER_LIST.matcher(source);
+		if (correction.find()) {
+			for (String item : correction.group("items").split("[,，]")) {
+				String trigger = KoreanQueryNormalizer.normalizeForMatch(item);
+				if (!trigger.isBlank()) conditions.add(trigger);
+			}
+		}
 		Matcher nominalCase = NOMINAL_CASE_CONDITION.matcher(source);
 		while (nominalCase.find()) {
 			conditions.add(KoreanQueryNormalizer.normalizeForMatch(nominalCase.group(1)));

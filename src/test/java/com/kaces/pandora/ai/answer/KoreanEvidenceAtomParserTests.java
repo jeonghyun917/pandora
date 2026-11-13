@@ -8,6 +8,16 @@ import org.junit.jupiter.api.Test;
 
 class KoreanEvidenceAtomParserTests {
 	@Test
+	void preservesEnumeratedGroundsForDiscretionaryCorrection() {
+		var parser = new KoreanEvidenceAtomParser();
+		String grounds = "사전협의 미이행, 검토결과의 미반영";
+		String source = "협의기관의 장은 " + grounds + " 등에 대하여 신청기관에 시정을 요구할 수 있다.";
+		assertThat(parser.parse(source).conditions()).containsExactly("사전협의미이행", "검토결과의미반영");
+		assertThat(parser.parse("협의기관의 장은 신청기관에 시정을 요구할 수 있다.").conditions()).isEmpty();
+		assertThat(parser.parse("기관은 " + grounds + " 등에 대하여 자료를 제출한다.").conditions()).isEmpty();
+	}
+
+	@Test
 	void conditionInAnotherSentenceDoesNotTriggerLiteralPartitionSearch() {
 		org.junit.jupiter.api.Assertions.assertTimeout(java.time.Duration.ofMillis(500), () -> {
 			var atom = new KoreanEvidenceAtomParser().parse("자료".repeat(300) + ". 기관이 자료를 제출하면 결과를 통보한다.");
