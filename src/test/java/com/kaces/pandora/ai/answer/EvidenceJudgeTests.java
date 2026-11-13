@@ -3202,6 +3202,10 @@ class EvidenceJudgeTests {
 			"제66조(업무의 위탁) 15. 법 제57조제1항부터 제4항까지의 규정에 따른 소프트웨어사업의 추진에 대한 법령 준수여부 확인을 위한 자료의 수집 및 검토, "
 			+ "법령 위반사항에 대한 개선 권고 문서의 발송 지원, 개선 권고에 따라 국가기관등의 장이 통보한 조치 결과의 접수");
 		var result = judge.judge(question, List.of(remedy, scope, dispatch), java.util.Map.of(), 8);
+		var named = judge.judge("소프트웨어 진흥법 제57조에 따라 국가기관등의 장이 관련 법령을 위반하였다고 인정하는 경우 과학기술정보통신부장관은 개선을 권고할 수 있나요?",
+			List.of(remedy, dispatch), java.util.Map.of(), 8);
+		assertThat(named.chunks()).extracting(LawSemanticChunkRow::chunkId).containsExactly(901L);
+		assertThat(named.directEvidenceCount()).isEqualTo(1);
 		assertThat(result.chunks()).extracting(LawSemanticChunkRow::chunkId).containsExactly(901L, 902L);
 		assertThat(result.directEvidenceCount()).isEqualTo(1);
 		var assembled = new ParentContextAssembler().toGrounds(result.chunks(), java.util.Map.of(),

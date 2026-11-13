@@ -71,7 +71,9 @@ public class EvidenceJudge {
 		List<LawSemanticChunkRow> searchableChunks = chunks.stream()
 			.filter(chunk -> chunk != null && RagChunkQualityStatus.from(chunk.qualityStatus()).searchable())
 			.filter(chunk -> !privateRecommendation || !isPublicSwRecommendationSource(chunk))
-			.filter(chunk -> !procurementRecommendation || containsAny(query, List.of("위탁", "발송", "접수"))
+			.filter(chunk -> !(procurementRecommendation
+				|| (recommendation && query.contains("소프트웨어진흥법제57조")))
+				|| containsAny(query, List.of("위탁", "발송", "접수"))
 				|| !isSwRecommendationDispatchSupport(chunk))
 			.filter(chunk -> !AutonomyFollowUpEvidence.outsideRecommendationScope(profile.normalizedQuestion(), chunk))
 			.toList();
