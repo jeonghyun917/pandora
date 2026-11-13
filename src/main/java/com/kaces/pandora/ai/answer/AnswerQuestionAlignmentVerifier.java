@@ -28,7 +28,7 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final Pattern NUMBERED_IRM_CRITERION = Pattern.compile(
 		"(?m)^([①-⑳])\\h+(정보자원관리시스템\\(IRM\\)[^\\r\\n]{1,80})\\h*\\R"
 			+ "\\h*\\1-\\d{1,2}\\h*\\R\\h*([^\\r\\n]{1,180})$");
-	private static final Pattern TERMINAL_REQUEST = Pattern.compile("(?U)\\s+(알려주세요|있습니까)[.!?。？]*\\s*\\z");
+	private static final Pattern TERMINAL_REQUEST = Pattern.compile("(?U)\\s+(알려주세요|있습니까|무엇입니까)[.!?。？]*\\s*\\z");
 	private static final Pattern REPORT_DUTY_QUESTION = Pattern.compile(
 		"^((?:단계별)?[가-힣A-Za-z0-9]{1,35}결과보고서)에따른시정조치의무$");
 	private static final Pattern CONTRACT_STANDARD_AUTHORITY = Pattern.compile(
@@ -824,7 +824,11 @@ public class AnswerQuestionAlignmentVerifier {
 			var terminal = TERMINAL_REQUEST.matcher(rawQuestion == null ? "" : rawQuestion);
 			String requestMarker = terminal.find()
 				&& (terminal.group(1).equals("알려주세요")
-					|| normalize(rawQuestion.substring(0, terminal.start())).endsWith("의무가"))
+					|| (terminal.group(1).equals("있습니까")
+						&& normalize(rawQuestion.substring(0, terminal.start())).endsWith("의무가"))
+					|| (terminal.group(1).equals("무엇입니까")
+						&& normalize(rawQuestion.substring(0, terminal.start())).endsWith("문서는")
+						&& profile.intentTypes().contains("required_documents")))
 				&& !normalize(rawQuestion.substring(0, terminal.start())).contains(terminal.group(1))
 				? terminal.group(1) : "";
 			for (String term : profile.terms()) {

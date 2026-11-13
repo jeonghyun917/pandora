@@ -8,6 +8,19 @@ import org.junit.jupiter.api.Test;
 class AnswerQuestionAlignmentVerifierTests {
 
 	@Test
+	void documentListQuestionDoesNotTreatItsInterrogativeAsAnActor() {
+		String body = "제8조(제출 문서) 각급기관의 장은 보안성 검토를 의뢰할\n경우 다음 각 호의 사항이 포함된 문서를 제출하여야 한다.\n"
+			+ "1. 사업계획서(사업목적 및 추진계획을 포함한다)\n2. 제안요청서\n3. 정보통신망 구성도";
+		var grounds = List.of(new LawAiAnswerGround(1,1,1,"official_doc","시설 관리 지침",null,null,null,
+			"CURRENT",null,null,null,body,null,null,1));
+		var checked = new ClaimVerifier().verifyDetailed(body,grounds);
+		assertThat(verifier.verify("보안성 검토를 의뢰할 때 첨부해야 할 문서는 무엇입니까?",checked,grounds).aligned()).isTrue();
+		assertThat(verifier.verify("보안성 검토를 생략할 때 첨부해야 할 문서는 무엇입니까?",checked,grounds).aligned()).isFalse();
+		assertThat(verifier.verify("보안성 검토를 의뢰할 때 첨부해야 할 문서와 통보 후 보완 조치는 무엇입니까?",
+			checked,grounds).aligned()).isFalse();
+	}
+
+	@Test
 	void registrationCriterionRequiresItsExactNumberedSystemHeading() {
 		String heading = "정보자원관리시스템(IRM) 정보자원 관리현황(1점)";
 		String criterion = "정보자원 등록 충실성(0.4점) : 정보자원 등록요청을 기한 내 충실히 이행하였는가?";
