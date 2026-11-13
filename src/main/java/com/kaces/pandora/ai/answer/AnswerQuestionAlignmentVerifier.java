@@ -80,7 +80,8 @@ public class AnswerQuestionAlignmentVerifier {
 			+ "(?:확정|계약|체결|신청|접수|제출|공고|시행|선정|승인|허가|등록|발주|착수|완료|종료|개시|도입|구축|운영|발생|통지|수립|"
 			+ "월말|연말|분기말|마감일|시행일|공고일|신청일|접수일|제출일|선정일|계약일|착수일|완료일|종료일)"
 			+ "(?:\\s*(?:일|시점))?\\s*(?:이전에|이전|전에는|전에|전|이후에|이후|후에는|후에|후|부터|까지))"
-			+ "(?=[\\s,.!?]|$)"
+			+ "(?=[\\s,.!?]|$)|"
+			+ "(?<![가-힣])[가-힣]{2,20}하기\\s+전까지(?=[\\s,.!?]|$)"
 	);
 	private static final Pattern PROPOSITION_BOUNDARY = Pattern.compile(
 		"(?:별개로|무관하게|관계없이|반면(?:에)?|한편|다만|그러나|하지만)[,，]?\\s*"
@@ -591,6 +592,10 @@ public class AnswerQuestionAlignmentVerifier {
 
 	private static boolean matchesCondition(String claim, String normalizedClaim, List<String> group,
 		List<SourceOwnedConditionalScope.Rule> scopeRules) {
+		if (group.size() >= 2 && group.get(group.size() - 1).equals("전까지")) {
+			String event = String.join("", group.subList(0, group.size() - 1));
+			return normalizedClaim.contains(event + "전까지") || normalizedClaim.contains(event + "하기전까지");
+		}
 		if (group.size() == 1 && group.get(0).endsWith("시")) {
 			String nominal = group.get(0);
 			String event = nominal.substring(0, nominal.length() - 1);

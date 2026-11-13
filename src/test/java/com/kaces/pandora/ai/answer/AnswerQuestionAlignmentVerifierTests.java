@@ -8,6 +8,19 @@ import org.junit.jupiter.api.Test;
 class AnswerQuestionAlignmentVerifierTests {
 
 	@Test
+	void eventCutoffRetainsTheNamedEventAndBeforeOperator() {
+		String question = "기존에 운영 중인 공공데이터베이스는 전면 재구축 전까지 어떻게 표준화된 데이터로 연계하나요?";
+		String clause = "기존에 운영 중인 공공데이터베이스는 해당 정보시스템을 전면 재구축하기 전까지 "
+			+ "비표준 데이터 매핑정보 관리를 통해 표준화된 데이터로 연계ㆍ활용하여야 한다.";
+		assertThat(verifier.verify(question, claimResult(supported(clause, clause))).aligned()).isTrue();
+		for (String changed : List.of(clause.replace("전까지", "이후에"),
+			clause.replace("전면 재구축하기 전까지", "전면 재구축을 준비하고 개선을 완료하기 전까지"),
+			clause.replace("해당 정보시스템을 전면 재구축하기 전까지 ", ""))) {
+			assertThat(verifier.verify(question, claimResult(supported(changed, changed))).aligned()).isFalse();
+		}
+	}
+
+	@Test
 	void nominalReferralQuestionRequiresReferralToTriggerSubmission() {
 		String question = "보안성 검토 의뢰 시 제출 문서";
 		String positive = "보안성 검토를 의뢰할 경우 사업계획서가 포함된 문서를 제출하여야 한다.";
