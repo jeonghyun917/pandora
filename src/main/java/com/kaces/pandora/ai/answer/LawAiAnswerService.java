@@ -9275,6 +9275,23 @@ public class LawAiAnswerService {
 				return finishLexicalChunks(chunks, query);
 			}
 		}
+		boolean classificationTitleOnly = !documentTitleAnchors.isEmpty()
+			&& asksConsultationClassification(query)
+			&& articleReferencesFromQuery(query).isEmpty()
+			&& documentTitleAnchors.stream().map(this::normalizeForMatch).allMatch(
+				title -> "공공기관운영법".equals(title) || "공공기관의운영에관한법률".equals(title));
+		if (!lawTargets.isEmpty() && (documentTitleAnchors.isEmpty() || classificationTitleOnly)
+			&& asksPublicInstitutionConsultationScope(normalizedQuery)) {
+			var operative = safeLexicalQuery("public institution consultation scope",
+				() -> lawChunkMapper.findSemanticChunksByDocumentTitleAndText(lawTargets,
+					List.of("전자정부법", "전자정부 성과관리 지침"),
+					List.of("다른 행정기관등과의 상호연계", "위탁받은 공공기관"), includeFuture, 20), routing)
+				.stream().filter(this::isOperativePublicInstitutionConsultationSource).toList();
+			if (classificationTitleOnly ? hasConsultationOperativePair(operative) : !operative.isEmpty()) {
+				chunks.addAll(operative);
+				return finishLexicalChunks(chunks, query);
+			}
+		}
 		if (!documentTitleAnchors.isEmpty()) {
 			BoundedDocumentTitleLookup boundedTitleLookup = findBoundedDocumentTitleChunks(
 				ragTargets,
@@ -9334,18 +9351,6 @@ public class LawAiAnswerService {
 				}).toList();
 			if (!policyNotices.isEmpty()) {
 				chunks.addAll(policyNotices);
-				return finishLexicalChunks(chunks, query);
-			}
-		}
-		if (!lawTargets.isEmpty() && documentTitleAnchors.isEmpty()
-			&& asksPublicInstitutionConsultationScope(normalizedQuery)) {
-			var operative = safeLexicalQuery("public institution consultation scope",
-				() -> lawChunkMapper.findSemanticChunksByDocumentTitleAndText(lawTargets,
-					List.of("전자정부법", "전자정부 성과관리 지침"),
-					List.of("다른 행정기관등과의 상호연계", "위탁받은 공공기관"), includeFuture, 20), routing)
-				.stream().filter(this::isOperativePublicInstitutionConsultationSource).toList();
-			if (!operative.isEmpty()) {
-				chunks.addAll(operative);
 				return finishLexicalChunks(chunks, query);
 			}
 		}

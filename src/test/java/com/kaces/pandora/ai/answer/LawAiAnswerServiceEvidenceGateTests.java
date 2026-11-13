@@ -3333,6 +3333,16 @@ class LawAiAnswerServiceEvidenceGateTests {
 			String q="공공기관으로 지정된 기관의 정보화사업은 어떤 경우에 사전협의 대상인가요?";
 			var rows=findLexicalChunks(service,QuestionSearchPlan.from(q),List.of("law","admrul"),false);
 			assertThat(rows).containsExactlyInAnyOrder(statute,guideline);
+			for (String authority : List.of("공공기관운영법상", "공공기관의 운영에 관한 법률에 따른")) {
+				var classified = QuestionSearchPlan.from(authority + " 기타공공기관이 추진하는 정보화사업은 사전협의 대상에 해당하나요?");
+				assertThat(findLexicalChunks(service, classified, List.of("law","admrul"), false))
+					.as("operative scope for %s", authority).containsExactlyInAnyOrder(statute,guideline);
+			}
+			for (String authority : List.of("개인정보 보호법상", "공공기관의 운영에 관한 법률 제5조에 따른")) {
+				var named = QuestionSearchPlan.from(authority + " 기타공공기관의 정보화사업은 사전협의 대상인가요?");
+				assertThat(findLexicalChunks(service, named, List.of("law","admrul"), false))
+					.as("preserve explicit owner or article: %s", authority).doesNotContain(statute,guideline);
+			}
 			assertThat(filterByQuestionIntent(service,List.of(guide,statute,guideline,definition),q))
 				.containsExactlyInAnyOrder(guide,statute,guideline);
 		} finally { service.shutdownExecutors(); }
