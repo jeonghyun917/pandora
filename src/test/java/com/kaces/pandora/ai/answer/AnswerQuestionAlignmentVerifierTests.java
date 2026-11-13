@@ -18,6 +18,7 @@ class AnswerQuestionAlignmentVerifierTests {
 			prefix + "데이터베이스 개선 업무와 무관하게 공통표준을 적용하여야 한다.",
 			prefix + "네트워크 개선 업무 추진 시 공통표준을 적용하여야 한다.",
 			prefix + "민간 데이터베이스 개선 업무 추진 시 공통표준을 적용하여야 한다.",
+			prefix + "비공공데이터베이스 개선 업무 추진 시 공통표준을 적용하여야 한다.",
 			prefix + "데이터베이스 개선 업무 추진 시 기관표준을 적용하여야 한다.",
 			prefix + "데이터베이스 개선 업무 추진 시 공통표준 적용을 검토하여야 한다.")) {
 			assertThat(verifier.verify(question, claimResult(supported(wrong, wrong))).aligned())

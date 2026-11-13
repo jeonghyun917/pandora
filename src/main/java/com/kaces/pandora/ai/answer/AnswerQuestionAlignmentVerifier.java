@@ -600,13 +600,12 @@ public class AnswerQuestionAlignmentVerifier {
 			&& group.get(1).matches("[가-힣]{2,20}할")) {
 			String object = group.get(0).substring(0, group.get(0).length() - 1);
 			String action = group.get(1).substring(0, group.get(1).length() - 1);
-			String trigger = action + "업무추진시";
-			if (normalizedClaim.contains(object + trigger)
+			String trigger = "\\s+" + Pattern.quote(action) + "\\s+업무\\s+추진\\s+시(?=\\s|[,，])";
+			if (Pattern.compile("(?<![\\p{L}\\p{N}])" + Pattern.quote(object) + trigger).matcher(claim).find()
 				|| (object.startsWith("공공") && object.length() >= 7
 					&& normalizedClaim.contains(object + "는")
 					&& Pattern.compile("(?:는|하며[,，])\\s+(?:[가-힣]{2,20}\\s+등\\s+)?"
-						+ Pattern.quote(object.substring(2)) + "\\s+" + Pattern.quote(action)
-						+ "\\s+업무\\s+추진\\s+시(?=\\s|[,，])").matcher(claim).find())) {
+						+ Pattern.quote(object.substring(2)) + trigger).matcher(claim).find())) {
 				return true;
 			}
 		}
