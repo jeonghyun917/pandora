@@ -1171,6 +1171,30 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void consultationDefinitionRequiresOperativeSourcesAndPreservesTheirSlots() throws Exception {
+		String q="기타공공기관이 추진하는 정보화사업은 사전협의 대상인가요?";
+		var duty=chunk(83110L,"law","전자정부법","제67조(사전협의)",
+			"행정기관등의 장은 다른 행정기관등과의 상호연계 또는 공동이용과 관련한 전자정부사업을 추진할 때에는 사전에 협의하여야 한다.");
+		var guideline=chunk(83111L,"admrul","전자정부 성과관리 지침","제4조(대상사업)",
+			"대상사업에는 정보화업무를 위탁받은 공공기관의 전자정부사업이 포함된다.");
+		var definition=chunk(83112L,"law","전자정부법","제2조(정의)",
+			"3. 공공기관이란 다음 각 목의 기관을 말한다. 가. 공공기관의 운영에 관한 법률 제4조에 따른 법인ㆍ단체 또는 기관");
+		var category=chunk(83113L,"law","공공기관의 운영에 관한 법률","제5조(공공기관의 구분)",
+			"재정경제부장관은 공공기관을 다음 각 호의 구분에 따라 지정한다. 2. 기타공공기관: 제1호에 해당하는 기관 이외의 기관");
+		var svc=service();
+		try {
+			var select=LawAiAnswerService.class.getDeclaredMethod("selectDisplayEvidenceChunks",
+				List.class,List.class,String.class,boolean.class,int.class);
+			select.setAccessible(true);
+			var direct=List.of(duty,guideline);
+			var support=List.of(definition,category);
+			assertThat(select.invoke(svc,direct,support,q,true,4)).isEqualTo(List.of(duty,guideline,definition,category));
+			assertThat(select.invoke(svc,direct,support,q,false,4)).isEqualTo(direct);
+			assertThat(select.invoke(svc,direct,List.of(category),q,true,4)).isEqualTo(direct);
+		} finally { svc.shutdownExecutors(); }
+	}
+
+	@Test
 	void displayKeepsOnlySourceLinkedPurchaseExceptionAfterDirectScope() throws Exception {
 		String query = "상용소프트웨어 직접구매 대상 사업의 범위는 무엇인가요?";
 		String title = "소프트웨어사업 계약 및 관리감독에 관한 지침";

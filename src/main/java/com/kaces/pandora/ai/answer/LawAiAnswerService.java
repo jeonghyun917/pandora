@@ -1733,8 +1733,17 @@ public class LawAiAnswerService {
 				.toList(),
 			finalScoreByChunkId
 		);
+		var displayCandidates = judgeContextChunks;
+		if (targets.contains("law") && judgedEvidence.directEvidenceFound()
+			&& asksConsultationClassification(normalized.query()) && hasConsultationOperativePair(orderedEvidenceChunks)) {
+			displayCandidates = new java.util.ArrayList<>(judgeContextChunks);
+			displayCandidates.addAll(safeLexicalQuery("consultation classification support",
+				() -> lawChunkMapper.findSemanticChunksByDocumentTitleAndText(List.of("law"),
+					List.of("전자정부법", "공공기관의 운영에 관한 법률"),
+					List.of("법인ㆍ단체 또는 기관", "기타공공기관"), false, 16), routing));
+		}
 		List<LawSemanticChunkRow> orderedChunks = selectDisplayEvidenceChunks(
-			orderedEvidenceChunks,judgeContextChunks,normalized.query(),
+			orderedEvidenceChunks,displayCandidates,normalized.query(),
 			judgedEvidence.directEvidenceFound(),normalized.display());
 		if (orderedChunks.isEmpty()
 			&& !judgedEvidence.directEvidenceRequired()
@@ -1783,6 +1792,10 @@ public class LawAiAnswerService {
 			displayContext.contextChunkIdsByKey()
 		);
         grounds=markAdministrativeBasisSupport(grounds,normalized.query(),matchedChunkByKey);
+		if (asksConsultationClassification(normalized.query()) && hasConsultationOperativePair(orderedChunks)) {
+			grounds = grounds.stream().map(g -> consultationDefinitionKind(
+				matchedChunkByKey.get(scoreKey(g.target(),g.chunkId()))) > 0 ? asRelatedSupport(g) : g).toList();
+		}
         var linkedException = linkedPurchaseException(orderedChunks,orderedChunks,normalized.query());
         if (linkedException != null && judgedEvidence.directEvidenceFound()) {
             grounds = grounds.stream().map(ground -> ground.chunkId() == linkedException.chunkId()
@@ -3889,6 +3902,7 @@ public class LawAiAnswerService {
 		finalSelected=withAdministrativeSanctionBasisSupport(finalSelected,displayChunks,query,
 			true,MAX_ANSWER_CONTEXT_GROUNDS+1);
 		finalSelected=withLinkedPurchaseException(finalSelected,displayChunks,query,true,MAX_ANSWER_CONTEXT_GROUNDS+1);
+		finalSelected=withConsultationDefinitions(finalSelected,displayChunks,query,true,MAX_ANSWER_CONTEXT_GROUNDS);
 		if (!lexicalVariantProperties.authoritative() || finalSelected.isEmpty()) {
 			return finalSelected;
 		}
@@ -11939,8 +11953,46 @@ public class LawAiAnswerService {
         var selected = withAdministrativeSanctionBasisSupport(
             evidenceCandidateDiversifier.diversify(ranked,displayLimit),candidates,query,
             directEvidenceFound,limit);
-        return withLinkedPurchaseException(selected,candidates,query,directEvidenceFound,limit);
+        selected = withLinkedPurchaseException(selected,candidates,query,directEvidenceFound,limit);
+		return withConsultationDefinitions(selected,candidates,query,directEvidenceFound,Math.min(DEFAULT_LIMIT+2,displayLimit+2));
     }
+
+	private boolean asksConsultationClassification(String query) {
+		String text = normalizeForMatch(query);
+		return asksPublicInstitutionConsultationScope(text)
+			&& containsAny(text,"기타공공기관","공공기관으로지정");
+	}
+
+	private boolean hasConsultationOperativePair(List<LawSemanticChunkRow> rows) {
+		return rows.stream().filter(this::isOperativePublicInstitutionConsultationSource)
+			.map(LawSemanticChunkRow::target).distinct().count() == 2;
+	}
+
+	private int consultationDefinitionKind(LawSemanticChunkRow row) {
+		if (row == null || !"law".equals(row.target()) || !"CURRENT".equals(row.effectiveStatus())
+			|| !"PASS".equals(row.qualityStatus())) return 0;
+		String title = normalizeForMatch(row.title()), body = normalizeForMatch(row.chunkText()).replace("ㆍ", "");
+		if ("전자정부법".equals(title) && body.contains("공공기관이란다음각목의기관을말한다")
+			&& body.contains("공공기관의운영에관한법률제4조에따른법인단체또는기관")) return 1;
+		if ("공공기관의운영에관한법률".equals(title)
+			&& normalizeForMatch(row.chunkTitle()).startsWith("제5조공공기관의구분")
+			&& body.contains("공공기관을다음각호의구분에따라지정한다")
+			&& body.contains("기타공공기관제1호에해당하는기관이외의기관")) return 2;
+		return 0;
+	}
+
+	private List<LawSemanticChunkRow> withConsultationDefinitions(List<LawSemanticChunkRow> selected,
+		List<LawSemanticChunkRow> candidates, String query, boolean direct, int limit) {
+		if (!direct || !asksConsultationClassification(query) || !hasConsultationOperativePair(selected)) return selected;
+		var definition = candidates.stream().filter(row -> consultationDefinitionKind(row) == 1).distinct().toList();
+		var category = candidates.stream().filter(row -> consultationDefinitionKind(row) == 2).distinct().toList();
+		if (definition.size() != 1 || category.size() != 1) return selected;
+		var missing = List.of(definition.get(0),category.get(0)).stream().filter(row -> !selected.contains(row)).toList();
+		if (selected.size()+missing.size()>limit) return selected;
+		var result = new java.util.ArrayList<>(selected);
+		result.addAll(missing);
+		return List.copyOf(result);
+	}
 
     private List<LawSemanticChunkRow> withLinkedPurchaseException(List<LawSemanticChunkRow> selected,
         List<LawSemanticChunkRow> candidates, String query, boolean direct, int limit) {
