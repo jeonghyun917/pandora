@@ -22,6 +22,12 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final String CONDITION = "CONDITION";
 	private static final String DIRECT_CONCLUSION = "DIRECT_CONCLUSION";
 	private static final String ANSWER_COVERAGE = "ANSWER_COVERAGE";
+	private static final Pattern IRM_DEFINITION_REQUEST = Pattern.compile(
+		"^(?:irm|정보자원관리시스템)(?:에서|의)?정보자원등록충실성(?:지표)?(?:의)?"
+			+ "(?:의미(?:를설명해주세요|는무엇인가요|인가요)|이란무엇인가요)$");
+	private static final Pattern NUMBERED_IRM_CRITERION = Pattern.compile(
+		"(?m)^([①-⑳])\\h+(정보자원관리시스템\\(IRM\\)[^\\r\\n]{1,80})\\h*\\R"
+			+ "\\h*\\1-\\d{1,2}\\h*\\R\\h*([^\\r\\n]{1,180})$");
 	private static final Pattern TERMINAL_REQUEST = Pattern.compile("(?U)\\s+(알려주세요|있습니까)[.!?。？]*\\s*\\z");
 	private static final Pattern REPORT_DUTY_QUESTION = Pattern.compile(
 		"^((?:단계별)?[가-힣A-Za-z0-9]{1,35}결과보고서)에따른시정조치의무$");
@@ -155,6 +161,7 @@ public class AnswerQuestionAlignmentVerifier {
 			if (claimResult.strongClaimCount() == 2) {
 				addLiteralNumberedDutyCandidate(question, grounds, supportedLinks, alignmentProfile, subjectContextByGround,
 					scopeRules, candidates);
+				addOwnedIrmDefinition(questionScope, grounds, supportedLinks, candidates);
 			}
 			if (claimResult.strongClaimCount() == supportedLinks.size()
 				&& candidates.stream().noneMatch(candidate -> candidate.missingGroups().isEmpty())) {
@@ -178,6 +185,27 @@ public class AnswerQuestionAlignmentVerifier {
 				.thenComparingInt(candidate -> reasonPriority(candidate.missingGroups())))
 			.orElseThrow();
 		return AlignmentResult.failed(reasonCode(best.missingGroups()), best.missingGroups());
+	}
+
+	private void addOwnedIrmDefinition(String question, List<LawAiAnswerGround> grounds,
+		List<ClaimVerifier.ClaimEvidenceLink> links, List<CandidateResult> candidates) {
+		if (!IRM_DEFINITION_REQUEST.matcher(question).matches() || grounds == null || links.size() != 2) return;
+		var heading = links.get(0);
+		var criterion = links.get(1);
+		if (heading.groundNumber() <= 0 || heading.groundNumber() != criterion.groundNumber()) return;
+		var owners = grounds.stream().filter(g -> g != null && g.number() == heading.groundNumber()).toList();
+		if (owners.size() != 1) return;
+		var owner = owners.get(0);
+		if (!"official_doc".equals(owner.target()) || !"CURRENT".equals(owner.effectiveStatus())
+			|| owner.matchedChildText() == null) return;
+		var match = NUMBERED_IRM_CRITERION.matcher(owner.matchedChildText());
+		if (!match.find()) return;
+		String originalHeading = foldedWhitespace(match.group(2));
+		String originalCriterion = foldedWhitespace(match.group(3));
+		if (match.find() || !EvidenceJudge.hasIrmRegistrationCriterion(originalCriterion)
+			|| !originalHeading.equals(foldedWhitespace(heading.claim()))
+			|| !originalCriterion.equals(foldedWhitespace(criterion.claim()))) return;
+		candidates.add(new CandidateResult(originalHeading + "\n" + originalCriterion, List.of()));
 	}
 
 	private static boolean thirdPartyProvision(String normalized) {

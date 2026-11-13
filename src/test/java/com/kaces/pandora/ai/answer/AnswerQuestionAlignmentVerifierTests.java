@@ -8,6 +8,24 @@ import org.junit.jupiter.api.Test;
 class AnswerQuestionAlignmentVerifierTests {
 
 	@Test
+	void registrationCriterionRequiresItsExactNumberedSystemHeading() {
+		String heading = "정보자원관리시스템(IRM) 정보자원 관리현황(1점)";
+		String criterion = "정보자원 등록 충실성(0.4점) : 정보자원 등록요청을 기한 내 충실히 이행하였는가?";
+		String question = "IRM에서 정보자원 등록 충실성 지표의 의미를 설명해 주세요.";
+		String draft = heading + "\n" + criterion;
+		for (String separator : List.of("\n①-1\n", "\n② 다른 시스템 관리현황\n②-1\n")) {
+			var ground = new LawAiAnswerGround(1, 1, 1, "official_doc", "평가 지표", null, null, null,
+				"CURRENT", null, null, null, "① " + heading + separator + criterion, null, null, 1);
+			var grounds = List.of(ground);
+			var claims = new ClaimVerifier();
+			assertThat(verifier.verify(question, claims.verifyDetailed(draft, grounds), grounds).aligned())
+				.as(separator).isEqualTo(separator.contains("①-1"));
+			String wrong = draft.replace("정보자원관리시스템(IRM)", "별도 자산관리시스템");
+			assertThat(verifier.verify(question, claims.verifyDetailed(wrong, grounds), grounds).aligned()).isFalse();
+		}
+	}
+
+	@Test
 	void reportConnectiveIsNotASubjectButTheReportIdentityIsRequired() {
 		String body = "관리기관과 사업자는 단계별 점검결과보고서에 따라 시정조치를 수행하여야 한다.";
 		var ground = new LawAiAnswerGround(1,1,1,"admrul","시설 운영 규정",null,null,null,
