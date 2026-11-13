@@ -8,6 +8,17 @@ import org.junit.jupiter.api.Test;
 class ClaimVerifierTests {
 
 	@Test
+	void rejectsDroppingOrReplacingTheReportGoverningACorrectiveDuty() {
+		String source = "관리기관과 사업자는 단계별 점검결과보고서에 따라 시정조치를 수행하여야 한다.";
+		var grounds = List.of(ground("시설 운영 규정", "점검", source));
+		assertThat(verifier.verifyDetailed(source, grounds).supportedStrongClaimCount()).isEqualTo(1);
+		assertThat(verifier.verifyDetailed("관리기관과 사업자는 시정조치를 수행하여야 한다.", grounds)
+			.insufficientEvidence()).isTrue();
+		assertThat(verifier.verifyDetailed("관리기관과 사업자는 사업계획서에 따라 시정조치를 수행하여야 한다.", grounds)
+			.insufficientEvidence()).isTrue();
+	}
+
+	@Test
 	void verifiesExactOperativeBodyWithoutRepeatingItsRedundantArticleHeading() {
 		String body = "시설관리자는 제4조에 따라 안전점검이 완료되고 제5조에 따른 1회 사용한도가 결정되면 "
 			+ "신청자가 [별지 제2호 서식]에 따라 제공하는 자료의 적정성을 [별표 2]에 따라 검토하여 시설사용을 승인할 수 있다.";

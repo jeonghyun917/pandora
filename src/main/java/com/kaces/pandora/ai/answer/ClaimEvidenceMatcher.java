@@ -451,6 +451,9 @@ public class ClaimEvidenceMatcher {
 	private static final Pattern REGISTERED_ITEM_SCOPE = Pattern.compile(
 		"(?<![가-힣A-Za-z0-9])([가-힣A-Za-z0-9]{1,35})에\\s*등록된\\s+"
 			+ "((?:계약\\s*)?품목|물품|제품|상품|서비스)에\\s*(?:대하여|대해)");
+	private static final Pattern CORRECTIVE_REPORT_SCOPE = Pattern.compile(
+		"(?<![가-힣A-Za-z0-9])((?:단계별\\s+)?[가-힣A-Za-z0-9]{0,35}결과\\s*보고서)에\\s*따라"
+			+ "\\s+시정\\s*조치를\\s*수행");
 
 	private static List<NoticeItem> noticeItems(List<LawAiAnswerGround> grounds) {
 		return grounds == null ? List.of() : grounds.stream()
@@ -1087,7 +1090,7 @@ public class ClaimEvidenceMatcher {
 	}
 
 	private Relation relation(ClaimSemantics claim, ClaimSemantics evidence, String evidenceAnchorContext) {
-		if (!claim.registeredItemScopes().equals(evidence.registeredItemScopes())) {
+		if (!claim.explicitScopeQualifiers().equals(evidence.explicitScopeQualifiers())) {
 			return Relation.NOT_ENTAILED;
 		}
 		if (claim.obligationMode() == ObligationMode.REQUIRED
@@ -2018,7 +2021,7 @@ public class ClaimEvidenceMatcher {
 		Set<String> requiredConditionAnchors,
 		Set<String> requiredNumericAnchors,
 		Set<String> targetScopeAnchors,
-		Set<String> registeredItemScopes,
+		Set<String> explicitScopeQualifiers,
 		Set<SemanticCategory> categories,
 		boolean conditional,
 		boolean narrowingCondition,
@@ -2040,7 +2043,7 @@ public class ClaimEvidenceMatcher {
 				finiteAffirmedPredicateActions, affirmedPredicateActions, negatedPredicateActions, plannedPredicateActions,
 				ongoingPredicateActions, Set.copyOf(sourceBearers), universalScopeAnchors, enumerationScopeAnchors,
 				openEndedEnumeration, requiredItemEnumerationTerms, lexicalTerms, inheritedRoles, requiredRelationAnchors,
-				requiredConditionAnchors, requiredNumericAnchors, targetScopeAnchors, registeredItemScopes, categories, conditional, narrowingCondition,
+				requiredConditionAnchors, requiredNumericAnchors, targetScopeAnchors, explicitScopeQualifiers, categories, conditional, narrowingCondition,
 				exclusiveRoleAnchors, disjunctiveCoordination, ambiguousSubjectAttribution,
 				normalizedText + main.normalizedText());
 		}
@@ -2195,9 +2198,12 @@ public class ClaimEvidenceMatcher {
 				requiredConditionAnchors,
 				requiredNumericAnchors,
 				targetScopeAnchors,
-				REGISTERED_ITEM_SCOPE.matcher(text).results()
-					.map(match -> KoreanQueryNormalizer.normalizeForMatch(match.group(1)) + ":"
-						+ KoreanQueryNormalizer.normalizeForMatch(match.group(2)))
+				java.util.stream.Stream.concat(
+					REGISTERED_ITEM_SCOPE.matcher(text).results()
+						.map(match -> KoreanQueryNormalizer.normalizeForMatch(match.group(1)) + ":"
+							+ KoreanQueryNormalizer.normalizeForMatch(match.group(2))),
+					CORRECTIVE_REPORT_SCOPE.matcher(text).results()
+						.map(match -> "report:" + KoreanQueryNormalizer.normalizeForMatch(match.group(1))))
 					.collect(java.util.stream.Collectors.toUnmodifiableSet()),
 				Set.copyOf(categories),
 				conditional,
