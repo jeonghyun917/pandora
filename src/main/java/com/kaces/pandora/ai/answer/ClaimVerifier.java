@@ -124,9 +124,21 @@ public class ClaimVerifier {
 				0
 			);
 		}
-		List<String> sentences = isExactAnnotatedSourceItem(answer, grounds)
-			? List.of(answer.trim()) : splitSentences(ClaimEvidenceAtomizer.foldWrappedRatios(answer));
 		LawAiAnswerGround submissionOwner = exactSubmissionOwner(answer, grounds);
+		String submissionLead = "";
+		List<String> sentences;
+		if (submissionOwner != null) {
+			var firstItem = SUBMISSION_ITEM_NUMBER.matcher(answer.strip());
+			if (!firstItem.find()) throw new IllegalStateException("Verified submission list has no first item");
+			String block = answer.strip();
+			submissionLead = block.substring(0, firstItem.start()).replaceAll("\\s+", " ").strip();
+			sentences = new ArrayList<>();
+			sentences.add(submissionLead);
+			sentences.addAll(splitSentences(ClaimEvidenceAtomizer.foldWrappedRatios(block.substring(firstItem.start()))));
+		} else {
+			sentences = isExactAnnotatedSourceItem(answer, grounds)
+				? List.of(answer.trim()) : splitSentences(ClaimEvidenceAtomizer.foldWrappedRatios(answer));
+		}
 		List<String> kept = new ArrayList<>();
 		List<String> unsupportedClaims = new ArrayList<>();
 		List<String> unsupportedNumericClaims = new ArrayList<>();
@@ -155,9 +167,9 @@ public class ClaimVerifier {
 			substantiveClaims++;
 			ClaimEvidenceMatcher.Match controlMatch = evidenceMatcher.match(sentence, evidenceIndex);
 			if (submissionOwner != null && controlMatch.status() == ClaimEvidenceMatcher.Status.INSUFFICIENT
-				&& sentence.matches("[가-힣]{2,40}")
+				&& (sentence.equals(submissionLead) || (sentence.matches("[가-힣]{2,40}")
 				&& Pattern.compile("(?m)^\\h*[1-9][0-9]?[.]\\h+" + Pattern.quote(sentence) + "\\h*$")
-					.matcher(answer).find()) {
+					.matcher(answer).find()))) {
 				controlMatch = new ClaimEvidenceMatcher.Match(ClaimEvidenceMatcher.Status.SUPPORTED,
 					submissionOwner.number(), sentence, 0, 1.0, 1.0);
 			}

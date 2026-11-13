@@ -9,13 +9,15 @@ class ClaimVerifierTests {
 
 	@Test
 	void verifiesShortItemOnlyWithinItsExactConditionalSubmissionList() {
-		String body = "제8조(제출 문서) 관리기관의 장은 정밀 검토를 의뢰할 경우 다음 각 호의 사항이 포함된 문서를 제출하여야 한다.\n"
+		String body = "제8조(제출 문서) 관리기관의 장은 정밀 검토를 의뢰할\n경우 다음 각 호의 사항이 포함된 문서를 제출하여야 한다.\n"
 			+ "1. 사업계획서(사업목적 및 추진계획을 포함한다)\n2. 제안요청서\n3. 시설 배치도(출입구 및\n통행로를 포함한다)";
 		var grounds = List.of(new LawAiAnswerGround(1,1,1,"official_doc","시설 관리 지침",null,null,null,
 			"CURRENT",null,null,null,body+"\n제9조(기록 관리) 관리기관은 결과를 기록한다.",null,null,1));
 		assertThat(verifier.verifyDetailed(body,grounds).unsupportedClaims()).doesNotContain("제안요청서");
+		assertThat(verifier.verifyDetailed(body,grounds).evidenceLinks()).anySatisfy(link ->
+			assertThat(link.claim()).contains("의뢰할 경우", "문서를 제출하여야 한다."));
 		assertThat(verifier.verifyDetailed("제안요청서",grounds).insufficientEvidence()).isTrue();
-		assertThat(verifier.verifyDetailed(body.replace("정밀 검토를 의뢰할 경우 ",""),grounds)
+		assertThat(verifier.verifyDetailed(body.replace("정밀 검토를 의뢰할\n경우 ",""),grounds)
 			.unsupportedClaims()).contains("제안요청서");
 		assertThat(verifier.verifyDetailed(body.replace("2. 제안요청서","2. 계약서"),grounds)
 			.unsupportedClaims()).contains("계약서");
