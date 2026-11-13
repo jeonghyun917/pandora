@@ -825,7 +825,10 @@ public class EvidenceJudge {
 		boolean projectReviewScopeChunk = isProjectReviewScopeChunk(body, documentTitle, chunkHeading);
 		boolean projectReviewAdjacentChunk = isProjectReviewAdjacentChunk(body, documentTitle, chunkHeading);
 		boolean preConsultationContextChunk = isPreConsultationContextChunk(body, documentTitle, chunkHeading);
-		boolean preConsultationGeneralScopeChunk = isPreConsultationGeneralScopeChunk(body, chunkHeading);
+		boolean conditionalConsultationDuty = isConditionalPublicInstitutionConsultationDuty(profile.normalizedQuestion(), chunk);
+		boolean preConsultationGeneralScopeChunk = isPreConsultationGeneralScopeChunk(body, chunkHeading)
+			|| (QuestionIntentProfile.asksPublicInstitutionConsultationApplicability(profile.normalizedQuestion())
+				&& conditionalConsultationDuty);
 		boolean preConsultationSpecificQaChunk = isPreConsultationSpecificQaChunk(body, chunkHeading);
 		boolean securityReviewTargetAnswerChunk = securityReviewTargetQuestion
 			&& isSecurityReviewTargetAnswerChunk(body, documentTitle, chunkHeading, chunk.chunkText(), chunk.target(),
@@ -1040,7 +1043,7 @@ public class EvidenceJudge {
 		if (securityReviewTargetAnswerChunk && !tableOfContents) {
 			directEvidence = true;
 		}
-		if (!tableOfContents && isConditionalPublicInstitutionConsultationDuty(profile.normalizedQuestion(), chunk)) {
+		if (!tableOfContents && conditionalConsultationDuty) {
 			directEvidence = true;
 		}
 		if (trafficCrosswalkStopQuestion && trafficFacilityGuideChunk && !trafficDriverDutyChunk) {
@@ -3129,7 +3132,8 @@ public class EvidenceJudge {
 
 	private static boolean isConditionalPublicInstitutionConsultationDuty(String question, LawSemanticChunkRow chunk) {
 		if (!question.contains("공공기관") || !question.contains("사전협의")
-			|| !containsAny(question, List.of("받아야", "해야", "대상"))
+			|| !(containsAny(question, List.of("받아야", "해야", "대상"))
+				|| QuestionIntentProfile.asksPublicInstitutionConsultationApplicability(question))
 			|| containsAny(question, List.of("자치분권", "과업심의", "언제", "제외", "면제", "생략", "미준수", "위반", "제재"))
 			|| !"law".equals(chunk.target()) || !"CURRENT".equals(chunk.effectiveStatus())
 			|| !"전자정부법".equals(normalize(chunk.title()))

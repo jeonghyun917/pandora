@@ -44,6 +44,11 @@ class EvidenceJudgeTests {
 		for (var control : List.of(missing, unrelated)) {
 			assertThat(judge.judge(question, List.of(control), Map.of(), 8).directEvidenceCount()).isZero();
 		}
+		String applicability = "공공기관 전자정부사업의 사전협의 적용 요건을 설명해 주세요.";
+		assertThat(judge.judge(applicability, List.of(exact), Map.of(), 8).directEvidenceCount()).isOne();
+		for (var control : List.of(missing, unrelated)) {
+			assertThat(judge.judge(applicability, List.of(control), Map.of(), 8).directEvidenceCount()).isZero();
+		}
 	}
 
 	private LawSemanticChunkRow currentConsultationLaw(long id, String title, String clause) {
