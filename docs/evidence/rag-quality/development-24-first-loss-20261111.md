@@ -1,5 +1,11 @@
 # Development 24: applicable sources and first observed loss
 
+## 2026-11-13 — named classification authority
+
+Product `f8aa43a` (push `534815`) allows the bounded consultation-scope lookup when the only title anchors name the classification statute, there is no article reference, and both operative sources are recovered. It does not classify the named act as the operative duty. The regression covers the alias, full title, unrelated explicit owner and explicit article. Host focused and full regression `790c12/10dc45`: 2175 tests, zero failures/errors, 85 skipped. Staging `3fa3b1`; official deploy supervisor 64298 (`ccc23d/8cf68a`); health `db698c`: PID 30608, runtime `5af8ed7b-f0f5-429e-b2e8-ace08aafcffc`, JAR `ae17e7489e0a3e2ff70df99b27d7bcd2f8f943affa82352b3a656f6e13802eee`, HTTP 200, DB/Qdrant parity 211658/84248, ready/zero failures, unchanged index/lexical revisions and protected listener PIDs 29688/24268.
+
+Fresh read-only actual-source controls `d3c81e`: an explicitly scope-worded alias question selected only 11138987 and 10993504 (361 ms); a full-title variant recovered both but returned 36 lexical rows and the isolated judge admitted 32 as direct (375 ms). A separate condition-only alias phrasing `619b21` still hit the three-second broad law text timeout before ranking; do not replay it. Next isolate the full-title anchor variants and why surrounding sections are admitted; the focused mock alone does not prove production precision. No generated answer, gate run, index/authority promotion, or failed endpoint replay.
+
 This is an audit of the saved **search** checkpoint, not a rerun, a current-build score, or an answer-quality PASS. The exact artifact is `current-24-5ec2565-doc16-20261111-052944Z.json`, product `5ec2565342f1415118a5ee1a549f1cfe7172f808`, runtime `0a197db8-e9c3-4700-9599-632164beeccc`, JAR `0c8f822624b64d0026472bfbff4f46393ef848857a1f4afb09f4e579be5b48fe`. The artifact reports stable runtime identity, 24 attempted, 22 responses, two HTTP 500s, and `complete=false`.
 
 - Dataset: `6b85990a6395c501138628877d4c9efda61c218afde4d0ab5a886f3588ce044c`; selection: `4e5546b95f079888138e7ef5d921b2a77c7f309aad16f2d269e8b83b9908bf22`.
