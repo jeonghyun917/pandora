@@ -2780,6 +2780,11 @@ public class LawAiAnswerService {
 
 	private List<RetrievalCandidateTrace> buildCandidateTraces(RetrievalResult retrieval) {
 		RetrievalTraceCollector collector = new RetrievalTraceCollector(100);
+		// Grounds can be added after judging (e.g. linked definitions).
+		// Reserving an identity does not assign a retrieval rank or judge stage.
+		for (LawAiAnswerGround ground : retrieval.grounds()) {
+			collector.reserve(scoreKey(ground.target(), ground.chunkId()), ground.target(), ground.chunkId());
+		}
 		for (LawSemanticChunkRow chunk : retrieval.judgeCandidateChunks()) {
 			collector.reserve(scoreKey(chunk.target(), chunk.chunkId()), chunk.target(), chunk.chunkId());
 		}

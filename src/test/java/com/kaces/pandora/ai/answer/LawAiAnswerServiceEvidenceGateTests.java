@@ -4768,6 +4768,10 @@ class LawAiAnswerServiceEvidenceGateTests {
 			.toList();
 		var judgePool = source.subList(100, 130);
 		var accepted = judgePool.subList(0, 1);
+		var support = chunk(131L, "law", "정의 규정", "정의", "기관의 정의");
+		var finalSelection = List.of(accepted.get(0), support);
+		var supportGround = new LawAiAnswerGround(2,131,131,"law","정의 규정",null,null,null,
+			"CURRENT",null,"정의",null,"기관의 정의",null,null,1);
 		var hybridClass = Class.forName(LawAiAnswerService.class.getName() + "$HybridRetrieval");
 		var empty = hybridClass.getDeclaredMethod("empty");
 		empty.setAccessible(true);
@@ -4775,14 +4779,20 @@ class LawAiAnswerServiceEvidenceGateTests {
 		var constructor = resultClass.getDeclaredConstructors()[0];
 		constructor.setAccessible(true);
 		var result = constructor.newInstance("OK", "law", "query", List.of("law"), List.of(), List.of(),
-			List.of(), source, judgePool, judgePool, judgePool, judgePool, accepted, accepted,
-			Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), List.of(), "OK", 30, 30, 1, Map.of(),
+			List.of(), source, judgePool, judgePool, judgePool, judgePool, accepted, finalSelection,
+			Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), List.of(supportGround), "OK", 30, 30, 1, Map.of(),
 			"direct", empty.invoke(null));
 		var build = LawAiAnswerService.class.getDeclaredMethod("buildCandidateTraces", resultClass);
 		build.setAccessible(true);
 		@SuppressWarnings("unchecked")
 		var traces = (List<RetrievalCandidateTrace>) build.invoke(service, result);
 		assertThat(traces).hasSize(100);
+		assertThat(traces.stream().filter(trace -> trace.chunkId() == 131L).findFirst()).hasValueSatisfying(trace -> {
+			assertThat(trace.sourceRanks()).isEmpty();
+			assertThat(trace.enteredStages()).containsExactly("grounds", "selected");
+			assertThat(trace.selected()).isTrue();
+			assertThat(trace.firstLossStage()).isNull();
+		});
 		assertThat(traces.stream().filter(trace -> trace.enteredStages().contains("judgeCandidates")))
 			.extracting(RetrievalCandidateTrace::chunkId)
 			.containsExactlyInAnyOrderElementsOf(judgePool.stream().map(LawSemanticChunkRow::chunkId).toList());
