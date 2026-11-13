@@ -12,6 +12,27 @@ class EvidenceJudgeTests {
 
 	// 메소드 설명: EvidenceJudge 처리 흐름을 수행합니다.
 	private final EvidenceJudge judge = new EvidenceJudge();
+
+	@Test
+	void recognizesTheConditionalConsultationDutyWithoutRequiringTargetWording() {
+		String clause = "제67조(사전협의) 행정기관등의 장은 다른 행정기관등과의 상호연계 또는 공동이용과 관련한 "
+			+ "전자정부사업 및 지역정보화사업을 추진할 때에는 중앙사무관장기관의 장과 사전에 협의하여야 한다.";
+		var exact = currentConsultationLaw(311, "전자정부법", clause);
+		var missing = currentConsultationLaw(312, "전자정부법",
+			clause.replace("다른 행정기관등과의 상호연계 또는 공동이용과 관련한 ", ""));
+		var unrelated = currentConsultationLaw(313, "시설관리법", clause);
+		String question = "공공기관이 추진하는 정보화사업은 어떤 조건에서 사전협의를 받아야 하나요?";
+		assertThat(judge.judge(question, List.of(exact), Map.of(), 8).directEvidenceCount()).isOne();
+		for (var control : List.of(missing, unrelated)) {
+			assertThat(judge.judge(question, List.of(control), Map.of(), 8).directEvidenceCount()).isZero();
+		}
+	}
+
+	private LawSemanticChunkRow currentConsultationLaw(long id, String title, String clause) {
+		return new LawSemanticChunkRow(id, id, "law", String.valueOf(id), title, null, null,
+			null, "CURRENT", "67", "제67조(사전협의)", clause, null, null, null, 1, "hash-" + id,
+			null, "article");
+	}
 	@Test
 	void requiresReportAndCorrectiveDutyInTheSameOperativeClause() {
 		var exact = chunk(301, "admrul", "시설 운영 규정", "점검",

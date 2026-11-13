@@ -1040,6 +1040,9 @@ public class EvidenceJudge {
 		if (securityReviewTargetAnswerChunk && !tableOfContents) {
 			directEvidence = true;
 		}
+		if (!tableOfContents && isConditionalPublicInstitutionConsultationDuty(profile.normalizedQuestion(), chunk)) {
+			directEvidence = true;
+		}
 		if (trafficCrosswalkStopQuestion && trafficFacilityGuideChunk && !trafficDriverDutyChunk) {
 			directEvidence = false;
 		}
@@ -3122,6 +3125,21 @@ public class EvidenceJudge {
 	private static boolean isProjectReviewPreConsultationRelationQuestion(String normalizedQuestion) {
 		String normalized = normalize(normalizedQuestion);
 		return normalized.contains("과업심의") && normalized.contains("사전협의");
+	}
+
+	private static boolean isConditionalPublicInstitutionConsultationDuty(String question, LawSemanticChunkRow chunk) {
+		if (!question.contains("공공기관") || !question.contains("사전협의")
+			|| !containsAny(question, List.of("받아야", "해야", "대상"))
+			|| containsAny(question, List.of("자치분권", "과업심의", "언제", "제외", "면제", "생략", "미준수", "위반", "제재"))
+			|| !"law".equals(chunk.target()) || !"CURRENT".equals(chunk.effectiveStatus())
+			|| !"전자정부법".equals(normalize(chunk.title()))
+			|| !normalize(chunk.chunkTitle()).startsWith("제67조사전협의")
+			|| chunk.chunkText() == null) return false;
+		return java.util.Arrays.stream(chunk.chunkText().split("[.!?。]"))
+			.map(EvidenceJudge::normalize)
+			.anyMatch(clause -> clause.contains("다른행정기관등과의상호연계또는공동이용과관련한")
+				&& clause.contains("전자정부사업및지역정보화사업을추진할때")
+				&& clause.contains("사전에협의하여야"));
 	}
 
 	private static boolean isPreConsultationTargetQuestion(String normalizedQuestion) {
