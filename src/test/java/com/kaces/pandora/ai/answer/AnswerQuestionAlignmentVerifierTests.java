@@ -14,6 +14,10 @@ class AnswerQuestionAlignmentVerifierTests {
 		String clause = prefix + "데이터베이스 개선 업무 추진 시 공통표준을 적용하여야 한다.";
 		var result = verifier.verify(question, claimResult(supported(clause, clause)));
 		assertThat(result.aligned()).as("%s", result).isTrue();
+		String spoken = question.replace("공통표준 적용 의무가 있습니까?", "공통표준을 적용해야 하나요?");
+		assertThat(verifier.verify(spoken, claimResult(supported(clause, clause))).aligned()).isTrue();
+		assertThat(verifier.verify(spoken.replace("적용해야", "검토해야"),
+			claimResult(supported(clause, clause))).aligned()).isFalse();
 		for (String wrong : List.of(
 			prefix + "데이터베이스 개선 업무와 무관하게 공통표준을 적용하여야 한다.",
 			prefix + "네트워크 개선 업무 추진 시 공통표준을 적용하여야 한다.",
@@ -22,6 +26,8 @@ class AnswerQuestionAlignmentVerifierTests {
 			prefix + "데이터베이스 개선 업무 추진 시 기관표준을 적용하여야 한다.",
 			prefix + "데이터베이스 개선 업무 추진 시 공통표준 적용을 검토하여야 한다.")) {
 			assertThat(verifier.verify(question, claimResult(supported(wrong, wrong))).aligned())
+				.as("%s", wrong).isFalse();
+			assertThat(verifier.verify(spoken, claimResult(supported(wrong, wrong))).aligned())
 				.as("%s", wrong).isFalse();
 		}
 	}

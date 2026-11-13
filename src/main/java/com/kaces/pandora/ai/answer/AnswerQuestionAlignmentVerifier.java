@@ -29,6 +29,8 @@ public class AnswerQuestionAlignmentVerifier {
 		"(?m)^([①-⑳])\\h+(정보자원관리시스템\\(IRM\\)[^\\r\\n]{1,80})\\h*\\R"
 			+ "\\h*\\1-\\d{1,2}\\h*\\R\\h*([^\\r\\n]{1,180})$");
 	private static final Pattern TERMINAL_REQUEST = Pattern.compile("(?U)\\s+(알려주세요|있습니까|무엇입니까)[.!?。？]*\\s*\\z");
+	private static final Pattern SPOKEN_APPLICATION_DUTY = Pattern.compile(
+		"(?U)(?<=\\s)([가-힣]{2,25})[을를]\\s+적용해야\\s+하나요[?？]\\s*\\z");
 	private static final Pattern REPORT_DUTY_QUESTION = Pattern.compile(
 		"^((?:단계별)?[가-힣A-Za-z0-9]{1,35}결과보고서)에따른시정조치의무$");
 	private static final Pattern NOMINAL_SUBMISSION_LIST = Pattern.compile(
@@ -710,6 +712,9 @@ public class AnswerQuestionAlignmentVerifier {
 		boolean documentIdentityQuestion
 	) {
 		private static AlignmentProfile from(String question) {
+			if (question != null) {
+				question = SPOKEN_APPLICATION_DUTY.matcher(question).replaceFirst("$1 적용 의무가 있습니까?");
+			}
 			QuestionIntentProfile questionProfile = QuestionIntentProfile.from(question);
 			List<List<String>> conditionGroups = conditionGroups(question);
 			ClassificationFrame classificationFrame = ClassificationFrame.from(question);
