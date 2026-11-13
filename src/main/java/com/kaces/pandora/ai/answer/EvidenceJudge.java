@@ -2902,7 +2902,15 @@ public class EvidenceJudge {
 	}
 
 	static String ownedAuditResult(String body) {
-		var item = AUDIT_RESULT_ITEM.matcher(body);
+		return uniqueAuditExcerpt(AUDIT_RESULT_ITEM, body);
+	}
+
+	static String ownedAuditCompliance(String body) {
+		return uniqueAuditExcerpt(AUDIT_COMPLIANCE_ITEM, body);
+	}
+
+	private static String uniqueAuditExcerpt(java.util.regex.Pattern pattern, String body) {
+		var item = pattern.matcher(body);
 		if (!item.find()) return "";
 		String excerpt = item.group().strip();
 		return excerpt.length() <= 700 && !item.find() ? excerpt : "";

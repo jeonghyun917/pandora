@@ -8,6 +8,25 @@ import org.junit.jupiter.api.Test;
 class AnswerQuestionAlignmentVerifierTests {
 
 	@Test
+	void auditComplianceBindsOnlyTheReviewItemToItsOwnScope() {
+		String scope = "① 법 제57조제1항 또는 제4항에 따라 정보시스템 감리를 하는 법인 또는 기관의 업무범위는 다음 각 호와 같다.";
+		String item = "4. 관련 법령등, 규정 및 지침 등의 준수 여부에 대한 검토ㆍ확인";
+		String draft = scope + "\n" + item;
+		String question = "정보시스템 감리에서 감리법인이 법령 준수 여부를 확인하나요?";
+		for (String child : List.of(draft, scope + "\n② 다른 기관의 업무\n" + item)) {
+			var ground = new LawAiAnswerGround(1, 1, 1, "law", "전자정부법 시행령", null, null, null,
+				"CURRENT", null, "감리법인의 업무범위 등", null, child, null, null, 1,
+				child, null, List.of(1L), null, "direct");
+			var grounds = List.of(ground);
+			var checked = new ClaimVerifier().verifyDetailed(draft, grounds);
+			assertThat(checked.supportedStrongClaimCount()).isEqualTo(2);
+			assertThat(verifier.verify(question, checked, grounds).aligned()).isEqualTo(child.equals(draft));
+			assertThat(verifier.verify("정보시스템 감리에서 감리법인이 법령 미준수 시 제재를 부과하나요?",
+				checked, grounds).aligned()).isFalse();
+		}
+	}
+
+	@Test
 	void auditResultNeedsTheOwningScopeAndQualifiedProcedure() {
 		String question = "정보시스템 감리 후 감리법인은 시정 조치 결과를 어떻게 확인하고 통보하나요?";
 		String scope = "① 법 제57조제1항 또는 제4항에 따라 정보시스템 감리를 하는 법인 또는 기관의 업무범위는 다음 각 호와 같다.";
