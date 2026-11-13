@@ -3106,6 +3106,11 @@ class EvidenceJudgeTests {
 		String item = "\n7. 감리에 따른 시정 조치 결과의 확인 및 통보";
 		String q = "정보시스템 감리에서 감리법인이 시정조치 결과를 확인하고 통보하나요?";
 		var owner = auditLawChunk(8197, scope + procedure + item);
+		String normalized = com.kaces.pandora.common.text.KoreanQueryNormalizer.normalizeForMatch(q);
+		assertThat(EvidenceJudge.auditResultCitation(normalized,
+			auditLawChunk(8195, scope + procedure + item + "\n③ 별도 사항"))).isEqualTo(scope + procedure + item);
+		assertThat(EvidenceJudge.auditResultCitation(normalized,
+			auditLawChunk(8194, scope + procedure + item + "\n" + scope + procedure + item))).isEmpty();
 		assertThat(judge.judge(q, List.of(owner), Map.of(), 3).directEvidenceCount()).isEqualTo(1);
 		assertThat(judge.judge(q, List.of(auditLawChunk(8196, scope + procedure + "\n③ 다른 기관의 업무" + item)),
 			Map.of(), 3).directEvidenceCount()).isZero();

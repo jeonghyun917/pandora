@@ -4321,6 +4321,8 @@ public class LawAiAnswerService {
 		String reportDuty = completeReportDutySnippet(chunk, query, 320);
 		if (!reportDuty.isEmpty()) return reportDuty;
 		String normalized = normalizeForMatch(query);
+		String auditResult = EvidenceJudge.auditResultCitation(normalized, chunk);
+		if (!auditResult.isEmpty()) return auditResult;
 		if (("CURRENT".equals(chunk.effectiveStatus())
 			|| ("official_doc".equals(chunk.target()) && chunk.effectiveStatus() == null))
 			&& "PASS".equals(chunk.qualityStatus())

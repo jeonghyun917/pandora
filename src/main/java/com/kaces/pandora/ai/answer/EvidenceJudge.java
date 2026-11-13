@@ -2883,11 +2883,25 @@ public class EvidenceJudge {
 				"언제", "기한", "며칠", "기간", "시정명령", "시정요구", "면제", "생략", "위반", "않", "제외", "감점", "처분"))
 			&& chunk.chunkText() != null)) return false;
 		if (question.contains("시정조치결과")) {
-			return question.contains("확인") && question.contains("통보") && !question.contains("법령준수여부")
-				&& AUDIT_RESULT_ITEM.matcher(chunk.chunkText()).find();
+			return !auditResultCitation(question, chunk).isEmpty();
 		}
 		return !penaltyQuestion && question.contains("법령준수여부") && containsAny(question, List.of("확인", "검토"))
 			&& !question.contains("시정") && AUDIT_COMPLIANCE_ITEM.matcher(chunk.chunkText()).find();
+	}
+
+	static String auditResultCitation(String question, LawSemanticChunkRow chunk) {
+		if (!"law".equals(chunk.target()) || !"CURRENT".equals(chunk.effectiveStatus())
+			|| !normalize("전자정부법 시행령").equals(normalize(chunk.title()))
+			|| !question.contains("정보시스템감리") || !question.contains("감리법인")
+			|| !question.contains("시정조치결과") || !question.contains("확인") || !question.contains("통보")
+			|| containsAny(question, List.of("법령준수여부", "비대상", "아닌", "감리없이", "미준수", "제재", "불이익",
+				"과태료", "처벌", "언제", "기한", "며칠", "기간", "시정명령", "시정요구", "면제", "생략",
+				"위반", "않", "제외", "감점", "처분"))
+			|| chunk.chunkText() == null) return "";
+		var item = AUDIT_RESULT_ITEM.matcher(chunk.chunkText());
+		if (!item.find()) return "";
+		String excerpt = item.group().strip();
+		return excerpt.length() <= 700 && !item.find() ? excerpt : "";
 	}
 
 	private static boolean hasExplicitNoncomplianceRemedy(String body) {
