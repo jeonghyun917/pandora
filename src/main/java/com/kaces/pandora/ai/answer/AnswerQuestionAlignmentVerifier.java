@@ -33,6 +33,8 @@ public class AnswerQuestionAlignmentVerifier {
 		"^((?:단계별)?[가-힣A-Za-z0-9]{1,35}결과보고서)에따른시정조치의무$");
 	private static final Pattern NOMINAL_SUBMISSION_LIST = Pattern.compile(
 		"(?U)\\s+제출\\s+(문서|서류|자료)[.?？]*\\s*\\z");
+	private static final Pattern NOMINAL_SUBMISSION_TRIGGER = Pattern.compile(
+		"(?U)\\s([가-힣]{2,20})\\s+시\\s+제출\\s+(?:문서|서류|자료)[.?？]*\\s*\\z");
 	private static final Pattern CONTRACT_STANDARD_AUTHORITY = Pattern.compile(
 		"(?U)^\\s*([가-힣A-Za-z0-9][가-힣A-Za-z0-9 \\t]{2,88}?계약[ \\t]*체결[ \\t]*기준)"
 			+ "[ \\t]*(?:에[ \\t]*(?:따라|따른)|에서)[ \\t]+(.+)$");
@@ -589,6 +591,12 @@ public class AnswerQuestionAlignmentVerifier {
 
 	private static boolean matchesCondition(String claim, String normalizedClaim, List<String> group,
 		List<SourceOwnedConditionalScope.Rule> scopeRules) {
+		if (group.size() == 1 && group.get(0).endsWith("시")) {
+			String nominal = group.get(0);
+			String event = nominal.substring(0, nominal.length() - 1);
+			return List.of(nominal, event + "하는경우", event + "할경우", event + "할때", event + "하면")
+				.stream().anyMatch(normalizedClaim::contains);
+		}
 		if (group.size() == 3 && group.get(2).startsWith("경우")
 			&& (group.get(1).equals("있는") || group.get(1).equals("없는"))) {
 			// Do not satisfy the polarity of this premise with a word from a different premise.
@@ -1042,6 +1050,10 @@ public class AnswerQuestionAlignmentVerifier {
 		private static List<List<String>> conditionGroups(String question) {
 			String[] tokens = String.valueOf(question == null ? "" : question.trim()).split("\\s+");
 			List<List<String>> groups = new ArrayList<>();
+			var submissionTrigger = NOMINAL_SUBMISSION_TRIGGER.matcher(question == null ? "" : question);
+			if (submissionTrigger.find()) {
+				groups.add(List.of(submissionTrigger.group(1) + "시"));
+			}
 			for (int index = 0; index < tokens.length; index++) {
 				String token = normalize(tokens[index]);
 				// A separated nominal condition is a premise, not a requested conclusion.

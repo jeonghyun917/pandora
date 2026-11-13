@@ -8,6 +8,23 @@ import org.junit.jupiter.api.Test;
 class AnswerQuestionAlignmentVerifierTests {
 
 	@Test
+	void nominalReferralQuestionRequiresReferralToTriggerSubmission() {
+		String question = "보안성 검토 의뢰 시 제출 문서";
+		String positive = "보안성 검토를 의뢰할 경우 사업계획서가 포함된 문서를 제출하여야 한다.";
+		String unrelatedTrigger = "보안성 검토 의뢰 기록을 보관한 사업이 종료될 경우 사업계획서가 포함된 문서를 제출하여야 한다.";
+		String excludedTrigger = "보안성 검토 의뢰 여부와 관계없이 사업이 종료될 경우 사업계획서가 포함된 문서를 제출하여야 한다.";
+		for (String body : List.of(unrelatedTrigger, excludedTrigger, positive)) {
+			var ground = new LawAiAnswerGround(1, 1, 1, "official_doc", "시설 관리 지침", null, null, null,
+				"CURRENT", null, null, null, body, null, null, 1);
+			var grounds = List.of(ground);
+			var checked = new ClaimVerifier().verifyDetailed(body, grounds);
+			assertThat(checked.supportedStrongClaimCount()).isPositive();
+			var result = verifier.verify(question, checked, grounds);
+			assertThat(result.aligned()).as("%s", result).isEqualTo(body.equals(positive));
+		}
+	}
+
+	@Test
 	void documentListQuestionDoesNotTreatItsInterrogativeAsAnActor() {
 		String body = "제8조(제출 문서) 각급기관의 장은 보안성 검토를 의뢰할\n경우 다음 각 호의 사항이 포함된 문서를 제출하여야 한다.\n"
 			+ "1. 사업계획서(사업목적 및 추진계획을 포함한다)\n2. 제안요청서\n3. 정보통신망 구성도";
