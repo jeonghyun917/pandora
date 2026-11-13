@@ -2584,6 +2584,23 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void preservesTheCompleteReportDutyInContextAndCitation() throws Exception {
+		String title = "시설 점검 및 운영 지침";
+		String duty = "관리기관과 사업자는 단계별 점검결과보고서에 따라 시정조치를 수행하여야 한다.";
+		String q = title + "에 따른 단계별 점검결과보고서에 따라 어떤 시정조치를 해야 하나요?";
+		var row = chunk(3148L, "admrul", title, "업무 기준",
+			(title + "의 시정조치 관련 일반 안내이다. ").repeat(60)
+				+ "\n제8조(점검 시행) ① " + duty + "② 관리기관은 그 결과를 기록한다.", 1);
+		var service = service();
+		try {
+			assertThat(contextSnippet(service,row,q,180)).isEqualTo(duty);
+			assertThat(snippet(service,row,q)).isEqualTo(duty);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void keepsSourceOwnedOpenDutyWholeInsteadOfClippingAtTopicMentions() throws Exception {
 		var duty = "시설관리자는 정기 장비 점검 업무를 수행하여야 한다.";
 		var body = "정기 장비 점검 개요와 정기 장비 점검 배경을 설명한다.\n"

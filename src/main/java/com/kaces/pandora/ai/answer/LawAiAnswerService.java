@@ -3696,6 +3696,8 @@ public class LawAiAnswerService {
 	}
 
 	private String contextSnippet(LawSemanticChunkRow chunk, String query, int limit) {
+		String reportDuty = completeReportDutySnippet(chunk, query, limit);
+		if (!reportDuty.isEmpty()) return reportDuty;
 		String submission = completeReviewedSubmissionSnippet(chunk, query, limit);
 		if (!submission.isBlank()) return submission;
 		String value = completeSecurityReviewTargetSnippet(chunk, query, limit);
@@ -4316,6 +4318,8 @@ public class LawAiAnswerService {
 	}
 
 	private String snippet(LawSemanticChunkRow chunk, String query) {
+		String reportDuty = completeReportDutySnippet(chunk, query, 320);
+		if (!reportDuty.isEmpty()) return reportDuty;
 		String normalized = normalizeForMatch(query);
 		if ("law".equals(chunk.target()) && "CURRENT".equals(chunk.effectiveStatus())
 			&& "개인정보보호법".equals(normalizeForMatch(chunk.title()))
@@ -4339,6 +4343,26 @@ public class LawAiAnswerService {
 			return prependMeaningfulChunkHeading(chunk, numberedProcedure);
 		}
 		return prependMeaningfulChunkHeading(chunk, snippet(chunk.chunkText(), query));
+	}
+
+	private String completeReportDutySnippet(LawSemanticChunkRow chunk, String query, int limit) {
+		if (chunk == null || chunk.chunkText() == null || !"CURRENT".equals(chunk.effectiveStatus())
+			|| !("law".equals(chunk.target()) || "admrul".equals(chunk.target()))
+			|| !articleReferencesFromQuery(query).isEmpty()) return "";
+		String normalized = normalizeForMatch(query);
+		if (!normalized.contains("시정조치") || !containsAny(normalized, "보고서에따라", "보고서에따른")) return "";
+		String owned = "";
+		for (String part : chunk.chunkText().split("(?<=[.!?。])(?:\\s+|(?=[①-⑳]))|\\R")) {
+			String sentence = part.strip().replaceFirst("^(?:(?:제[0-9]+조(?:의[0-9]+)?\\([^)]{1,120}\\))\\h*)?[①-⑳]\\h*", "");
+			var match = ClaimEvidenceMatcher.CORRECTIVE_REPORT_SCOPE.matcher(sentence);
+			if (sentence.length() <= limit && match.find()
+				&& normalized.contains(normalizeForMatch(match.group(1)))
+				&& sentence.endsWith("수행하여야 한다.")) {
+				if (!owned.isEmpty() && !owned.equals(sentence)) return "";
+				owned = sentence;
+			}
+		}
+		return owned;
 	}
 
 	private String completeReviewedSubmissionSnippet(LawSemanticChunkRow chunk, String query, int limit) {
