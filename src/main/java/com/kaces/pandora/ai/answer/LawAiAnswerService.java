@@ -9288,6 +9288,10 @@ public class LawAiAnswerService {
 					List.of("다른 행정기관등과의 상호연계", "위탁받은 공공기관"), includeFuture, 20), routing)
 				.stream().filter(this::isOperativePublicInstitutionConsultationSource).toList();
 			if (classificationTitleOnly ? hasConsultationOperativePair(operative) : !operative.isEmpty()) {
+				if (classificationTitleOnly) {
+					// Classification provisions are retrieved separately as supporting evidence after judging.
+					return finishLexicalChunks(operative, query);
+				}
 				chunks.addAll(operative);
 				return finishLexicalChunks(chunks, query);
 			}
