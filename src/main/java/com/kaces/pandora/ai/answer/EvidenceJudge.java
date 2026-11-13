@@ -1275,9 +1275,9 @@ public class EvidenceJudge {
 			relevant = true;
 			topicAligned = true;
 		}
-		if (!tableOfContents && !penaltyConsequenceQuestion
+		if (!tableOfContents
 			&& !missingRequestedArticleOwnership(profile, chunk, documentTitle)
-			&& auditComplianceReview(profile.normalizedQuestion(), chunk, documentTitle)) {
+			&& auditDutyEvidence(profile.normalizedQuestion(), chunk, documentTitle, penaltyConsequenceQuestion)) {
 			directEvidence = true;
 			relevant = true;
 			topicAligned = true;
@@ -2867,13 +2867,27 @@ public class EvidenceJudge {
 			+ "(?:\\h*[1-3][.]\\h+[^\\r\\n①-⑳]+\\R){0,3}"
 			+ "\\h*4[.]\\h+관련 법령등, 규정 및 지침 등의 준수 여부에 대한 검토[ㆍ·]확인\\h*$");
 
-	private static boolean auditComplianceReview(String question, LawSemanticChunkRow chunk, String title) {
-		return "law".equals(chunk.target()) && "CURRENT".equals(chunk.effectiveStatus())
+	private static final java.util.regex.Pattern AUDIT_RESULT_ITEM = java.util.regex.Pattern.compile(
+		"(?m)^\\h*①\\h+법 제57조제1항 또는 제4항에 따라 정보시스템 감리를 하는 법인 또는 기관의 업무범위는 다음 각 호와 같다[.]\\h*\\R"
+			+ "(?:\\h*[1-5][.]\\h+[^\\r\\n①-⑳]+\\R){0,5}"
+			+ "\\h*②\\h+제1항에 따라 정보시스템 감리를 하는 법인 또는 기관은 다음 각 호의 절차에 따라 수행하는 것을 원칙으로 하되, "
+			+ "정보시스템 감리업무의 수행 형태에 따라 일부 절차를 변경하거나 생략할 수 있다[.]\\h*\\R"
+			+ "(?:\\h*[1-6][.]\\h+[^\\r\\n①-⑳]+\\R){0,6}"
+			+ "\\h*7[.]\\h+감리에 따른 시정\\h*조치 결과의 확인 및 통보\\h*$");
+
+	private static boolean auditDutyEvidence(String question, LawSemanticChunkRow chunk, String title, boolean penaltyQuestion) {
+		if (!("law".equals(chunk.target()) && "CURRENT".equals(chunk.effectiveStatus())
 			&& title.equals(normalize("전자정부법 시행령"))
 			&& question.contains("정보시스템감리") && question.contains("감리법인")
-			&& question.contains("법령준수여부") && containsAny(question, List.of("확인", "검토"))
-			&& !containsAny(question, List.of("비대상", "아닌", "감리없이", "미준수", "제재", "불이익", "시정", "과태료", "처벌"))
-			&& chunk.chunkText() != null && AUDIT_COMPLIANCE_ITEM.matcher(chunk.chunkText()).find();
+			&& !containsAny(question, List.of("비대상", "아닌", "감리없이", "미준수", "제재", "불이익", "과태료", "처벌",
+				"언제", "기한", "며칠", "기간", "시정명령", "시정요구", "면제", "생략", "위반", "않", "제외", "감점", "처분"))
+			&& chunk.chunkText() != null)) return false;
+		if (question.contains("시정조치결과")) {
+			return question.contains("확인") && question.contains("통보") && !question.contains("법령준수여부")
+				&& AUDIT_RESULT_ITEM.matcher(chunk.chunkText()).find();
+		}
+		return !penaltyQuestion && question.contains("법령준수여부") && containsAny(question, List.of("확인", "검토"))
+			&& !question.contains("시정") && AUDIT_COMPLIANCE_ITEM.matcher(chunk.chunkText()).find();
 	}
 
 	private static boolean hasExplicitNoncomplianceRemedy(String body) {

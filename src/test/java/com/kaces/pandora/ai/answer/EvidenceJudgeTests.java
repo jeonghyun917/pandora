@@ -3099,6 +3099,20 @@ class EvidenceJudgeTests {
 			List.of(owner), Map.of(), 3).directEvidenceCount()).isZero();
 	}
 
+	@Test
+	void auditResultReportingRequiresTheOwnedProcedureItem() {
+		String scope = "① 법 제57조제1항 또는 제4항에 따라 정보시스템 감리를 하는 법인 또는 기관의 업무범위는 다음 각 호와 같다.";
+		String procedure = "\n② 제1항에 따라 정보시스템 감리를 하는 법인 또는 기관은 다음 각 호의 절차에 따라 수행하는 것을 원칙으로 하되, 정보시스템 감리업무의 수행 형태에 따라 일부 절차를 변경하거나 생략할 수 있다.";
+		String item = "\n7. 감리에 따른 시정 조치 결과의 확인 및 통보";
+		String q = "정보시스템 감리에서 감리법인이 시정조치 결과를 확인하고 통보하나요?";
+		var owner = auditLawChunk(8197, scope + procedure + item);
+		assertThat(judge.judge(q, List.of(owner), Map.of(), 3).directEvidenceCount()).isEqualTo(1);
+		assertThat(judge.judge(q, List.of(auditLawChunk(8196, scope + procedure + "\n③ 다른 기관의 업무" + item)),
+			Map.of(), 3).directEvidenceCount()).isZero();
+		assertThat(judge.judge("정보시스템 감리에서 감리법인이 시정조치 결과를 언제 통보하나요?",
+			List.of(owner), Map.of(), 3).directEvidenceCount()).isZero();
+	}
+
 	private LawSemanticChunkRow auditLawChunk(long id, String text) {
 		return new LawSemanticChunkRow(id, 1, "law", "1", "전자정부법 시행령", null, null,
 			null, "CURRENT", "1", "감리법인의 업무범위 등", text, null, null, null, 1,
