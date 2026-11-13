@@ -6973,6 +6973,12 @@ public class LawAiAnswerService {
 				List<LawSemanticChunkRow> officialGuides = filtered.stream()
 					.filter(this::isOfficialGuidePreConsultationEvidence)
 					.toList();
+				if (asksPublicInstitutionConsultationScope(normalizedQuery)) {
+					var applicable = candidates.stream().filter(this::isOperativePublicInstitutionConsultationSource).toList();
+					if (!applicable.isEmpty()) {
+						return interleaveIntentEvidence(applicable, officialGuides);
+					}
+				}
 				return officialGuides.isEmpty() ? filtered : officialGuides;
 			}
 		}
@@ -8252,6 +8258,25 @@ public class LawAiAnswerService {
 			&& containsAny(query, "정보화사업", "전자정부", "공공기관", "행정기관", "중앙공공기관", "기타공공기관");
 	}
 
+	private boolean asksPublicInstitutionConsultationScope(String query) {
+		return isInformationSystemPreConsultationQuestion(query)
+			&& query.contains("공공기관") && containsAny(query, "대상", "받아야", "해야", "해당")
+			&& !isInformationSystemPreConsultationTimingQuestion(query)
+			&& !containsAny(query, "자치분권", "과업심의", "제외", "면제", "생략", "미준수", "위반", "제재", "시정");
+	}
+
+	private boolean isOperativePublicInstitutionConsultationSource(LawSemanticChunkRow chunk) {
+		if (!"CURRENT".equals(chunk.effectiveStatus())) return false;
+		String body = normalizeForMatch(chunk.chunkText());
+		String title = normalizeForMatch(chunk.title());
+		if ("law".equals(chunk.target()) && "전자정부법".equals(title)) {
+			return normalizeForMatch(chunk.chunkTitle()).startsWith("제67조사전협의")
+				&& body.contains("상호연계또는공동이용") && body.contains("사전에협의하여야");
+		}
+		return "admrul".equals(chunk.target()) && "전자정부성과관리지침".equals(title)
+			&& body.contains("위탁받은공공기관의전자정부사업") && body.contains("대상사업");
+	}
+
 	private boolean isInformationSystemPreConsultationTargetEvidence(LawSemanticChunkRow chunk) {
 		String text = normalizedChunkEvidenceText(chunk);
 		if (!text.contains("사전협의") || text.contains("자치분권")) {
@@ -9270,6 +9295,18 @@ public class LawAiAnswerService {
 				}).toList();
 			if (!policyNotices.isEmpty()) {
 				chunks.addAll(policyNotices);
+				return finishLexicalChunks(chunks, query);
+			}
+		}
+		if (!lawTargets.isEmpty() && documentTitleAnchors.isEmpty()
+			&& asksPublicInstitutionConsultationScope(normalizedQuery)) {
+			var operative = safeLexicalQuery("public institution consultation scope",
+				() -> lawChunkMapper.findSemanticChunksByDocumentTitleAndText(lawTargets,
+					List.of("전자정부법", "전자정부 성과관리 지침"),
+					List.of("다른 행정기관등과의 상호연계", "위탁받은 공공기관"), includeFuture, 20), routing)
+				.stream().filter(this::isOperativePublicInstitutionConsultationSource).toList();
+			if (!operative.isEmpty()) {
+				chunks.addAll(operative);
 				return finishLexicalChunks(chunks, query);
 			}
 		}

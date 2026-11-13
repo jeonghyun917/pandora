@@ -3273,6 +3273,32 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void recoversOperativePublicInstitutionConsultationGroundsBeforeFiltering() throws Exception {
+		var statute=chunk(99160L,"law","전자정부법","제67조(사전협의)",
+			"행정기관등의 장은 다른 행정기관등과의 상호연계 또는 공동이용과 관련한 전자정부사업 및 지역정보화사업을 추진할 때에는 사전에 협의하여야 한다.");
+		var guideline=chunk(99161L,"admrul","전자정부 성과관리 지침","제4조(대상사업)",
+			"사전협의 대상사업은 중앙행정기관 및 지방자치단체의 정보화업무를 출연, 위임 또는 위탁받은 공공기관의 전자정부사업을 포함한다.");
+		var definition=chunk(99162L,"law","전자정부법","제2조(정의)","공공기관은 공공기관의 운영에 관한 법률 제4조에 따른 기관이다.");
+		var guide=chunk(99163L,"official_doc","정보화사업 사전협의 안내서","대상 사업",
+			"사전협의 대상사업은 대상기관이 추진하는 모든 정보화사업이다.");
+		var law=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),
+			new Class<?>[]{LawChunkMapper.class},(proxy,method,args)->{
+				if (method.getName().equals("findSemanticChunksByDocumentTitleAndText")
+					&& ((List<?>)args[1]).containsAll(List.of(statute.title(),guideline.title()))
+					&& ((List<?>)args[2]).contains("위탁받은 공공기관")) return List.of(statute,guideline,definition);
+				return List.of();
+			});
+		var service=service(law,null);
+		try {
+			String q="공공기관으로 지정된 기관의 정보화사업은 어떤 경우에 사전협의 대상인가요?";
+			var rows=findLexicalChunks(service,QuestionSearchPlan.from(q),List.of("law","admrul"),false);
+			assertThat(rows).containsExactlyInAnyOrder(statute,guideline);
+			assertThat(filterByQuestionIntent(service,List.of(guide,statute,guideline,definition),q))
+				.containsExactlyInAnyOrder(guide,statute,guideline);
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void filtersInformationSystemPreConsultationTargetAwayFromProjectReviewNoise() throws Exception {
 		String question = "공공기관 정보화사업도 사전협의를 받아야 하나?";
 		LawSemanticChunkRow projectReviewNoise = chunk(
