@@ -8,6 +8,28 @@ import org.junit.jupiter.api.Test;
 class ClaimVerifierTests {
 
 	@Test
+	void doesNotDropTheAuthorizedActorFromAnOperativeException() {
+		String clause = "시설의 안전 및 관리, 화재 예방을 위하여 정당한 권한을 가진 자가 설치·운영하는 경우";
+		var grounds = List.of(ground("시설 관리 지침", "설치 제한", "3. " + clause));
+		assertThat(verifier.verifyDetailed(clause + ".", grounds).supportedStrongClaimCount()).isEqualTo(1);
+		assertThat(verifier.verifyDetailed("시설의 안전 및 관리, 화재 예방을 위하여 설치·운영하는 경우.", grounds)
+			.insufficientEvidence()).isTrue();
+	}
+
+	@Test
+	void doesNotUseTheFirstLineOfAWrappedPermissionAsUnqualifiedEvidence() {
+		String item = "시설의 안전 및 관리, 화재 예방을 위하여 정당한 권한을 가진 자가 설치·운영하는 경우";
+		String body = "3. " + item + "\n"
+			+ "⬛ 시설 안전 및 관리, 화재 예방, 교통단속, 교통정보 수집·분석 등을 목적으로 하는 고정형 영상정보\n"
+			+ "처리기기는 정당한 권한을 가진 자에 한하여 설치·운영이 가능합니다.";
+		var grounds = List.of(new LawAiAnswerGround(1,1,1,"official_doc","시설 관리 지침",null,null,null,
+			"CURRENT",null,"설치 제한",null,"3. " + item,null,null,1,body,null,List.of(1L),"matched_child"));
+		assertThat(verifier.verifyDetailed(item + ".", grounds).supportedStrongClaimCount()).isEqualTo(1);
+		assertThat(verifier.verifyDetailed("시설의 안전 및 관리, 화재 예방을 위하여 설치·운영하는 경우.", grounds)
+			.insufficientEvidence()).isTrue();
+	}
+
+	@Test
 	void verifiesShortItemOnlyWithinItsExactConditionalSubmissionList() {
 		String body = "제8조(제출 문서) 관리기관의 장은 정밀 검토를 의뢰할\n경우 다음 각 호의 사항이 포함된 문서를 제출하여야 한다.\n"
 			+ "1. 사업계획서(사업목적 및 추진계획을 포함한다)\n2. 제안요청서\n3. 시설 배치도(출입구 및\n통행로를 포함한다)";

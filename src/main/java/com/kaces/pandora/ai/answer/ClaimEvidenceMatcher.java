@@ -448,6 +448,8 @@ public class ClaimEvidenceMatcher {
 		"^[①-⑳]\\s+([^.!?]{1,220}?(?:때에는|경우에는)\\s+)다음 각 호의 사항을\\s+([^.!?]{1,100}알려야 한다)\\."
 			+ "(?:\\s+" + Pattern.quote(NOTICE_CHANGE) + ")?$");
 	private static final Pattern NOTICE_ITEM = Pattern.compile("^(\\d{1,2})\\.\\s+([^.!?①-⑳]{1,180})$");
+	private static final Pattern AUTHORIZED_ACTOR_SCOPE = Pattern.compile(
+		"정당한\\s*권한을\\s*가진\\s*(?:자|사람)(?=\\s|[이가은는만에의]|$)");
 	private static final Pattern REGISTERED_ITEM_SCOPE = Pattern.compile(
 		"(?<![가-힣A-Za-z0-9])([가-힣A-Za-z0-9]{1,35})에\\s*등록된\\s+"
 			+ "((?:계약\\s*)?품목|물품|제품|상품|서비스)에\\s*(?:대하여|대해)");
@@ -2202,8 +2204,10 @@ public class ClaimEvidenceMatcher {
 					REGISTERED_ITEM_SCOPE.matcher(text).results()
 						.map(match -> KoreanQueryNormalizer.normalizeForMatch(match.group(1)) + ":"
 							+ KoreanQueryNormalizer.normalizeForMatch(match.group(2))),
-					CORRECTIVE_REPORT_SCOPE.matcher(text).results()
-						.map(match -> "report:" + KoreanQueryNormalizer.normalizeForMatch(match.group(1))))
+					java.util.stream.Stream.concat(
+						CORRECTIVE_REPORT_SCOPE.matcher(text).results()
+							.map(match -> "report:" + KoreanQueryNormalizer.normalizeForMatch(match.group(1))),
+						AUTHORIZED_ACTOR_SCOPE.matcher(text).results().map(match -> "authorized-actor")))
 					.collect(java.util.stream.Collectors.toUnmodifiableSet()),
 				Set.copyOf(categories),
 				conditional,

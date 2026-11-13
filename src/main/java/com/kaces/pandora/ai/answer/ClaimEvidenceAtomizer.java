@@ -170,6 +170,8 @@ final class ClaimEvidenceAtomizer {
 			.flatMap(fragment -> fragment.literalOnly()
 				? java.util.stream.Stream.of(fragment) : closedWrappedRatios(fragment.text()).stream())
 			.flatMap(fragment -> fragment.literalOnly()
+				? java.util.stream.Stream.of(fragment) : closedWrappedActorPermissions(fragment.text()).stream())
+			.flatMap(fragment -> fragment.literalOnly()
 				? java.util.stream.Stream.of(fragment) : closedWrappedDutyHeaders(fragment.text()).stream())
 			.flatMap(fragment -> fragment.literalOnly()
 				? java.util.stream.Stream.of(fragment) : closedNumberedProvisos(fragment.text()).stream())
@@ -246,6 +248,22 @@ final class ClaimEvidenceAtomizer {
 
 	static String foldWrappedRatios(String text) {
 		return WRAPPED_PERCENT_RATIO.matcher(text).replaceAll(match -> match.group().replaceAll("\\s+", " ").trim());
+	}
+
+	private List<SourceFragment> closedWrappedActorPermissions(String text) {
+		Matcher block = Pattern.compile("(?m)^[ \\t]*[⬛□○][^.!?。\\r\\n]{1,300}\\R"
+			+ "[ \\t]*[가-힣][^.!?。\\r\\n]{0,100}정당한[ \\t]+권한을[ \\t]+가진[ \\t]+(?:자|사람)에[ \\t]+한하여"
+			+ "[^.!?。\\r\\n]{1,160}(?:가능합니다|할[ \\t]+수[ \\t]+있습니다)[^.!?。\\r\\n]{0,100}\\.(?=[ \\t]*$)")
+			.matcher(text);
+		List<SourceFragment> result = new ArrayList<>();
+		int copied = 0;
+		while (block.find()) {
+			if (block.start() > copied) { result.add(new SourceFragment(text.substring(copied, block.start()), false)); }
+			result.add(new SourceFragment(block.group().replaceAll("\\s+", " ").trim(), true));
+			copied = block.end();
+		}
+		if (copied < text.length()) { result.add(new SourceFragment(text.substring(copied), false)); }
+		return result;
 	}
 
 	private List<SourceFragment> closedWrappedRatios(String text) {
