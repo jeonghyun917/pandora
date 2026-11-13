@@ -126,6 +126,7 @@ public class ClaimVerifier {
 		}
 		List<String> sentences = isExactAnnotatedSourceItem(answer, grounds)
 			? List.of(answer.trim()) : splitSentences(ClaimEvidenceAtomizer.foldWrappedRatios(answer));
+		LawAiAnswerGround submissionOwner = exactSubmissionOwner(answer, grounds);
 		List<String> kept = new ArrayList<>();
 		List<String> unsupportedClaims = new ArrayList<>();
 		List<String> unsupportedNumericClaims = new ArrayList<>();
@@ -153,6 +154,13 @@ public class ClaimVerifier {
 			}
 			substantiveClaims++;
 			ClaimEvidenceMatcher.Match controlMatch = evidenceMatcher.match(sentence, evidenceIndex);
+			if (submissionOwner != null && controlMatch.status() == ClaimEvidenceMatcher.Status.INSUFFICIENT
+				&& sentence.matches("[가-힣]{2,40}")
+				&& Pattern.compile("(?m)^\\h*[1-9][0-9]?[.]\\h+" + Pattern.quote(sentence) + "\\h*$")
+					.matcher(answer).find()) {
+				controlMatch = new ClaimEvidenceMatcher.Match(ClaimEvidenceMatcher.Status.SUPPORTED,
+					submissionOwner.number(), sentence, 0, 1.0, 1.0);
+			}
 			SemanticEvidenceMatcher.SemanticMatch semanticMatch = (
 				verificationProperties.semanticShadowEnabled() || verificationProperties.semanticAuthoritative()
 			)
@@ -253,6 +261,28 @@ public class ClaimVerifier {
 
 	boolean isInsufficientEvidenceAnswer(String answer) {
 		return INSUFFICIENT_EVIDENCE_MESSAGE.equals(answer == null ? "" : answer.trim());
+	}
+
+	private static final Pattern CONDITIONAL_SUBMISSION = Pattern.compile(
+		"^제[0-9]+조(?:의[0-9]+)?\\h*\\(제출\\h*문서\\)\\s+[^.?!①-⑳]{1,200}"
+			+ "의뢰할\\s+경우\\s+다음\\s+각\\s+호의\\s+사항이\\s+포함된\\s+문서를\\s+제출하여야\\s+한다[.]"
+			+ "\\R\\h*1[.]\\h+[^\\r\\n]+(?:\\R[^\\r\\n]+)*$");
+	private static final Pattern SUBMISSION_ITEM_NUMBER = Pattern.compile("(?m)^\\h*([1-9][0-9]?)[.]\\h+");
+
+	private LawAiAnswerGround exactSubmissionOwner(String answer, List<LawAiAnswerGround> grounds) {
+		String block = answer.strip();
+		if (block.length() > 460 || !CONDITIONAL_SUBMISSION.matcher(block).matches()) return null;
+		var items = SUBMISSION_ITEM_NUMBER.matcher(block);
+		int expected = 1;
+		while (items.find()) if (Integer.parseInt(items.group(1)) != expected++) return null;
+		if (expected < 3 || expected > 13 || Pattern.compile("(?m)^\\h*(?:제[0-9]+조|[①-⑳])")
+			.matcher(block.substring(block.indexOf('\n') + 1)).find()) return null;
+		var owners = grounds.stream().filter(g -> g != null && g.number() > 0
+			&& "official_doc".equals(g.target()) && "CURRENT".equals(g.effectiveStatus())
+			&& "direct".equals(g.evidenceRole()) && g.matchedChildText() != null
+			&& Pattern.compile("(?m)^" + Pattern.quote(block) + "(?:\\R\\h*제[0-9]+조|\\s*\\z)")
+				.matcher(g.matchedChildText()).find()).toList();
+		return owners.size() == 1 ? owners.get(0) : null;
 	}
 
 	private List<String> splitSentences(String answer) {
