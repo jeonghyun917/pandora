@@ -13,6 +13,19 @@ class EvidenceJudgeTests {
 	// 메소드 설명: EvidenceJudge 처리 흐름을 수행합니다.
 	private final EvidenceJudge judge = new EvidenceJudge();
 	@Test
+	void requiresReportAndCorrectiveDutyInTheSameOperativeClause() {
+		var exact = chunk(301, "admrul", "시설 운영 규정", "점검",
+			"관리기관과 사업자는 단계별 점검결과보고서에 따라 시정조치를 수행하여야 한다.",
+			"제8조", "article");
+		var scattered = chunk(302, "admrul", "시설 운영 규정", "점검",
+			"관리기관과 사업자는 단계별 점검결과보고서를 제출하여야 한다. 대상 시설의 시정조치를 수행하여야 한다.",
+			"제9조", "article");
+		var result = judge.judge("관리기관과 사업자는 단계별 점검결과보고서에 따라 어떤 시정조치를 수행해야 하나요?",
+			List.of(scattered, exact), Map.of(), 8);
+		assertThat(result.directEvidenceCount()).isOne();
+		assertThat(result.chunks()).extracting(LawSemanticChunkRow::chunkId).containsExactly(301L);
+	}
+	@Test
 	void priorConsultationOmissionRolesRequireAnOwnedConditionalRule() {
 		var exact = new LawSemanticChunkRow(120L, 120L, "admrul", "fixture", "전자정부 성과관리 지침",
 			"기관", "행정규칙", null, "CURRENT", "제13조", "사전협의 신청",

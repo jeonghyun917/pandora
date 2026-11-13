@@ -451,7 +451,7 @@ public class ClaimEvidenceMatcher {
 	private static final Pattern REGISTERED_ITEM_SCOPE = Pattern.compile(
 		"(?<![가-힣A-Za-z0-9])([가-힣A-Za-z0-9]{1,35})에\\s*등록된\\s+"
 			+ "((?:계약\\s*)?품목|물품|제품|상품|서비스)에\\s*(?:대하여|대해)");
-	private static final Pattern CORRECTIVE_REPORT_SCOPE = Pattern.compile(
+	static final Pattern CORRECTIVE_REPORT_SCOPE = Pattern.compile(
 		"(?<![가-힣A-Za-z0-9])((?:단계별\\s+)?[가-힣A-Za-z0-9]{0,35}결과\\s*보고서)에\\s*따라"
 			+ "\\s+시정\\s*조치를\\s*수행");
 

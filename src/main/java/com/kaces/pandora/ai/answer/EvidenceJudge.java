@@ -86,12 +86,15 @@ public class EvidenceJudge {
 			.filter(JudgedChunk::directEvidence)
 			.toList();
 		boolean cctvGuidePurpose = asksCctvGuideIntroduction(profile.normalizedQuestion());
+		boolean reportBasedCorrection = asksReportBasedCorrection(profile.normalizedQuestion());
 		boolean directEvidenceRequired = !profile.directEvidenceGroups().isEmpty()
 			|| cctvGuidePurpose
+			|| reportBasedCorrection
 			|| DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(profile.normalizedQuestion())
 			|| (isIrmRegistrationFaithfulness(profile.normalizedQuestion()) && !directEvidenceChunks.isEmpty())
 			|| searchableChunks.stream().anyMatch(chunk -> requiresCommencementOwnership(profile, chunk));
 		List<JudgedChunk> directSupportingChunks = topicAlignedChunks.stream()
+			.filter(chunk -> !reportBasedCorrection)
 			.filter(chunk -> !DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(profile.normalizedQuestion()))
 			.filter(chunk -> !isIrmRegistrationFaithfulness(profile.normalizedQuestion()))
 			.filter(chunk -> !isCctvGuideApplicabilityQuestion(profile.normalizedQuestion()))
@@ -1563,7 +1566,21 @@ public class EvidenceJudge {
 				&& DirectEvidenceSelectionPolicy.provesConsultationOmissionRoles(chunk);
 			return new JudgedChunk(chunk, score, owned, owned, owned, owned ? 1 : 0, owned ? 1 : 0);
 		}
+		if (asksReportBasedCorrection(profile.normalizedQuestion())) {
+			boolean owned = !tableOfContents && !suppressEvidenceNoise
+				&& ("law".equals(chunk.target()) || "admrul".equals(chunk.target()))
+				&& DirectEvidenceSelectionPolicy.matchesExplicitAuthority(chunk, profile.explicitDocumentTitles())
+				&& ClaimEvidenceMatcher.CORRECTIVE_REPORT_SCOPE.matcher(String.valueOf(chunk.chunkText())).results()
+					.anyMatch(match -> profile.normalizedQuestion().contains(normalize(match.group(1))));
+			return new JudgedChunk(chunk, score, owned, owned, owned, owned ? 1 : 0, owned ? 1 : 0);
+		}
 		return new JudgedChunk(chunk, score, topicAligned, relevant, directEvidence, directEvidenceMatches, bodyDirectEvidenceMatches);
+	}
+
+	private boolean asksReportBasedCorrection(String question) {
+		return question.contains("결과보고서") && question.contains("시정조치")
+			&& articleReferences(question).isEmpty()
+			&& containsAny(question, List.of("보고서에따라", "보고서에따른"));
 	}
 
 	private static final java.util.regex.Pattern CCTV_GUIDE_APPLICABILITY = java.util.regex.Pattern.compile(
