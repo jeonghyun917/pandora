@@ -3342,6 +3342,19 @@ class LawAiAnswerServiceEvidenceGateTests {
 				assertThat(findLexicalChunks(service, classified, List.of("law","admrul"), false))
 					.as("operative scope for %s", authority).containsExactlyInAnyOrder(statute,guideline);
 			}
+			for (String question : List.of(
+				"공공기관운영법상 기타공공기관이 기획한 전자정부사업의 사전협의 적용 요건은 무엇인가요?",
+				"기타공공기관의 전자정부사업에 사전협의가 적용되는 요건을 알려 주세요.")) {
+				assertThat(findLexicalChunks(service, QuestionSearchPlan.from(question), List.of("law","admrul"), false))
+					.as("operative applicability for %s", question).containsExactlyInAnyOrder(statute,guideline);
+			}
+			for (String question : List.of(
+				"기타공공기관의 정보화사업에서 사전협의 적용 요건을 충족하면 언제 신청하나요?",
+				"기타공공기관 정보화사업의 사전협의 적용 요건에 면제 규정이 있나요?",
+				"기타공공기관의 정보화사업 사전협의 절차와 계약 적용 요건을 알려 주세요.")) {
+				assertThat(findLexicalChunks(service, QuestionSearchPlan.from(question), List.of("law","admrul"), false))
+					.as("do not override distinct intent: %s", question).doesNotContain(statute,guideline);
+			}
 			for (String authority : List.of("개인정보 보호법상", "공공기관의 운영에 관한 법률 제5조에 따른")) {
 				var named = QuestionSearchPlan.from(authority + " 기타공공기관의 정보화사업은 사전협의 대상인가요?");
 				assertThat(findLexicalChunks(service, named, List.of("law","admrul"), false))

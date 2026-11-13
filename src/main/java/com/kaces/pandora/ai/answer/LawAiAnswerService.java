@@ -8298,8 +8298,10 @@ public class LawAiAnswerService {
 	}
 
 	private boolean asksPublicInstitutionConsultationScope(String query) {
+		boolean applicability = containsAny(query, "사전협의적용조건", "사전협의적용요건",
+			"사전협의가적용되는조건", "사전협의가적용되는요건");
 		return isInformationSystemPreConsultationQuestion(query)
-			&& query.contains("공공기관") && containsAny(query, "대상", "받아야", "해야", "해당")
+			&& query.contains("공공기관") && (applicability || containsAny(query, "대상", "받아야", "해야", "해당"))
 			&& !isInformationSystemPreConsultationTimingQuestion(query)
 			&& !containsAny(query, "자치분권", "과업심의", "제외", "면제", "생략", "미준수", "위반", "제재", "시정");
 	}
