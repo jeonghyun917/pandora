@@ -8,6 +8,29 @@ import org.junit.jupiter.api.Test;
 class AnswerQuestionAlignmentVerifierTests {
 
 	@Test
+	void auditResultNeedsTheOwningScopeAndQualifiedProcedure() {
+		String question = "정보시스템 감리 후 감리법인은 시정 조치 결과를 어떻게 확인하고 통보하나요?";
+		String scope = "① 법 제57조제1항 또는 제4항에 따라 정보시스템 감리를 하는 법인 또는 기관의 업무범위는 다음 각 호와 같다.";
+		String procedure = "② 제1항에 따라 정보시스템 감리를 하는 법인 또는 기관은 다음 각 호의 절차에 따라 수행하는 것을 원칙으로 하되, "
+			+ "정보시스템 감리업무의 수행 형태에 따라 일부 절차를 변경하거나 생략할 수 있다.";
+		String item = "7. 감리에 따른 시정 조치 결과의 확인 및 통보";
+		String body = String.join("\n", scope, procedure, item);
+		var ground = new LawAiAnswerGround(1, 1, 1, "law", "전자정부법 시행령", null, null, null,
+			"CURRENT", null, "감리법인의 업무범위 등", null, body, null, null, 1,
+			body, null, List.of(1L), null, "direct");
+		var grounds = List.of(ground);
+		var claims = new ClaimVerifier();
+		var complete = claims.verifyDetailed(body, grounds);
+		assertThat(complete.supportedStrongClaimCount()).isEqualTo(4);
+		assertThat(verifier.verify(question, claims.verifyDetailed(procedure + "\n" + item, grounds), grounds)
+			.aligned()).isFalse();
+		assertThat(verifier.verify(question, claims.verifyDetailed(scope + "\n" + item, grounds), grounds)
+			.aligned()).isFalse();
+		var result = verifier.verify(question, complete, grounds);
+		assertThat(result.aligned()).as("%s", result).isTrue();
+	}
+
+	@Test
 	void nominalWorkTriggerMustKeepTheObjectAndActionTogether() {
 		String question = "기존에 운영 중인 공공데이터베이스를 개선할 때 공통표준 적용 의무가 있습니까?";
 		String prefix = "기존에 운영 중인 공공데이터베이스는 ";

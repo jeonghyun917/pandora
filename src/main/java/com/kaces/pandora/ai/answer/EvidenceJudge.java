@@ -2898,7 +2898,11 @@ public class EvidenceJudge {
 				"과태료", "처벌", "언제", "기한", "며칠", "기간", "시정명령", "시정요구", "면제", "생략",
 				"위반", "않", "제외", "감점", "처분"))
 			|| chunk.chunkText() == null) return "";
-		var item = AUDIT_RESULT_ITEM.matcher(chunk.chunkText());
+		return ownedAuditResult(chunk.chunkText());
+	}
+
+	static String ownedAuditResult(String body) {
+		var item = AUDIT_RESULT_ITEM.matcher(body);
 		if (!item.find()) return "";
 		String excerpt = item.group().strip();
 		return excerpt.length() <= 700 && !item.find() ? excerpt : "";

@@ -175,6 +175,12 @@ public class AnswerQuestionAlignmentVerifier {
 				addLiteralNumberedProvisoCandidate(grounds, supportedLinks, alignmentProfile, scopeRules, candidates);
 			}
 		}
+		if (completeAnswerCoverage && !claimResult.insufficientEvidence()
+			&& claimResult.strongClaimCount() == 4 && supportedLinks.size() == 4
+			&& claimResult.unsupportedClaims().isEmpty() && claimResult.unsupportedNumericClaims().isEmpty()
+			&& claimResult.contradictedClaims().isEmpty()) {
+			addOwnedAuditResult(questionScope, grounds, supportedLinks, alignmentProfile, candidates);
+		}
 		for (CandidateResult candidate : candidates) {
 			if (candidate.missingGroups().isEmpty()) {
 				if (!completeAnswerCoverage) {
@@ -192,6 +198,40 @@ public class AnswerQuestionAlignmentVerifier {
 				.thenComparingInt(candidate -> reasonPriority(candidate.missingGroups())))
 			.orElseThrow();
 		return AlignmentResult.failed(reasonCode(best.missingGroups()), best.missingGroups());
+	}
+
+	private void addOwnedAuditResult(String question, List<LawAiAnswerGround> grounds,
+		List<ClaimVerifier.ClaimEvidenceLink> links, AlignmentProfile profile, List<CandidateResult> candidates) {
+		if (grounds == null || !profile.conditionGroups().isEmpty()
+			|| !question.contains("정보시스템감리") || !question.contains("감리법인")
+			|| !question.contains("시정조치결과") || !question.contains("확인") || !question.contains("통보")
+			|| AlignmentProfile.containsAny(question, "제재", "불이익", "위반", "미준수", "아닌", "않",
+				"시정명령", "시정요구", "언제", "기한", "생략", "면제", "제외", "비대상", "법령준수여부")) return;
+		int number = links.get(0).groundNumber();
+		if (number <= 0 || links.stream().anyMatch(link -> link.groundNumber() != number)) return;
+		var owners = grounds.stream().filter(g -> g != null && g.number() == number).toList();
+		if (owners.size() != 1) return;
+		var owner = owners.get(0);
+		if (!"direct".equals(owner.evidenceRole()) || !"law".equals(owner.target())
+			|| !"CURRENT".equals(owner.effectiveStatus()) || !normalize(owner.title()).equals("전자정부법시행령")
+			|| owner.matchedChildText() == null) return;
+		String owned = EvidenceJudge.ownedAuditResult(owner.matchedChildText());
+		if (owned.isEmpty()) return;
+		var lines = owned.lines().map(String::strip).toList();
+		String scope = lines.get(0);
+		String procedure = lines.stream().filter(line -> line.startsWith("②")).findFirst().orElseThrow();
+		String item = lines.get(lines.size() - 1).replaceFirst("^7[.]\\s+", "");
+		var exact = java.util.stream.Stream.of(scope.substring(1).strip(), procedure.substring(1).strip(), item)
+			.flatMap(line -> atomizer.atomize(line).stream()).map(AnswerQuestionAlignmentVerifier::foldedWhitespace).toList();
+		if (exact.size() != links.size()) return;
+		for (int i = 0; i < exact.size(); i++) {
+			var link = links.get(i);
+			if (!exact.get(i).equals(foldedWhitespace(link.claim()))
+				|| !exact.get(i).equals(foldedWhitespace(link.evidenceSentence()))) return;
+		}
+		if (!matchesAllGroups(normalize(scope + " " + item), profile.subjectGroups())
+			|| !profile.relationRequirements().stream().allMatch(requirement -> requirement.matches(item))) return;
+		candidates.add(new CandidateResult(scope + "\n" + procedure + "\n" + lines.get(lines.size() - 1), List.of()));
 	}
 
 	private void addOwnedIrmDefinition(String question, List<LawAiAnswerGround> grounds,
