@@ -14,6 +14,24 @@ class EvidenceJudgeTests {
 	private final EvidenceJudge judge = new EvidenceJudge();
 
 	@Test
+	void explicitConsultationApplicabilityUsesScopedEvidenceRatherThanProcedure() {
+		var scope = chunk(381, "2024년 정보화사업 사전협의 안내자료", "대상 사업",
+			"사전협의의 대상사업은 예산과목 및 계약방식과 관계없이 대상기관이 추진하는 모든 정보화사업이다.");
+		var procedure = chunk(382, "2024년 정보화사업 사전협의 안내자료", "신청",
+			"공공기관의 정보화사업 사전협의 신청서는 담당 기관에 제출한다.");
+		for (String wording : List.of("사전협의 적용 요건", "사전협의가 적용되는 조건")) {
+			String question = "기타공공기관 정보화사업의 " + wording + "을 설명해 주세요.";
+			assertThat(judge.judge(question, List.of(procedure, scope), Map.of(), 8).chunks())
+				.containsExactly(scope);
+			assertThat(judge.judge(question, List.of(procedure), Map.of(), 8).directEvidenceCount()).isZero();
+			for (String other : List.of(" 충족 시 언제 신청하나요?", " 중 면제 규정은 무엇인가요?")) {
+				assertThat(QuestionIntentProfile.asksPublicInstitutionConsultationApplicability(
+					("기타공공기관 정보화사업의 " + wording + other).replace(" ", ""))).isFalse();
+			}
+		}
+	}
+
+	@Test
 	void recognizesTheConditionalConsultationDutyWithoutRequiringTargetWording() {
 		String clause = "제67조(사전협의) 행정기관등의 장은 다른 행정기관등과의 상호연계 또는 공동이용과 관련한 "
 			+ "전자정부사업 및 지역정보화사업을 추진할 때에는 중앙사무관장기관의 장과 사전에 협의하여야 한다.";

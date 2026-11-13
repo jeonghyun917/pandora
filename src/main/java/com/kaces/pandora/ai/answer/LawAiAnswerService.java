@@ -8298,8 +8298,7 @@ public class LawAiAnswerService {
 	}
 
 	private boolean asksPublicInstitutionConsultationScope(String query) {
-		boolean applicability = containsAny(query, "사전협의적용조건", "사전협의적용요건",
-			"사전협의가적용되는조건", "사전협의가적용되는요건");
+		boolean applicability = QuestionIntentProfile.asksPublicInstitutionConsultationApplicability(query);
 		return isInformationSystemPreConsultationQuestion(query)
 			&& query.contains("공공기관") && (applicability || containsAny(query, "대상", "받아야", "해야", "해당"))
 			&& !isInformationSystemPreConsultationTimingQuestion(query)

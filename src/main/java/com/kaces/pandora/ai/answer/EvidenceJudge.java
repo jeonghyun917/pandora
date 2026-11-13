@@ -3144,7 +3144,8 @@ public class EvidenceJudge {
 
 	private static boolean isPreConsultationTargetQuestion(String normalizedQuestion) {
 		String normalized = normalize(normalizedQuestion);
-		return normalized.contains("사전협의") && normalized.contains("대상");
+		return normalized.contains("사전협의") && (normalized.contains("대상")
+			|| QuestionIntentProfile.asksPublicInstitutionConsultationApplicability(normalized));
 	}
 
 	private static boolean isSecurityReviewTargetQuestion(String normalizedQuestion) {

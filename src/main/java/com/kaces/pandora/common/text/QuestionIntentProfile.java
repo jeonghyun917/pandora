@@ -278,7 +278,8 @@ public record QuestionIntentProfile(
 		List<List<String>> directEvidenceGroups,
 		Set<String> sectionTypes
 	) {
-		if (!suppressedIntentIds.contains("target_scope") && containsAny(normalized, TARGET_SCOPE_CUES)) {
+		if (!suppressedIntentIds.contains("target_scope")
+			&& (containsAny(normalized, TARGET_SCOPE_CUES) || asksPublicInstitutionConsultationApplicability(normalized))) {
 			intentTypes.add("target_scope");
 			sectionTypes.add("target_scope");
 			intentGroups.add(List.of("대상", "대상사업", "대상기관", "대상시스템", "적용대상", "범위", "포함", "해당", "비대상", "제외"));
@@ -980,6 +981,14 @@ public record QuestionIntentProfile(
 				|| normalized.contains("지능정보화")
 				|| normalized.contains("전자정부성과관리")
 				|| normalized.contains("정보화사업"));
+	}
+
+	public static boolean asksPublicInstitutionConsultationApplicability(String normalized) {
+		return normalized.contains("공공기관")
+			&& containsAny(normalized, List.of("사전협의적용조건", "사전협의적용요건",
+				"사전협의가적용되는조건", "사전협의가적용되는요건"))
+			&& !containsAny(normalized, List.of("자치분권", "과업심의", "언제", "시점", "시기",
+				"며칠전", "몇일전", "어느단계", "절차", "제외", "면제", "생략", "미준수", "위반", "제재", "시정"));
 	}
 
 	private static boolean isAutonomyPreConsultationQuestion(String normalized) {
