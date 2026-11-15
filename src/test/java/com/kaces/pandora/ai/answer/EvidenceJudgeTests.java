@@ -3244,6 +3244,31 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void deliveryAndReviewSearchDoesNotUseIndividualComplianceRulesAsDirectGrounds() {
+		String title = "공공SW사업 법제도 관리감독 및 지원 가이드";
+		var scope = guideChunk(910, 1, 4, title, "대상사업", "대상사업: 국가기관등의 장이 발주하는 소프트웨어사업");
+		var steps = guideChunk(911, 1, 4, title, "점검절차",
+			"미준수 사항이 있을 경우 개선권고 검토의견을 발주기관에 전달한다. "
+			+ "발주기관에서는 입찰공고서 또는 제안요청서에 반영여부를 검토한다.");
+		var criterion = guideChunk(912, 1, 4, title, "특정규격 명시 금지",
+			"입찰공고 시 특정상표, 규격, 모델을 지정하지 않아야 한다. "
+			+ "소프트웨어 도입이 포함된 사업에서 특정상표 또는 특정규격을 지정하여 입찰에 부치는 행위를 금지한다. "
+			+ "특정규격 명시 금지 관련 법·제도 개선권고를 받을 수 있으므로 권고기관에 적용 근거자료를 제시한다.");
+		var enforcement = guideChunk(913, 1, 4, title, "관리·감독 근거",
+			"소프트웨어사업 관리·감독 및 개선권고. 과학기술정보통신부장관은 국가기관등의 장이 소프트웨어사업을 "
+			+ "추진하는 경우 관련 법령을 준수하였는지를 확인하고, 위반하였다고 인정하는 경우에는 개선을 권고할 수 있다. "
+			+ "국가기관등의 장은 권고를 받은 날부터 1개월 이내에 조치 결과를 통보하여야 한다.");
+		var grounds = List.of(scope, steps, criterion, enforcement);
+		var judge = new EvidenceJudge();
+		var result = judge.judge("공공기관이 발주한 소프트웨어사업의 입찰공고에서 법제도 미준수가 확인되면 "
+			+ "개선권고 의견은 누구에게 전달되고 어떻게 검토되나요?", grounds, java.util.Map.of(), 8);
+		assertThat(result.chunks()).extracting(LawSemanticChunkRow::chunkId).containsExactly(911L, 910L);
+		assertThat(result.directEvidenceCount()).isOne();
+		assertThat(judge.judge("공공기관이 발주한 소프트웨어사업 입찰공고에 특정규격을 지정할 수 있나요?",
+			grounds, java.util.Map.of(), 8).chunks()).extracting(LawSemanticChunkRow::chunkId).contains(912L);
+	}
+
+	@Test
 	void publicGuideScopeRequiresAnIdentifiedEditionOfTheSameDocument() {
 		String title = "공공SW사업 법제도 관리감독 및 지원 가이드";
 		String scope = "대상사업: 국가기관등의 장이 발주하는 소프트웨어사업";

@@ -91,6 +91,10 @@ public class EvidenceJudge {
 				requiresCommencementOwnership(profile, chunk) && verifiedCommencement(chunk, commencementEvidence)))
 			.sorted(Comparator.comparingDouble(JudgedChunk::score).reversed())
 			.toList();
+		int delivery = query.indexOf("전달");
+		if (publicGuideQuestion && delivery >= 0 && query.indexOf("검토", delivery + "전달".length()) >= 0) {
+			judgedChunks = preferOwnedGuideWorkflow(judgedChunks);
+		}
 		List<JudgedChunk> topicAlignedChunks = judgedChunks.stream()
 			.filter(JudgedChunk::topicAligned)
 			.toList();
@@ -208,6 +212,26 @@ public class EvidenceJudge {
 	private static boolean isPublicProcurementGuide(LawSemanticChunkRow chunk) {
 		return "official_doc".equals(chunk.target())
 			&& normalize(chunk.title()).startsWith("공공sw사업법제도관리감독및지원가이드");
+	}
+
+	private static List<JudgedChunk> preferOwnedGuideWorkflow(List<JudgedChunk> candidates) {
+		var procedures = candidates.stream().filter(JudgedChunk::directEvidence)
+			.map(JudgedChunk::chunk)
+			.filter(row -> {
+				String body = normalize(row.chunkText());
+				int delivery = body.indexOf("발주기관에전달");
+				return delivery >= 0 && body.indexOf("반영여부를검토", delivery) >= 0
+					&& candidates.stream().anyMatch(candidate -> isPublicGuideScopeFor(candidate.chunk(), row));
+			}).toList();
+		if (procedures.isEmpty()) return candidates;
+		return candidates.stream().filter(candidate -> {
+			var row = candidate.chunk();
+			return !isPublicProcurementGuide(row)
+				|| procedures.stream().noneMatch(procedure -> procedure.documentId() == row.documentId()
+					&& procedure.chunkVersion().equals(row.chunkVersion()))
+				|| procedures.contains(row)
+				|| procedures.stream().anyMatch(procedure -> isPublicGuideScopeFor(row, procedure));
+		}).toList();
 	}
 
 	static boolean isPublicGuideScopeFor(LawSemanticChunkRow scope, LawSemanticChunkRow procedure) {
