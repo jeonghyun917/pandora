@@ -68,9 +68,13 @@ public class EvidenceJudge {
 		boolean procurementRecommendation = recommendation && !privateRecommendation
 			&& containsAny(query, List.of("소프트웨어사업", "sw사업"))
 			&& containsAny(query, List.of("국가계약법", "지방계약법", "국가를당사자로하는계약", "지방자치단체를당사자로하는계약"));
+		boolean publicGuideQuestion = recommendation && !privateRecommendation && query.contains("발주")
+			&& containsAny(query, List.of("공공기관", "국가기관", "지방자치단체"))
+			&& containsAny(query, List.of("소프트웨어사업", "sw사업"));
 		List<LawSemanticChunkRow> searchableChunks = chunks.stream()
 			.filter(chunk -> chunk != null && RagChunkQualityStatus.from(chunk.qualityStatus()).searchable())
 			.filter(chunk -> !privateRecommendation || !isPublicSwRecommendationSource(chunk))
+			.filter(chunk -> !privateRecommendation || !isPublicProcurementGuide(chunk))
 			.filter(chunk -> !(procurementRecommendation
 				|| (recommendation && query.contains("소프트웨어진흥법제57조")))
 				|| containsAny(query, List.of("위탁", "발송", "접수"))
@@ -148,6 +152,17 @@ public class EvidenceJudge {
 		selectedChunks = withCatalogRequisitionSupport(profile, selectedChunks, judgedChunks, requestedLimit);
 		selectedChunks = preferSecurityReviewGuideEvidence(profile, selectedChunks);
 		selectedChunks = preferCommitteeExpansion(profile, selectedChunks);
+		if (publicGuideQuestion && selectedChunks.size() < requestedLimit) {
+			var selectedDirect = selectedChunks.stream().filter(JudgedChunk::directEvidence).toList();
+			var guideScope = judgedChunks.stream().filter(candidate -> !candidate.directEvidence())
+				.filter(candidate -> selectedDirect.stream().anyMatch(direct ->
+					isPublicGuideScopeFor(candidate.chunk(), direct.chunk())))
+				.findFirst();
+			if (guideScope.isPresent() && !selectedContainsChunk(selectedChunks, guideScope.get())) {
+				selectedChunks = new ArrayList<>(selectedChunks);
+				selectedChunks.add(guideScope.get());
+			}
+		}
 		if (procurementRecommendation && selectedChunks.size() < requestedLimit
 			&& directEvidenceChunks.stream().anyMatch(candidate -> isSwRecommendationAuthority(candidate.chunk()))) {
 			var support = judgedChunks.stream().filter(candidate -> isSwRecommendationScope(candidate.chunk()))
@@ -188,6 +203,19 @@ public class EvidenceJudge {
 
 	private static boolean selectedContainsChunk(List<JudgedChunk> selected, JudgedChunk candidate) {
 		return selected.stream().anyMatch(item -> scoreKey(item.chunk()).equals(scoreKey(candidate.chunk())));
+	}
+
+	private static boolean isPublicProcurementGuide(LawSemanticChunkRow chunk) {
+		return "official_doc".equals(chunk.target())
+			&& normalize(chunk.title()).startsWith("공공sw사업법제도관리감독및지원가이드");
+	}
+
+	static boolean isPublicGuideScopeFor(LawSemanticChunkRow scope, LawSemanticChunkRow procedure) {
+		return scope.documentId() == procedure.documentId()
+			&& java.util.Objects.equals(scope.chunkVersion(), procedure.chunkVersion())
+			&& isPublicProcurementGuide(scope) && isPublicProcurementGuide(procedure)
+			&& normalize(scope.chunkText()).contains("대상사업국가기관등의장이발주하는소프트웨어사업")
+			&& normalize(procedure.chunkText()).contains("미준수사항이있을경우개선권고검토의견을발주기관에전달");
 	}
 
 	static boolean isSwRecommendationAuthority(LawSemanticChunkRow chunk) {

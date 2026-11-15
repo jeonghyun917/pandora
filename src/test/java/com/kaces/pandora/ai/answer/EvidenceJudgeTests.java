@@ -3221,6 +3221,28 @@ class EvidenceJudgeTests {
 			List.of(remedy, scope), java.util.Map.of(), 8).directEvidenceCount()).isZero();
 	}
 
+	@Test
+	void publicGuideKeepsExplicitProcurementScopeButDoesNotApplyItToPrivateBids() {
+		String title = "공공SW사업 법제도 관리감독 및 지원 가이드";
+		var scope = chunk(910, "official_doc", title, "대상사업",
+			"대상사업: 국가기관등의 장이 발주하는 소프트웨어사업");
+		var procedure = chunk(911, "official_doc", title, "점검시점 및 절차",
+			"미준수 사항이 있을 경우 개선권고 검토의견을 발주기관에 전달한다. "
+			+ "발주기관에서는 입찰공고서 또는 제안요청서에 반영여부를 검토한다.");
+		var judge = new EvidenceJudge();
+		var result = judge.judge("공공기관이 발주한 소프트웨어사업에서 법제도 미준수가 확인되면 개선권고 의견은 누구에게 전달되나요?",
+			List.of(scope, procedure), java.util.Map.of(), 8);
+		assertThat(result.chunks()).extracting(LawSemanticChunkRow::chunkId).containsExactly(911L, 910L);
+		assertThat(result.directEvidenceCount()).isEqualTo(1);
+		var assembled = new ParentContextAssembler().toGrounds(result.chunks(), java.util.Map.of(),
+			result.scoreByChunkId(), LawSemanticChunkRow::chunkText,
+			LawAiAnswerService.evidenceRoleForSelectionPolicy(result.selectionPolicy()));
+		assertThat(LawAiAnswerService.preserveProcurementScopeRole(assembled, result.chunks()))
+			.extracting(LawAiAnswerGround::evidenceRole).containsExactly("direct", "related_definition");
+		assertThat(judge.judge("민간기업이 자체 발주한 정보시스템 사업도 법제도 미준수 시 같은 개선권고 절차가 적용되나요?",
+			List.of(scope, procedure), java.util.Map.of(), 8).directEvidenceCount()).isZero();
+	}
+
 	private LawSemanticChunkRow chunk(long id, String title, String text) {
 		return chunk(id, title, "p." + id, text);
 	}

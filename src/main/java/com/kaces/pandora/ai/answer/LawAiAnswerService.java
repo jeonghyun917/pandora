@@ -12102,11 +12102,13 @@ public class LawAiAnswerService {
     static List<LawAiAnswerGround> preserveProcurementScopeRole(List<LawAiAnswerGround> grounds,
         List<LawSemanticChunkRow> selected) {
         if (grounds.size() < 2 || selected.size() < 2) return grounds;
-        var authority = selected.stream().filter(EvidenceJudge::isSwRecommendationAuthority)
+        var direct = selected.stream()
             .filter(row -> grounds.stream().anyMatch(g -> "direct".equals(g.evidenceRole())
-                && g.chunkId() == row.chunkId() && g.target().equals(row.target()))).findFirst();
-        if (authority.isEmpty()) return grounds;
-        var scope = selected.stream().filter(EvidenceJudge::isSwRecommendationScope).toList();
+                && g.chunkId() == row.chunkId() && g.target().equals(row.target()))).toList();
+        boolean statuteAuthority = direct.stream().anyMatch(EvidenceJudge::isSwRecommendationAuthority);
+        var scope = selected.stream().filter(row ->
+            (statuteAuthority && EvidenceJudge.isSwRecommendationScope(row))
+                || direct.stream().anyMatch(procedure -> EvidenceJudge.isPublicGuideScopeFor(row, procedure))).toList();
         if (scope.isEmpty()) return grounds;
         return grounds.stream().map(g -> scope.stream().anyMatch(row ->
             g.chunkId() == row.chunkId() && g.target().equals(row.target())) ? asRelatedSupport(g) : g).toList();
