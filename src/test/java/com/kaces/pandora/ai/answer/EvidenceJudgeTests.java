@@ -3224,9 +3224,9 @@ class EvidenceJudgeTests {
 	@Test
 	void publicGuideKeepsExplicitProcurementScopeButDoesNotApplyItToPrivateBids() {
 		String title = "공공SW사업 법제도 관리감독 및 지원 가이드";
-		var scope = chunk(910, "official_doc", title, "대상사업",
+		var scope = guideChunk(910, 1, 4, title, "대상사업",
 			"대상사업: 국가기관등의 장이 발주하는 소프트웨어사업");
-		var procedure = chunk(911, "official_doc", title, "점검시점 및 절차",
+		var procedure = guideChunk(911, 1, 4, title, "점검시점 및 절차",
 			"미준수 사항이 있을 경우 개선권고 검토의견을 발주기관에 전달한다. "
 			+ "발주기관에서는 입찰공고서 또는 제안요청서에 반영여부를 검토한다.");
 		var judge = new EvidenceJudge();
@@ -3241,6 +3241,24 @@ class EvidenceJudgeTests {
 			.extracting(LawAiAnswerGround::evidenceRole).containsExactly("direct", "related_definition");
 		assertThat(judge.judge("민간기업이 자체 발주한 정보시스템 사업도 법제도 미준수 시 같은 개선권고 절차가 적용되나요?",
 			List.of(scope, procedure), java.util.Map.of(), 8).directEvidenceCount()).isZero();
+	}
+
+	@Test
+	void publicGuideScopeRequiresAnIdentifiedEditionOfTheSameDocument() {
+		String title = "공공SW사업 법제도 관리감독 및 지원 가이드";
+		String scope = "대상사업: 국가기관등의 장이 발주하는 소프트웨어사업";
+		String procedure = "미준수 사항이 있을 경우 개선권고 검토의견을 발주기관에 전달한다.";
+		var operative = guideChunk(911, 1, 4, title, "점검절차", procedure);
+		assertThat(EvidenceJudge.isPublicGuideScopeFor(guideChunk(910, 1, 4, title, "대상사업", scope), operative)).isTrue();
+		assertThat(EvidenceJudge.isPublicGuideScopeFor(guideChunk(910, 2, 4, title, "대상사업", scope), operative)).isFalse();
+		assertThat(EvidenceJudge.isPublicGuideScopeFor(guideChunk(910, 1, 3, title, "대상사업", scope), operative)).isFalse();
+		assertThat(EvidenceJudge.isPublicGuideScopeFor(guideChunk(910, 1, null, title, "대상사업", scope),
+			guideChunk(911, 1, null, title, "점검절차", procedure))).isFalse();
+	}
+
+	private LawSemanticChunkRow guideChunk(long id, long documentId, Integer version, String title, String heading, String text) {
+		return new LawSemanticChunkRow(id, documentId, "official_doc", null, title, null, null, null,
+			null, null, heading, text, null, null, null, (int) id, null, null, null, "PASS", null, null, version);
 	}
 
 	private LawSemanticChunkRow chunk(long id, String title, String text) {

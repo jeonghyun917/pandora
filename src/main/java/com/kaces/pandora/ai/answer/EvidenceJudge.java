@@ -212,7 +212,7 @@ public class EvidenceJudge {
 
 	static boolean isPublicGuideScopeFor(LawSemanticChunkRow scope, LawSemanticChunkRow procedure) {
 		return scope.documentId() == procedure.documentId()
-			&& java.util.Objects.equals(scope.chunkVersion(), procedure.chunkVersion())
+			&& scope.chunkVersion() != null && scope.chunkVersion().equals(procedure.chunkVersion())
 			&& isPublicProcurementGuide(scope) && isPublicProcurementGuide(procedure)
 			&& normalize(scope.chunkText()).contains("대상사업국가기관등의장이발주하는소프트웨어사업")
 			&& normalize(procedure.chunkText()).contains("미준수사항이있을경우개선권고검토의견을발주기관에전달");

@@ -17,6 +17,21 @@ import org.junit.jupiter.api.Test;
 
 class RagDocumentMapperXmlTests {
 	@Test
+	void titleAndTextSearchesMaterializeTheVersionOfEachReturnedChunk() throws Exception {
+		Configuration configuration = parseMapper();
+		for (String method : List.of("findSemanticChunksByDocumentTitleAndText",
+			"findSemanticChunksByDocumentTitleAndTextCaptured", "findSemanticChunksByDocumentTitleAndTextScoped",
+			"findSemanticChunksByDocumentTitleAndTextScopedCaptured")) {
+			String sql = normalizedSql(configuration.getMappedStatement(
+				"com.kaces.pandora.rag.persistence.RagDocumentMapper." + method), Map.of(
+				"documentTypes", List.of("official_doc"), "titleKeywords", List.of("가이드"),
+				"textKeywords", List.of("대상사업"), "limit", 20));
+			assertThat(sql).as(method).contains("c.chunk_version AS chunkVersion");
+			assertCanonicalProjection(sql);
+		}
+	}
+
+	@Test
 	void contextAndMatchedIdQueriesReturnTheirActiveSourceVersion() throws Exception {
 		Configuration configuration = parseMapper();
 		for (String method : List.of("findSemanticContextChunks", "findSemanticChunksByIds")) {
