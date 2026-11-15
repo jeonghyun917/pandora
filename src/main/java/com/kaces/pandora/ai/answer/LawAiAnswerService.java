@@ -9170,7 +9170,29 @@ public class LawAiAnswerService {
 	}
 
 	private List<LawSemanticChunkRow> findLexicalChunks(QuestionSearchPlan queryPlan, List<String> targets, boolean includeFuture, RecoveryRoutingSnapshot routing) {
-		return findLexicalChunks(queryPlan, targets, includeFuture, routing, null);
+		return preferReviewedSecurityScopeInLexicalOrder(queryPlan,
+			findLexicalChunks(queryPlan, targets, includeFuture, routing, null), routing);
+	}
+
+	private List<LawSemanticChunkRow> preferReviewedSecurityScopeInLexicalOrder(QuestionSearchPlan plan,
+		List<LawSemanticChunkRow> candidates, RecoveryRoutingSnapshot routing) {
+		if (candidates.size() < 2 || routing == null || routing.pdfSources().isEmpty()) return candidates;
+		String query = plan.question();
+		String normalized = normalizeForMatch(query);
+		if (!normalized.contains("대상") || !isSecurityReviewQuestion(queryTerms(query))
+			|| containsAny(normalized, "예외", "제외", "비대상", "면제", "생략", "안해도", "아닌", "불필요", "미실시")
+			|| requiresLawOrVersionSpecificEvidence(query, plan.profile())
+			|| !documentTitleAnchorKeywords(query).isEmpty()) return candidates;
+		for (int i = 0; i < candidates.size(); i++) {
+			var candidate = candidates.get(i);
+			if (!"PASS".equals(candidate.qualityStatus()) || !isCapturedReviewedOfficialDoc(candidate, routing)
+				|| !EvidenceJudge.hasOperativeSecurityReviewScope(candidate.chunkText())) continue;
+			if (i == 0) return candidates;
+			var ordered = new java.util.ArrayList<>(candidates);
+			ordered.add(0, ordered.remove(i));
+			return List.copyOf(ordered);
+		}
+		return candidates;
 	}
 
 	private List<LawSemanticChunkRow> findLexicalChunks(QuestionSearchPlan queryPlan, List<String> targets,

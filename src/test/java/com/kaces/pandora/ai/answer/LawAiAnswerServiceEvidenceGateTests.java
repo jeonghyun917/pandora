@@ -953,7 +953,7 @@ class LawAiAnswerServiceEvidenceGateTests {
 			"보안성 검토 대상 사업은 정보통신망 또는 정보시스템 구축 사업 및 주요 데이터베이스 구축 사업이다.", null);
 		var irrelevant = chunk(88003, 88001, "official_doc", source.title(), "등록 안내",
 			"로그인한 후 담당자 이름과 연락처를 등록한다.", null);
-		var ragResult = new java.util.concurrent.atomic.AtomicReference<>(direct);
+		var ragResult = new java.util.concurrent.atomic.AtomicReference<>(List.of(direct));
 		var failure = new java.util.concurrent.atomic.AtomicReference<RuntimeException>(timeout);
 		LawChunkMapper law = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
 			LawChunkMapper.class.getClassLoader(), new Class<?>[]{LawChunkMapper.class},
@@ -966,7 +966,7 @@ class LawAiAnswerServiceEvidenceGateTests {
 			(proxy, method, arguments) -> {
 				assertThat(method.getName()).endsWith("Routed");
 				assertThat(arguments[arguments.length - 1]).isSameAs(routing);
-				return List.of(ragResult.get());
+				return ragResult.get();
 			});
 		var service = service(law, rag);
 		try {
@@ -994,6 +994,14 @@ class LawAiAnswerServiceEvidenceGateTests {
 				authority.externalId(), authority.title(), "", "", "20260101", "CURRENT", "제7조", authority.chunkTitle(),
 				authority.chunkText(), null, "$.reviewedPdf.units[0]", source.sourceUrl(), 1, "9".repeat(64),
 				authority.parentSectionTitle(), "body", "PASS", null, null, 4);
+			ragResult.set(List.of(guide, rawRule));
+			var lexicalScope = QuestionSearchPlan.from("보안성 검토 대상 시스템 범위는 무엇인가요?");
+			assertThat(method.invoke(service, lexicalScope, List.of("official_doc"), true, routing))
+				.isEqualTo(List.of(rawRule, guide));
+			var unbound = chunk(88007, "official_doc", rawRule.title(), rawRule.chunkTitle(), rawRule.chunkText());
+			ragResult.set(List.of(guide, unbound));
+			assertThat(method.invoke(service, lexicalScope, List.of("official_doc"), true, routing))
+				.isEqualTo(List.of(guide, unbound));
 			var withText = LawAiAnswerService.class.getDeclaredMethod("copyWithChunkText", LawSemanticChunkRow.class, String.class);
 			withText.setAccessible(true);
 			var enriched = (LawSemanticChunkRow) withText.invoke(service, rawRule,
@@ -1044,14 +1052,14 @@ class LawAiAnswerServiceEvidenceGateTests {
 				new SourceVersionRoutingSnapshot(1, Map.of(group, lawRoute)), routing.pdfSources());
 			org.assertj.core.api.Assertions.assertThatThrownBy(() -> method.invoke(service, query, mixed, true, lawVersionRouting))
 				.hasCause(timeout);
-			ragResult.set(irrelevant);
+			ragResult.set(List.of(irrelevant));
 			org.assertj.core.api.Assertions.assertThatThrownBy(() -> method.invoke(service, query, mixed, false, routing))
 				.hasCause(timeout);
-			ragResult.set(chunk(88004, 88001, "official_doc", "다른 판의 보안성 검토 안내", "보안성 검토 대상",
-				direct.chunkText(), null));
+			ragResult.set(List.of(chunk(88004, 88001, "official_doc", "다른 판의 보안성 검토 안내", "보안성 검토 대상",
+				direct.chunkText(), null)));
 			org.assertj.core.api.Assertions.assertThatThrownBy(() -> method.invoke(service, query, mixed, false, routing))
 				.hasCause(timeout);
-			ragResult.set(direct);
+			ragResult.set(List.of(direct));
 			var integrity = new IllegalStateException("captured integrity changed");
 			failure.set(integrity);
 			org.assertj.core.api.Assertions.assertThatThrownBy(() -> method.invoke(service, query, mixed, false, routing))
