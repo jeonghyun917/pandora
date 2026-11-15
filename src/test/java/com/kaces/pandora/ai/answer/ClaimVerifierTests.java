@@ -8,6 +8,33 @@ import org.junit.jupiter.api.Test;
 class ClaimVerifierTests {
 
 	@Test
+	void procurementProcedureClaimsRetainTheirGroundAndRejectAlteredOperands() {
+		String title = "공공SW사업 법제도 관리감독 및 지원 가이드";
+		String scope = "대상사업: 국가기관등의 장이 발주하는 소프트웨어사업";
+		String delivery = "미준수 사항이 있을 경우 개선권고 검토의견을 발주기관에 전달(온라인 의견등록이 "
+			+ "가능한 경우 온라인으로, 그 외 메일 발송)";
+		String review = "발주기관에서는 개선권고서를 확인 후 입찰공고서 또는 제안요청서(RFP)에 반영여부를 검토";
+		String procedure = "② " + delivery + "\n③ " + review;
+		var grounds = List.of(
+			new LawAiAnswerGround(1, 91, 9, "official_doc", title, null, null, null, null, null,
+				"점검절차", null, procedure, null, null, 1, procedure, null, List.of(), null, "direct"),
+			new LawAiAnswerGround(2, 92, 9, "official_doc", title, null, null, null, null, null,
+				"대상사업", null, scope, null, null, 0, scope, null, List.of(), null, "related_definition"));
+		String answer = scope + "\n- " + delivery + "\n- " + review;
+		var verified = verifier.verifyDetailed(answer, grounds);
+		assertThat(verified.unsupportedClaims()).isEmpty();
+		assertThat(verified.evidenceLinks()).extracting(ClaimVerifier.ClaimEvidenceLink::groundNumber)
+			.containsExactly(2, 1, 1);
+		for (String mutation : List.of(
+			answer.replace("발주기관에 전달", "감독기관에 전달"),
+			answer.replace("미준수 사항이 있을 경우 ", ""),
+			answer.replace("국가기관등의 장이 발주하는", "민간기업이 자체 발주하는"),
+			answer.replace("반영여부를 검토", "반드시 반영"))) {
+			assertThat(verifier.verifyDetailed(mutation, grounds).unsupportedClaims()).hasSize(1);
+		}
+	}
+
+	@Test
 	void readsExactItemFromClosedFlattenedLegalListWithoutDroppingItsCondition() {
 		String item = "중앙행정기관 및 지방자치단체의 정보화업무를 출연, 위임 또는 위탁받은 공공기관의 전자정부사업";
 		String body = "제4조(대상사업) ① 사전협의 대상사업은 다음 각 호의 사업을 말한다."
