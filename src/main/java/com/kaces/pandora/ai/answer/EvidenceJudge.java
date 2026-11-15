@@ -19,6 +19,8 @@ import org.springframework.stereotype.Component;
 public class EvidenceJudge {
 
 	private static final int MIN_RELEVANT_RESULTS = 2;
+	private static final java.util.regex.Pattern FIGURE_INDEX_ENTRY = java.util.regex.Pattern.compile(
+		"\\s*\\[(?:그림|표)\\h+[^\\[\\]\\r\\n]{1,24}\\]\\s*[^\\[]{1,180}?[.·…]{5,}+\\s*\\d{1,4}(?=\\s|\\[|$)");
 	private static final java.util.regex.Pattern CATALOG_CONTRACT_CLAUSE = java.util.regex.Pattern.compile(
 		"제\\s*\\d+\\s*조\\s*\\(계약체결\\)\\s*([^.]{1,400}+)\\.");
 	private static final java.util.regex.Pattern CATALOG_REQUISITION_CLAUSE = java.util.regex.Pattern.compile(
@@ -2273,7 +2275,20 @@ public class EvidenceJudge {
 			.replaceAll("\\s+", " ");
 		return head.contains("목 차")
 			|| head.contains("목차")
-			|| head.contains("contents");
+			|| head.contains("contents")
+			|| isFlattenedFigureIndex(text);
+	}
+
+	private static boolean isFlattenedFigureIndex(String text) {
+		if (!text.startsWith("[그림") && !text.startsWith("[표")) return false;
+		var matcher = FIGURE_INDEX_ENTRY.matcher(text);
+		int entries = 0;
+		int end = 0;
+		while (matcher.region(end, text.length()).lookingAt()) {
+			entries++;
+			end = matcher.end();
+		}
+		return entries >= 3 && end == text.length();
 	}
 
 	// 메소드 설명: countCoveredGroups 처리 흐름을 수행합니다.

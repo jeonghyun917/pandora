@@ -1285,6 +1285,21 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void flattenedFigureIndexIsNotDirectPublicDatabaseStandardsEvidence() {
+		String question = "공공데이터베이스에 어떤 표준용어와 표준도메인을 적용해야 하나요?";
+		String title = "공공데이터베이스 표준화 관리 매뉴얼";
+		String index = "[그림 Ⅰ-1] 공공데이터베이스 구성도 ········ 4 "
+			+ "[그림 Ⅰ-2] 표준용어 및 표준도메인 관계도 ············ 7 "
+			+ "[그림 Ⅰ-3] 공통·기관·DB표준 간의 관계 ·········· 8";
+		var judge = new EvidenceJudge();
+		var toc = chunk(5001, "official_doc", title, "p.8", index);
+		var mixed = chunk(5002, "official_doc", title, "p.9", index
+			+ "\n공공기관은 공공데이터베이스를 구축할 때 공공데이터 공통표준의 표준용어와 표준도메인을 적용하여야 한다.");
+		assertThat(judge.judge(question, List.of(toc), java.util.Map.of(), 8).directEvidenceCount()).isZero();
+		assertThat(judge.judge(question, List.of(mixed), java.util.Map.of(), 8).directEvidenceCount()).isOne();
+	}
+
+	@Test
 	void tableOfContentsChunkIsNotUsedAsDirectEvidence() {
 		LawSemanticChunkRow toc = chunk(
 			1,
