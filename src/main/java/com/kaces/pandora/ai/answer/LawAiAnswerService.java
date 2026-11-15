@@ -11116,6 +11116,18 @@ public class LawAiAnswerService {
 	}
 
 	// 메소드 설명: keywordScore 처리 흐름을 수행합니다.
+	private static final Pattern PUBLIC_DATABASE_CONSTRUCTION_DUTY = Pattern.compile(
+		"공공기관의장은(?:신규로)?공공데이터베이스를구축할때(?:에는|는)?(?:반드시)?"
+			+ "(?:공통표준|기관표준|행정표준코드|표준용어|표준도메인){1,5}(?:등)?[을를]적용하여야한다");
+
+	private boolean hasCurrentPublicDatabaseConstructionDuty(LawSemanticChunkRow chunk) {
+		if (!"admrul".equals(chunk.target()) || !"CURRENT".equals(chunk.effectiveStatus())
+			|| !"PASS".equals(chunk.qualityStatus()) || chunk.chunkText() == null) return false;
+		return java.util.Arrays.stream(chunk.chunkText().split("[.!?①-⑳]"))
+			.map(this::normalizeForMatch)
+			.anyMatch(sentence -> PUBLIC_DATABASE_CONSTRUCTION_DUTY.matcher(sentence).matches());
+	}
+
 	private double keywordScore(LawSemanticChunkRow chunk, String query) {
 		List<String> terms = queryTerms(query);
 		List<String> expandedTerms = lexicalKeywords(query).stream()
@@ -11187,6 +11199,15 @@ public class LawAiAnswerService {
 				|| text.contains("사전협의의대상사업")) {
 				score += 0.78;
 			}
+		}
+		String normalizedQuery = profile.normalizedQuestion();
+		if (normalizedQuery.contains("공공데이터베이스")
+			&& containsAny(normalizedQuery, "표준화", "표준용어", "표준도메인", "데이터표준")
+			&& !containsAny(normalizedQuery, "내부데이터베이스", "민간", "비공개", "공공데이터베이스가아닌",
+				"기존", "개선", "메타데이터", "매뉴얼", "안내서", "진단")
+			&& articleReferencesFromQuery(query).isEmpty() && hasCurrentPublicDatabaseConstructionDuty(chunk)) {
+			// Preserve a verified operative-text candidate above the generic overlap ceiling.
+			return 1.40;
 		}
 		return Math.min(score, articleReferencesFromQuery(query).isEmpty()
 			? (procurementCatalogContractQuestion ? 2.6 : 1.35)

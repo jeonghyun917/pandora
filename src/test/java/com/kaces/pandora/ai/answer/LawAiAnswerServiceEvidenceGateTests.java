@@ -793,6 +793,30 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void mixedPublicDatabaseStandardsPreferAnOperativeRuleOverRepeatedManualTitles() throws Exception {
+		var duty = chunk(98201L, "admrul", "공공기관의 데이터베이스 표준화 지침", "적용",
+			"공공기관의 장은 신규로 공공데이터베이스를 구축할 때에는 반드시 공통표준을 적용하여야 한다.");
+		var manual = chunk(98202L, "official_doc", "공공데이터베이스 표준화 관리 매뉴얼", "공공데이터베이스 표준화",
+			"공공데이터베이스 표준화 관리 매뉴얼의 표준용어, 표준도메인, 데이터표준 항목을 참조한다.");
+		var nearby = chunk(98203L, "admrul", duty.title(), "적용",
+			"공공기관의 장은 신규로 공공데이터베이스를 구축할 때에는 산출물을 검토한다. "
+			+ "민간기업은 별도 사업에 공통표준을 적용하여야 한다.");
+		var law = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
+			LawChunkMapper.class.getClassLoader(), new Class<?>[]{LawChunkMapper.class}, (p, method, args) ->
+				method.getName().equals("findSemanticChunksByDocumentTitleAndText")
+					&& ((List<?>) args[1]).contains("데이터베이스 표준화") ? List.of(nearby, duty) : List.of());
+		var rag = (RagDocumentMapper) java.lang.reflect.Proxy.newProxyInstance(
+			RagDocumentMapper.class.getClassLoader(), new Class<?>[]{RagDocumentMapper.class}, (p, method, args) -> List.of(manual));
+		var service = service(law, rag);
+		try {
+			var query = QuestionSearchPlan.from("공공데이터베이스 표준화에 어떤 조치를 해야 하나요?");
+			assertThat(findLexicalChunks(service, query, List.of("official_doc", "admrul"), true))
+				.startsWith(duty, manual).contains(nearby);
+			assertThat(findLexicalChunks(service, query, List.of("official_doc"), true)).containsExactly(manual);
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void explicitPublicDatabaseStandardsRecallApplicableTitleWithoutExpandingInternalQueries() throws Exception {
 		var standard = chunk(88710L, "admrul", "공공기관의 데이터베이스 표준화 지침", "표준 적용",
 			"공공기관의 장은 공공데이터베이스 구축 시 표준용어 및 표준도메인을 적용하여야 한다.");
