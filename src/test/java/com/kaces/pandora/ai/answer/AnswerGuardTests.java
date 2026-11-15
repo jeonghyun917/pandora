@@ -7,6 +7,13 @@ import org.junit.jupiter.api.Test;
 
 class AnswerGuardTests {
 
+	@Test
+	void preservesListBoundariesWhileNormalizingInlineDashSeparators() {
+		String draft = "적용 범위\r\n- 첫 번째 절차 [1]\r\n  - 두 번째 절차\r\n후속 설명 - 세부 안내";
+		assertThat(guard.guard(draft, List.of(ground(1))))
+			.isEqualTo("적용 범위\n- 첫 번째 절차\n  - 두 번째 절차\n후속 설명. 세부 안내");
+	}
+
 	// 메소드 설명: AnswerGuard 처리 흐름을 수행합니다.
 	private final AnswerGuard guard = new AnswerGuard();
 

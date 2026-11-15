@@ -73,8 +73,7 @@ public class AnswerGuard {
 	// 메소드 설명: normalizeDashes 처리 흐름을 수행합니다.
 	private String normalizeDashes(String answer) {
 		return answer
-			.replaceAll("\\s+[—–ㅡ]\\s+", ". ")
-			.replaceAll("\\s+-\\s+", ". ")
+			.replaceAll("(?<=\\S)\\h+[—–ㅡ-]\\h+", ". ")
 			.replaceAll("\\.{2,}", ".")
 			.replaceAll("\\.\\s*([,，])", "$1")
 			.trim();
