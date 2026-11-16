@@ -88,6 +88,7 @@ public class EvidenceJudge {
 			.filter(chunk -> !AutonomyFollowUpEvidence.outsideRecommendationScope(profile.normalizedQuestion(), chunk))
 			.filter(chunk -> !outsideCommercialPurchaseScope(query, chunk))
 			.filter(chunk -> !subcontractRemedyOutsideQuestion(query, chunk))
+			.filter(chunk -> !rfpDisclosureOutsideAttachmentQuestion(query, chunk))
 			.toList();
 		if (searchableChunks.isEmpty()) {
 			return new Result(List.of(), Map.of(), false, false, false, false, 0, 0, 0, "quality_filtered");
@@ -3278,6 +3279,20 @@ public class EvidenceJudge {
 				+ "|제\\s*\\d+\\s*조(?:의\\s*\\d+)?(?:제\\s*\\d+\\s*항)?)?\\s*"
 				+ "(?:을|를|의)?\\s*(?:미준수|위반|불이행|준수\\s*(?:여부|하지\\s*않|안|점검))")
 			.matcher(String.valueOf(body)).find();
+	}
+
+	static boolean rfpDisclosureOutsideAttachmentQuestion(String question, LawSemanticChunkRow chunk) {
+		if (!containsAny(question, List.of("제안요청서", "rfp"))
+			|| !containsAny(question, List.of("배점표", "배점기준표", "배점한도표"))
+			|| !(question.contains("별첨") || (question.contains("첨부")
+				&& containsAny(question, List.of("별도", "따로", "파일"))))
+			|| !normalize(chunk.title()).equals("행정기관및공공기관정보시스템구축운영지침")) {
+			return false;
+		}
+		String body = normalize(chunk.chunkText());
+		// Listing what the request must disclose does not prescribe a separate file.
+		return (body.contains("제16조제안요청서작성") && body.contains("평가요소평가방법"))
+			|| (body.contains("제21조제안서기술평가기준") && body.contains("평가항목및배점한도"));
 	}
 
 	static boolean subcontractRemedyOutsideQuestion(String question, LawSemanticChunkRow chunk) {

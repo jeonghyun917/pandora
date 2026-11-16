@@ -1084,6 +1084,21 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void rfpEvaluationDisclosureDoesNotProveSeparateFileAttachment() {
+		String title = "행정기관 및 공공기관 정보시스템 구축·운영 지침";
+		var disclosure = currentEvaluationPlanChunk(956L, title, "제16조(제안요청서 작성)",
+			"제16조(제안요청서 작성) ① 행정기관등의 장은 협상에 의한 계약 또는 경쟁적 대화에 의한 계약체결 방식으로 사업자를 선정하기 위하여 제안요청서를 작성하여야 한다. ② 제안요청서에는 다음 각 호의 사항을 명시하여야 한다. 1. 과업내용, 요구사항 2. 계약조건 3. 평가요소, 평가방법");
+		var standards = currentEvaluationPlanChunk(957L, title, "제21조(제안서 기술평가 기준)",
+			"제21조(제안서 기술평가 기준) ① 제안서 기술평가를 위한 평가항목 및 배점한도, 평가방법 등은 소프트웨어 기술성 평가기준 지침에서 정하는 바에 따른다.");
+		var rows = List.of(disclosure, standards);
+		assertThat(judge.judge("공공 정보시스템 사업을 협상계약으로 발주할 때 구축·운영 지침에 따라 제안요청서에 평가요소와 평가방법을 밝혀야 하나요?", rows, Map.of(), 8).chunks())
+			.contains(disclosure);
+		var attachment = judge.judge("모든 공공 정보시스템 사업은 계약 방식과 관계없이 기술평가 배점표 파일을 제안요청서에 따로 첨부해야 하나요?", rows, Map.of(), 8);
+		assertThat(attachment.directEvidenceFound()).isFalse();
+		assertThat(attachment.chunks()).doesNotContain(disclosure, standards);
+	}
+
+	@Test
 	void distinguishesArticleBoundEvaluationPlanFromStandaloneScoringTable() {
 		String title = "국방 정보화업무 훈령";
 		String duty = "③ 집행기관은 제안서 평가계획(평가요소ㆍ배점ㆍ기준 및 절차)을 작성하여 제안요청서에 포함시키되 "
