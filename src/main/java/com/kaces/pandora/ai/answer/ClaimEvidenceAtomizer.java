@@ -165,7 +165,7 @@ final class ClaimEvidenceAtomizer {
 			}
 		}
 		if (copied < text.length()) { result.add(new SourceFragment(text.substring(copied), false)); }
-		return result.stream().flatMap(fragment -> fragment.literalOnly()
+		var ordinary = result.stream().flatMap(fragment -> fragment.literalOnly()
 			? java.util.stream.Stream.of(fragment) : closedMarkedAnnotations(fragment.text()).stream())
 			.flatMap(fragment -> fragment.literalOnly()
 				? java.util.stream.Stream.of(fragment) : closedWrappedRatios(fragment.text()).stream())
@@ -176,8 +176,21 @@ final class ClaimEvidenceAtomizer {
 			.flatMap(fragment -> fragment.literalOnly()
 				? java.util.stream.Stream.of(fragment) : closedWrappedDutyHeaders(fragment.text()).stream())
 			.flatMap(fragment -> fragment.literalOnly()
-				? java.util.stream.Stream.of(fragment) : closedNumberedProvisos(fragment.text()).stream())
-			.toList();
+				? java.util.stream.Stream.of(fragment) : closedNumberedProvisos(fragment.text()).stream());
+		return java.util.stream.Stream.concat(ordinary, closedPurposeExternalNoticeLiterals(text).stream()
+			.map(literal -> new SourceFragment(literal, true))).toList();
+	}
+
+	private static final Pattern PURPOSE_EXTERNAL_NOTICE_LIST = Pattern.compile(
+		"○\\s*(수집한\\s+개인정보를\\s+수집\\s*목적의\\s+범위를\\s+벗어나\\s+(?:이용|제공)하기\\s+위해서는\\s+"
+			+ "정보주체로부터\\s+별도의\\s+동의를\\s+받아야\\s+하며,\\s+이\\s*때\\s+"
+			+ "①\\s+[^.!?①-⑳□○]{1,100}②\\s+[^.!?①-⑳□○]{1,100}③\\s+[^.!?①-⑳□○]{1,100}"
+			+ "④\\s+[^.!?①-⑳□○]{1,160}알려야\\s+한다\\.)");
+
+	static List<String> closedPurposeExternalNoticeLiterals(String source) {
+		if (source == null || !source.contains("①") || !source.contains("④")) return List.of();
+		return PURPOSE_EXTERNAL_NOTICE_LIST.matcher(source).results()
+			.map(match -> match.group(1).replaceAll("\\s+", " ")).toList();
 	}
 
 	private static final Pattern WRAPPED_DUTY_HEADER = Pattern.compile(

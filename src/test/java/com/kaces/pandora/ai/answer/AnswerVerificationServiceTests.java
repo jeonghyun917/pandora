@@ -11,6 +11,33 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class AnswerVerificationServiceTests {
+
+	@Test
+	void closedPurposeExternalNoticeKeepsTheConsentPremiseAndAllNoticeItemsTogether() {
+		String paragraph = "수집한 개인정보를 수집목적의 범위를 벗어나 이용하기 위해서는 정보주체로부터 "
+			+ "별도의 동의를 받아야 하며, 이 때 ① 개인정보의 이용목적 ② 이용하는 개인정보의 항목 "
+			+ "③ 개인정보의 보유 및 이용기간 ④ 동의거부권과 불이익에 관한 사항을 알려야 한다.";
+		String body = "□3 목적 외 이용ㆍ제공 동의 고지(제18조 제3항) ○ "
+			+ paragraph.replace("정보주체로부터 별도의", "정보주체로부터\n별도의")
+			+ " 알려할 사항에 변경이 있는 때에도 다시 알린다. □4 기록 의무";
+		var ground = new LawAiAnswerGround(1, 95, 9, "official_doc", "개인정보 처리 안내서",
+			null, null, null, null, null, "목적 외 이용·제공 고지", null, body, null, null, 0,
+			body, null, List.of(), null, "direct");
+		var verifier = new ClaimVerifier();
+		assertThat(verifier.verifyDetailed(paragraph, List.of(ground)).evidenceLinks())
+			.anySatisfy(link -> {
+				assertThat(link.groundNumber()).isEqualTo(1);
+				assertThat(link.claim()).isEqualTo(paragraph);
+				assertThat(link.evidenceSentence()).isEqualTo(paragraph);
+			});
+		assertThat(verifier.verifyDetailed("보충 설명입니다.\n" + paragraph + "\n관련 문서를 확인하세요.", List.of(ground))
+			.evidenceLinks()).anyMatch(link -> link.claim().equals(paragraph) && link.evidenceSentence().equals(paragraph));
+		for (String altered : List.of(paragraph.replace("별도의 동의를 받아야 하며, 이 때 ", ""),
+			paragraph.replace("③ 개인정보의 보유 및 이용기간 ", ""), paragraph.replace("범위를 벗어나", "범위 안에서"))) {
+			assertThat(verifier.verifyDetailed(altered, List.of(ground)).evidenceLinks())
+				.noneMatch(link -> link.claim().equals(altered) && link.evidenceSentence().equals(paragraph));
+		}
+	}
 	@Test
 	void namedProvisionMustBelongToTheGroundSupportingTheOperativeClaim() {
 		var service = new AnswerVerificationService(new AnswerGuard(), new ClaimVerifier());

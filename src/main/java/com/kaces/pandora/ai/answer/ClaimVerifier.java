@@ -137,7 +137,7 @@ public class ClaimVerifier {
 			sentences.addAll(splitSentences(ClaimEvidenceAtomizer.foldWrappedRatios(block.substring(firstItem.start()))));
 		} else {
 			sentences = isExactAnnotatedSourceItem(answer, grounds)
-				? List.of(answer.trim()) : splitSentences(ClaimEvidenceAtomizer.foldWrappedRatios(answer));
+				? List.of(answer.trim()) : splitPreservingPurposeExternalNotice(answer, grounds);
 		}
 		List<String> kept = new ArrayList<>();
 		List<String> unsupportedClaims = new ArrayList<>();
@@ -313,6 +313,28 @@ public class ClaimVerifier {
 			.flatMap(text -> claimAtomizer.sourceFragments(text).stream())
 			.filter(fragment -> fragment.literalOnly() && fragment.text().contains("*"))
 			.anyMatch(fragment -> expected.equals(normalize(fragment.text())));
+	}
+
+	private List<String> splitPreservingPurposeExternalNotice(String answer, List<LawAiAnswerGround> grounds) {
+		if (answer.length() <= 4000 && answer.contains("①") && answer.contains("④")) {
+			var blocks = grounds.stream().filter(ground -> ground != null && "direct".equals(ground.evidenceRole()))
+				.flatMap(ground -> ClaimEvidenceAtomizer.closedPurposeExternalNoticeLiterals(ground.matchedChildText()).stream())
+				.limit(2).toList();
+			if (blocks.size() == 1) {
+				String literal = blocks.get(0);
+				String tokens = java.util.Arrays.stream(literal.split(" ")).map(Pattern::quote)
+					.collect(java.util.stream.Collectors.joining("\\s+"));
+				var matches = Pattern.compile("(?m)^\\h*" + tokens + "\\h*$").matcher(answer).results().limit(2).toList();
+				if (matches.size() == 1) {
+					var match = matches.get(0);
+					List<String> sentences = new ArrayList<>(splitSentences(ClaimEvidenceAtomizer.foldWrappedRatios(answer.substring(0, match.start()))));
+					sentences.add(literal);
+					sentences.addAll(splitSentences(ClaimEvidenceAtomizer.foldWrappedRatios(answer.substring(match.end()))));
+					return sentences;
+				}
+			}
+		}
+		return splitSentences(ClaimEvidenceAtomizer.foldWrappedRatios(answer));
 	}
 
 	private boolean isFormatOnlyStructuralLabel(String atom) {
