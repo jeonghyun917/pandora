@@ -1757,6 +1757,19 @@ public class EvidenceJudge {
 			return new JudgedChunk(chunk, score, topicAligned || owned, relevant || owned, owned,
 				owned ? 1 : 0, owned ? 1 : 0);
 		}
+		String procurementQuery = profile.normalizedQuestion();
+		boolean asksCommercialDirectPurchase = procurementQuery.contains("직접구매")
+			&& containsAny(procurementQuery, List.of("상용sw", "상용소프트웨어"));
+		boolean catalogContractBody = hasCatalogTerm(body) && isProcurementContractMethodChunk(body, "");
+		boolean commercialPurchaseBody = containsAny(body, List.of("상용sw직접구매", "상용소프트웨어직접구매"));
+		if (procurementCatalogContractQuestion
+			&& ((procurementContractMethodQuestion && !asksCommercialDirectPurchase
+					&& commercialPurchaseBody && !catalogContractBody)
+				|| (asksCommercialDirectPurchase && !procurementContractMethodQuestion
+					&& catalogContractBody && !body.contains("직접구매")))) {
+			// Preserve topic relatedness, but never count shared mall vocabulary toward direct proof.
+			return new JudgedChunk(chunk, score, topicAligned, relevant, false, 0, 0);
+		}
 		return new JudgedChunk(chunk, score, topicAligned, relevant, directEvidence, directEvidenceMatches, bodyDirectEvidenceMatches);
 	}
 

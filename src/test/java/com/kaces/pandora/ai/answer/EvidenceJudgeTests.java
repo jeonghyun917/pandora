@@ -2223,7 +2223,7 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
-	void procurementCatalogContractQuestionKeepsDirectPurchaseContextAndRejectsLoosePrivateContractLaw() {
+	void procurementCatalogContractQuestionDoesNotAcceptDirectPurchaseAsContractProof() {
 		LawSemanticChunkRow loosePrivateContractLaw = chunk(
 			1,
 			"law",
@@ -2260,7 +2260,8 @@ class EvidenceJudgeTests {
 			8
 		);
 
-		assertThat(result.chunks()).containsExactly(digitalServiceMallDirectPurchase);
+		assertThat(result.directEvidenceFound()).isFalse();
+		assertThat(result.chunks()).doesNotContain(digitalServiceMallDirectPurchase);
 		assertThat(result.chunks()).doesNotContain(loosePrivateContractLaw);
 		assertThat(result.chunks()).doesNotContain(brokerRule, procurementOfficeRule);
 		assertThat(result.conceptEvidenceFound()).isTrue();
@@ -2318,6 +2319,28 @@ class EvidenceJudgeTests {
 		assertThat(result.chunks()).containsExactly(owned);
 		assertThat(judge.judge("개보위 가명정보 자료에서 추가정보 분리 보관 적용 대상은?",
 			List.of(owned), Map.of(), 3).directEvidenceFound()).isFalse();
+	}
+
+	@Test
+	void sharedMallDoesNotTurnOneProcurementRegimeIntoDirectEvidenceForTheOther() {
+		var catalog = chunk(8141, "admrul", "디지털서비스 카탈로그계약 업무처리규정", "계약체결",
+			"계약담당공무원은 카탈로그의 적정성을 검토하여 수의계약을 체결할 수 있다. "
+				+ "디지털서비스몰에 카탈로그계약 품목을 등록한다.");
+		var purchase = chunk(8142, "official_doc", "상용소프트웨어 직접구매 가이드", "대상 사업",
+			"상용소프트웨어 직접구매 대상 사업은 총사업규모 3억원 이상인 소프트웨어사업이다. "
+				+ "디지털서비스몰에 등록된 상용소프트웨어는 직접구매 대상 품목이다.");
+		for (String route : List.of("디지털서비스 카탈로그", "디지털서비스몰")) {
+			String q = route + "에서 구입하면 계약방법은 수의계약인가요?";
+			assertThat(judge.judge(q, List.of(purchase), Map.of(), 5).directEvidenceFound()).isFalse();
+			var result = judge.judge(q, List.of(purchase, catalog), Map.of(), 5);
+			assertThat(result.directEvidenceCount()).isEqualTo(1);
+			assertThat(result.chunks()).contains(catalog);
+		}
+		String q = "디지털서비스몰에 등록된 상용소프트웨어는 어떤 조건에서 직접구매 대상인가요?";
+		assertThat(judge.judge(q, List.of(catalog), Map.of(), 5).directEvidenceFound()).isFalse();
+		var result = judge.judge(q, List.of(catalog, purchase), Map.of(), 5);
+		assertThat(result.directEvidenceCount()).isEqualTo(1);
+		assertThat(result.chunks()).contains(purchase);
 	}
 
 	@Test
