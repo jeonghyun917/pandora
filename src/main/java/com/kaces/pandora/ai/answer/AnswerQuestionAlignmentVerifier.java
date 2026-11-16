@@ -176,7 +176,11 @@ public class AnswerQuestionAlignmentVerifier {
 		if (!hasAnswerClaimCoverage(supportedLinks, alignmentProfile)) {
 			return AlignmentResult.failed("MISSING_ANSWER_COVERAGE", List.of(ANSWER_COVERAGE));
 		}
-		boolean completeAnswerCoverage = hasCompleteAnswerCoverage(supportedLinks, alignmentProfile);
+		boolean literalAnswerCoverage = hasCompleteAnswerCoverage(supportedLinks, alignmentProfile);
+		boolean completeAnswerCoverage = literalAnswerCoverage
+			|| (supportedLinks.size() == 1 && purposeExternalScope(questionScope)
+				&& !questionScope.contains("제공")
+				&& hasClosedConsentCoverage(supportedLinks.get(0), alignmentProfile));
 		var correctionQuestion = correctionQuestion(question);
 		if (correctionQuestion != null) {
 			for (var link : supportedLinks) {
@@ -202,7 +206,7 @@ public class AnswerQuestionAlignmentVerifier {
 				link,
 				operativeProfile,
 				cited ? "" : subjectContextByGround.getOrDefault(link.groundNumber(), ""),
-				completeAnswerCoverage,
+				literalAnswerCoverage,
                 scopeRules.stream().filter(rule->rule.owner()==link.groundNumber()).toList()
 			).stream())
 			.toList());
@@ -411,7 +415,7 @@ public class AnswerQuestionAlignmentVerifier {
 		// Re-evaluate the proven original paragraph using the same subject, relation and condition checks.
 		String paragraph = owner.matchedChildText();
 		candidates.add(assessAtom(paragraph, paragraph, profile, subjectContext.getOrDefault(owner.number(), ""), true,
-			scopeRules.stream().filter(rule -> rule.owner() == owner.number()).toList()));
+			scopeRules.stream().filter(rule -> rule.owner() == owner.number()).toList(), false));
 	}
 
 	private void addLiteralNumberedProvisoCandidate(List<LawAiAnswerGround> grounds,
@@ -446,7 +450,7 @@ public class AnswerQuestionAlignmentVerifier {
 		}
 		// Only the subject check receives the exact owning item. The proviso still owns the predicate and conditions.
 		candidates.add(assessAtom(exceptionText, exceptionText, profile, normalize(actor + " " + item), true,
-			scopeRules.stream().filter(rule -> rule.owner() == main.groundNumber()).toList()));
+			scopeRules.stream().filter(rule -> rule.owner() == main.groundNumber()).toList(), false));
 	}
 
 	private static final Pattern CLOSED_FIRST_DUTY_PARAGRAPH = Pattern.compile(
@@ -521,6 +525,18 @@ public class AnswerQuestionAlignmentVerifier {
 			.allMatch(group -> group.stream().anyMatch(supportedAnswer::contains));
 	}
 
+	private static boolean hasClosedConsentCoverage(ClaimVerifier.ClaimEvidenceLink link, AlignmentProfile profile) {
+		if (!isExactClosedConsentNotice(link)) return false;
+		String text = normalize(link.claim()).replace("별도의동의를받아야하며이때", "별도의동의를받을때");
+		return profile.answerCoverageGroups().stream()
+			.allMatch(group -> group.stream().anyMatch(text::contains));
+	}
+
+	private static boolean isExactClosedConsentNotice(ClaimVerifier.ClaimEvidenceLink link) {
+		return ClaimEvidenceAtomizer.isClosedPurposeExternalNoticeLiteral(link.claim())
+			&& normalize(link.claim()).equals(normalize(link.evidenceSentence()));
+	}
+
 	private List<CandidateResult> assess(
 		ClaimVerifier.ClaimEvidenceLink link,
 		AlignmentProfile profile,
@@ -528,7 +544,8 @@ public class AnswerQuestionAlignmentVerifier {
 		boolean completeAnswerCoverage,
         List<SourceOwnedConditionalScope.Rule> scopeRules
 	) {
-		List<String> claimAtoms = atomizer.atomizeForAlignment(link.claim());
+		boolean closedConsentNotice = isExactClosedConsentNotice(link);
+		List<String> claimAtoms = closedConsentNotice ? List.of(link.claim()) : atomizer.atomizeForAlignment(link.claim());
 		if (claimAtoms.isEmpty()) {
 			claimAtoms = List.of(String.valueOf(link.claim() == null ? "" : link.claim()));
 		}
@@ -539,7 +556,7 @@ public class AnswerQuestionAlignmentVerifier {
 				evidenceProposition,
 				profile,
 				subjectContext,
-				completeAnswerCoverage,scopeRules
+				completeAnswerCoverage,scopeRules,closedConsentNotice
 			))
 			.toList();
 	}
@@ -550,7 +567,8 @@ public class AnswerQuestionAlignmentVerifier {
 		AlignmentProfile profile,
 		String subjectContext,
 		boolean completeAnswerCoverage,
-        List<SourceOwnedConditionalScope.Rule> scopeRules
+        List<SourceOwnedConditionalScope.Rule> scopeRules,
+		boolean closedConsentNotice
 	) {
 		String claimProposition = directProposition(claimAtom);
 		String normalizedClaimProposition = normalize(claimProposition);
@@ -597,7 +615,9 @@ public class AnswerQuestionAlignmentVerifier {
 		if (!configuredPolicyBridgeMatched
 			&& !configuredAnswerCoverageBridgeMatched
 			&& !profile.conditionGroups().stream()
-			.allMatch(group -> matchesCondition(claimProposition, normalizedClaimProposition, group, scopeRules))) {
+			.allMatch(group -> (closedConsentNotice && group.equals(List.of("동의를", "받을"))
+				&& normalizedClaimProposition.contains("별도의동의를받아야하며이때"))
+				|| matchesCondition(claimProposition, normalizedClaimProposition, group, scopeRules))) {
 			missing.add(CONDITION);
 		}
 		if (claimHasRelation
@@ -1011,6 +1031,7 @@ public class AnswerQuestionAlignmentVerifier {
 			for (String term : profile.terms()) {
 				String normalized = normalize(term);
 				if (normalized.length() < 2
+					|| (normalized.equals("하나요") && profile.normalizedQuestion().endsWith("무엇을알려야하나요"))
 					|| normalized.equals(requestMarker)
 					|| normalized.equals(submissionObject)
 					|| (Set.of("효력", "법은", "법률은").contains(normalized) && profile.normalizedQuestion().contains("언제부터효력")

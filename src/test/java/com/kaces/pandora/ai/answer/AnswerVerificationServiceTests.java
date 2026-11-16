@@ -32,6 +32,14 @@ class AnswerVerificationServiceTests {
 			});
 		assertThat(verifier.verifyDetailed("보충 설명입니다.\n" + paragraph + "\n관련 문서를 확인하세요.", List.of(ground))
 			.evidenceLinks()).anyMatch(link -> link.claim().equals(paragraph) && link.evidenceSentence().equals(paragraph));
+		var alignment = new AnswerQuestionAlignmentVerifier();
+		var checked = verifier.verifyDetailed(paragraph, List.of(ground));
+		String useQuestion = "개인정보를 수집목적의 범위를 벗어나 이용하는 데 동의를 받을 때 무엇을 알려야 하나요?";
+		assertThat(alignment.verify(useQuestion, checked, List.of(ground)).reasonCode()).isEqualTo("ALIGNED");
+		for (String otherScope : List.of("제공하는", "제3자에게 제공하는", "이용하거나 제공하는")) {
+			assertThat(alignment.verify(useQuestion.replace("이용하는", otherScope), checked, List.of(ground))
+				.aligned()).as(otherScope).isFalse();
+		}
 		String collection = "② 개인정보처리자는 제1항제1호에 따른 동의를 받을 때에는 다음 각 호의 사항을 정보주체에게 알려야 한다.\n"
 			+ "1. 개인정보의 수집ㆍ이용 목적\n2. 수집하려는 개인정보의 항목\n"
 			+ "3. 개인정보의 보유 및 이용 기간\n4. 동의를 거부할 권리가 있다는 사실";

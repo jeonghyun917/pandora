@@ -193,6 +193,11 @@ final class ClaimEvidenceAtomizer {
 			.map(match -> match.group(1).replaceAll("\\s+", " ")).toList();
 	}
 
+	static boolean isClosedPurposeExternalNoticeLiteral(String paragraph) {
+		return paragraph != null && paragraph.contains("①") && paragraph.contains("④")
+			&& PURPOSE_EXTERNAL_NOTICE_LIST.matcher("○ " + paragraph).matches();
+	}
+
 	private static final Pattern WRAPPED_DUTY_HEADER = Pattern.compile(
 		"(?m)^[ \\t]*제[0-9]+조(?:의[0-9]+)?[ \\t]*\\([^\\r\\n()]{1,80}\\)[ \\t]+①[ \\t]+"
 			+ "([^①-⑳※*]{2,480}?(?:해야|하여야)[ \\t]+한다\\.)[ \\t]*\\R"
