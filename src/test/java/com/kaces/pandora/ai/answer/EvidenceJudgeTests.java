@@ -1285,6 +1285,21 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void purposeExternalNoticeDoesNotAnswerACollectionOnlyNoticeQuestion() {
+		String outside = "목적 외 이용ㆍ제공 동의를 받을 때 알려야 하는 사항(제18조 제3항)";
+		var external = chunk(56101, "official_doc", "개인정보 처리 통합 안내서", outside,
+			"수집한 개인정보를 수집목적의 범위를 벗어나 이용하기 위해서는 정보주체로부터 별도의 동의를 받아야 하며, "
+			+ "① 개인정보의 이용 목적 ② 이용하는 개인정보 항목 ③ 보유 및 이용기간 ④ 동의를 거부할 권리와 불이익을 알려야 한다.");
+		String question = "개인정보 수집 이용 동의를 받을 때 무엇을 알려야 하나요?";
+		var judge = new EvidenceJudge();
+		assertThat(judge.judge(question, List.of(external), java.util.Map.of(), 8).directEvidenceCount()).isZero();
+		assertThat(judge.judge("개인정보를 목적 외로 이용하거나 제공하는 동의를 받을 때 무엇을 알려야 하나요?",
+			List.of(external), java.util.Map.of(), 8).chunks()).contains(external);
+		assertThat(judge.judge("개인정보 수집 동의와 목적 외 이용·제공 동의를 받을 때 각각 무엇을 고지해야 하나요?",
+			List.of(external), java.util.Map.of(), 8).chunks()).contains(external);
+	}
+
+	@Test
 	void flattenedFigureIndexIsNotDirectPublicDatabaseStandardsEvidence() {
 		String question = "공공데이터베이스에 어떤 표준용어와 표준도메인을 적용해야 하나요?";
 		String title = "공공데이터베이스 표준화 관리 매뉴얼";

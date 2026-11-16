@@ -64,6 +64,9 @@ public class EvidenceJudge {
 		}
 		EvidenceQuestionProfile profile = buildQuestionProfile(question);
 		String query = profile.normalizedQuestion();
+		boolean collectionNoticeOnly = query.contains("수집")
+			&& !containsAny(query, List.of("제공", "제3자", "목적외"))
+			&& QuestionIntentProfile.from(question).matchedPolicyIds().contains("privacy_consent_notice");
 		boolean recommendation = query.contains("개선권고") || query.contains("개선을권고");
 		boolean privateRecommendation = recommendation && query.contains("민간")
 			&& !query.contains("공공") && !query.contains("국가기관") && !query.contains("지방자치단체");
@@ -75,6 +78,7 @@ public class EvidenceJudge {
 			&& containsAny(query, List.of("소프트웨어사업", "sw사업"));
 		List<LawSemanticChunkRow> searchableChunks = chunks.stream()
 			.filter(chunk -> chunk != null && RagChunkQualityStatus.from(chunk.qualityStatus()).searchable())
+			.filter(chunk -> !collectionNoticeOnly || !isPurposeExternalNoticeOnly(chunk))
 			.filter(chunk -> !privateRecommendation || !isPublicSwRecommendationSource(chunk))
 			.filter(chunk -> !privateRecommendation || !isPublicProcurementGuide(chunk))
 			.filter(chunk -> !(procurementRecommendation
@@ -209,6 +213,13 @@ public class EvidenceJudge {
 
 	private static boolean selectedContainsChunk(List<JudgedChunk> selected, JudgedChunk candidate) {
 		return selected.stream().anyMatch(item -> scoreKey(item.chunk()).equals(scoreKey(candidate.chunk())));
+	}
+
+	private static boolean isPurposeExternalNoticeOnly(LawSemanticChunkRow chunk) {
+		if (!"official_doc".equals(chunk.target()) && !"internal_doc".equals(chunk.target())) return false;
+		String heading = normalize(chunk.chunkTitle()).replace("ㆍ", "");
+		return heading.contains("목적외이용제공동의") && heading.contains("제18조")
+			&& !ClaimEvidenceMatcher.hasCollectionConsentNotice(chunk.chunkText());
 	}
 
 	private static boolean isPublicProcurementGuide(LawSemanticChunkRow chunk) {
