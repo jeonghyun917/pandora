@@ -2268,6 +2268,20 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void subcontractApprovalRemedyDoesNotProveConsequencesForUnspecifiedLegalViolations() {
+		var clause = currentEvaluationPlanChunk(8160, "소프트웨어사업 계약 및 관리감독에 관한 지침", "하도급계약의 승인신청 등",
+			"제20조(하도급계약의 승인신청 등) ① 국가기관등의 장은 계약상대자가 제출한 서류를 확인하고 필요한 경우 서류를 보완하게 할 수 있다. "
+				+ "2. 하도급 또는 재하도급 사업 수행 계획서 ② 국가기관등의 장은 하도급 또는 다시 하도급의 적정성 여부를 검토할 때 계약상대자가 법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, 이를 위반한 경우 해당 하도급 계약 승인을 거절하거나 해당 서류의 보완을 요청할 수 있다. "
+				+ "③ 소프트웨어사업자가 「하도급거래 공정화에 관한 법률」의 원사업자인 경우 표준하도급계약서를 활용할 수 있다.");
+		var scoped = judge.judge("공공 소프트웨어사업의 하도급 승인 심사에서 계약상대자가 소프트웨어 진흥법 제51조의 하도급 제한을 위반하면 서류 보완을 요청할 수 있나요?", List.of(clause), Map.of(), 8);
+		assertThat(scoped.directEvidenceCount()).isEqualTo(1);
+		assertThat(scoped.chunks()).containsExactly(clause);
+		var general = judge.judge("공공기관 정보시스템 사업에서 적용 법령을 위반하면 사업자가 항상 서류 보완 요구를 받나요?", List.of(clause), Map.of(), 8);
+		assertThat(general.directEvidenceFound()).isFalse();
+		assertThat(general.chunks()).doesNotContain(clause);
+	}
+
+	@Test
 	void purchaseScopeAndExceptionsDoNotUsePlanningFormsOrRegistrationAsProof() {
 		String rule = "소프트웨어사업 계약 및 관리감독에 관한 지침";
 		var scope = currentEvaluationPlanChunk(8151, rule, "직접구매 대상",

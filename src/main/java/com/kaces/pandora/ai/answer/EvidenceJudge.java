@@ -87,6 +87,7 @@ public class EvidenceJudge {
 				|| !isSwRecommendationDispatchSupport(chunk))
 			.filter(chunk -> !AutonomyFollowUpEvidence.outsideRecommendationScope(profile.normalizedQuestion(), chunk))
 			.filter(chunk -> !outsideCommercialPurchaseScope(query, chunk))
+			.filter(chunk -> !subcontractRemedyOutsideQuestion(query, chunk))
 			.toList();
 		if (searchableChunks.isEmpty()) {
 			return new Result(List.of(), Map.of(), false, false, false, false, 0, 0, 0, "quality_filtered");
@@ -3277,6 +3278,16 @@ public class EvidenceJudge {
 				+ "|제\\s*\\d+\\s*조(?:의\\s*\\d+)?(?:제\\s*\\d+\\s*항)?)?\\s*"
 				+ "(?:을|를|의)?\\s*(?:미준수|위반|불이행|준수\\s*(?:여부|하지\\s*않|안|점검))")
 			.matcher(String.valueOf(body)).find();
+	}
+
+	static boolean subcontractRemedyOutsideQuestion(String question, LawSemanticChunkRow chunk) {
+		if (!containsPenaltyConsequenceCue(question) || question.contains("하도급")
+			|| (question.contains("소프트웨어진흥법") && question.contains("제51조"))) {
+			return false;
+		}
+		String body = normalize(chunk.chunkText());
+		return body.contains("제51조에따른하도급제한")
+			&& body.contains("위반한경우해당하도급계약승인을거절하거나해당서류의보완을요청할수있다");
 	}
 
 	static boolean isSecurityContractConsequenceOutsideQuestion(
