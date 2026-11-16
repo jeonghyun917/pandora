@@ -20,6 +20,8 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final String SUBJECT = "SUBJECT";
 	private static final String RELATION = "RELATION";
 	private static final String CONDITION = "CONDITION";
+	private static final Pattern GENERAL_COMMENCEMENT_REQUEST = Pattern.compile(
+		"^(.{2,120}?)(?:시행일(?:은언제(?:인가요|입니까)|을알려주세요)|언제부터(?:효력이있|시행되)(?:나요|습니까|어))$");
 	private static final Pattern LEADING_STATUTE_CITATION = Pattern.compile(
 		"^\\s*「?(?<title>[가-힣0-9 ]{2,70}법(?:\\s+시행령|\\s+시행규칙)?)」?\\s+"
 			+ "(?<article>제\\s*\\d{1,4}\\s*조(?:의\\s*\\d{1,3})?)에\\s+따라\\s+(?<question>.+)$");
@@ -134,17 +136,20 @@ public class AnswerQuestionAlignmentVerifier {
 		List<LawAiAnswerGround> grounds
 	) {
 		AlignmentProfile alignmentProfile = AlignmentProfile.from(question);
-		if (!alignmentProfile.usable()) {
-			return AlignmentResult.failed(
-				"QUESTION_PROFILE_EMPTY",
-				List.of(SUBJECT, RELATION)
-			);
-		}
 		List<ClaimVerifier.ClaimEvidenceLink> supportedLinks = claimResult == null
 			? List.of()
 			: claimResult.evidenceLinks().stream()
 				.filter(link -> SUPPORTED.equals(link.relation()))
 				.toList();
+		if (claimResult != null && !claimResult.insufficientEvidence() && claimResult.strongClaimCount() == 1
+			&& claimResult.unsupportedClaims().isEmpty() && claimResult.unsupportedNumericClaims().isEmpty()
+			&& claimResult.contradictedClaims().isEmpty() && supportedLinks.size() == 1
+			&& matchesBoundGeneralCommencement(question, supportedLinks.get(0), grounds)) {
+			return AlignmentResult.aligned(supportedLinks.get(0).claim());
+		}
+		if (!alignmentProfile.usable()) {
+			return AlignmentResult.failed("QUESTION_PROFILE_EMPTY", List.of(SUBJECT, RELATION));
+		}
 		if (supportedLinks.isEmpty()) {
 			return AlignmentResult.failed("NO_SUPPORTED_CLAIMS", List.of(SUBJECT, RELATION));
 		}
@@ -875,6 +880,31 @@ public class AnswerQuestionAlignmentVerifier {
 
 	private static String normalize(String value) {
 		return KoreanQueryNormalizer.normalizeForMatch(value);
+	}
+
+	private static boolean matchesBoundGeneralCommencement(String question,
+		ClaimVerifier.ClaimEvidenceLink link, List<LawAiAnswerGround> grounds) {
+		String query = normalize(question);
+		var request = GENERAL_COMMENCEMENT_REQUEST.matcher(query);
+		if (grounds == null || !request.matches() || !OfficialCommencementEvidence.isCurrentLookup(query)) return false;
+		String named = request.group(1);
+		return grounds.stream().filter(g -> g != null && g.number() == link.groundNumber())
+			.filter(g -> "law".equals(g.target()) && "CURRENT".equals(g.effectiveStatus()))
+			.anyMatch(g -> {
+				var proof = g.officialCommencement();
+				if (proof == null || proof.sourcePath() == null || proof.anchorHash() == null
+					|| !proof.sourcePath().equals(g.sourcePath()) || !proof.covers(g.matchedChildText())) return false;
+				String title = normalize(g.title());
+				String ending = "에관한법률";
+				String alias = title.endsWith(ending)
+					? title.substring(0, title.length() - ending.length()).replace("및", "") + "법" : "";
+				boolean boundName = !title.isEmpty() && List.of("", "의", "은", "는", "이", "가").stream()
+					.anyMatch(particle -> named.equals(title + particle)
+						|| (alias.length() >= 8 && named.equals(alias + particle)));
+				String statement = normalize(proof.officialDateStatement(g.title()));
+				return boundName && statement.equals(normalize(link.claim()))
+					&& statement.equals(normalize(link.evidenceSentence()));
+			});
 	}
 
 	public record AlignmentResult(

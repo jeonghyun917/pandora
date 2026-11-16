@@ -106,6 +106,16 @@ class OfficialCommencementEvidenceTests {
 		var verifier = new ClaimVerifier();
 		assertThat(verifier.verifyDetailed("예시법 시행일은 2026년 8월 28일이다.",List.of(citation)).unsupportedClaims()).isEmpty();
 		assertThat(verifier.verifyDetailed("예시법 시행일은 2026년 2월 27일이다.",List.of(citation)).unsupportedClaims()).hasSize(1);
+		var finalVerifier = new AnswerVerificationService(new AnswerGuard(), verifier);
+		String statement = proof.officialDateStatement(title);
+		assertThat(finalVerifier.verify("예시법의 시행일을 알려 주세요.", statement, List.of(citation))
+			.insufficientEvidence()).isFalse();
+		assertThat(finalVerifier.verify("다른법의 시행일을 알려 주세요.", statement, List.of(citation))
+			.insufficientEvidence()).isTrue();
+		assertThat(finalVerifier.verify("예시법 제32조의 시행일을 알려 주세요.", statement, List.of(citation))
+			.insufficientEvidence()).isTrue();
+		assertThat(finalVerifier.verify("예시법의 시행일을 알려 주세요.", statement.replace("8월 28일", "2월 27일"), List.of(citation))
+			.insufficientEvidence()).isTrue();
 	}
 
 	private static String unit(String no, String date, String clause) {
