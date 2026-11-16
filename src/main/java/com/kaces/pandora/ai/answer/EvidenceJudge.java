@@ -172,6 +172,18 @@ public class EvidenceJudge {
 			: useRelevantOnly ? relevantChunks : topicAlignedChunks.isEmpty() ? judgedChunks : topicAlignedChunks;
 		selectedChunks = withScopeAnchoredReviewRule(profile, selectedChunks, judgedChunks, requestedLimit);
 		selectedChunks = withCatalogRequisitionSupport(profile, selectedChunks, judgedChunks, requestedLimit);
+		if (directEvidenceFound && selectedChunks.size() < requestedLimit) {
+			var standards = rfpEvaluationStandardSupport(query,
+				selectedChunks.stream().filter(JudgedChunk::directEvidence).map(JudgedChunk::chunk).toList(),
+				judgedChunks.stream().map(JudgedChunk::chunk).toList());
+			if (standards != null) {
+				var support = judgedChunks.stream().filter(candidate -> candidate.chunk().equals(standards)).findFirst().orElseThrow();
+				if (!selectedContainsChunk(selectedChunks, support)) {
+					selectedChunks = new ArrayList<>(selectedChunks);
+					selectedChunks.add(support);
+				}
+			}
+		}
 		selectedChunks = preferSecurityReviewGuideEvidence(profile, selectedChunks);
 		selectedChunks = preferCommitteeExpansion(profile, selectedChunks);
 		if (publicGuideQuestion && selectedChunks.size() < requestedLimit) {
@@ -3281,12 +3293,46 @@ public class EvidenceJudge {
 			.matcher(String.valueOf(body)).find();
 	}
 
+	static LawSemanticChunkRow rfpEvaluationStandardSupport(String question, List<LawSemanticChunkRow> anchors,
+		List<LawSemanticChunkRow> candidates) {
+		if (!question.contains("제안요청서") || !question.contains("평가요소") || !question.contains("기술평가")
+			|| !containsAny(question, List.of("배점기준", "배점한도"))
+			|| containsAny(question, List.of("첨부", "별첨"))) {
+			return null;
+		}
+		for (var anchor : anchors) {
+			String body = normalize(anchor.chunkText());
+			if (!"admrul".equals(anchor.target()) || !"CURRENT".equals(anchor.effectiveStatus())
+				|| !isInformationSystemOperationGuideline(anchor)
+				|| !body.contains("제16조제안요청서작성") || !body.contains("평가요소평가방법")) {
+				continue;
+			}
+			for (var row : candidates) {
+				if (anchor.documentId() == row.documentId() && anchor.target().equals(row.target())
+					&& "CURRENT".equals(row.effectiveStatus())
+					&& java.util.Objects.equals(anchor.sourceDate(), row.sourceDate())
+					&& java.util.Objects.equals(anchor.chunkVersion(), row.chunkVersion())
+					&& isInformationSystemOperationGuideline(row)
+					&& normalize(row.chunkText()).contains("제21조제안서기술평가기준")
+					&& normalize(row.chunkText()).contains("평가항목및배점한도평가방법등은")
+					&& normalize(row.chunkText()).contains("소프트웨어기술성평가기준지침에서정하는바에따른다")) {
+					return row;
+				}
+			}
+		}
+		return null;
+	}
+
+	private static boolean isInformationSystemOperationGuideline(LawSemanticChunkRow chunk) {
+		return normalize(chunk.title()).equals("행정기관및공공기관정보시스템구축운영지침");
+	}
+
 	static boolean rfpDisclosureOutsideAttachmentQuestion(String question, LawSemanticChunkRow chunk) {
 		if (!containsAny(question, List.of("제안요청서", "rfp"))
 			|| !containsAny(question, List.of("배점표", "배점기준표", "배점한도표"))
 			|| !(question.contains("별첨") || (question.contains("첨부")
 				&& containsAny(question, List.of("별도", "따로", "파일"))))
-			|| !normalize(chunk.title()).equals("행정기관및공공기관정보시스템구축운영지침")) {
+			|| !isInformationSystemOperationGuideline(chunk)) {
 			return false;
 		}
 		String body = normalize(chunk.chunkText());

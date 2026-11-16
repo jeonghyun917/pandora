@@ -1802,6 +1802,14 @@ public class LawAiAnswerService {
             grounds = grounds.stream().map(ground -> ground.chunkId() == linkedException.chunkId()
                 && ground.target().equals(linkedException.target()) ? asRelatedSupport(ground) : ground).toList();
         }
+		if (judgedEvidence.directEvidenceFound()) {
+			var rfpStandard = EvidenceJudge.rfpEvaluationStandardSupport(normalizeForMatch(normalized.query()),
+				judgedEvidence.chunks(), judgedEvidence.chunks());
+			if (rfpStandard != null) {
+				grounds = grounds.stream().map(ground -> ground.chunkId() == rfpStandard.chunkId()
+					&& ground.target().equals(rfpStandard.target()) ? asRelatedSupport(ground) : ground).toList();
+			}
+		}
 		grounds = grounds.stream().map(ground -> {
 			var proof = "law".equals(ground.target()) ? commencementProofs.get(ground.chunkId()) : null;
 			return proof == null ? ground : ground.withOfficialCommencement(proof,

@@ -1096,6 +1096,11 @@ class EvidenceJudgeTests {
 		var attachment = judge.judge("모든 공공 정보시스템 사업은 계약 방식과 관계없이 기술평가 배점표 파일을 제안요청서에 따로 첨부해야 하나요?", rows, Map.of(), 8);
 		assertThat(attachment.directEvidenceFound()).isFalse();
 		assertThat(attachment.chunks()).doesNotContain(disclosure, standards);
+		String compound = "협상에 의한 공공 정보시스템 계약에서 제안요청서의 평가요소 공개와 실제 기술평가 배점 기준은 어떻게 구분하나요?";
+		var combined = judge.judge(compound, rows, Map.of(), 8);
+		assertThat(combined.directEvidenceCount()).isEqualTo(1);
+		assertThat(combined.chunks()).containsExactly(disclosure, standards);
+		assertThat(judge.judge(compound, List.of(standards), Map.of(), 8).directEvidenceFound()).isFalse();
 	}
 
 	@Test
