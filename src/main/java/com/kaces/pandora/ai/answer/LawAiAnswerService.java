@@ -7056,9 +7056,10 @@ public class LawAiAnswerService {
 				return filtered;
 			}
 		}
-		if (isPrivacyThirdPartyNoticeQuestion(normalizedQuery)) {
+		if (isPrivacyThirdPartyNoticeQuestion(normalizedQuery) && !normalizedQuery.contains("수집")) {
+			boolean outside = AnswerQuestionAlignmentVerifier.purposeExternalScope(normalizedQuery);
 			List<LawSemanticChunkRow> filtered = candidates.stream()
-				.filter(this::isDirectPrivacyThirdPartyNoticeEvidence)
+				.filter(chunk -> isDirectPrivacyThirdPartyNoticeEvidence(chunk, outside))
 				.toList();
 			if (!filtered.isEmpty()) {
 				return filtered;
@@ -8584,16 +8585,34 @@ public class LawAiAnswerService {
 	private boolean isPrivacyThirdPartyNoticeQuestion(String normalizedQuery) {
 		String query = normalizeForMatch(normalizedQuery);
 		return query.contains("개인정보")
-			&& query.contains("제3자")
-			&& containsAny(query, "제공", "알려", "고지", "통지", "무엇");
+			&& containsAny(query, "제3자", "제삼자")
+			&& query.contains("제공")
+			&& containsAny(query, "알려", "고지", "통지");
 	}
 
-	private boolean isDirectPrivacyThirdPartyNoticeEvidence(LawSemanticChunkRow chunk) {
-		String text = normalizedChunkEvidenceText(chunk);
-		boolean thirdPartyContext = text.contains("개인정보") && text.contains("제3자") && text.contains("제공");
-		boolean noticeItems = containsAny(text, "제공받는자", "제공받는자의", "이용목적", "개인정보의항목", "보유및이용기간");
-		boolean policyOnly = text.contains("처리방침") && !noticeItems;
-		return thirdPartyContext && noticeItems && !policyOnly;
+	private static final Pattern PRIVACY_PROVISION_NOTICE_BLOCK = Pattern.compile(
+		"(?m)^([①②])[ \t]*([^\r\n]+)\\R[ \t]*1\\.[ \t]*([^\r\n]+)"
+			+ "(?:\\R[ \t]*(?:[2-9]|10)\\.[ \t]*[^\r\n①-⑳]+)+"
+			+ "\\R[ \t]*([②③])[ \t]*([^\r\n]+)\\R[ \t]*1\\.[ \t]*개인정보를 제공받는 자[ \t]*(?=\\R|$)");
+
+	private boolean isDirectPrivacyThirdPartyNoticeEvidence(LawSemanticChunkRow chunk, boolean outside) {
+		if (!"law".equals(chunk.target()) || !"CURRENT".equals(chunk.effectiveStatus()) || chunk.chunkText() == null) {
+			return false;
+		}
+		var matches = PRIVACY_PROVISION_NOTICE_BLOCK.matcher(chunk.chunkText());
+		while (matches.find()) {
+			String scope = normalizeForMatch(matches.group(2));
+			String consent = normalizeForMatch(matches.group(3));
+			String notice = normalizeForMatch(matches.group(5).split("\\.", 2)[0]);
+			if (scope.contains("제3자에게제공")
+				&& AnswerQuestionAlignmentVerifier.purposeExternalScope(scope) == outside
+				&& matches.group(1).equals(outside ? "②" : "①")
+				&& matches.group(4).equals(outside ? "③" : "②")
+				&& consent.equals(outside ? "정보주체로부터별도의동의를받은경우" : "정보주체의동의를받은경우")
+				&& notice.equals("개인정보처리자는제" + (outside ? "2" : "1")
+					+ "항제1호에따른동의를받을때에는다음각호의사항을정보주체에게알려야한다")) return true;
+		}
+		return false;
 	}
 
 	private boolean isPublicDataQualityActionQuestion(String normalizedQuery) {

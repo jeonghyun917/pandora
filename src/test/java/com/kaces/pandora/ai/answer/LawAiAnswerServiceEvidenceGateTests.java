@@ -19,6 +19,30 @@ import org.mockito.ArgumentCaptor;
 
 class LawAiAnswerServiceEvidenceGateTests {
 	@Test
+	void thirdPartyNoticeFilterSeparatesCollectionAndPurposeExternalScopes() throws Exception {
+		var collection = chunk(31, "law", "개인정보 보호법", "제15조",
+			"개인정보 수집. 제3자의 생명과 이익을 위해 필요한 경우. 개인정보를 제공한 자. 개인정보의 수집ㆍ이용 목적.");
+		String notice = " 개인정보처리자는 제%s항제1호에 따른 동의를 받을 때에는 다음 각 호의 사항을 정보주체에게 알려야 한다.\n"
+			+ "1. 개인정보를 제공받는 자\n2. 제공받는 자의 이용 목적";
+		var ordinary = chunk(32, "law", "개인정보 보호법", "제16조 등",
+			"① 정보주체의 개인정보를 제3자에게 제공할 수 있다.\n1. 정보주체의 동의를 받은 경우\n"
+				+ "2. 특별한 규정이 있는 경우\n②" + notice.formatted("1"));
+		var outside = chunk(33, "law", "개인정보 보호법", "제18조",
+			"② 개인정보를 목적 외의 용도로 이용하거나 이를 제3자에게 제공할 수 있다.\n"
+				+ "1. 정보주체로부터 별도의 동의를 받은 경우\n2. 특별한 규정이 있는 경우\n③" + notice.formatted("2"));
+		var service = service();
+		try {
+			var pool = List.of(collection, ordinary, outside);
+			assertThat(filterByQuestionIntent(service, pool, "개인정보를 제3자에게 제공할 때 동의 전에 무엇을 고지하나요?"))
+				.containsExactly(ordinary);
+			assertThat(filterByQuestionIntent(service, pool, "개인정보를 목적 외로 제3자에게 제공할 때 동의 전에 무엇을 고지하나요?"))
+				.containsExactly(outside);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void boundedLexicalAdmissionRequiresOwnedOmissionProcedureAndAuthority() throws Exception {
 		var control = chunk(710, "admrul", "다른 지침", "사업계획", "사업계획서를 제출한다.");
 		var exact = new LawSemanticChunkRow(711L, 711L, "admrul", "fixture", "전자정부 성과관리 지침",

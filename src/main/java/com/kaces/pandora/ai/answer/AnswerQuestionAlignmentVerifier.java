@@ -328,7 +328,7 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final Pattern COLLECTION_CONSENT_REQUEST =
 		Pattern.compile("수집(?:ㆍ?이용)?(?:에대한|에)?동의");
 
-	private static boolean purposeExternalScope(String normalized) {
+	static boolean purposeExternalScope(String normalized) {
 		return AlignmentProfile.containsAny(normalized, "목적외", "수집목적의범위를벗어나", "수집목적범위를벗어나")
 			&& AlignmentProfile.containsAny(normalized, "이용", "제공");
 	}
