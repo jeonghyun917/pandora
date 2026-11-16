@@ -8,6 +8,26 @@ import org.junit.jupiter.api.Test;
 class AnswerQuestionAlignmentVerifierTests {
 
 	@Test
+	void followUpReviewOmissionCoverageRequiresItsOwnSafeguardsDuty() {
+		String question = "보안성 검토를 이미 받은 정보화사업의 후속 유지보수에서 망 구성을 바꾸지 않으면 어떤 조건으로 검토를 생략할 수 있나요?";
+		String permission = "각급기관의 장은 다음 각 호에 해당하는 정보화사업에 대하여는 보안성 검토 절차의 이행을 생략할 수 있다.";
+		String safeguards = "이 경우 각급기관의 장은 관련 매뉴얼 등을 준수하는 등 자체 보안대책을 수립ㆍ시행하여야 한다.";
+		String scope = "제15조에 따른 보안성 검토를 거쳐 완료한 정보화사업에 대하여 정보통신망 구성을 변경하지 아니하는 범위 내에서 "
+			+ "다음 각 목의 사항을 포함한 후속운영ㆍ유지보수ㆍ컨설팅";
+		String body = permission + " " + safeguards + "\n1. 단순 장비 도입\n2. " + scope;
+		var owner = new LawAiAnswerGround(1, 1, 1, "official_doc", "정보보안 지침", null, null, null,
+			"CURRENT", "제16조", "검토 생략", null, body, null, null, 1, body, null, List.of(1L), null, "direct");
+		var claims = new ClaimVerifier();
+		var grounds = List.of(owner);
+		var omitted = claims.verifyDetailed(permission + "\n" + scope, grounds);
+		assertThat(omitted.supportedStrongClaimCount()).isEqualTo(2);
+		assertThat(verifier.verify(question, omitted, grounds).reasonCode()).isEqualTo("MISSING_ANSWER_COVERAGE");
+		var complete = claims.verifyDetailed(permission + "\n" + safeguards + "\n" + scope, grounds);
+		assertThat(complete.supportedStrongClaimCount()).isEqualTo(3);
+		assertThat(verifier.verify(question, complete, grounds).reasonCode()).isNotEqualTo("MISSING_ANSWER_COVERAGE");
+	}
+
+	@Test
 	void auditComplianceBindsOnlyTheReviewItemToItsOwnScope() {
 		String scope = "① 법 제57조제1항 또는 제4항에 따라 정보시스템 감리를 하는 법인 또는 기관의 업무범위는 다음 각 호와 같다.";
 		String item = "4. 관련 법령등, 규정 및 지침 등의 준수 여부에 대한 검토ㆍ확인";

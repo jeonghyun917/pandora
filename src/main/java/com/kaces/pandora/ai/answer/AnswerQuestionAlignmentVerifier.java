@@ -20,6 +20,9 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final String SUBJECT = "SUBJECT";
 	private static final String RELATION = "RELATION";
 	private static final String CONDITION = "CONDITION";
+	private static final Pattern OMISSION_WITH_SAFEGUARDS = Pattern.compile(
+		"(보안성\\s*검토\\s*절차의\\s*이행을\\s*생략할\\s*수\\s*있다)\\.\\s*"
+			+ "(이\\s*경우[^.!?。]{1,180}?자체\\s*보안대책을\\s*수립\\s*[ㆍ·]\\s*시행하여야\\s*한다)\\.");
 	private static final Pattern GENERAL_COMMENCEMENT_REQUEST = Pattern.compile(
 		"^(.{2,120}?)(?:시행일(?:은언제(?:인가요|입니까)|을알려주세요)|언제부터(?:효력이있|시행되)(?:나요|습니까|어))$");
 	private static final Pattern LEADING_STATUTE_CITATION = Pattern.compile(
@@ -154,6 +157,9 @@ public class AnswerQuestionAlignmentVerifier {
 			return AlignmentResult.failed("NO_SUPPORTED_CLAIMS", List.of(SUBJECT, RELATION));
 		}
 		String questionScope = normalize(question);
+		if (omitsOwnedReviewSafeguards(questionScope, supportedLinks, grounds)) {
+			return AlignmentResult.failed("MISSING_ANSWER_COVERAGE", List.of(ANSWER_COVERAGE));
+		}
 		if (asksEntrustedConsultationScope(questionScope) && !hasEntrustedConsultationConditions(supportedLinks, grounds)) {
 			return AlignmentResult.failed("MISSING_CONDITION", List.of(CONDITION));
 		}
@@ -334,6 +340,26 @@ public class AnswerQuestionAlignmentVerifier {
 			&& (question.contains("대상") || QuestionIntentProfile.asksPublicInstitutionConsultationApplicability(question))
 			&& !AlignmentProfile.containsAny(question, "자치분권", "과업심의", "언제", "시기", "시점", "절차",
 				"제외", "면제", "생략", "미준수", "위반", "제재", "시정");
+	}
+
+	private static boolean omitsOwnedReviewSafeguards(String question, List<ClaimVerifier.ClaimEvidenceLink> links,
+		List<LawAiAnswerGround> grounds) {
+		if (grounds == null || !question.contains("보안성검토") || !question.contains("생략")
+			|| !AlignmentProfile.containsAny(question, "조건", "요건")) return false;
+		for (var owner : grounds) {
+			if (owner == null || !"direct".equals(owner.evidenceRole()) || owner.matchedChildText() == null) continue;
+			var clauses = OMISSION_WITH_SAFEGUARDS.matcher(owner.matchedChildText());
+			while (clauses.find()) {
+				String permission = normalize(clauses.group(1));
+				String duty = normalize(clauses.group(2));
+				boolean usedPermission = links.stream().anyMatch(link -> link.groundNumber() == owner.number()
+					&& normalize(link.claim()).contains(permission) && normalize(link.evidenceSentence()).contains(permission));
+				boolean suppliedDuty = links.stream().anyMatch(link -> link.groundNumber() == owner.number()
+					&& normalize(link.claim()).equals(duty) && normalize(link.evidenceSentence()).contains(duty));
+				if (usedPermission && !suppliedDuty) return true;
+			}
+		}
+		return false;
 	}
 
 	private static boolean hasEntrustedConsultationConditions(
