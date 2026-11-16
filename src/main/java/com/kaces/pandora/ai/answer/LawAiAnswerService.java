@@ -9268,12 +9268,12 @@ public class LawAiAnswerService {
 				var familyCandidates = new java.util.ArrayList<>(findLexicalChunks(queryPlan, lawTargets, includeFuture, routing,
 					() -> hasDirectReviewedLexicalGround(query, ragCandidates, routing)));
 				familyCandidates.addAll(ragCandidates);
-				return finishLexicalChunks(familyCandidates, query, true);
+				return finishMixedLexicalChunks(familyCandidates, queryPlan, documentTitleAnchors.isEmpty());
 			}
 			List<LawSemanticChunkRow> familyCandidates = new java.util.ArrayList<>(
 				findLexicalChunks(queryPlan, lawTargets, includeFuture, routing));
 			familyCandidates.addAll(findLexicalChunks(queryPlan, ragTargets, includeFuture, routing));
-			return finishLexicalChunks(familyCandidates, query, documentTitleAnchors.isEmpty());
+			return finishMixedLexicalChunks(familyCandidates, queryPlan, documentTitleAnchors.isEmpty());
 		}
 		boolean strictDocumentEvidenceLookup = isStrictDocumentEvidenceAnchorQuestion(query, normalizedQuery)
 			&& !documentTitleAnchors.isEmpty();
@@ -10827,8 +10827,32 @@ public class LawAiAnswerService {
 		return finishLexicalChunks(chunks, query, false);
 	}
 
+	private List<LawSemanticChunkRow> finishMixedLexicalChunks(
+		List<LawSemanticChunkRow> chunks, QuestionSearchPlan plan, boolean preserveMixedFamilies) {
+		String query = plan.question();
+		String normalized = normalizeForMatch(query);
+		if (!preserveMixedFamilies || requiresLawOrVersionSpecificEvidence(query, plan.profile())
+			|| !plan.profile().matchedPolicyIds().contains("privacy_consent_notice")
+			|| !normalized.contains("수집") || containsAny(normalized, "제공", "제3자", "목적외")) {
+			return finishLexicalChunks(chunks, query, preserveMixedFamilies);
+		}
+		var operativeKeys = chunks.stream()
+			.filter(chunk -> "law".equals(chunk.target()) && "CURRENT".equals(chunk.effectiveStatus())
+				&& "PASS".equals(chunk.qualityStatus())
+				&& "개인정보보호법".equals(normalizeForMatch(chunk.title())))
+			.filter(chunk -> !ClaimEvidenceMatcher.completeCollectionNoticeCitation(chunk.chunkText()).isBlank())
+			.map(chunk -> scoreKey(chunk.target(), chunk.chunkId())).distinct().toList();
+		return finishLexicalChunks(chunks, query, preserveMixedFamilies,
+			operativeKeys.size() == 1 ? operativeKeys.get(0) : null);
+	}
+
 	private List<LawSemanticChunkRow> finishLexicalChunks(
 		List<LawSemanticChunkRow> chunks, String query, boolean preserveMixedFamilies) {
+		return finishLexicalChunks(chunks, query, preserveMixedFamilies, null);
+	}
+
+	private List<LawSemanticChunkRow> finishLexicalChunks(
+		List<LawSemanticChunkRow> chunks, String query, boolean preserveMixedFamilies, String preferredKey) {
 		var ranked = chunks.stream()
 			.collect(java.util.stream.Collectors.toMap(
 				chunk -> scoreKey(chunk.target(), chunk.chunkId()),
@@ -10839,7 +10863,9 @@ public class LawAiAnswerService {
 			.values()
 			.stream()
 			.map(chunk -> new LexicalScore(chunk, keywordScore(chunk, query)))
-			.sorted(Comparator.comparingDouble(LexicalScore::score).reversed())
+			.sorted(Comparator.<LexicalScore, Boolean>comparing(entry ->
+				preferredKey != null && preferredKey.equals(scoreKey(entry.chunk().target(), entry.chunk().chunkId())))
+				.reversed().thenComparing(Comparator.comparingDouble(LexicalScore::score).reversed()))
 			.map(LexicalScore::chunk)
 			.toList();
 		var top = ranked.subList(0, Math.min(KEYWORD_CANDIDATE_LIMIT, ranked.size()));

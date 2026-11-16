@@ -4586,6 +4586,27 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void collectionNoticeRanksTheCurrentOperativeParagraphAboveReferenceHeadings() throws Exception {
+		var article = chunk(5254, "law", "개인정보 보호법", "제3장 개인정보의 처리 등",
+			"② 개인정보처리자는 제1항제1호에 따른 동의를 받을 때에는 다음 각 호의 사항을 정보주체에게 알려야 한다.\n"
+			+ "1. 개인정보의 수집ㆍ이용 목적\n2. 수집하려는 개인정보의 항목\n"
+			+ "3. 개인정보의 보유 및 이용 기간\n4. 동의를 거부할 권리가 있다는 사실 및 동의 거부에 따른 불이익이 있는 경우에는 그 불이익의 내용");
+		String question = "개인정보 수집 동의를 받을 때 정보주체에게 어떤 사항을 알려야 하나요?";
+		var reference = chunk(5255, "official_doc", "개인정보 지침", question, question);
+		var law = (LawChunkMapper) java.lang.reflect.Proxy.newProxyInstance(
+			LawChunkMapper.class.getClassLoader(), new Class<?>[]{LawChunkMapper.class}, (p, method, args) ->
+				method.getName().equals("findSemanticChunksByDocumentTitleAndText")
+					&& ((List<?>) args[2]).contains("동의를 받을 때") ? List.of(article) : List.of());
+		var rag = (RagDocumentMapper) java.lang.reflect.Proxy.newProxyInstance(
+			RagDocumentMapper.class.getClassLoader(), new Class<?>[]{RagDocumentMapper.class}, (p, method, args) -> List.of(reference));
+		var service = service(law, rag);
+		try {
+			assertThat(findLexicalChunks(service, QuestionSearchPlan.from(question),
+				List.of("official_doc", "law"), false)).startsWith(article).contains(reference);
+		} finally { service.shutdownExecutors(); }
+	}
+
+	@Test
 	void collectionNoticeLookupUsesOwnedNoticeBodyAndDoesNotRouteMixedOrDisclosureQuestions() throws Exception {
 		String head = "② 개인정보처리자는 제1항제1호에 따른 동의를 받을 때에는 다음 각 호의 사항을 정보주체에게 알려야 한다.";
 		var collection = chunk(5252L, "law", "개인정보 보호법", "제15조(개인정보의 수집ㆍ이용)",
