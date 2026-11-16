@@ -1761,7 +1761,9 @@ public class EvidenceJudge {
 		boolean asksCommercialDirectPurchase = procurementQuery.contains("직접구매")
 			&& containsAny(procurementQuery, List.of("상용sw", "상용소프트웨어"));
 		boolean catalogContractBody = hasCatalogTerm(body) && isProcurementContractMethodChunk(body, "");
-		boolean commercialPurchaseBody = containsAny(body, List.of("상용sw직접구매", "상용소프트웨어직접구매"));
+		var commercialPurchaseTerms = List.of("상용sw직접구매", "상용소프트웨어직접구매");
+		boolean commercialPurchaseBody = containsAny(body, commercialPurchaseTerms)
+			|| (containsAny(documentTitle, commercialPurchaseTerms) && body.contains("직접구매"));
 		if (procurementCatalogContractQuestion
 			&& ((procurementContractMethodQuestion && !asksCommercialDirectPurchase
 					&& commercialPurchaseBody && !catalogContractBody)

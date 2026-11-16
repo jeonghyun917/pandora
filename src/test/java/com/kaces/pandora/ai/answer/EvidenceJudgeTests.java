@@ -2322,6 +2322,20 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void abbreviatedDirectPurchaseChecklistDoesNotProveCatalogContractMethod() {
+		String q = "디지털서비스몰에서 구입하면 계약방법은 수의계약인가요?";
+		var checklist = chunk(8143, "official_doc", "상용소프트웨어 직접구매 가이드", "구매 방법",
+			"직접구매 제외사유를 확인한다. 쇼핑몰: 디지털서비스몰에 등록된 SW 구매. 입찰 등: 공개경쟁입찰, 수의계약 등.");
+		var actual = chunk(8144, "official_doc", "행정공공기관 클라우드 이용안내서", "계약방식 결정",
+			"디지털서비스 계약제도에서 사전 선정된 서비스는 수의계약으로 체결할 수 있다. "
+				+ "디지털서비스몰에서는 제안서 평가와 협상을 거쳐 별도로 카탈로그 계약을 체결할 수 있다.");
+		assertThat(judge.judge(q, List.of(checklist), Map.of(), 5).directEvidenceFound()).isFalse();
+		var result = judge.judge(q, List.of(checklist, actual), Map.of(), 5);
+		assertThat(result.directEvidenceCount()).isEqualTo(1);
+		assertThat(result.chunks()).containsExactly(actual);
+	}
+
+	@Test
 	void sharedMallDoesNotTurnOneProcurementRegimeIntoDirectEvidenceForTheOther() {
 		var catalog = chunk(8141, "admrul", "디지털서비스 카탈로그계약 업무처리규정", "계약체결",
 			"계약담당공무원은 카탈로그의 적정성을 검토하여 수의계약을 체결할 수 있다. "
