@@ -1043,6 +1043,27 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void requiresTheFailedCoordinationAndDiscretionaryReturnInTheSameProcurementRule() {
+		String title = "조달청 협상에 의한 계약 제안서평가 세부기준";
+		String clause = "⑨ 평가집행자는 제안요청서를 수정할 수 있으며, 다음 각 호의 사항에 대하여 "
+			+ "수요기관의 장과 협의 및 조정이 이루어지지 않는 경우에는 조달요청서를 반려할 수 있다. "
+			+ "1. 계약 추진 여부 2. 입찰참가자격 3. 제안서 평가항목, 평가배점 및 항목별 평가방법";
+		var operative = currentEvaluationPlanChunk(961L, title, "제안서 평가", clause);
+		var mandatory = currentEvaluationPlanChunk(962L, title, "제안서 평가",
+			clause.replace("반려할 수 있다", "반려하여야 한다"));
+		var split = currentEvaluationPlanChunk(963L, title, "제안서 평가",
+			clause.replace("다음 각 호의 사항에 대하여 ", "").replace("반려할 수 있다. ", "반려할 수 있다. ⑩ "));
+		var neighboring = currentEvaluationPlanChunk(964L, "국방 정보화업무 훈령", "제안서 평가",
+			"집행기관은 평가항목과 배점을 포함한 제안서 평가계획을 작성하여 제안요청서에 포함하여야 한다.");
+		String question = "조달청 협상계약 제안서평가 기준에서 평가항목과 배점을 협의했으나 조정되지 않으면 평가기관은 구매요청을 어떻게 처리할 수 있나요?";
+		var result = judge.judge(question, List.of(neighboring, mandatory, split, operative), Map.of(), 5);
+		assertThat(result.directEvidenceCount()).isEqualTo(1);
+		assertThat(result.chunks()).containsExactly(operative);
+		assertThat(judge.judge(question, List.of(neighboring, mandatory, split), Map.of(), 5)
+			.directEvidenceFound()).isFalse();
+	}
+
+	@Test
 	void distinguishesArticleBoundEvaluationPlanFromStandaloneScoringTable() {
 		String title = "국방 정보화업무 훈령";
 		String duty = "③ 집행기관은 제안서 평가계획(평가요소ㆍ배점ㆍ기준 및 절차)을 작성하여 제안요청서에 포함시키되 "

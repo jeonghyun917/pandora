@@ -113,15 +113,18 @@ public class EvidenceJudge {
 			.toList();
 		boolean cctvGuidePurpose = asksCctvGuideIntroduction(profile.normalizedQuestion());
 		boolean reportBasedCorrection = asksReportBasedCorrection(profile.normalizedQuestion());
+		boolean procurementCoordinationReturn = asksProcurementCoordinationReturn(profile.normalizedQuestion());
 		boolean directEvidenceRequired = !profile.directEvidenceGroups().isEmpty()
 			|| cctvGuidePurpose
 			|| reportBasedCorrection
+			|| procurementCoordinationReturn
 			|| asksPriorConsultationCorrection(profile.normalizedQuestion())
 			|| DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(profile.normalizedQuestion())
 			|| (isIrmRegistrationFaithfulness(profile.normalizedQuestion()) && !directEvidenceChunks.isEmpty())
 			|| searchableChunks.stream().anyMatch(chunk -> requiresCommencementOwnership(profile, chunk));
 		List<JudgedChunk> directSupportingChunks = topicAlignedChunks.stream()
 			.filter(chunk -> !reportBasedCorrection)
+			.filter(chunk -> !procurementCoordinationReturn)
 			.filter(chunk -> !DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(profile.normalizedQuestion()))
 			.filter(chunk -> !isIrmRegistrationFaithfulness(profile.normalizedQuestion()))
 			.filter(chunk -> !isCctvGuideApplicabilityQuestion(profile.normalizedQuestion()))
@@ -1706,6 +1709,14 @@ public class EvidenceJudge {
 				&& articleContainsDuty(profile.normalizedQuestion(), chunk, RFP_EVALUATION_PLAN_DUTY);
 			return new JudgedChunk(chunk, score, owned, owned, owned, owned ? 1 : 0, owned ? 1 : 0);
 		}
+		if (asksProcurementCoordinationReturn(profile.normalizedQuestion())) {
+			boolean owned = !tableOfContents && !suppressEvidenceNoise
+				&& "admrul".equals(chunk.target()) && "CURRENT".equals(chunk.effectiveStatus())
+				&& "조달청협상에의한계약제안서평가세부기준".equals(documentTitle)
+				&& !missingRequestedArticleOwnership(profile, chunk, documentTitle)
+				&& PROCUREMENT_COORDINATION_RETURN.matcher(String.valueOf(chunk.chunkText()).replaceAll("\\s+", "")).find();
+			return new JudgedChunk(chunk, score, owned, owned, owned, owned ? 1 : 0, owned ? 1 : 0);
+		}
 		if (asksReviewResultRelay(profile.normalizedQuestion()) && profile.explicitDocumentTitles().size() == 1
 			&& articleReferences(profile.normalizedQuestion()).size() == 1) {
 			boolean owned = !tableOfContents && !suppressEvidenceNoise
@@ -1824,6 +1835,20 @@ public class EvidenceJudge {
 	private static final java.util.regex.Pattern RFP_EVALUATION_PLAN_DUTY = java.util.regex.Pattern.compile(
 		"제안서평가계획\\([^)]{0,80}배점[^)]{0,80}\\)을작성하여제안요청서에포함"
 			+ "(?:시켜야한다|하여야한다|시키되[^.!?。]{0,130}작성하여야한다)");
+
+	private static boolean asksProcurementCoordinationReturn(String question) {
+		return question.contains("조달청") && question.contains("제안서평가")
+			&& question.contains("배점") && question.contains("협의")
+			&& containsAny(question, List.of("조정되지않", "이루어지지않", "협의가결렬", "협의에실패"))
+			&& containsAny(question, List.of("구매요청", "조달요청"))
+			&& containsAny(question, List.of("처리", "반려", "돌려보낼"))
+			&& !containsAny(question, List.of("모든", "첨부", "배점표"));
+	}
+
+	private static final java.util.regex.Pattern PROCUREMENT_COORDINATION_RETURN = java.util.regex.Pattern.compile(
+		"평가집행자(?:는|가)[^.!?。①-⑳]{0,170}다음각호의사항에대하여"
+			+ "수요기관의장과협의및조정이이루어지지않는경우에는조달요청서를반려할수있다[.。]"
+			+ "[^①-⑳]{0,150}제안서평가항목[,ㆍ·]평가배점");
 
 	private static boolean asksReviewResultRelay(String question) {
 		return question.contains("보안성검토결과") && question.contains("정보보안담당관")
