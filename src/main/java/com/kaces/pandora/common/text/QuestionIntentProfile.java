@@ -986,7 +986,8 @@ public record QuestionIntentProfile(
 	public static boolean asksPublicInstitutionConsultationApplicability(String normalized) {
 		return normalized.contains("공공기관")
 			&& containsAny(normalized, List.of("사전협의적용조건", "사전협의적용요건",
-				"사전협의가적용되는조건", "사전협의가적용되는요건"))
+				"사전협의가적용되는조건", "사전협의가적용되는요건",
+				"사전협의가필요한조건", "사전협의가필요한요건"))
 			&& !containsAny(normalized, List.of("자치분권", "과업심의", "언제", "시점", "시기",
 				"며칠전", "몇일전", "어느단계", "절차", "제외", "면제", "생략", "미준수", "위반", "제재", "시정"));
 	}
