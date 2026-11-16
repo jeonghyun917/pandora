@@ -1101,6 +1101,13 @@ class EvidenceJudgeTests {
 		assertThat(combined.directEvidenceCount()).isEqualTo(1);
 		assertThat(combined.chunks()).containsExactly(disclosure, standards);
 		assertThat(judge.judge(compound, List.of(standards), Map.of(), 8).directEvidenceFound()).isFalse();
+		var publication = currentEvaluationPlanChunk(958L, title, "제24조(제안요청서 사전공개)",
+			"제24조(제안요청서 사전공개) 행정기관등의 장은 협상에 의한 계약으로 정보시스템 사업을 발주하는 경우 입찰공고 전에 제안요청서를 사전공개하여야 한다.");
+		var eligibility = currentEvaluationPlanChunk(959L, title, "제32조(제안서 평가)",
+			"제32조(제안서 평가) 정보시스템 사업의 제안서 평가에서 기술능력평가 분야 배점한도의 85% 이상일 때 수의계약 대상자로 정할 수 있다.");
+		String named = title + "에 따라 협상계약 제안요청서에서 평가요소를 공개할 때 기술평가의 배점 기준은 무엇인가요?";
+		assertThat(judge.judge(named, List.of(disclosure, standards, publication, eligibility), Map.of(), 8).chunks())
+			.contains(disclosure, standards).doesNotContain(publication, eligibility);
 	}
 
 	@Test

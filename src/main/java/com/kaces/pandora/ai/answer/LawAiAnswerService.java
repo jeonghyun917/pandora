@@ -3969,7 +3969,8 @@ public class LawAiAnswerService {
 		String normalizedQuery = normalizeForMatch(query);
 		if (EvidenceJudge.outsideCommercialPurchaseScope(normalizedQuery, chunk)
 			|| EvidenceJudge.subcontractRemedyOutsideQuestion(normalizedQuery, chunk)
-			|| EvidenceJudge.rfpDisclosureOutsideAttachmentQuestion(normalizedQuery, chunk)) {
+			|| EvidenceJudge.rfpDisclosureOutsideAttachmentQuestion(normalizedQuery, chunk)
+			|| EvidenceJudge.rfpNeighborOutsideScoringQuestion(normalizedQuery, chunk)) {
 			return true;
 		}
 		String body = chunk.chunkText() == null ? "" : chunk.chunkText();

@@ -89,6 +89,7 @@ public class EvidenceJudge {
 			.filter(chunk -> !outsideCommercialPurchaseScope(query, chunk))
 			.filter(chunk -> !subcontractRemedyOutsideQuestion(query, chunk))
 			.filter(chunk -> !rfpDisclosureOutsideAttachmentQuestion(query, chunk))
+			.filter(chunk -> !rfpNeighborOutsideScoringQuestion(query, chunk))
 			.toList();
 		if (searchableChunks.isEmpty()) {
 			return new Result(List.of(), Map.of(), false, false, false, false, 0, 0, 0, "quality_filtered");
@@ -3293,18 +3294,41 @@ public class EvidenceJudge {
 			.matcher(String.valueOf(body)).find();
 	}
 
+	private static boolean asksRfpDisclosureAndScoringStandard(String question) {
+		return question.contains("제안요청서") && question.contains("평가요소") && question.contains("기술평가")
+			&& containsAny(question, List.of("배점기준", "배점한도"))
+			&& !containsAny(question, List.of("첨부", "별첨"));
+	}
+
+	static boolean rfpNeighborOutsideScoringQuestion(String question, LawSemanticChunkRow chunk) {
+		if (!asksRfpDisclosureAndScoringStandard(question) || !isInformationSystemOperationGuideline(chunk)
+			|| !question.contains("정보시스템구축운영지침")
+			|| containsAny(question, List.of("사전공개", "입찰공고", "상호운용성", "기술적용", "수의계약",
+				"협상적격", "평가위원", "하도급", "작업장소", "적용범위"))) {
+			return false;
+		}
+		String body = normalize(chunk.chunkText());
+		return !ownsRfpDisclosure(body) && !ownsRfpEvaluationStandard(body);
+	}
+
+	private static boolean ownsRfpDisclosure(String body) {
+		return body.contains("제16조제안요청서작성") && body.contains("평가요소평가방법");
+	}
+
+	private static boolean ownsRfpEvaluationStandard(String body) {
+		return body.contains("제21조제안서기술평가기준")
+			&& body.contains("평가항목및배점한도평가방법등은")
+			&& body.contains("소프트웨어기술성평가기준지침에서정하는바에따른다");
+	}
+
 	static LawSemanticChunkRow rfpEvaluationStandardSupport(String question, List<LawSemanticChunkRow> anchors,
 		List<LawSemanticChunkRow> candidates) {
-		if (!question.contains("제안요청서") || !question.contains("평가요소") || !question.contains("기술평가")
-			|| !containsAny(question, List.of("배점기준", "배점한도"))
-			|| containsAny(question, List.of("첨부", "별첨"))) {
-			return null;
-		}
+		if (!asksRfpDisclosureAndScoringStandard(question)) return null;
 		for (var anchor : anchors) {
 			String body = normalize(anchor.chunkText());
 			if (!"admrul".equals(anchor.target()) || !"CURRENT".equals(anchor.effectiveStatus())
 				|| !isInformationSystemOperationGuideline(anchor)
-				|| !body.contains("제16조제안요청서작성") || !body.contains("평가요소평가방법")) {
+				|| !ownsRfpDisclosure(body)) {
 				continue;
 			}
 			for (var row : candidates) {
@@ -3313,9 +3337,7 @@ public class EvidenceJudge {
 					&& java.util.Objects.equals(anchor.sourceDate(), row.sourceDate())
 					&& java.util.Objects.equals(anchor.chunkVersion(), row.chunkVersion())
 					&& isInformationSystemOperationGuideline(row)
-					&& normalize(row.chunkText()).contains("제21조제안서기술평가기준")
-					&& normalize(row.chunkText()).contains("평가항목및배점한도평가방법등은")
-					&& normalize(row.chunkText()).contains("소프트웨어기술성평가기준지침에서정하는바에따른다")) {
+					&& ownsRfpEvaluationStandard(normalize(row.chunkText()))) {
 					return row;
 				}
 			}
