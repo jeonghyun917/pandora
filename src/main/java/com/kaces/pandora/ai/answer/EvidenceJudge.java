@@ -115,11 +115,13 @@ public class EvidenceJudge {
 		boolean reportBasedCorrection = asksReportBasedCorrection(profile.normalizedQuestion());
 		boolean procurementCoordinationReturn = asksProcurementCoordinationReturn(profile.normalizedQuestion());
 		boolean hardwareOnlyScope = asksHardwareOnlyProjectScope(profile.normalizedQuestion());
+		boolean purchaseRegistrationDeadline = asksDirectPurchaseRegistrationDeadline(profile.normalizedQuestion());
 		boolean directEvidenceRequired = !profile.directEvidenceGroups().isEmpty()
 			|| cctvGuidePurpose
 			|| reportBasedCorrection
 			|| procurementCoordinationReturn
 			|| hardwareOnlyScope
+			|| purchaseRegistrationDeadline
 			|| asksPriorConsultationCorrection(profile.normalizedQuestion())
 			|| DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(profile.normalizedQuestion())
 			|| (isIrmRegistrationFaithfulness(profile.normalizedQuestion()) && !directEvidenceChunks.isEmpty())
@@ -128,6 +130,7 @@ public class EvidenceJudge {
 			.filter(chunk -> !reportBasedCorrection)
 			.filter(chunk -> !procurementCoordinationReturn)
 			.filter(chunk -> !hardwareOnlyScope)
+			.filter(chunk -> !purchaseRegistrationDeadline)
 			.filter(chunk -> !DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(profile.normalizedQuestion()))
 			.filter(chunk -> !isIrmRegistrationFaithfulness(profile.normalizedQuestion()))
 			.filter(chunk -> !isCctvGuideApplicabilityQuestion(profile.normalizedQuestion()))
@@ -1725,6 +1728,14 @@ public class EvidenceJudge {
 				&& HARDWARE_ONLY_EXCLUSION.matcher(String.valueOf(chunk.chunkText()).replaceAll("\\s+", "")).find();
 			return new JudgedChunk(chunk, score, owned, owned, owned, owned ? 1 : 0, owned ? 1 : 0);
 		}
+		if (asksDirectPurchaseRegistrationDeadline(profile.normalizedQuestion())) {
+			boolean owned = !tableOfContents && !suppressEvidenceNoise
+				&& "admrul".equals(chunk.target()) && "CURRENT".equals(chunk.effectiveStatus())
+				&& "소프트웨어사업계약및관리감독에관한지침".equals(documentTitle)
+				&& !missingRequestedArticleOwnership(profile, chunk, documentTitle)
+				&& DIRECT_PURCHASE_REGISTRATION_DUTY.matcher(String.valueOf(chunk.chunkText()).replaceAll("\\s+", "")).find();
+			return new JudgedChunk(chunk, score, owned, owned, owned, owned ? 1 : 0, owned ? 1 : 0);
+		}
 		if (asksReviewResultRelay(profile.normalizedQuestion()) && profile.explicitDocumentTitles().size() == 1
 			&& articleReferences(profile.normalizedQuestion()).size() == 1) {
 			boolean owned = !tableOfContents && !suppressEvidenceNoise
@@ -1871,6 +1882,16 @@ public class EvidenceJudge {
 			&& containsAny(question, List.of("처리", "반려", "돌려보낼"))
 			&& !containsAny(question, List.of("모든", "첨부", "배점표"));
 	}
+
+	private static boolean asksDirectPurchaseRegistrationDeadline(String question) {
+		return containsAny(question, List.of("상용sw", "상용소프트웨어")) && question.contains("직접구매")
+			&& containsAny(question, List.of("계약정보", "계약현황")) && question.contains("등록")
+			&& containsAny(question, List.of("기한", "언제", "시기", "기간", "까지", "며칠"));
+	}
+
+	private static final java.util.regex.Pattern DIRECT_PURCHASE_REGISTRATION_DUTY = java.util.regex.Pattern.compile(
+		"(?:직접구매계약정보등록\\)|직접구매대상)[^.!?。①-⑳]{0,100}"
+			+ "계약체결또는계약변경후[0-9]+일이내에[^.!?。①-⑳]{0,125}종합관리체계에등록하여야한다");
 
 	private static final java.util.regex.Pattern PROCUREMENT_COORDINATION_RETURN = java.util.regex.Pattern.compile(
 		"평가집행자(?:는|가)[^.!?。①-⑳]{0,170}다음각호의사항에대하여"

@@ -2272,11 +2272,17 @@ class EvidenceJudgeTests {
 		String rule = "소프트웨어사업 계약 및 관리감독에 관한 지침";
 		var eligibility = chunk(1, "admrul", rule, "상용소프트웨어 직접구매 대상",
 			"상용소프트웨어 직접구매 대상 사업의 기준과 종합쇼핑몰에서 구매계약을 요청하는 절차를 정한다.");
-		var registration = chunk(2, "admrul", rule, "상용소프트웨어 직접구매 계약정보 등록",
+		var registration = currentEvaluationPlanChunk(2, rule, "상용소프트웨어 직접구매 계약정보 등록",
 			"국가기관등의 장은 직접구매 대상 소프트웨어의 계약현황을 계약체결 또는 계약변경 후 30일 이내에 종합관리체계에 등록하여야 한다.");
-		var result = judge.judge("상용소프트웨어 직접구매 계약정보 등록 기한은 언제인가요?",
-			List.of(eligibility, registration), Map.of(), 1);
+		var wrongClock = currentEvaluationPlanChunk(3, rule, "상용소프트웨어 직접구매 계약정보 등록",
+			"국가기관등의 장은 직접구매 대상 소프트웨어의 계약현황을 사업종료 후 30일 이내에 종합관리체계에 등록하여야 한다.");
+		var split = chunk(4, "official_doc", "상용소프트웨어 직접구매 가이드", "등록 안내",
+			"직접구매 대상 소프트웨어의 계약 체결 후 30일 이내에 점검한다. 계약현황은 종합관리체계에 등록하여야 한다.");
+		String question = "상용소프트웨어 직접구매 계약정보 등록 기한은 언제인가요?";
+		var result = judge.judge(question, List.of(eligibility, wrongClock, split, registration), Map.of(), 8);
+		assertThat(result.directEvidenceCount()).isEqualTo(1);
 		assertThat(result.chunks()).containsExactly(registration);
+		assertThat(judge.judge(question, List.of(wrongClock,split), Map.of(), 8).directEvidenceFound()).isFalse();
 	}
 
 	@Test
