@@ -149,6 +149,9 @@ public class AnswerQuestionAlignmentVerifier {
 			return AlignmentResult.failed("NO_SUPPORTED_CLAIMS", List.of(SUBJECT, RELATION));
 		}
 		String questionScope = normalize(question);
+		if (asksEntrustedConsultationScope(questionScope) && !hasEntrustedConsultationConditions(supportedLinks, grounds)) {
+			return AlignmentResult.failed("MISSING_CONDITION", List.of(CONDITION));
+		}
 		boolean ownedOutsideProvision = OUTSIDE_PROVISION_NOTICE_REQUEST.matcher(questionScope).matches()
 			&& hasOwnedOutsideProvisionNotice(supportedLinks, grounds);
 		if (questionScope.contains("개인정보") && questionScope.contains("동의")
@@ -319,6 +322,42 @@ public class AnswerQuestionAlignmentVerifier {
 			|| !originalHeading.equals(foldedWhitespace(heading.claim()))
 			|| !originalCriterion.equals(foldedWhitespace(criterion.claim()))) return;
 		candidates.add(new CandidateResult(originalHeading + "\n" + originalCriterion, List.of()));
+	}
+
+	private static boolean asksEntrustedConsultationScope(String question) {
+		return question.contains("공공기관") && question.contains("위탁") && question.contains("사전협의")
+			&& (question.contains("대상") || QuestionIntentProfile.asksPublicInstitutionConsultationApplicability(question))
+			&& !AlignmentProfile.containsAny(question, "자치분권", "과업심의", "언제", "시기", "시점", "절차",
+				"제외", "면제", "생략", "미준수", "위반", "제재", "시정");
+	}
+
+	private static boolean hasEntrustedConsultationConditions(
+		List<ClaimVerifier.ClaimEvidenceLink> links, List<LawAiAnswerGround> grounds
+	) {
+		if (grounds == null) return false;
+		boolean linkage = false;
+		boolean entrustment = false;
+		for (var link : links) {
+			String clause = normalize(link.claim());
+			if (clause.isBlank() || !clause.equals(normalize(link.evidenceSentence()))) continue;
+			var owners = grounds.stream().filter(g -> g != null && g.number() == link.groundNumber()).toList();
+			if (owners.size() != 1) continue;
+			var owner = owners.get(0);
+			if (!"direct".equals(owner.evidenceRole()) || !"CURRENT".equals(owner.effectiveStatus())
+				|| !normalize(owner.matchedChildText()).contains(clause)) continue;
+			String title = normalize(owner.title());
+			if ("law".equals(owner.target()) && "전자정부법".equals(title)
+				&& normalize(owner.chunkTitle()).startsWith("제67조사전협의")) {
+				linkage |= clause.startsWith("행정기관등의장은")
+					&& clause.contains("다른행정기관등과의상호연계또는공동이용과관련한")
+					&& clause.contains("전자정부사업") && clause.endsWith("사전에협의하여야한다");
+			}
+			if ("admrul".equals(owner.target()) && "전자정부성과관리지침".equals(title)
+				&& normalize(owner.matchedChildText()).contains("사전협의의대상사업")) {
+				entrustment |= clause.contains("중앙행정기관및지방자치단체의정보화업무를출연위임또는위탁받은공공기관의전자정부사업");
+			}
+		}
+		return linkage && entrustment;
 	}
 
 	private static boolean thirdPartyProvision(String normalized) {

@@ -963,6 +963,29 @@ class AnswerQuestionAlignmentVerifierTests {
 	}
 
 	@Test
+	void entrustedConsultationScopePreservesBothOperativeConditions() {
+		String question = "기타공공기관이 위탁받아 하는 전자정부사업의 사전협의 대상인가요?";
+		String classification = "기타공공기관은 공공기관의 한 유형입니다.";
+		String duty = "행정기관등의 장은 다른 행정기관등과의 상호연계 또는 공동이용과 관련한 전자정부사업을 추진할 때에는 사전에 협의하여야 한다.";
+		String scope = "사전협의의 대상사업은 예산과목 및 계약방식과 관계없이 다음 각 호의 어느 하나에 해당하는 사업을 말한다.";
+		String entrusted = "중앙행정기관 및 지방자치단체의 정보화업무를 출연, 위임 또는 위탁받은 공공기관의 전자정부사업";
+		var dutyGround = new LawAiAnswerGround(1, 12, 2, "law", "전자정부법", null, null, null,
+			"CURRENT", "제67조", "제67조(사전협의)", null, duty, null, null, 0);
+		var scopeGround = new LawAiAnswerGround(2, 13, 3, "admrul", "전자정부 성과관리 지침", null, null, null,
+			"CURRENT", "제4조", "제4조(대상사업)", null, scope + "\n" + entrusted, null, null, 0);
+		var directDuty = new ClaimVerifier.ClaimEvidenceLink(duty, "SUPPORTED", 1, duty, 5, 1.0, 1.0);
+		var directScope = new ClaimVerifier.ClaimEvidenceLink(entrusted, "SUPPORTED", 2, entrusted, 5, 1.0, 1.0);
+		var background = supported(classification, classification);
+		var coverage = supported(scope, scope);
+		var grounds = List.of(dutyGround, scopeGround);
+		assertThat(verifier.verify(question, claimResult(background, directDuty, coverage, directScope), grounds).aligned()).isTrue();
+		assertThat(verifier.verify(question, claimResult(background, coverage, directScope), grounds).aligned()).isFalse();
+		assertThat(verifier.verify(question, claimResult(background, directDuty, coverage), grounds).aligned()).isFalse();
+		assertThat(verifier.verify(question, claimResult(background, directDuty, coverage, supported(entrusted, entrusted)),
+			grounds).aligned()).isFalse();
+	}
+
+	@Test
 	void configuredCrossPolicyScopeQuestionRequiresBothPolicyScopesTogether() {
 		String question = "과업심의 한 사업은 사전협의도 꼭 해야돼?";
 		String projectReviewScope = "국가기관 등이 발주하는 모든 SW사업(상용SW포함).";
