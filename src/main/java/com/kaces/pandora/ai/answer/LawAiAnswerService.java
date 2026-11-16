@@ -9380,6 +9380,17 @@ public class LawAiAnswerService {
 			.filter(value -> !isLexicalControlKeyword(value))
 			.distinct()
 			.toList();
+		if (!boundedLawEvidenceMatched && !includeFuture && lawTargets.contains("law")
+			&& documentTitleAnchors.isEmpty() && !requiresLawOrVersionSpecificEvidence(query, profile)
+			&& isPrivacyThirdPartyNoticeQuestion(normalizedQuery) && normalizedQuery.contains("동의")
+			&& !normalizedQuery.contains("수집")) {
+			boolean outside = AnswerQuestionAlignmentVerifier.purposeExternalScope(normalizedQuery);
+			chunks.addAll(safeLexicalQuery("law owned third-party consent notice",
+				() -> lawChunkMapper.findSemanticChunksByDocumentTitleAndText(List.of("law"),
+					List.of("개인정보 보호법"), List.of("개인정보를 제공받는 자"), false, LAW_TEXT_KEYWORD_FETCH_LIMIT),
+				routing).stream().filter(chunk -> "개인정보보호법".equals(normalizeForMatch(chunk.title())))
+				.filter(chunk -> isDirectPrivacyThirdPartyNoticeEvidence(chunk, outside)).toList());
+		}
 		if (!boundedLawEvidenceMatched && lawTargets.contains("law")
 			&& profile.matchedPolicyIds().contains("privacy_consent_notice")
 			&& normalizedQuery.contains("수집") && !containsAny(normalizedQuery, "제공", "제3자", "목적외")) {

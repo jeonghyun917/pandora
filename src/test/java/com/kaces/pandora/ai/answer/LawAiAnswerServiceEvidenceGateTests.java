@@ -4579,6 +4579,37 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void lexicalLookupRecoversOnlyTheOwnedProvisionScope() throws Exception {
+		String notice = " 개인정보처리자는 제%s항제1호에 따른 동의를 받을 때에는 다음 각 호의 사항을 정보주체에게 알려야 한다.\n"
+			+ "1. 개인정보를 제공받는 자\n2. 제공받는 자의 이용 목적";
+		var ordinary = chunk(5310, "law", "개인정보 보호법", "제16조 등",
+			"① 개인정보를 제3자에게 제공할 수 있다.\n1. 정보주체의 동의를 받은 경우\n"
+				+ "2. 특별한 규정이 있는 경우\n②" + notice.formatted("1"));
+		var outside = chunk(5311, "law", "개인정보 보호법", "제18조",
+			"② 개인정보를 목적 외의 용도로 이용하거나 이를 제3자에게 제공할 수 있다.\n"
+				+ "1. 정보주체로부터 별도의 동의를 받은 경우\n2. 특별한 규정이 있는 경우\n③" + notice.formatted("2"));
+		var mapper = org.mockito.Mockito.mock(LawChunkMapper.class);
+		org.mockito.Mockito.when(mapper.findSemanticChunksByDocumentTitleAndText(
+			org.mockito.ArgumentMatchers.eq(List.of("law")), org.mockito.ArgumentMatchers.eq(List.of("개인정보 보호법")),
+			org.mockito.ArgumentMatchers.eq(List.of("개인정보를 제공받는 자")),
+			org.mockito.ArgumentMatchers.eq(false), org.mockito.ArgumentMatchers.anyInt()
+		)).thenReturn(List.of(ordinary, outside));
+		var service = service(mapper, org.mockito.Mockito.mock(RagDocumentMapper.class));
+		try {
+			for (boolean external : List.of(false, true)) {
+				String query = "개인정보를 " + (external ? "목적 외로 " : "") + "제3자에게 제공할 때 동의 전에 무엇을 고지하나요?";
+				assertThat(findLexicalChunks(service, QuestionSearchPlan.from(query), List.of("law"), false))
+					.containsExactly(external ? outside : ordinary);
+			}
+			assertThat(findLexicalChunks(service, QuestionSearchPlan.from(
+				"개인정보 수집과 제3자 제공에 각각 동의를 받을 때 무엇을 고지하나요?"), List.of("law"), false))
+				.doesNotContain(ordinary, outside);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void mixedTargetPolicyLawLookupPrecedesUnrelatedFastRagMatches() throws Exception {
 		String query = "\uC9C0\uB2A5\uC815\uBCF4\uC0AC\uD68C \uC2E4\uD589\uACC4\uD68D\uC758 \uC608\uBE44\uAC80\uD1A0\uB294 \uC5B4\uB5A4 \uC0AC\uC5C5\uC744 \uB300\uC0C1\uC73C\uB85C \uD558\uB294\uAC70\uC57C?";
 		LawSemanticChunkRow directArticle = chunk(
