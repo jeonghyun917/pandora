@@ -149,6 +149,8 @@ public class AnswerQuestionAlignmentVerifier {
 			return AlignmentResult.failed("NO_SUPPORTED_CLAIMS", List.of(SUBJECT, RELATION));
 		}
 		String questionScope = normalize(question);
+		boolean ownedOutsideProvision = OUTSIDE_PROVISION_NOTICE_REQUEST.matcher(questionScope).matches()
+			&& hasOwnedOutsideProvisionNotice(supportedLinks, grounds);
 		if (questionScope.contains("개인정보") && questionScope.contains("동의")
 			&& purposeExternalScope(questionScope)
 			&& AlignmentProfile.containsAny(questionScope, "고지", "알려", "안내")) {
@@ -157,7 +159,7 @@ public class AnswerQuestionAlignmentVerifier {
 			boolean mixed = COLLECTION_CONSENT_REQUEST.matcher(questionScope).find();
 			boolean collectionNotice = !mixed || supportedLinks.stream().anyMatch(link ->
 				collectionNoticePurpose(link.claim()) && collectionNoticePurpose(link.evidenceSentence()));
-			if (!outsideNotice || !collectionNotice) {
+			if ((!outsideNotice && !ownedOutsideProvision) || !collectionNotice) {
 				return AlignmentResult.failed("MISSING_CONDITION", List.of(CONDITION));
 			}
 		}
@@ -170,7 +172,7 @@ public class AnswerQuestionAlignmentVerifier {
 				.map(AnswerQuestionAlignmentVerifier::normalize)
 				.noneMatch(claim -> thirdPartyProvision(claim)
 					&& claim.contains("동의") && AlignmentProfile.containsAny(claim, "고지", "알려", "안내"))
-			&& !hasOwnedProvisionNoticeReference(supportedLinks, grounds)) {
+			&& !ownedOutsideProvision && !hasOwnedProvisionNoticeReference(supportedLinks, grounds)) {
 			return AlignmentResult.failed("MISSING_CONDITION", List.of(CONDITION));
 		}
 		if (!hasAnswerClaimCoverage(supportedLinks, alignmentProfile)) {
@@ -344,6 +346,52 @@ public class AnswerQuestionAlignmentVerifier {
 
 	private static final String PROVISION_NOTICE_HEADER =
 		"개인정보처리자는제1항제1호에따른동의를받을때에는다음각호의사항을정보주체에게알려야한다";
+	private static final String OUTSIDE_PROVISION_NOTICE_HEADER =
+		PROVISION_NOTICE_HEADER.replace("제1항제1호", "제2항제1호");
+	// A source cross-reference can establish this notice intent, but cannot satisfy
+	// an extra restriction (e.g. a different actor, no consent, or an exception).
+	private static final Pattern OUTSIDE_PROVISION_NOTICE_REQUEST = Pattern.compile(
+		"(?:개인정보를)?(?:(?:당초|원래)?목적(?:외(?:로|의용도로)|을벗어나)|수집목적(?:의)?범위를벗어나)"
+			+ "(?:개인정보를)?제(?:3|삼)자에게제공(?:하기위해(?:서)?|하려고|하는데|할때)"
+			+ "(?:별도의)?동의를받을때(?:에는)?"
+			+ "(?:무엇을(?:고지|안내)(?:하나요|해야하나요)|무엇을알려야하나요|(?:알려야|고지해야)할사항은무엇인가요)");
+	private static final Pattern OUTSIDE_PROVISION_NOTICE_OWNER = Pattern.compile(
+		"(?m)^②[ \t]*([^\r\n]+)\\R[ \t]*1\\.[ \t]*정보주체로부터 별도의 동의를 받은 경우"
+			+ "(?:\\R[ \t]*(?:[2-9]|10)\\.[ \t]*[^\r\n①-⑳]+)+\\R[ \t]*③[ \t]*([^\r\n]+)"
+			+ "\\R[ \t]*1\\.[ \t]*([^\r\n]+)\\R[ \t]*2\\.[ \t]*([^\r\n]+)"
+			+ "\\R[ \t]*3\\.[ \t]*([^\r\n]+)\\R[ \t]*4\\.[ \t]*([^\r\n]+)\\R[ \t]*5\\.[ \t]*([^\r\n]+)"
+			+ "(?=\\R[ \t]*④|\\s*\\z)");
+
+	private static boolean hasOwnedOutsideProvisionNotice(
+		List<ClaimVerifier.ClaimEvidenceLink> links, List<LawAiAnswerGround> grounds
+	) {
+		if (grounds == null) return false;
+		for (var link : links) {
+			if (!OUTSIDE_PROVISION_NOTICE_HEADER.equals(normalize(link.claim()))
+				|| !OUTSIDE_PROVISION_NOTICE_HEADER.equals(normalize(link.evidenceSentence()))) continue;
+			var owners = grounds.stream().filter(g -> g != null && g.number() == link.groundNumber()).toList();
+			if (owners.size() != 1) continue;
+			var owner = owners.get(0);
+			String child = owner.matchedChildText();
+			if (!"law".equals(owner.target()) || !"CURRENT".equals(owner.effectiveStatus())
+				|| !"direct".equals(owner.evidenceRole()) || owner.documentId() <= 0 || owner.chunkId() <= 0
+				|| child == null || child.length() > 4000) continue;
+			var blocks = OUTSIDE_PROVISION_NOTICE_OWNER.matcher(child);
+			if (!blocks.find()) continue;
+			String opening = normalize(blocks.group(1));
+			String header = normalize(blocks.group(2).split("\\.", 2)[0]);
+			boolean complete = java.util.stream.IntStream.rangeClosed(3, 7).allMatch(i -> {
+				String item = normalize(blocks.group(i));
+				return links.stream().anyMatch(candidate -> candidate.groundNumber() == link.groundNumber()
+					&& item.equals(normalize(candidate.claim())) && item.equals(normalize(candidate.evidenceSentence())));
+			});
+			if (!complete || !OUTSIDE_PROVISION_NOTICE_HEADER.equals(header) || blocks.find()
+				|| !opening.contains("정보주체또는제3자의이익을부당하게침해할우려가있을때를제외하고는")
+				|| !opening.contains("개인정보를목적외의용도로이용하거나이를제3자에게제공할수있다")) continue;
+			return true;
+		}
+		return false;
+	}
 
 	private static boolean hasOwnedProvisionNoticeReference(
 		List<ClaimVerifier.ClaimEvidenceLink> links, List<LawAiAnswerGround> grounds

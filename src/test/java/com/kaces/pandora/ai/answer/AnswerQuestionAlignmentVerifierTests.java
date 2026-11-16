@@ -185,6 +185,42 @@ class AnswerQuestionAlignmentVerifierTests {
 	}
 
 	@Test
+	void purposeExternalProvisionNoticeRequiresOwnSeparateConsentReference() {
+		String question = "원래 목적을 벗어나 개인정보를 제3자에게 제공하기 위해 동의를 받을 때 무엇을 고지하나요?";
+		String scope = "② 제1항에도 불구하고 개인정보처리자는 다음 각 호의 어느 하나에 해당하는 경우에는 "
+			+ "정보주체 또는 제3자의 이익을 부당하게 침해할 우려가 있을 때를 제외하고는 "
+			+ "개인정보를 목적 외의 용도로 이용하거나 이를 제3자에게 제공할 수 있다.\n";
+		String consent = "정보주체로부터 별도의 동의를 받은 경우";
+		String other = "다른 법률에 특별한 규정이 있는 경우";
+		String notice = "③ 개인정보처리자는 제2항제1호에 따른 동의를 받을 때에는 다음 각 호의 사항을 정보주체에게 알려야 한다.\n"
+			+ "1. 개인정보를 제공받는 자\n2. 개인정보의 이용 목적(제공 시에는 제공받는 자의 이용 목적을 말한다)\n"
+			+ "3. 이용 또는 제공하는 개인정보의 항목\n"
+			+ "4. 개인정보의 보유 및 이용 기간(제공 시에는 제공받는 자의 보유 및 이용 기간을 말한다)\n"
+			+ "5. 동의를 거부할 권리가 있다는 사실 및 동의 거부에 따른 불이익이 있는 경우에는 그 불이익의 내용";
+		for (boolean owned : List.of(true, false)) {
+			String body = scope + "1. " + (owned ? consent : other) + "\n2. " + (owned ? other : consent) + "\n" + notice;
+			var ground = new LawAiAnswerGround(1, 12, 2, "law", "개인정보 보호법", null, null, null,
+				"CURRENT", "제18조", "개인정보의 목적 외 이용ㆍ제공 제한", null, body, null, null, 0);
+			var checked = new ClaimVerifier().verifyDetailed(notice, List.of(ground));
+			assertThat(checked.unsupportedClaims()).isEmpty();
+			assertThat(verifier.verify(question, checked, List.of(ground)).aligned()).as("item owned=%s", owned).isEqualTo(owned);
+			if (owned) {
+				for (String qualifier : List.of("미성년자의 법정대리인에게 ", "정보주체의 명시적 동의 없이 ",
+					"정보주체의 이익을 부당하게 침해할 우려가 있어도 ")) {
+					assertThat(verifier.verify(question.replace("제3자에게", qualifier + "제3자에게"),
+						checked, List.of(ground)).aligned()).as(qualifier).isFalse();
+				}
+				for (String edited : List.of(
+					notice.replace("1. 개인정보를 제공받는 자\n", ""),
+					notice.replace("개인정보를 제공받는 자", "개인정보를 제공하는 자"))) {
+					var incomplete = new ClaimVerifier().verifyDetailed(edited, List.of(ground));
+					assertThat(verifier.verify(question, incomplete, List.of(ground)).aligned()).isFalse();
+				}
+			}
+		}
+	}
+
+	@Test
 	void collectionConsentNoticeDoesNotAnswerThirdPartyProvisionNotice() {
 		String collection = "개인정보처리자는 제1항제1호에 따른 동의를 받을 때에는 다음 각 호의 사항을 정보주체에게 알려야 한다.\n"
 			+ "1. 개인정보의 수집ㆍ이용 목적\n2. 수집하려는 개인정보의 항목\n"
