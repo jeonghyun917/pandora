@@ -455,6 +455,8 @@ public class ClaimEvidenceMatcher {
 			+ "((?:계약\\s*)?품목|물품|제품|상품|서비스)에\\s*(?:대하여|대해)");
 	private static final Pattern UNCHANGED_NETWORK_SCOPE = Pattern.compile(
 		"정보통신망\\s*구성을\\s*변경하지\\s*(?:아니하는|않는)\\s*범위\\s*(?:내|안)에서");
+	private static final Pattern COMPLETED_SECURITY_REVIEW_SCOPE = Pattern.compile(
+		"보안성\\s*검토를\\s*(?:거쳐|받아)\\s*완료한\\s*정보화\\s*사업");
 	static final Pattern CORRECTIVE_REPORT_SCOPE = Pattern.compile(
 		"(?<![가-힣A-Za-z0-9])((?:단계별\\s+)?[가-힣A-Za-z0-9]{0,35}결과\\s*보고서)에\\s*따라"
 			+ "\\s+시정\\s*조치를\\s*수행");
@@ -2239,7 +2241,9 @@ public class ClaimEvidenceMatcher {
 							.map(match -> "report:" + KoreanQueryNormalizer.normalizeForMatch(match.group(1))),
 						java.util.stream.Stream.concat(
 							AUTHORIZED_ACTOR_SCOPE.matcher(text).results().map(match -> "authorized-actor"),
-							UNCHANGED_NETWORK_SCOPE.matcher(text).results().map(match -> "unchanged-network"))))
+							java.util.stream.Stream.concat(
+								UNCHANGED_NETWORK_SCOPE.matcher(text).results().map(match -> "unchanged-network"),
+								COMPLETED_SECURITY_REVIEW_SCOPE.matcher(text).results().map(match -> "completed-security-review")))))
 					.collect(java.util.stream.Collectors.toUnmodifiableSet()),
 				Set.copyOf(categories),
 				conditional,

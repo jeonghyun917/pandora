@@ -70,6 +70,20 @@ class ClaimEvidenceMatcherRelationTests {
 	}
 
 	@Test
+	void completedPriorSecurityReviewIsARequiredFollowUpScopeQualifier() {
+		String prerequisite = "보안성 검토를 거쳐 완료한 ";
+		String source = "제15조에 따른 " + prerequisite + "정보화사업에 대하여 "
+			+ "정보통신망 구성을 변경하지 아니하는 범위 내에서 다음 각 목의 사항을 포함한 후속운영ㆍ유지보수ㆍ컨설팅"
+			+ "(단일 회선의 이중화는 본 호를 적용함에 있어 정보통신망 구성의 변경이 아닌 것으로 본다) 가.";
+		var grounds = List.of(ground(source));
+		assertThat(matcher.match(source, grounds).status()).isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(source.replace("제15조에 따른 " + prerequisite, ""), grounds).status())
+			.isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		assertThat(matcher.match(source.replace(prerequisite, "보안성 검토를 신청한 "), grounds).status())
+			.isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+	}
+
+	@Test
 	void registeredItemScopeCannotBeOmittedFromTheOwnedDeliveryDuty() {
 		String scope = "디지털서비스몰에 등록된 계약품목에 대하여";
 		String source = "계약담당공무원은 제11조에 따라 " + scope
