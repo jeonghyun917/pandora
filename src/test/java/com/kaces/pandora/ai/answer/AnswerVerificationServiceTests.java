@@ -32,6 +32,17 @@ class AnswerVerificationServiceTests {
 			});
 		assertThat(verifier.verifyDetailed("보충 설명입니다.\n" + paragraph + "\n관련 문서를 확인하세요.", List.of(ground))
 			.evidenceLinks()).anyMatch(link -> link.claim().equals(paragraph) && link.evidenceSentence().equals(paragraph));
+		String collection = "② 개인정보처리자는 제1항제1호에 따른 동의를 받을 때에는 다음 각 호의 사항을 정보주체에게 알려야 한다.\n"
+			+ "1. 개인정보의 수집ㆍ이용 목적\n2. 수집하려는 개인정보의 항목\n"
+			+ "3. 개인정보의 보유 및 이용 기간\n4. 동의를 거부할 권리가 있다는 사실";
+		String collectionBody = "① 개인정보처리자는 개인정보를 수집할 수 있으며 수집 목적의 범위에서 이용할 수 있다.\n" + collection;
+		var collectionGround = new LawAiAnswerGround(2, 96, 10, "law", "개인정보 보호법",
+			null, null, null, "CURRENT", "제15조", "개인정보의 수집ㆍ이용", null, collectionBody, null, null, 0,
+			collectionBody, null, List.of(), null, "direct");
+		var combined = verifier.verifyDetailed(collection + "\n" + paragraph, List.of(ground, collectionGround));
+		assertThat(combined.unsupportedClaims()).isEmpty();
+		assertThat(combined.evidenceLinks()).anyMatch(link -> link.groundNumber() == 2
+			&& link.claim().equals(collection) && link.evidenceSentence().equals(collection));
 		for (String altered : List.of(paragraph.replace("별도의 동의를 받아야 하며, 이 때 ", ""),
 			paragraph.replace("③ 개인정보의 보유 및 이용기간 ", ""), paragraph.replace("범위를 벗어나", "범위 안에서"))) {
 			assertThat(verifier.verifyDetailed(altered, List.of(ground)).evidenceLinks())

@@ -459,7 +459,12 @@ public class ClaimEvidenceMatcher {
 
 	private static List<NoticeItem> noticeItems(List<LawAiAnswerGround> grounds) {
 		return grounds == null ? List.of() : grounds.stream()
-			.flatMap(ground -> noticeItems(ground.number(), ground.matchedChildText()).stream()).toList();
+			.flatMap(ground -> {
+				var items = noticeItems(ground.number(), ground.matchedChildText());
+				String literal = ownedCollectionNotice(ground, items);
+				return literal.isEmpty() ? items.stream() : java.util.stream.Stream.concat(items.stream(),
+					java.util.stream.Stream.of(new NoticeItem(ground.number(), noticeKey(literal), literal, "")));
+			}).toList();
 	}
 
 	static boolean hasCollectionConsentNotice(String source) {
@@ -469,7 +474,25 @@ public class ClaimEvidenceMatcher {
 	}
 
 	static String completeCollectionNoticeCitation(String source) {
-		var items = noticeItems(0, source);
+		return completeCollectionNoticeCitation(noticeItems(0, source));
+	}
+
+	static String ownedCollectionNotice(LawAiAnswerGround ground) {
+		if (!isCurrentDirectCollectionOwner(ground)) return "";
+		return completeCollectionNoticeCitation(ground.matchedChildText());
+	}
+
+	private static String ownedCollectionNotice(LawAiAnswerGround ground, List<NoticeItem> items) {
+		return isCurrentDirectCollectionOwner(ground) ? completeCollectionNoticeCitation(items) : "";
+	}
+
+	private static boolean isCurrentDirectCollectionOwner(LawAiAnswerGround ground) {
+		return ground != null && "law".equals(ground.target()) && "CURRENT".equals(ground.effectiveStatus())
+			&& "direct".equals(ground.evidenceRole()) && ground.documentId() > 0 && ground.chunkId() > 0
+			&& "개인정보보호법".equals(KoreanQueryNormalizer.normalizeForMatch(ground.title()));
+	}
+
+	private static String completeCollectionNoticeCitation(List<NoticeItem> items) {
 		var complete = items.stream()
 			.filter(item -> item.literal().lines().anyMatch(line ->
 				line.replace("ㆍ", "·").matches("1\\.\\h+개인정보의 수집·이용 목적")))

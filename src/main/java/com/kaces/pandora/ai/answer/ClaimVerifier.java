@@ -327,14 +327,25 @@ public class ClaimVerifier {
 				var matches = Pattern.compile("(?m)^\\h*" + tokens + "\\h*$").matcher(answer).results().limit(2).toList();
 				if (matches.size() == 1) {
 					var match = matches.get(0);
-					List<String> sentences = new ArrayList<>(splitSentences(ClaimEvidenceAtomizer.foldWrappedRatios(answer.substring(0, match.start()))));
+					List<String> sentences = new ArrayList<>();
+					appendBeforeOrAfterNotice(sentences, answer.substring(0, match.start()), grounds);
 					sentences.add(literal);
-					sentences.addAll(splitSentences(ClaimEvidenceAtomizer.foldWrappedRatios(answer.substring(match.end()))));
+					appendBeforeOrAfterNotice(sentences, answer.substring(match.end()), grounds);
 					return sentences;
 				}
 			}
 		}
 		return splitSentences(ClaimEvidenceAtomizer.foldWrappedRatios(answer));
+	}
+
+	private void appendBeforeOrAfterNotice(List<String> sentences, String text, List<LawAiAnswerGround> grounds) {
+		String literal = text.strip();
+		if (!literal.isEmpty() && grounds.stream().map(ClaimEvidenceMatcher::ownedCollectionNotice)
+			.filter(literal::equals).limit(2).count() == 1) {
+			sentences.add(literal);
+			return;
+		}
+		sentences.addAll(splitSentences(ClaimEvidenceAtomizer.foldWrappedRatios(text)));
 	}
 
 	private boolean isFormatOnlyStructuralLabel(String atom) {
