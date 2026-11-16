@@ -1041,6 +1041,34 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void distinguishesArticleBoundEvaluationPlanFromStandaloneScoringTable() {
+		String title = "국방 정보화업무 훈령";
+		String duty = "③ 집행기관은 제안서 평가계획(평가요소ㆍ배점ㆍ기준 및 절차)을 작성하여 제안요청서에 포함시키되 "
+			+ "평가요소와 판단 기준을 객관적으로 작성하여야 한다.";
+		var operative = currentEvaluationPlanChunk(951L, title, "제48조(제안요청서 작성)",
+			"제48조(제안요청서 작성) " + duty);
+		var wrongArticle = currentEvaluationPlanChunk(952L, title, "제48조(제안요청서 작성)",
+			"제48조(제안요청서 작성) ① 서식을 작성한다.\n제49조(평가계획) " + duty);
+		var wrongOwner = currentEvaluationPlanChunk(953L, "방위사업청 정보화 업무 처리 규정", "제48조(제안요청서 작성)",
+			"제48조(제안요청서 작성) " + duty);
+		var references = currentEvaluationPlanChunk(954L, title, "제48조(제안요청서 작성)",
+			"제48조(제안요청서 작성) 제안서 평가계획(평가요소와 배점)은 참고할 수 있다. 별지 서식을 제안요청서에 포함하여야 한다.");
+		String question = "국방 정보화업무 훈령 제48조에 따라 집행기관은 배점을 포함한 평가계획을 제안요청서에 넣어야 하나요?";
+		assertThat(judge.judge(question, List.of(wrongArticle, wrongOwner, references), Map.of(), 5)
+			.directEvidenceFound()).isFalse();
+		assertThat(judge.judge("모든 공공 소프트웨어 사업은 별도 배점표를 제안요청서에 첨부해야 하나요?",
+			List.of(operative), Map.of(), 5).directEvidenceFound()).isFalse();
+		var result = judge.judge(question, List.of(operative), Map.of(), 5);
+		assertThat(result.directEvidenceFound()).isTrue();
+		assertThat(result.chunks()).containsExactly(operative);
+	}
+
+	private LawSemanticChunkRow currentEvaluationPlanChunk(long id, String title, String heading, String text) {
+		return new LawSemanticChunkRow(id, 1, "admrul", String.valueOf(id), title,
+			null, null, null, "CURRENT", null, heading, text, null, null, null, 1, "hash-" + id, null, "article");
+	}
+
+	@Test
 	void distinguishesPostNoticeActionFromSecurityReviewApplicability() {
 		var scope = chunk(854L, "official_doc", "공공 사이버보안 기준", "보안성 검토 대상",
 			"국가정보원 보안성 검토 대상 사업 및 시기: 정보통신망 또는 정보시스템 구축 사업이 해당한다.");

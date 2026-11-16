@@ -14,7 +14,7 @@ public final class DocumentSearchAnchorExtractor {
 	private static final int MAX_EVIDENCE_TERMS = 18;
 	private static final Pattern TITLE_SUFFIX = Pattern.compile(
 		"(?<![\\p{IsHangul}\\p{Alnum}])([\\p{IsHangul}\\p{Alnum}][\\p{IsHangul}\\p{Alnum}\\s]{0,70}?"
-			+ "(?:법\\s*시행규칙|법\\s*시행령|시행규칙|시행령|규정|지침|고시|법))(?=$|[\\s\\p{Punct}」』\\\"']|은|는|이|가|을|를|의|에|에서|로|으로)");
+			+ "(?:법\\s*시행규칙|법\\s*시행령|시행규칙|시행령|규정|지침|고시|훈령|법))(?=$|[\\s\\p{Punct}」』\\\"']|은|는|이|가|을|를|의|에|에서|로|으로)");
 	private static final Pattern ARTICLE = Pattern.compile("제\\s*(\\d+)\\s*조(?:\\s*의\\s*(\\d+))?");
 	private static final Pattern APPENDIX = Pattern.compile("별표\\s*(\\d+)");
 	private static final Pattern SECTION_HEADING = Pattern.compile(

@@ -1699,6 +1699,13 @@ public class EvidenceJudge {
 				&& DirectEvidenceSelectionPolicy.provesConsultationOmissionRoles(chunk);
 			return new JudgedChunk(chunk, score, owned, owned, owned, owned ? 1 : 0, owned ? 1 : 0);
 		}
+		if (asksNamedRfpEvaluationPlan(profile.normalizedQuestion(), profile.explicitDocumentTitles())) {
+			boolean owned = !tableOfContents && !suppressEvidenceNoise
+				&& "admrul".equals(chunk.target()) && "CURRENT".equals(chunk.effectiveStatus())
+				&& DirectEvidenceSelectionPolicy.matchesExplicitAuthority(chunk, profile.explicitDocumentTitles())
+				&& provesRfpEvaluationPlanInclusion(profile.normalizedQuestion(), chunk);
+			return new JudgedChunk(chunk, score, owned, owned, owned, owned ? 1 : 0, owned ? 1 : 0);
+		}
 		if (asksPriorConsultationCorrection(profile.normalizedQuestion())) {
 			boolean owned = !tableOfContents && !suppressEvidenceNoise
 				&& !missingRequestedArticleOwnership(profile, chunk, documentTitle)
@@ -1797,6 +1804,27 @@ public class EvidenceJudge {
 		return isCctvGuidePurposeQuestion(query)
 			|| (containsAny(query, List.of("영상정보처리기기", "cctv"))
 				&& CCTV_GUIDE_IDENTITY_QUESTION.matcher(query).find());
+	}
+
+	private boolean asksNamedRfpEvaluationPlan(String question, List<String> titles) {
+		return titles.size() == 1 && question.contains("제안요청서") && question.contains("배점")
+			&& question.contains("평가계획") && containsAny(question, List.of("넣어야", "포함해야", "포함하여야"))
+			&& !containsAny(question, List.of("배점표", "첨부", "모든", "예외", "제외", "않아"))
+			&& articleReferences(question).size() == 1;
+	}
+
+	private static final java.util.regex.Pattern RFP_EVALUATION_PLAN_DUTY = java.util.regex.Pattern.compile(
+		"제안서평가계획\\([^)]{0,80}배점[^)]{0,80}\\)을작성하여제안요청서에포함"
+			+ "(?:시켜야한다|하여야한다|시키되[^.!?。]{0,130}작성하여야한다)");
+
+	private boolean provesRfpEvaluationPlanInclusion(String question, LawSemanticChunkRow chunk) {
+		String reference = articleReferences(question).get(0);
+		if (!LawArticleOwnership.article(reference).equals(reference) || chunk.chunkText() == null) return false;
+		for (String section : chunk.chunkText().split("(?m)(?=^\\h*제[0-9]+조(?:의[0-9]+)?\\h*\\()")) {
+			if (LawArticleOwnership.owns(reference, null, section)
+				&& RFP_EVALUATION_PLAN_DUTY.matcher(section.replaceAll("\\s+", "")).find()) return true;
+		}
+		return false;
 	}
 
 	private static final java.util.regex.Pattern SECURITY_REVIEW_RESULT_ACTION = java.util.regex.Pattern.compile(
@@ -3774,7 +3802,8 @@ public class EvidenceJudge {
 			legacy.preferredSectionTypes(),
 			legacy.definitionQuestion(),
 			legacy.securityReviewResultAction(),
-			DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(question)
+			(DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(question)
+				|| (legacy.normalizedQuestion().contains("평가계획") && legacy.normalizedQuestion().contains("제안요청서")))
 				? com.kaces.pandora.common.text.DocumentSearchAnchorExtractor.explicitDocumentTitles(question)
 				: List.of()
 		);
