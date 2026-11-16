@@ -9189,8 +9189,32 @@ public class LawAiAnswerService {
 	}
 
 	private List<LawSemanticChunkRow> findLexicalChunks(QuestionSearchPlan queryPlan, List<String> targets, boolean includeFuture, RecoveryRoutingSnapshot routing) {
+		var candidates = findLexicalChunks(queryPlan, targets, includeFuture, routing, null);
+		String query = queryPlan.question();
+		String normalized = normalizeForMatch(query);
+		if (targets.contains("official_doc") && EvidenceJudge.isPseudonymStorageDutyQuestion(normalized)
+			&& containsAny(normalized, "개보위", "개인정보보호위원회", "가이드라인", "안내서")
+			&& !requiresLawOrVersionSpecificEvidence(query, queryPlan.profile())
+			&& documentTitleAnchorKeywords(query).stream().map(this::normalizeForMatch)
+				.allMatch(title -> "개보위가명정보".equals(title) || "개인정보보호위원회가명정보".equals(title))
+			&& candidates.stream().noneMatch(this::isOwnedPseudonymGuideStorage)) {
+			var guides = findRagChunksByDocumentTitleAndHintsThenFilter(List.of("official_doc"),
+				List.of("가명정보 처리 가이드라인"), List.of("추가정보의 분리 보관", "추가정보가 불필요한 경우"),
+				this::isOwnedPseudonymGuideStorage, 2, routing);
+			if (!guides.isEmpty()) {
+				var combined = new java.util.ArrayList<>(candidates);
+				combined.addAll(guides);
+				candidates = finishLexicalChunks(combined, query);
+			}
+		}
 		return preferReviewedSecurityScopeInLexicalOrder(queryPlan,
-			findLexicalChunks(queryPlan, targets, includeFuture, routing, null), routing);
+			candidates, routing);
+	}
+
+	private boolean isOwnedPseudonymGuideStorage(LawSemanticChunkRow chunk) {
+		return "official_doc".equals(chunk.target()) && "PASS".equals(chunk.qualityStatus())
+			&& normalizeForMatch(chunk.title()).startsWith("가명정보처리가이드라인")
+			&& SourceOwnedNumberedDuty.provesSeparateStorage(chunk.target(), chunk.chunkText());
 	}
 
 	private List<LawSemanticChunkRow> preferReviewedSecurityScopeInLexicalOrder(QuestionSearchPlan plan,

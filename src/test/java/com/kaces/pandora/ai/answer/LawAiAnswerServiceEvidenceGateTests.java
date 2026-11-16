@@ -1177,6 +1177,38 @@ class LawAiAnswerServiceEvidenceGateTests {
 	}
 
 	@Test
+	void recoversPseudonymGuideStorageFromItsOwnedNumberedDuty() throws Exception {
+		String title = "가명정보 처리 가이드라인";
+		String rule = """
+			① 개인정보처리자는 가명정보 및 추가정보에 대하여 다음 각 호의 안전성 확보 조치를 해야 한다.
+			1. 기록 항목의 유지.
+			2. 가명정보와 추가정보의 분리 보관.
+			3. 접근 권한의 분리.
+			""";
+		var owner = chunk(81395L, "official_doc", title, "안전조치", rule);
+		var preview = chunk(81396L, "official_doc", title, "점검 항목", "가명정보와 추가정보의 분리 보관 관련 항목을 검토한다.");
+		var rag = org.mockito.Mockito.mock(RagDocumentMapper.class);
+		org.mockito.Mockito.when(rag.findSemanticChunksByDocumentTitleWithTextHints(
+			org.mockito.ArgumentMatchers.eq(List.of("official_doc")), org.mockito.ArgumentMatchers.eq(List.of(title)),
+			org.mockito.ArgumentMatchers.argThat(terms -> terms.contains("추가정보의 분리 보관")),
+			org.mockito.ArgumentMatchers.anyInt())).thenReturn(List.of(preview, owner));
+		var service = service(org.mockito.Mockito.mock(LawChunkMapper.class), rag);
+		try {
+			assertThat(findLexicalChunks(service, QuestionSearchPlan.from(
+				"개보위 가명정보 자료에 따르면 추가정보를 분리 보관해야 하나요?"), List.of("official_doc"), false))
+				.contains(owner).doesNotContain(preview);
+			assertThat(findLexicalChunks(service, QuestionSearchPlan.from(
+				"개보위 가명정보 자료에서 추가정보를 분리 보관해야 하나요?"), List.of("official_doc"), false))
+				.contains(owner).doesNotContain(preview);
+			assertThat(findLexicalChunks(service, QuestionSearchPlan.from(
+				"가명정보와 추가정보의 접근 권한 분리 예외는 무엇인가요?"), List.of("official_doc"), false))
+				.doesNotContain(owner);
+		} finally {
+			service.shutdownExecutors();
+		}
+	}
+
+	@Test
 	void ownedStorageGroundsSurviveIntentPreservationCap() throws Exception {
 		String question = "개보위 가명정보 자료의 추가정보는 분리 보관해야 하나요?";
 		String rule = """
