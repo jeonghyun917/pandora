@@ -8,6 +8,26 @@ import org.junit.jupiter.api.Test;
 class AnswerQuestionAlignmentVerifierTests {
 
 	@Test
+	void generalPublicDatabaseActionsKeepNewAndExistingDatabaseConditionsSeparate() {
+		String fresh = "공공기관의 장은 신규로 공공데이터베이스를 구축할 때에는 반드시 공통표준, 기관표준, 행정표준코드 등을 적용하여야 한다.";
+		String existing = "다만, 기존에 운영 중인 공공데이터베이스는 해당 정보시스템을 전면 재구축하기 전까지 "
+			+ "비표준 데이터 매핑정보 관리를 통해 표준화된 데이터로 연계ㆍ활용하여야 하며, "
+			+ "재구축 등 데이터베이스 개선 업무 추진 시 공통표준을 적용하여야 한다.";
+		String answer = fresh + "\n" + existing;
+		String body = "제8조(공공데이터베이스 표준 수립 및 적용)\n⑤ " + answer + "\n제9조(표준 관리) 그 밖의 사항을 정한다.";
+		var ground = new LawAiAnswerGround(1, 2, 3, "admrul", "공공기관의 데이터베이스 표준화 지침",
+			null, null, null, "CURRENT", "제8조", "공공데이터베이스 표준 수립 및 적용", null, body,
+			null, null, 1, body, null, List.of(2L), null, "direct");
+		var service = new AnswerVerificationService(new AnswerGuard(), new ClaimVerifier());
+		String question = "공공데이터베이스를 표준화하려면 어떤 조치를 해야 하나요?";
+		assertThat(service.verify(question, answer, List.of(ground)).insufficientEvidence()).isFalse();
+		for (String altered : List.of(fresh, answer.replace("전면 재구축하기 전까지 ", ""),
+			answer.replace("신규로 공공데이터베이스를 구축할 때에는", "모든 사적 데이터베이스에도"))) {
+			assertThat(service.verify(question, altered, List.of(ground)).insufficientEvidence()).isTrue();
+		}
+	}
+
+	@Test
 	void alignsSourceOwnedStandardDictionaryDutyAndWholeNumberedList() {
 		String duty = "공공기관의 장은 기관표준과 DB표준 수립을 위해 다음 각 호의 항목을 별표 제1호에 따라 "
 			+ "데이터 표준사전으로 작성하여야 하고 최신성을 유지하여야 한다.";
