@@ -1743,7 +1743,7 @@ public class EvidenceJudge {
 
 	private static boolean asksPublicDatabaseStandardizationActions(String question) {
 		return question.contains("공공데이터베이스") && question.contains("표준화")
-			&& containsAny(question, List.of("뭘해야", "무엇을해야", "어떤조치"))
+			&& containsAny(question, List.of("뭘해야", "무엇을해야", "어떤조치", "필요한조치"))
 			&& !containsAny(question, List.of("제외", "면제", "생략", "품질진단", "품질관리", "위반", "제재"));
 	}
 
