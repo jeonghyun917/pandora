@@ -9,6 +9,23 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class EvidenceJudgeTests {
+	@Test
+	void publicDatabaseStandardizationActionsRequireOperativeTextRatherThanReferences() {
+		String question = "공공데이터베이스 표준화에 어떤 조치를 해야 하나요?";
+		var duty = new LawSemanticChunkRow(8101L, 1L, "admrul", "fixture", "공공기관의 데이터베이스 표준화 지침",
+			null, null, null, "CURRENT", "제8조", "데이터베이스 표준 적용",
+			"공공기관의 장은 신규로 공공데이터베이스를 구축할 때에는 반드시 공통표준, 기관표준, 행정표준코드 등을 적용하여야 한다.",
+			null, null, null, 1, "hash-8101", null, null);
+		var instructions = chunk(8102L, "official_doc", "공공데이터베이스 표준화 관리 매뉴얼", "표준 적용",
+			"공공데이터베이스 구축 시 표준용어와 표준도메인을 적용해야 한다.");
+		var reference = chunk(8103L, "official_doc", "공공데이터베이스 표준화 관리 매뉴얼", "참조",
+			"공공데이터베이스 표준화 관리 매뉴얼을 참조한다. 표준용어 및 표준도메인 안내는 목차에서 확인한다.");
+		var judge = new EvidenceJudge();
+		assertThat(judge.judge(question, List.of(duty), Map.of(), 8).directEvidenceCount()).isEqualTo(1);
+		assertThat(judge.judge(question, List.of(instructions), Map.of(), 8).directEvidenceCount()).isEqualTo(1);
+		assertThat(judge.judge(question, List.of(reference), Map.of(), 8).directEvidenceCount()).isZero();
+	}
+
 
 	// 메소드 설명: EvidenceJudge 처리 흐름을 수행합니다.
 	private final EvidenceJudge judge = new EvidenceJudge();

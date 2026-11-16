@@ -1714,7 +1714,33 @@ public class EvidenceJudge {
 					.anyMatch(match -> profile.normalizedQuestion().contains(normalize(match.group(1))));
 			return new JudgedChunk(chunk, score, owned, owned, owned, owned ? 1 : 0, owned ? 1 : 0);
 		}
+		if (asksPublicDatabaseStandardizationActions(profile.normalizedQuestion())) {
+			boolean owned = !tableOfContents && !suppressEvidenceNoise
+				&& !missingRequestedArticleOwnership(profile, chunk, documentTitle)
+				&& DirectEvidenceSelectionPolicy.matchesExplicitAuthority(chunk, profile.explicitDocumentTitles())
+				&& (!List.of("law", "admrul").contains(chunk.target()) || "CURRENT".equals(chunk.effectiveStatus()))
+				&& provesPublicDatabaseStandardizationAction(chunk.chunkText(), documentTitle);
+			return new JudgedChunk(chunk, score, topicAligned || owned, relevant || owned, owned,
+				owned ? 1 : 0, owned ? 1 : 0);
+		}
 		return new JudgedChunk(chunk, score, topicAligned, relevant, directEvidence, directEvidenceMatches, bodyDirectEvidenceMatches);
+	}
+
+	private static boolean asksPublicDatabaseStandardizationActions(String question) {
+		return question.contains("공공데이터베이스") && question.contains("표준화")
+			&& containsAny(question, List.of("뭘해야", "무엇을해야", "어떤조치"))
+			&& !containsAny(question, List.of("제외", "면제", "생략", "품질진단", "품질관리", "위반", "제재"));
+	}
+
+	private static boolean provesPublicDatabaseStandardizationAction(String body, String title) {
+		if (body == null) return false;
+		return java.util.Arrays.stream(body.split("[.!?。;；]|(?=[①-⑳])"))
+			.map(EvidenceJudge::normalize)
+			.anyMatch(clause -> (clause.contains("공공데이터베이스")
+				|| (title.contains("공공데이터베이스표준화") && clause.contains("데이터베이스")))
+				&& containsAny(clause, List.of("공통표준", "기관표준", "행정표준코드", "표준용어", "표준도메인"))
+				&& containsAny(clause, List.of("적용하여야", "적용해야", "적용한다", "관리하여야", "관리해야"))
+				&& !containsAny(clause, List.of("적용하지않아도", "적용할필요가없", "적용하지아니")));
 	}
 
 	static boolean asksPriorConsultationCorrection(String question) {
