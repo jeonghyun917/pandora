@@ -114,10 +114,12 @@ public class EvidenceJudge {
 		boolean cctvGuidePurpose = asksCctvGuideIntroduction(profile.normalizedQuestion());
 		boolean reportBasedCorrection = asksReportBasedCorrection(profile.normalizedQuestion());
 		boolean procurementCoordinationReturn = asksProcurementCoordinationReturn(profile.normalizedQuestion());
+		boolean hardwareOnlyScope = asksHardwareOnlyProjectScope(profile.normalizedQuestion());
 		boolean directEvidenceRequired = !profile.directEvidenceGroups().isEmpty()
 			|| cctvGuidePurpose
 			|| reportBasedCorrection
 			|| procurementCoordinationReturn
+			|| hardwareOnlyScope
 			|| asksPriorConsultationCorrection(profile.normalizedQuestion())
 			|| DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(profile.normalizedQuestion())
 			|| (isIrmRegistrationFaithfulness(profile.normalizedQuestion()) && !directEvidenceChunks.isEmpty())
@@ -125,6 +127,7 @@ public class EvidenceJudge {
 		List<JudgedChunk> directSupportingChunks = topicAlignedChunks.stream()
 			.filter(chunk -> !reportBasedCorrection)
 			.filter(chunk -> !procurementCoordinationReturn)
+			.filter(chunk -> !hardwareOnlyScope)
 			.filter(chunk -> !DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(profile.normalizedQuestion()))
 			.filter(chunk -> !isIrmRegistrationFaithfulness(profile.normalizedQuestion()))
 			.filter(chunk -> !isCctvGuideApplicabilityQuestion(profile.normalizedQuestion()))
@@ -1715,6 +1718,11 @@ public class EvidenceJudge {
 				&& "조달청협상에의한계약제안서평가세부기준".equals(documentTitle)
 				&& !missingRequestedArticleOwnership(profile, chunk, documentTitle)
 				&& PROCUREMENT_COORDINATION_RETURN.matcher(String.valueOf(chunk.chunkText()).replaceAll("\\s+", "")).find();
+			return new JudgedChunk(chunk, score, owned, owned, owned, owned ? 1 : 0, owned ? 1 : 0);
+		}
+		if (asksHardwareOnlyProjectScope(profile.normalizedQuestion())) {
+			boolean owned = !tableOfContents && !suppressEvidenceNoise && projectReviewScopeChunk
+				&& HARDWARE_ONLY_EXCLUSION.matcher(String.valueOf(chunk.chunkText()).replaceAll("\\s+", "")).find();
 			return new JudgedChunk(chunk, score, owned, owned, owned, owned ? 1 : 0, owned ? 1 : 0);
 		}
 		if (asksReviewResultRelay(profile.normalizedQuestion()) && profile.explicitDocumentTitles().size() == 1
@@ -3362,6 +3370,17 @@ public class EvidenceJudge {
 			|| isPublicDataQualityDiagnosisDetailEvidence(text)
 			|| (text.contains("진단기준") && text.contains("데이터값"));
 	}
+
+	private static boolean asksHardwareOnlyProjectScope(String question) {
+		return containsAny(question, List.of("공공소프트웨어사업", "공공sw", "과업심의"))
+			&& containsAny(question, List.of("단순하드웨어", "단순hw", "단순h/w", "하드웨어만", "hw만", "h/w만"))
+			&& containsAny(question, List.of("대상", "포함", "해당", "제외", "해야", "받아야"))
+			&& !containsAny(question, List.of("함께", "복합", "혼합", "소프트웨어개발", "sw개발", "소프트웨어도입"));
+	}
+
+	private static final java.util.regex.Pattern HARDWARE_ONLY_EXCLUSION = java.util.regex.Pattern.compile(
+		"단순(?:하드웨어|h/?w)[^.!?。①-⑳]{0,160}소프트웨어사업으로볼수없는경우(?:는|에는|로)?"
+			+ "[,，]?비대상", java.util.regex.Pattern.CASE_INSENSITIVE);
 
 	private static boolean isProjectReviewScopeQuestion(String normalizedQuestion) {
 		String normalized = normalize(normalizedQuestion);

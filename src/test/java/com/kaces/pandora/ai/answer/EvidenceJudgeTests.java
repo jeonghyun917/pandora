@@ -340,6 +340,26 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void hardwareOnlyClassificationRequiresTheConditionalExclusion() {
+		var owner = chunk(971, "공공소프트웨어사업 과업심의 가이드",
+			"적용 대상 사업. 국가기관 등이 발주하는 모든 SW사업. ※ 단순 H/W 도입·설치와 같이 소프트웨어사업으로 볼 수 없는 경우는 비대상");
+		var participation = chunk(972, "공공SW사업 법제도 관리감독 및 지원 가이드",
+			"적용 대상 사업. 국가기관등이 발주하는 소프트웨어사업에는 중소 소프트웨어사업자의 참여를 지원한다.");
+		var insurance = chunk(973, "개인정보 보험 안내",
+			"적용 대상 사업자: 정보통신서비스 제공자는 의무보험에 가입한다.");
+		var split = chunk(974, "공공소프트웨어사업 과업심의 가이드",
+			"단순 하드웨어 도입 계획을 검토한다. 별도의 서비스는 소프트웨어사업으로 볼 수 없는 경우 비대상이다.");
+		String question = "공공 소프트웨어사업의 적용 대상에 단순 하드웨어 구입도 해당하나요?";
+		for (String wording : List.of(question, "과업심의에서 " + question)) {
+			var result = judge.judge(wording, List.of(insurance, participation, split, owner), Map.of(), 8);
+			assertThat(result.directEvidenceCount()).isEqualTo(1);
+			assertThat(result.chunks()).containsExactly(owner);
+		}
+		assertThat(judge.judge("장비와 소프트웨어 개발을 함께 발주하는 사업의 과업심의 대상 범위는?",
+			List.of(owner, participation), Map.of(), 8).chunks()).contains(participation);
+	}
+
+	@Test
 	void ranksQuestionAnchoredHardwareExclusionBeforeGeneralTargetScope() {
 		LawSemanticChunkRow generalTargetScope = chunk(
 			1,
