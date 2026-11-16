@@ -1895,8 +1895,13 @@ public class EvidenceJudge {
 		return DIRECT_PURCHASE_REGISTRATION_DUTY.matcher(raw.replaceAll("\\s+", "")).find()
 			|| (body.contains("구매계획") && body.contains("직접구매")
 				&& containsAny(body, List.of("별지", "서식", "양식"))
-				&& (raw.contains("√") || raw.contains("□") || raw.contains("[ ]")));
+				&& (raw.contains("√") || raw.contains("□") || raw.contains("[ ]")
+					|| (raw.length() <= 260 && PURCHASE_APPENDIX_INDEX.matcher(raw).find())));
 	}
+
+	private static final java.util.regex.Pattern PURCHASE_APPENDIX_INDEX = java.util.regex.Pattern.compile(
+		"부\\s*록\\s*\\[붙임\\]\\s*\\(서식\\)[^\\[.!?。]{1,80}"
+			+ "(?:\\[참고\\s*\\d+\\][^\\[.!?。]{1,100}){2,8}\\z");
 
 	private static boolean asksDirectPurchaseRegistrationDeadline(String question) {
 		return containsAny(question, List.of("상용sw", "상용소프트웨어")) && question.contains("직접구매")

@@ -2278,11 +2278,15 @@ class EvidenceJudgeTests {
 			"제9조(상용소프트웨어 직접구매 계약정보 등록) 국가기관등의 장은 계약체결 또는 계약변경 후 30일 이내에 종합관리체계에 등록하여야 한다.");
 		var form = chunk(8154, "official_doc", "상용소프트웨어 직접구매 가이드", "구매계획 작성 양식",
 			"[별지 제2호서식] 직접구매 대상 상용소프트웨어 구매계획. 해당되는 곳에 √표를 합니다. 직접구매 [ ] 제외 [ ] 제외 사유를 적는다.");
+		var appendixIndex = chunk(8155, "official_doc", "상용소프트웨어 직접구매 가이드", "부록",
+			"상용소프트웨어 직접구매 가이드22 부 록 [붙임] (서식) 직접구매 대상 상용소프트웨어 구매계획 "
+				+ "[참고 1] 상용소프트웨어 직접구매 관련 법령 [참고2] 상용소프트웨어 직접구매 관련 조달청 양식");
 		for (String question : List.of("공공사업에서 상용 소프트웨어를 어떤 조건에 따라 직접구매 대상으로 판단하나요?",
 			"직접구매 대상인 상용소프트웨어를 통합발주로 제외할 수 있는 예외는 무엇인가요?")) {
+			assertThat(judge.judge(question, List.of(appendixIndex), Map.of(), 8).directEvidenceFound()).isFalse();
 			assertThat(judge.judge(question, List.of(form, registration), Map.of(), 8).directEvidenceFound()).isFalse();
-			assertThat(judge.judge(question, List.of(scope, exception, form, registration), Map.of(), 8).chunks())
-				.contains(exception).doesNotContain(form, registration);
+			assertThat(judge.judge(question, List.of(scope, exception, form, registration, appendixIndex), Map.of(), 8).chunks())
+				.contains(exception).doesNotContain(form, registration, appendixIndex);
 		}
 	}
 
