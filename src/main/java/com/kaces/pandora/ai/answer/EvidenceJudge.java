@@ -86,6 +86,7 @@ public class EvidenceJudge {
 				|| containsAny(query, List.of("위탁", "발송", "접수"))
 				|| !isSwRecommendationDispatchSupport(chunk))
 			.filter(chunk -> !AutonomyFollowUpEvidence.outsideRecommendationScope(profile.normalizedQuestion(), chunk))
+			.filter(chunk -> !outsideCommercialPurchaseScope(query, chunk))
 			.toList();
 		if (searchableChunks.isEmpty()) {
 			return new Result(List.of(), Map.of(), false, false, false, false, 0, 0, 0, "quality_filtered");
@@ -1881,6 +1882,20 @@ public class EvidenceJudge {
 			&& containsAny(question, List.of("구매요청", "조달요청"))
 			&& containsAny(question, List.of("처리", "반려", "돌려보낼"))
 			&& !containsAny(question, List.of("모든", "첨부", "배점표"));
+	}
+
+	static boolean outsideCommercialPurchaseScope(String question, LawSemanticChunkRow chunk) {
+		if (!question.contains("직접구매") || !containsAny(question, List.of("상용sw", "상용소프트웨어"))
+			|| !containsAny(question, List.of("대상", "예외", "제외"))
+			|| containsAny(question, List.of("등록", "서식", "양식", "체크", "작성", "구매계획", "제9조"))) {
+			return false;
+		}
+		String raw = String.valueOf(chunk.chunkText());
+		String body = normalize(raw);
+		return DIRECT_PURCHASE_REGISTRATION_DUTY.matcher(raw.replaceAll("\\s+", "")).find()
+			|| (body.contains("구매계획") && body.contains("직접구매")
+				&& containsAny(body, List.of("별지", "서식", "양식"))
+				&& (raw.contains("√") || raw.contains("□") || raw.contains("[ ]")));
 	}
 
 	private static boolean asksDirectPurchaseRegistrationDeadline(String question) {

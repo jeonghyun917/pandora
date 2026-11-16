@@ -1294,8 +1294,17 @@ class LawAiAnswerServiceEvidenceGateTests {
 		var wrongReference = chunk(83103, 831, "admrul", title, "8",
 			body.replace("제7조제3항", "제9조제3항"), null);
 		var missingList = chunk(83104, 831, "admrul", title, "8", body.split("[.]",2)[0] + ".", null);
+		var form = chunk(83105, 833, "official_doc", "상용소프트웨어 직접구매 가이드", "1",
+			"[별지 제2호서식] 직접구매 대상 상용소프트웨어 구매계획. 해당되는 곳에 √표를 합니다.", null);
 		var service = service();
 		try {
+			var exclude = LawAiAnswerService.class.getDeclaredMethod("isForcedExcludedAnswerContextChunk",
+				LawSemanticChunkRow.class, String.class);
+			exclude.setAccessible(true);
+			assertThat(exclude.invoke(service, form, query)).isEqualTo(true);
+			assertThat(exclude.invoke(service, linked, query)).isEqualTo(false);
+			assertThat(exclude.invoke(service, form, "상용소프트웨어 직접구매 대상 구매계획 서식은 어디에 있나요?"))
+				.isEqualTo(false);
 			var select = LawAiAnswerService.class.getDeclaredMethod("selectDisplayEvidenceChunks",
 				List.class, List.class, String.class, boolean.class, int.class);
 			select.setAccessible(true);

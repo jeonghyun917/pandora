@@ -3959,6 +3959,9 @@ public class LawAiAnswerService {
 
 	private boolean isForcedExcludedAnswerContextChunk(LawSemanticChunkRow chunk, String query) {
 		String normalizedQuery = normalizeForMatch(query);
+		if (EvidenceJudge.outsideCommercialPurchaseScope(normalizedQuery, chunk)) {
+			return true;
+		}
 		String body = chunk.chunkText() == null ? "" : chunk.chunkText();
 		String normalizedBody = normalizeForMatch(body);
 		if (isInformationSystemCompliancePenaltyQuestion(normalizedQuery)
