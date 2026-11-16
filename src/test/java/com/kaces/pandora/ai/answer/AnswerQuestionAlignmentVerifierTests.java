@@ -8,6 +8,28 @@ import org.junit.jupiter.api.Test;
 class AnswerQuestionAlignmentVerifierTests {
 
 	@Test
+	void alignsSourceOwnedStandardDictionaryDutyAndWholeNumberedList() {
+		String duty = "공공기관의 장은 기관표준과 DB표준 수립을 위해 다음 각 호의 항목을 별표 제1호에 따라 "
+			+ "데이터 표준사전으로 작성하여야 하고 최신성을 유지하여야 한다.";
+		String list = "1. 표준용어2. 표준단어3. 표준도메인4. 표준코드5. 그 밖에 공공데이터베이스 표준 수립에 필요한 사항";
+		String body = "제8조(공공데이터베이스 표준 수립 및 적용) ① " + duty + list + "\n② 기관표준을 관리한다.";
+		var ground = new LawAiAnswerGround(1, 2, 3, "admrul", "공공기관의 데이터베이스 표준화 지침",
+			null, null, null, "CURRENT", "제8조", "공공데이터베이스 표준 수립 및 적용", null, body,
+			null, null, 1, body, null, List.of(2L), null, "direct");
+		var service = new AnswerVerificationService(new AnswerGuard(), new ClaimVerifier());
+		String question = "공공기관이 DB표준을 수립할 때 데이터 표준사전에 무엇을 기록하고 어떻게 관리해야 하나요?";
+		assertThat(service.verify(question, duty + list, List.of(ground)).insufficientEvidence()).isFalse();
+		assertThat(service.verify("공공기관의 장이 기관표준과 데이터베이스 표준을 수립하는 경우 데이터 표준사전에 "
+			+ "어떤 항목을 작성하고 어떻게 최신성을 유지해야 합니까?", duty + list, List.of(ground))
+			.insufficientEvidence()).isFalse();
+		assertThat(service.verify(question, duty, List.of(ground)).insufficientEvidence()).isTrue();
+		assertThat(service.verify(question, duty.replace("하고 최신성을 유지하여야 한다", "") + list,
+			List.of(ground)).insufficientEvidence()).isTrue();
+		assertThat(service.verify(question.replace("공공기관", "민간기업"), duty + list,
+			List.of(ground)).insufficientEvidence()).isTrue();
+	}
+
+	@Test
 	void followUpReviewOmissionCoverageRequiresItsOwnSafeguardsDuty() {
 		String question = "보안성 검토를 이미 받은 정보화사업의 후속 유지보수에서 망 구성을 바꾸지 않으면 어떤 조건으로 검토를 생략할 수 있나요?";
 		String permission = "각급기관의 장은 다음 각 호에 해당하는 정보화사업에 대하여는 보안성 검토 절차의 이행을 생략할 수 있다.";

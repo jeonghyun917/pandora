@@ -20,6 +20,12 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final String SUBJECT = "SUBJECT";
 	private static final String RELATION = "RELATION";
 	private static final String CONDITION = "CONDITION";
+	private static final Pattern STANDARD_DICTIONARY_REQUEST = Pattern.compile(
+		"^공공기관(?:의장)?[은이가]?(?:기관표준과)?(?:db|데이터베이스)표준을수립(?:할때|하는경우)"
+			+ "데이터표준사전에(?:무엇을|어떤항목을)(?:기록|작성)하고"
+			+ "(?:어떻게관리|어떻게최신성을유지)해야(?:하나요|합니까)$");
+	private static final Pattern STANDARD_DICTIONARY_ARTICLE = Pattern.compile(
+		"제\\s*8\\s*조\\s*\\([^()]{1,80}\\)\\s*①\\s*([^。.!?]{1,260}\\.)\\s*1\\.\\s*([^①-⑳]{1,420}?)(?=②)");
 	private static final Pattern OMISSION_WITH_SAFEGUARDS = Pattern.compile(
 		"(보안성\\s*검토\\s*절차의\\s*이행을\\s*생략할\\s*수\\s*있다)\\.\\s*"
 			+ "(이\\s*경우[^.!?。]{1,180}?자체\\s*보안대책을\\s*수립\\s*[ㆍ·]\\s*시행하여야\\s*한다)\\.");
@@ -157,6 +163,11 @@ public class AnswerQuestionAlignmentVerifier {
 			return AlignmentResult.failed("NO_SUPPORTED_CLAIMS", List.of(SUBJECT, RELATION));
 		}
 		String questionScope = normalize(question);
+		if (STANDARD_DICTIONARY_REQUEST.matcher(questionScope).matches()) {
+			return provesStandardDictionary(claimResult, supportedLinks, grounds)
+				? AlignmentResult.aligned(supportedLinks.get(0).claim())
+				: AlignmentResult.failed("MISSING_ANSWER_COVERAGE", List.of(ANSWER_COVERAGE));
+		}
 		if (omitsOwnedReviewSafeguards(questionScope, supportedLinks, grounds)) {
 			return AlignmentResult.failed("MISSING_ANSWER_COVERAGE", List.of(ANSWER_COVERAGE));
 		}
@@ -360,6 +371,31 @@ public class AnswerQuestionAlignmentVerifier {
 			}
 		}
 		return false;
+	}
+
+	private static boolean provesStandardDictionary(ClaimVerifier.VerificationResult verified,
+		List<ClaimVerifier.ClaimEvidenceLink> links, List<LawAiAnswerGround> grounds) {
+		if (verified.insufficientEvidence() || verified.strongClaimCount() != 2 || links.size() != 2
+			|| !verified.unsupportedClaims().isEmpty() || !verified.unsupportedNumericClaims().isEmpty()
+			|| !verified.contradictedClaims().isEmpty() || grounds == null) return false;
+		int number = links.get(0).groundNumber();
+		if (links.get(1).groundNumber() != number) return false;
+		var owners = grounds.stream().filter(g -> g != null && g.number() == number).toList();
+		if (owners.size() != 1) return false;
+		var owner = owners.get(0);
+		if (!"direct".equals(owner.evidenceRole()) || !"admrul".equals(owner.target())
+			|| !"CURRENT".equals(owner.effectiveStatus()) || owner.matchedChildText() == null
+			|| !normalize(owner.title()).equals("공공기관의데이터베이스표준화지침")) return false;
+		var article = STANDARD_DICTIONARY_ARTICLE.matcher(owner.matchedChildText());
+		if (!article.find()) return false;
+		String duty = normalize(article.group(1));
+		String items = normalize(article.group(2));
+		return duty.startsWith("공공기관의장은기관표준과db표준수립을위해")
+			&& duty.contains("별표제1호에따라데이터표준사전으로작성하여야")
+			&& duty.endsWith("최신성을유지하여야한다")
+			&& items.matches("표준용어2표준단어3표준도메인4표준코드5그밖에공공데이터베이스표준수립에필요한사항")
+			&& List.of(duty, items).stream().allMatch(anchor -> links.stream().anyMatch(link ->
+				anchor.equals(normalize(link.claim())) && anchor.equals(normalize(link.evidenceSentence()))));
 	}
 
 	private static boolean hasEntrustedConsultationConditions(
