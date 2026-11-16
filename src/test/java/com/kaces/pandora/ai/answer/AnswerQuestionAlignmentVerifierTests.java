@@ -201,8 +201,28 @@ class AnswerQuestionAlignmentVerifierTests {
 			if (body.equals(collection)) {
 				assertThat(verifier.verify("개인정보 수집·이용에 동의를 받을 때 정보주체에게 알려야 할 사항은 무엇인가요?",
 					checked, List.of(ground)).aligned()).isTrue();
+				for (String outside : List.of(
+					"개인정보를 목적 외로 이용하거나 제공하는 동의를 받을 때 무엇을 알려야 하나요?",
+					"개인정보 수집 동의와 목적 외 이용·제공 동의를 받을 때 각각 무엇을 고지해야 하나요?")) {
+					assertThat(verifier.verify(outside, checked, List.of(ground)).reasonCode())
+						.isEqualTo("MISSING_CONDITION");
+				}
 			}
 		}
+	}
+
+	@Test
+	void purposeExternalNoticeRequiresSupportedScopeOnBothSidesOfTheClaimLink() {
+		String question = "개인정보를 목적 외로 이용하는 데 동의를 받을 때 무엇을 알려야 하나요?";
+		String mixed = "개인정보 수집 동의와 목적 외 이용 동의를 받을 때 각각 무엇을 고지해야 하나요?";
+		String outside = "개인정보를 목적 외로 이용하려고 동의를 받을 때에는 이용 목적과 동의를 거부할 권리를 알려야 한다.";
+		String collection = "개인정보의 수집ㆍ이용 목적";
+		assertThat(verifier.verify(question, claimResult(supported(outside, outside))).reasonCode())
+			.isNotEqualTo("MISSING_CONDITION");
+		assertThat(verifier.verify(question, claimResult(supported(outside, collection))).reasonCode())
+			.isEqualTo("MISSING_CONDITION");
+		assertThat(verifier.verify(mixed, claimResult(supported(outside, outside))).reasonCode())
+			.isEqualTo("MISSING_CONDITION");
 	}
 
 	@Test

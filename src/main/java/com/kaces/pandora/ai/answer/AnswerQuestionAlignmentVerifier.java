@@ -150,6 +150,18 @@ public class AnswerQuestionAlignmentVerifier {
 		}
 		String questionScope = normalize(question);
 		if (questionScope.contains("개인정보") && questionScope.contains("동의")
+			&& purposeExternalScope(questionScope)
+			&& AlignmentProfile.containsAny(questionScope, "고지", "알려", "안내")) {
+			boolean outsideNotice = supportedLinks.stream().anyMatch(link ->
+				ownedPurposeExternalNotice(link.claim()) && ownedPurposeExternalNotice(link.evidenceSentence()));
+			boolean mixed = COLLECTION_CONSENT_REQUEST.matcher(questionScope).find();
+			boolean collectionNotice = !mixed || supportedLinks.stream().anyMatch(link ->
+				collectionNoticePurpose(link.claim()) && collectionNoticePurpose(link.evidenceSentence()));
+			if (!outsideNotice || !collectionNotice) {
+				return AlignmentResult.failed("MISSING_CONDITION", List.of(CONDITION));
+			}
+		}
+		if (questionScope.contains("개인정보") && questionScope.contains("동의")
 			&& thirdPartyProvision(questionScope)
 			&& AlignmentProfile.containsAny(questionScope, "고지", "알려", "안내")
 			&& supportedLinks.stream()
@@ -305,6 +317,25 @@ public class AnswerQuestionAlignmentVerifier {
 
 	private static boolean thirdPartyProvision(String normalized) {
 		return AlignmentProfile.containsAny(normalized, "제3자", "제삼자") && normalized.contains("제공");
+	}
+
+	private static final Pattern COLLECTION_CONSENT_REQUEST =
+		Pattern.compile("수집(?:ㆍ?이용)?(?:에대한|에)?동의");
+
+	private static boolean purposeExternalScope(String normalized) {
+		return AlignmentProfile.containsAny(normalized, "목적외", "수집목적의범위를벗어나", "수집목적범위를벗어나")
+			&& AlignmentProfile.containsAny(normalized, "이용", "제공");
+	}
+
+	private static boolean ownedPurposeExternalNotice(String statement) {
+		String normalized = normalize(statement);
+		return purposeExternalScope(normalized) && normalized.contains("동의")
+			&& AlignmentProfile.containsAny(normalized, "알려야", "고지해야", "고지하여야", "안내해야", "안내하여야");
+	}
+
+	private static boolean collectionNoticePurpose(String statement) {
+		String normalized = normalize(statement).replace("ㆍ", "");
+		return normalized.contains("개인정보의수집이용목적") && !purposeExternalScope(normalized);
 	}
 
 	private static final String PROVISION_NOTICE_HEADER =
