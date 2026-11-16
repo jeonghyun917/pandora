@@ -1788,7 +1788,11 @@ public class EvidenceJudge {
 	private boolean asksReportBasedCorrection(String question) {
 		return question.contains("결과보고서") && question.contains("시정조치")
 			&& articleReferences(question).isEmpty()
-			&& containsAny(question, List.of("보고서에따라", "보고서에따른"));
+			&& hasGoverningReportRelation(question);
+	}
+
+	static boolean hasGoverningReportRelation(String normalizedQuestion) {
+		return containsAny(normalizedQuestion, List.of("보고서에따라", "보고서에따른", "보고서를기준으로"));
 	}
 
 	private static final java.util.regex.Pattern CCTV_GUIDE_APPLICABILITY = java.util.regex.Pattern.compile(

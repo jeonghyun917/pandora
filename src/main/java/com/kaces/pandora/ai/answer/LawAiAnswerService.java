@@ -4400,7 +4400,7 @@ public class LawAiAnswerService {
 			|| !("law".equals(chunk.target()) || "admrul".equals(chunk.target()))
 			|| !articleReferencesFromQuery(query).isEmpty()) return "";
 		String normalized = normalizeForMatch(query);
-		if (!normalized.contains("시정조치") || !containsAny(normalized, "보고서에따라", "보고서에따른")) return "";
+		if (!normalized.contains("시정조치") || !EvidenceJudge.hasGoverningReportRelation(normalized)) return "";
 		String owned = "";
 		for (String part : chunk.chunkText().split("(?<=[.!?。])(?:\\s+|(?=[①-⑳]))|\\R")) {
 			String sentence = part.strip().replaceFirst("^(?:(?:제[0-9]+조(?:의[0-9]+)?\\([^)]{1,120}\\))\\h*)?[①-⑳]\\h*", "");

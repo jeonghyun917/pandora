@@ -2707,6 +2707,16 @@ class LawAiAnswerServiceEvidenceGateTests {
 		try {
 			assertThat(contextSnippet(service,row,q,180)).isEqualTo(duty);
 			assertThat(snippet(service,row,q)).isEqualTo(duty);
+			String basis = "단계별 점검결과보고서를 기준으로 관리기관과 사업자는 어떤 시정조치를 수행하나요?";
+			assertThat(new EvidenceJudge().judge(basis, List.of(row), Map.of(), 5).directEvidenceCount()).isEqualTo(1);
+			assertThat(contextSnippet(service,row,basis,180)).isEqualTo(duty);
+			assertThat(snippet(service,row,basis)).isEqualTo(duty);
+			String receipt = "단계별 점검결과보고서를 통보받으면 언제까지 시정조치를 수행해야 하나요?";
+			var receiptRow = chunk(3149L, "admrul", title, "업무 기준",
+				"단계별 점검결과보고서를 통보받으면 언제까지 시정조치를 수행해야 하는지 문의가 접수되었다. "
+					+ "관련 문의는 담당 부서에서 접수하여 별도 절차로 검토한다. ".repeat(60)
+					+ "\n제8조(점검 시행) ① " + duty + "② 관리기관은 그 결과를 기록한다.", 1);
+			assertThat(contextSnippet(service,receiptRow,receipt,180)).doesNotContain(duty);
 		} finally {
 			service.shutdownExecutors();
 		}
