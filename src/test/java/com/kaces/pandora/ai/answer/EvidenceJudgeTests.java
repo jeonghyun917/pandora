@@ -1069,6 +1069,22 @@ class EvidenceJudgeTests {
 	}
 
 	@Test
+	void recognizesNamedReviewRelayWithoutRequiringObligationWording() {
+		String title = "조달청 정보보안 세부지침";
+		var relay = currentEvaluationPlanChunk(955L, title, "제20조(검토결과 조치)",
+			"제20조(검토결과 조치) ① 정보보안담당관은 국가정보원장으로부터 보안성 검토 결과를 통보받은 경우 "
+				+ "정보화사업담당관에게 통보하여야 한다.");
+		var remediation = currentEvaluationPlanChunk(956L, title, "제20조(검토결과 조치)",
+			"제20조(검토결과 조치) ① 정보보안담당관은 국가정보원장으로부터 보안성 검토 결과를 통보받은 경우 "
+				+ "보안대책을 보완하여야 한다.");
+		String question = "조달청 정보보안 세부지침 제20조에 따르면 국정원 보안성 검토 결과를 받은 정보보안담당관은 누구에게 통보하나요?";
+		assertThat(judge.judge(question, List.of(remediation), Map.of(), 5).directEvidenceCount()).isZero();
+		assertThat(judge.judge("모든 공공기관의 자체 보안성 검토 결과는 누구에게 통보해야 하나요?",
+			List.of(relay), Map.of(), 5).directEvidenceCount()).isZero();
+		assertThat(judge.judge(question, List.of(relay), Map.of(), 5).directEvidenceCount()).isEqualTo(1);
+	}
+
+	@Test
 	void distinguishesPostNoticeActionFromSecurityReviewApplicability() {
 		var scope = chunk(854L, "official_doc", "공공 사이버보안 기준", "보안성 검토 대상",
 			"국가정보원 보안성 검토 대상 사업 및 시기: 정보통신망 또는 정보시스템 구축 사업이 해당한다.");

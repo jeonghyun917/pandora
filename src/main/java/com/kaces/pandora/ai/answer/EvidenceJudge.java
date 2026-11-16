@@ -1703,7 +1703,15 @@ public class EvidenceJudge {
 			boolean owned = !tableOfContents && !suppressEvidenceNoise
 				&& "admrul".equals(chunk.target()) && "CURRENT".equals(chunk.effectiveStatus())
 				&& DirectEvidenceSelectionPolicy.matchesExplicitAuthority(chunk, profile.explicitDocumentTitles())
-				&& provesRfpEvaluationPlanInclusion(profile.normalizedQuestion(), chunk);
+				&& articleContainsDuty(profile.normalizedQuestion(), chunk, RFP_EVALUATION_PLAN_DUTY);
+			return new JudgedChunk(chunk, score, owned, owned, owned, owned ? 1 : 0, owned ? 1 : 0);
+		}
+		if (asksReviewResultRelay(profile.normalizedQuestion()) && profile.explicitDocumentTitles().size() == 1
+			&& articleReferences(profile.normalizedQuestion()).size() == 1) {
+			boolean owned = !tableOfContents && !suppressEvidenceNoise
+				&& "admrul".equals(chunk.target()) && "CURRENT".equals(chunk.effectiveStatus())
+				&& DirectEvidenceSelectionPolicy.matchesExplicitAuthority(chunk, profile.explicitDocumentTitles())
+				&& articleContainsDuty(profile.normalizedQuestion(), chunk, REVIEW_RESULT_RELAY_DUTY);
 			return new JudgedChunk(chunk, score, owned, owned, owned, owned ? 1 : 0, owned ? 1 : 0);
 		}
 		if (asksPriorConsultationCorrection(profile.normalizedQuestion())) {
@@ -1817,12 +1825,24 @@ public class EvidenceJudge {
 		"제안서평가계획\\([^)]{0,80}배점[^)]{0,80}\\)을작성하여제안요청서에포함"
 			+ "(?:시켜야한다|하여야한다|시키되[^.!?。]{0,130}작성하여야한다)");
 
-	private boolean provesRfpEvaluationPlanInclusion(String question, LawSemanticChunkRow chunk) {
+	private static boolean asksReviewResultRelay(String question) {
+		return question.contains("보안성검토결과") && question.contains("정보보안담당관")
+			&& containsAny(question, List.of("국정원", "국가정보원장"))
+			&& containsAny(question, List.of("결과를받은", "결과를통보받"))
+			&& containsAny(question, List.of("누구에게통보", "누구에게전달", "어느부서에통보"))
+			&& !containsAny(question, List.of("모든", "자체검토", "보완", "예외", "않아"));
+	}
+
+	private static final java.util.regex.Pattern REVIEW_RESULT_RELAY_DUTY = java.util.regex.Pattern.compile(
+		"정보보안담당관(?:은|이)국가정보원장으로부터보안성검토결과를통보받은경우[,，]?"
+			+ "정보화사업담당관에게통보(?:하여야한다|해야한다)");
+
+	private boolean articleContainsDuty(String question, LawSemanticChunkRow chunk, java.util.regex.Pattern duty) {
 		String reference = articleReferences(question).get(0);
 		if (!LawArticleOwnership.article(reference).equals(reference) || chunk.chunkText() == null) return false;
 		for (String section : chunk.chunkText().split("(?m)(?=^\\h*제[0-9]+조(?:의[0-9]+)?\\h*\\()")) {
 			if (LawArticleOwnership.owns(reference, null, section)
-				&& RFP_EVALUATION_PLAN_DUTY.matcher(section.replaceAll("\\s+", "")).find()) return true;
+				&& duty.matcher(section.replaceAll("\\s+", "")).find()) return true;
 		}
 		return false;
 	}
@@ -3803,6 +3823,7 @@ public class EvidenceJudge {
 			legacy.definitionQuestion(),
 			legacy.securityReviewResultAction(),
 			(DirectEvidenceSelectionPolicy.asksConsultationOmissionProcedure(question)
+				|| asksReviewResultRelay(legacy.normalizedQuestion())
 				|| (legacy.normalizedQuestion().contains("평가계획") && legacy.normalizedQuestion().contains("제안요청서")))
 				? com.kaces.pandora.common.text.DocumentSearchAnchorExtractor.explicitDocumentTitles(question)
 				: List.of()
