@@ -399,6 +399,14 @@ class ClaimEvidenceAtomizerTests {
 	}
 
 	@Test
+	void keepsLineLeadingListNumberAttachedUntilRemovingTheMarker() {
+		assertThat(atomizer.atomize("3.  제공하는 개인정보의 항목"))
+			.containsExactly("제공하는 개인정보의 항목");
+		assertThat(atomizer.atomize("신청기한은 2026. 10. 31. 중소기업은 지원 대상입니다."))
+			.containsExactly("신청기한은 2026. 10. 31.", "중소기업은 지원 대상입니다.");
+	}
+
+	@Test
 	void splitsADigitEndedSentenceBeforeANewExplicitSubject() {
 		assertThat(atomizer.atomize(
 			"신청기한은 2026. 10. 31. 중소기업은 지원 대상입니다."

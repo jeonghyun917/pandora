@@ -18,7 +18,8 @@ final class ClaimEvidenceAtomizer {
 	private static final Pattern STRUCTURAL_BOUNDARY = Pattern.compile(
 		"(?<=[!?])\\s+"
 			+ "|(?<=[가-힣][.])\\s+"
-			+ "|(?<=\\d[.])\\s+"
+			// A number at the start of a list line is removed after splitting, not made into a claim.
+			+ "|(?m:(?<=\\d[.])(?<!^\\d[.])(?<!^\\d\\d[.]))\\s+"
 			+ "(?=[\\p{IsHangul}A-Za-z0-9()·ㆍ/-]{2,}?(?:은|는|이|가)\\s)"
 			+ "|[;；]"
 			+ "|\\R+"
