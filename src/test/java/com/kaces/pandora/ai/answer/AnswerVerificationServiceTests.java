@@ -58,6 +58,15 @@ class AnswerVerificationServiceTests {
 			.insufficientEvidence()).isTrue();
 		assertThat(service.verify(publicProject, scopedAnswer, List.of(remedy,rule,scope)).insufficientEvidence())
 			.as("an explicit same-edition qualification answers the public project question without assuming coverage").isFalse();
+		String openExample = "공공 소프트웨어사업에서 하도급 승인 심사 중 제51조의 하도급 제한을 위반했을 때 "
+			+ "가능한 조치를 조건부 사례로 설명해 주세요.";
+		assertThat(service.verify(openExample, clause, List.of(remedy,rule,scope)).insufficientEvidence()).isTrue();
+		assertThat(service.verify(openExample.replace("공공", "민간"), scopedAnswer, List.of(remedy,rule,scope))
+			.insufficientEvidence()).isTrue();
+		assertThat(service.verify(openExample.replace("제51조", "제52조"), scopedAnswer, List.of(remedy,rule,scope))
+			.insufficientEvidence()).isTrue();
+		assertThat(service.verify(openExample, scopedAnswer, List.of(remedy,rule,scope)).insufficientEvidence())
+			.as("a request for a conditional example is not an extra fact, and both limits remain proven").isFalse();
 	}
 
 	@Test

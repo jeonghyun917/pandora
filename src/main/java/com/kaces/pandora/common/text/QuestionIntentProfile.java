@@ -38,7 +38,8 @@ public record QuestionIntentProfile(
 	private static final java.util.regex.Pattern GENITIVE_HEAD_ROLE_GAP =
 		java.util.regex.Pattern.compile("(?<=[가-힣]의)\\h+(?=장[은이](?![\\p{L}\\p{N}]))");
 	private static final java.util.regex.Pattern TRAILING_CONDITIONAL_EXAMPLE_FORMAT =
-		java.util.regex.Pattern.compile("(?:(?<=[?？.!。！])|(?<=수)\\h+있는지)\\s+"
+		java.util.regex.Pattern.compile("(?:(?<=[?？.!。！])|(?<=수)\\h+있는지"
+			+ "|(?<=경우|때)\\h+가능한\\h+조치를)\\s+"
 			+ "조건부\\h+사례로\\h+설명해\\h*주세요[?？.!。！]?\\s*\\z");
 	private static final List<String> EXPLICIT_PROCEDURE_CUES = List.of(
 		"절차", "방법", "어떻게", "언제", "시기", "기한", "기간"
