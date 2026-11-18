@@ -139,6 +139,8 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final List<String> CONDITION_SUFFIXES = List.of(
 		"이전에", "이전", "전까지", "전에", "후에", "이후에", "이후", "때에", "때", "시에", "중에", "경우에", "경우"
 	);
+	private static final Pattern AFFIRMATIVE_VIOLATION_CONDITION =
+		Pattern.compile("(?<![\\p{L}\\p{N}])위반했을\\h+때(?![\\p{L}\\p{N}]|\\h+(?:아닌|제외|말고))");
 	private final ClaimEvidenceAtomizer atomizer = new ClaimEvidenceAtomizer();
 
 	public AlignmentResult verify(String question, ClaimVerifier.VerificationResult claimResult) {
@@ -1100,6 +1102,8 @@ public class AnswerQuestionAlignmentVerifier {
 		private static AlignmentProfile from(String question) {
 			if (question != null) {
 				question = SPOKEN_APPLICATION_DUTY.matcher(question).replaceFirst("$1 적용 의무가 있습니까?");
+				// Canonicalize the affirmative inflection, leaving the duty, actor and scope intact.
+				question = AFFIRMATIVE_VIOLATION_CONDITION.matcher(question).replaceAll("위반한 경우");
 			}
 			QuestionIntentProfile questionProfile = QuestionIntentProfile.from(question);
 			List<List<String>> conditionGroups = conditionGroups(question);

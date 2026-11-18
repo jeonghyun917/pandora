@@ -38,6 +38,17 @@ class AnswerVerificationServiceTests {
 			clause, List.of(ground)).insufficientEvidence()).isTrue();
 		assertThat(service.verify(formatted, clause, List.of(ground)).insufficientEvidence())
 			.as("a trailing output-form instruction is not a legal actor or condition").isFalse();
+		String inflected = question.replace("위반한 경우", "위반했을 때");
+		for (String changed : List.of(
+			inflected.replace("제51조", "제52조"),
+			inflected.replace("하도급 제한 규정을", "계약 기한을"),
+			inflected.replace("위반했을 때", "위반하지 않았을 때"),
+			inflected.replace("위반했을 때", "위반했을 때가 아닌 경우")
+		)) {
+			assertThat(service.verify(changed, clause, List.of(ground)).insufficientEvidence()).as(changed).isTrue();
+		}
+		assertThat(service.verify(inflected, clause, List.of(ground)).insufficientEvidence())
+			.as("same violation predicate and scope, different inflection").isFalse();
 	}
 
 	@Test
