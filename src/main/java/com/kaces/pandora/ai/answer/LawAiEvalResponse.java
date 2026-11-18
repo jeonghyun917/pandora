@@ -1,5 +1,7 @@
 package com.kaces.pandora.ai.answer;
 
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 
 public record LawAiEvalResponse(
@@ -14,6 +16,30 @@ public record LawAiEvalResponse(
 	int unsafeSemanticShadowDisagreementCount,
 	List<CaseResult> results
 ) {
+	public record AttributedClaim(ClaimVerifier.ClaimEvidenceLink link, String target, long documentId, long chunkId) {}
+
+	static List<AttributedClaim> attributeClaims(
+		List<ClaimVerifier.ClaimEvidenceLink> links, List<LawAiAnswerGround> grounds
+	) {
+		if (links.isEmpty()) {
+			return List.of();
+		}
+		var byNumber = new HashMap<Integer, LawAiAnswerGround>();
+		var ambiguous = new HashSet<Integer>();
+		for (var ground : grounds) {
+			if (ground.number() > 0 && byNumber.putIfAbsent(ground.number(), ground) != null) {
+				ambiguous.add(ground.number());
+			}
+		}
+		return links.stream()
+			.filter(link -> byNumber.containsKey(link.groundNumber()) && !ambiguous.contains(link.groundNumber()))
+			.map(link -> {
+				var ground = byNumber.get(link.groundNumber());
+				return new AttributedClaim(link, ground.target(), ground.documentId(), ground.chunkId());
+			})
+			.toList();
+	}
+
 	public record CaseResult(
 		String id,
 		String question,
@@ -47,6 +73,7 @@ public record LawAiEvalResponse(
 		List<String> unsupportedAnswerClaims,
 		List<String> contradictedAnswerClaims,
 		List<ClaimVerifier.ClaimEvidenceLink> claimEvidenceLinks,
+		List<AttributedClaim> attributedClaims,
 		List<ClaimMatcherShadowResult> semanticShadowDisagreements,
 		int unsafeSemanticShadowDisagreementCount,
 		String verifiedAnswer

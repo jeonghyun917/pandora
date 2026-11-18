@@ -2436,6 +2436,7 @@ public class LawAiAnswerService {
 			List.of(),
 			List.of(),
 			List.of(),
+			List.of(),
 			0,
 			""
 		);
@@ -2569,6 +2570,7 @@ public class LawAiAnswerService {
 			answerEval.unsupportedClaims(),
 			answerEval.contradictedClaims(),
 			answerEval.evidenceLinks(),
+			LawAiEvalResponse.attributeClaims(answerEval.evidenceLinks(), retrieval.grounds()),
 			answerEval.semanticShadowDisagreements(),
 			answerEval.unsafeSemanticShadowDisagreementCount(),
 			answerEval.verifiedAnswer()

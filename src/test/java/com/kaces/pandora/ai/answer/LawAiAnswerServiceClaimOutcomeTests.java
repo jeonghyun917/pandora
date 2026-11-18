@@ -641,6 +641,12 @@ class LawAiAnswerServiceClaimOutcomeTests {
 		assertThat(result.answerVerified()).isTrue();
 		assertThat(result.verifiedAnswer()).isEqualTo(REPAIRED_ANSWER);
 		assertThat(result.forbiddenAnswerMatchedTerms()).isEmpty();
+		assertThat(result.attributedClaims()).singleElement().satisfies(attribution -> {
+			assertThat(attribution.link().claim()).isEqualTo(REPAIRED_ANSWER);
+			assertThat(attribution.target()).isEqualTo("law");
+			assertThat(attribution.documentId()).isEqualTo(201L);
+			assertThat(attribution.chunkId()).isEqualTo(101L);
+		});
 		verify(answerClient).rewrite(eq(QUESTION), eq(List.of(ALIGNED_EVIDENCE)));
 	}
 
