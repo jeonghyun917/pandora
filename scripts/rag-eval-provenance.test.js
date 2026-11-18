@@ -22,6 +22,7 @@ const {
   isCheckpointCompatible,
   isRuntimeStable,
   resolveReportPaths,
+  reserveVersionedEvaluationSlot,
   selectionHash,
 } = require('./lib/rag-eval-provenance');
 const {
@@ -395,6 +396,42 @@ test('versioned artifacts reject path overrides and unbound path components', ()
   assert.throws(() => resolveReportPaths('full', {}, { ...context, schemaVersion: 4 }), /identity/);
   assert.throws(() => resolveReportPaths('full', {}, { ...context, selectionHash: '../legacy' }), /SHA-256/);
   assert.throws(() => archivePaths('full', '../../legacy', context), /archive ID/);
+});
+
+test('a versioned invocation reserves its slot once even before a final report exists', (t) => {
+  assert.equal(typeof reserveVersionedEvaluationSlot, 'function');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pandora-eval-slot-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const identity = { schemaVersion: 5, evaluationContractSha256: 'a'.repeat(64), selectionHash: 'b'.repeat(64) };
+  const first = reserveVersionedEvaluationSlot('targeted', identity, { root, env: {} });
+  assert.equal(first.outputPath, `logs/contracts/${identity.evaluationContractSha256}/${identity.selectionHash}/targeted-latest.json`);
+  const receipt = path.join(root, path.dirname(first.outputPath), 'targeted-started.json');
+  const before = fs.readFileSync(receipt, 'utf8');
+  assert.equal(JSON.parse(before).selectionHash, identity.selectionHash);
+  assert.throws(() => reserveVersionedEvaluationSlot('targeted', identity, { root, env: {} }), /already started/);
+  assert.equal(fs.readFileSync(receipt, 'utf8'), before);
+  assert.doesNotThrow(() => reserveVersionedEvaluationSlot(
+    'targeted', { ...identity, selectionHash: 'c'.repeat(64) }, { root, env: {} },
+  ));
+});
+
+test('a pre-existing result, archive, or checkpoint blocks a new versioned invocation', (t) => {
+  assert.equal(typeof reserveVersionedEvaluationSlot, 'function');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pandora-eval-slot-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const [digit, stem] of [
+    ['1', 'targeted-latest.json'], ['2', 'targeted-latest.md'],
+    ['3', 'targeted-checkpoint.json'], ['4', 'targeted-20261118-083000-000Z.json'],
+  ]) {
+    const identity = { schemaVersion: 5, evaluationContractSha256: 'a'.repeat(64), selectionHash: digit.repeat(64) };
+    const directory = path.join(root, 'logs', 'contracts', identity.evaluationContractSha256, identity.selectionHash);
+    fs.mkdirSync(directory, { recursive: true });
+    const artifact = path.join(directory, stem);
+    fs.writeFileSync(artifact, '{"gatePassed":false}');
+    assert.throws(() => reserveVersionedEvaluationSlot('targeted', identity, { root, env: {} }), /existing evaluation artifact/);
+    assert.equal(fs.readFileSync(artifact, 'utf8'), '{"gatePassed":false}');
+    assert.equal(fs.existsSync(path.join(directory, 'targeted-started.json')), false);
+  }
 });
 
 test('a truncated or duplicate universe cannot write a full release report', () => {

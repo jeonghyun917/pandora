@@ -63,6 +63,36 @@ function resolveReportPaths(scope, env = process.env, versionedIdentity) {
   return reportPaths;
 }
 
+// Reserve only after preflight and before any evaluation request. Keep the
+// receipt even on errors; an interrupted process is not evidence of no request.
+function reserveVersionedEvaluationSlot(scope, identity, { root = process.cwd(), env = process.env } = {}) {
+  const prefix = versionedArtifactPrefix(scope, identity);
+  const paths = resolveReportPaths(scope, env, identity);
+  const directory = path.resolve(root, path.dirname(prefix));
+  fs.mkdirSync(directory, { recursive: true });
+  const priorArtifact = new RegExp(
+    `^${scope}-(?:latest\\.(?:json|md)|checkpoint\\.json|\\d{8}-\\d{6}-\\d{3}Z\\.(?:json|md))$`, 'i',
+  );
+  if (fs.readdirSync(directory).some((name) => priorArtifact.test(name))) {
+    throw new Error('Refusing to replace an existing evaluation artifact in this slot');
+  }
+  try {
+    fs.writeFileSync(path.join(directory, `${scope}-started.json`), JSON.stringify({
+      schemaVersion: 5,
+      runScope: scope,
+      evaluationContractSha256: identity.evaluationContractSha256,
+      selectionHash: identity.selectionHash,
+      startedAt: new Date().toISOString(),
+    }), { encoding: 'utf8', flag: 'wx', flush: true });
+  } catch (error) {
+    if (error.code === 'EEXIST') {
+      throw new Error('This evaluation slot already started; refusing a duplicate invocation', { cause: error });
+    }
+    throw error;
+  }
+  return paths;
+}
+
 function datasetHash(filePaths) {
   const hash = crypto.createHash('sha256');
   for (const filePath of [...filePaths].sort()) {
@@ -383,5 +413,6 @@ module.exports = {
   isCheckpointCompatible,
   isRuntimeStable,
   resolveReportPaths,
+  reserveVersionedEvaluationSlot,
   selectionHash,
 };
