@@ -20,6 +20,12 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final String SUBJECT = "SUBJECT";
 	private static final String RELATION = "RELATION";
 	private static final String CONDITION = "CONDITION";
+	private static final Pattern APPROVAL_REVIEW = Pattern.compile(
+		"(?<![\\p{L}\\p{N}])하도급\\h+승인\\h+심사\\h+중(?![\\p{L}\\p{N}])");
+	private static final String APPROVAL_REMEDY_STAGE = "하도급 또는 다시 하도급의 적정성 여부를 검토할 때";
+	private static final Pattern APPROVAL_RULE_PARAGRAPH = Pattern.compile(
+		"②제1항에따라신청서를제출받은국가기관등의장은하도급또는재하도급의적정성을검토하여"
+			+ "[0-9]{1,3}일이내에그승인여부를신청인에게서면으로알려야한다\\.");
 	private static final Pattern STANDARD_DICTIONARY_REQUEST = Pattern.compile(
 		"^공공기관(?:의장)?[은이가]?(?:기관표준과)?(?:db|데이터베이스)표준을수립(?:할때|하는경우)"
 			+ "데이터표준사전에(?:무엇을|어떤항목을)(?:기록|작성)하고"
@@ -243,7 +249,7 @@ public class AnswerQuestionAlignmentVerifier {
 				&& normalize(citation.group("article")).equals(normalize(g.chunkNo())))))
 			.flatMap(link -> assess(
 				link,
-				operativeProfile,
+				cited ? operativeProfile : approvalReviewProfile(question, link, grounds, operativeProfile),
 				cited ? "" : subjectContextByGround.getOrDefault(link.groundNumber(), ""),
 				literalAnswerCoverage,
                 scopeRules.stream().filter(rule->rule.owner()==link.groundNumber()).toList()
@@ -290,6 +296,40 @@ public class AnswerQuestionAlignmentVerifier {
 				.thenComparingInt(candidate -> reasonPriority(candidate.missingGroups())))
 			.orElseThrow();
 		return AlignmentResult.failed(reasonCode(best.missingGroups()), best.missingGroups());
+	}
+
+	// Project only the applicant-review stage, and only for the claim owned by the referencing provision.
+	private static AlignmentProfile approvalReviewProfile(String question, ClaimVerifier.ClaimEvidenceLink link,
+		List<LawAiAnswerGround> grounds, AlignmentProfile fallback) {
+		var stage = APPROVAL_REVIEW.matcher(question == null ? "" : question);
+		if (!stage.find() || grounds == null) return fallback;
+		int start = stage.start(), end = stage.end();
+		if (stage.find()) return fallback;
+		String claim = normalize(link.claim());
+		if (!claim.startsWith("국가기관등의장은규칙제14조제2항에따라" + normalize(APPROVAL_REMEDY_STAGE))
+			|| !claim.contains("법제51조에따른하도급제한규정")
+			|| !claim.endsWith("이를위반한경우해당하도급계약승인을거절하거나해당서류의보완을요청할수있다")
+			|| !claim.equals(normalize(link.evidenceSentence()))) return fallback;
+		var owners = grounds.stream().filter(g -> g != null && g.number() == link.groundNumber()).toList();
+		if (owners.size() != 1) return fallback;
+		var owner = owners.get(0);
+		if (!"admrul".equals(owner.target()) || !"CURRENT".equals(owner.effectiveStatus())
+			|| !"direct".equals(owner.evidenceRole())
+			|| !normalize(owner.title()).equals("소프트웨어사업계약및관리감독에관한지침")
+			|| !(normalize(owner.chunkNo()).equals("제20조")
+				|| normalize(owner.chunkTitle()).startsWith("제20조하도급계약의승인신청"))
+			|| !normalize(owner.matchedChildText()).contains(claim)) return fallback;
+		var rules = grounds.stream().filter(g -> g != null && g.number() != owner.number()
+			&& "law".equals(g.target()) && "CURRENT".equals(g.effectiveStatus())
+			&& normalize(g.title()).equals("소프트웨어진흥법시행규칙")
+			&& (normalize(g.chunkNo()).equals("제14조")
+				|| normalize(g.chunkTitle()).startsWith("제14조하도급의승인절차")))
+			.toList();
+		if (rules.size() != 1 || rules.get(0).matchedChildText() == null
+			|| !APPROVAL_RULE_PARAGRAPH.matcher(rules.get(0).matchedChildText().replaceAll("\\s+", "")).find()) {
+			return fallback;
+		}
+		return AlignmentProfile.from(question.substring(0, start) + APPROVAL_REMEDY_STAGE + question.substring(end));
 	}
 
 	private void addOwnedAuditDuty(String question, List<LawAiAnswerGround> grounds,

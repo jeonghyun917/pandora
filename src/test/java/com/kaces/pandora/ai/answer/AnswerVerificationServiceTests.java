@@ -13,6 +13,32 @@ import org.junit.jupiter.api.Test;
 class AnswerVerificationServiceTests {
 
 	@Test
+	void approvalReviewShorthandNeedsTheReferencedCurrentApprovalProcedure() {
+		String clause = "국가기관등의 장은 규칙 제14조제2항에 따라 하도급 또는 다시 하도급의 적정성 여부를 검토할 때 "
+			+ "계약상대자가 법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, "
+			+ "이를 위반한 경우 해당 하도급 계약 승인을 거절하거나 해당 서류의 보완을 요청할 수 있다.";
+		String procedure = "② 제1항에 따라 신청서를 제출받은 국가기관등의 장은 하도급 또는 재하도급의 적정성을 검토하여 "
+			+ "10일 이내에 그 승인 여부를 신청인에게 서면으로 알려야 한다.";
+		var remedy = new LawAiAnswerGround(1, 95, 9, "admrul", "소프트웨어사업 계약 및 관리감독에 관한 지침",
+			null, null, null, "CURRENT", "제20조", "하도급계약의 승인신청 등", null, clause, null, null, 0);
+		var rule = new LawAiAnswerGround(2, 96, 10, "law", "소프트웨어 진흥법 시행규칙", null, null, null,
+			"CURRENT", "제14조", "하도급의 승인 절차 등", null, procedure, null, null, 0);
+		var otherRule = new LawAiAnswerGround(2, 96, 10, "law", "다른 사업 시행규칙", null, null, null,
+			"CURRENT", "제14조", "하도급의 승인 절차 등", null, procedure, null, null, 0);
+		String request = "국가기관등의 장이 하도급 승인 심사 중 계약상대자가 법 제51조에 따른 하도급 제한 규정을 위반한 경우 "
+			+ "해당 하도급 계약 승인을 거절하거나 서류의 보완을 요청할 수 있나요?";
+		var service = new AnswerVerificationService(new AnswerGuard(), new ClaimVerifier());
+		assertThat(service.verify(request, clause, List.of(remedy)).insufficientEvidence()).isTrue();
+		assertThat(service.verify(request, clause, List.of(remedy, otherRule)).insufficientEvidence()).isTrue();
+		for (String different : List.of(request.replace("승인 심사 중", "승인 후 이행 검사 중"),
+			request.replace("제51조", "제52조"), request.replace("국가기관등의 장이", "신청기관의 장이"))) {
+			assertThat(service.verify(different, clause, List.of(remedy, rule)).insufficientEvidence()).as(different).isTrue();
+		}
+		assertThat(service.verify(request, clause, List.of(remedy, rule)).insufficientEvidence())
+			.as("the rule referenced by the operative clause proves the requested approval review stage").isFalse();
+	}
+
+	@Test
 	void equivalentActorParticlesDoNotHideAnOtherwiseProvenApprovalCondition() {
 		String clause = "국가기관등의 장은 규칙 제14조제2항에 따라 하도급 또는 다시 하도급의 적정성 여부를 검토할 때 "
 			+ "계약상대자가 법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, "
