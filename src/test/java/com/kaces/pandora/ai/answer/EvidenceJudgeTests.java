@@ -2301,6 +2301,14 @@ class EvidenceJudgeTests {
 				+ "2. 하도급 또는 재하도급 사업 수행 계획서 ② 국가기관등의 장은 하도급 또는 다시 하도급의 적정성 여부를 검토할 때 계약상대자가 법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, 이를 위반한 경우 해당 하도급 계약 승인을 거절하거나 해당 서류의 보완을 요청할 수 있다. "
 				+ "③ 소프트웨어사업자가 「하도급거래 공정화에 관한 법률」의 원사업자인 경우 표준하도급계약서를 활용할 수 있다.");
 		var scoped = judge.judge("공공 소프트웨어사업의 하도급 승인 심사에서 계약상대자가 소프트웨어 진흥법 제51조의 하도급 제한을 위반하면 서류 보완을 요청할 수 있나요?", List.of(clause), Map.of(), 8);
+		var postApproval = currentEvaluationPlanChunk(8161, "소프트웨어사업 계약 및 관리감독에 관한 지침", "제23조(하도급 관리 등)",
+			"제23조(하도급 관리 등) ① 국가기관등의 장은 법 제51조제7항에 따라 하도급 비율, 다시 하도급 여부 등 하도급 제한 규정 준수여부를 관리ㆍ감독하여야 한다. "
+				+ "② 국가기관등의 장은 승인된 하도급 및 다시 하도급 계약의 준수실태를 확인하여야 한다. "
+				+ "하도급 준수실태를 확인한 결과 미흡하거나 승인 받은대로 이행하지 아니한 경우 계약상대자에게 지체 없이 시정을 요구하여야 한다. "
+				+ "④ 계약상대자는 선량한 관리자로서 하도급 제한 규정을 준수하여야 한다. 다만, 하수급인 및 재하수급인의 책임 있는 사유로 법 제51조를 위반한 경우 계약상대자는 그 책임을 면할 수 있다.");
+		var review = judge.judge("소프트웨어사업의 하도급 승인 심사 중 제51조 하도급 제한 위반으로 보완 요청을 할 수 있나요?",
+			List.of(postApproval, clause), Map.of(), 8);
+		assertThat(review.chunks()).extracting(LawSemanticChunkRow::chunkId).contains(8160L).doesNotContain(8161L);
 		assertThat(scoped.directEvidenceCount()).isEqualTo(1);
 		assertThat(scoped.chunks()).containsExactly(clause);
 		var general = judge.judge("공공기관 정보시스템 사업에서 적용 법령을 위반하면 사업자가 항상 서류 보완 요구를 받나요?", List.of(clause), Map.of(), 8);
