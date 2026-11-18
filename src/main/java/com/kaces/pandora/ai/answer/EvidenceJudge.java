@@ -88,7 +88,7 @@ public class EvidenceJudge {
 			.filter(chunk -> !AutonomyFollowUpEvidence.outsideRecommendationScope(profile.normalizedQuestion(), chunk))
 			.filter(chunk -> !outsideCommercialPurchaseScope(query, chunk))
 			.filter(chunk -> !subcontractRemedyOutsideQuestion(query, chunk))
-			.filter(chunk -> !postApprovalInspectionOutsideReview(question, query, chunk))
+			.filter(chunk -> !postApprovalInspectionOutsideReview(question, chunk))
 			.filter(chunk -> !rfpDisclosureOutsideAttachmentQuestion(query, chunk))
 			.filter(chunk -> !rfpNeighborOutsideScoringQuestion(query, chunk))
 			.toList();
@@ -3374,15 +3374,29 @@ public class EvidenceJudge {
 			&& body.contains("위반한경우해당하도급계약승인을거절하거나해당서류의보완을요청할수있다");
 	}
 
-	private static boolean postApprovalInspectionOutsideReview(String rawQuestion, String query, LawSemanticChunkRow chunk) {
-		if (!containsAny(query, List.of("하도급승인심사", "하도급계약승인심사"))
-			|| !query.contains("제51조") || !containsPenaltyConsequenceCue(query)
-			|| containsAny(query, List.of("승인후", "승인된", "이행검사", "준수실태", "관리감독", "비교", "차이"))) {
-			return false;
-		}
-		// A comparison across separately phrased stages must not lose either source.
-		if (rawQuestion != null && rawQuestion.indexOf('?') >= 0
-			&& !rawQuestion.substring(rawQuestion.indexOf('?') + 1).isBlank()) return false;
+	static boolean asksSubcontractApprovalConsequence(String question) {
+		if (question == null) return false;
+		int boundary = Math.max(question.indexOf('?'), question.indexOf('？'));
+		if (boundary >= 0 && !question.substring(boundary + 1).isBlank()) return false;
+		String query = normalize(question);
+		return containsAny(query, List.of("하도급승인심사", "하도급계약승인심사"))
+			&& query.contains("제51조") && containsPenaltyConsequenceCue(query)
+			&& !containsAny(query, List.of("승인후", "승인된", "이행검사", "준수실태", "하도급관리감독", "비교", "차이"));
+	}
+
+	static boolean isSubcontractApprovalRemedySource(LawSemanticChunkRow chunk) {
+		if (chunk == null || !"admrul".equals(chunk.target()) || !"CURRENT".equals(chunk.effectiveStatus())
+			|| !"PASS".equals(chunk.qualityStatus())
+			|| !normalize(chunk.title()).equals("소프트웨어사업계약및관리감독에관한지침")) return false;
+		String body = normalize(chunk.chunkText());
+		return body.startsWith("제20조하도급계약의승인신청등")
+			&& body.contains("규칙제14조제2항에따라하도급또는다시하도급의적정성여부를검토할때")
+			&& body.contains("법제51조에따른하도급제한규정을준수하였는지여부를확인하여야하며이를위반한경우"
+				+ "해당하도급계약승인을거절하거나해당서류의보완을요청할수있다");
+	}
+
+	private static boolean postApprovalInspectionOutsideReview(String question, LawSemanticChunkRow chunk) {
+		if (!asksSubcontractApprovalConsequence(question)) return false;
 		String body = normalize(chunk.chunkText());
 		return "admrul".equals(chunk.target())
 			&& normalize(chunk.title()).equals("소프트웨어사업계약및관리감독에관한지침")

@@ -321,15 +321,16 @@ public class AnswerQuestionAlignmentVerifier {
 			|| !normalize(owner.matchedChildText()).contains(claim)) return fallback;
 		var rules = grounds.stream().filter(g -> g != null && g.number() != owner.number()
 			&& "law".equals(g.target()) && "CURRENT".equals(g.effectiveStatus())
-			&& normalize(g.title()).equals("소프트웨어진흥법시행규칙")
-			&& (normalize(g.chunkNo()).equals("제14조")
-				|| normalize(g.chunkTitle()).startsWith("제14조하도급의승인절차")))
+			&& isSubcontractApprovalProcedure(g.title(), g.chunkNo(), g.chunkTitle(), g.matchedChildText()))
 			.toList();
-		if (rules.size() != 1 || rules.get(0).matchedChildText() == null
-			|| !APPROVAL_RULE_PARAGRAPH.matcher(rules.get(0).matchedChildText().replaceAll("\\s+", "")).find()) {
-			return fallback;
-		}
+		if (rules.size() != 1) return fallback;
 		return AlignmentProfile.from(question.substring(0, start) + APPROVAL_REMEDY_STAGE + question.substring(end));
+	}
+
+	static boolean isSubcontractApprovalProcedure(String title, String article, String heading, String child) {
+		return child != null && normalize(title).equals("소프트웨어진흥법시행규칙")
+			&& (normalize(article).equals("제14조") || normalize(heading).startsWith("제14조하도급의승인절차"))
+			&& APPROVAL_RULE_PARAGRAPH.matcher(child.replaceAll("\\s+", "")).find();
 	}
 
 	private void addOwnedAuditDuty(String question, List<LawAiAnswerGround> grounds,

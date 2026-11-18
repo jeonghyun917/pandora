@@ -441,6 +441,46 @@ class LawAiAnswerServiceEvidenceGateTests {
             assertThat(budget.invoke(profile)).as(query).isEqualTo(4096);
         } } finally {service.shutdownExecutors();}
     }
+    @Test void article51ApprovalReviewRecallsTheOperativeRuleWithoutTakingPostApprovalNeighbors() throws Exception {
+        String title="소프트웨어사업 계약 및 관리감독에 관한 지침";
+        var remedy=chunk(99170L,"admrul",title,"제20조(하도급계약의 승인신청 등)",
+            "제20조(하도급계약의 승인신청 등) ② 국가기관등의 장은 규칙 제14조제2항에 따라 하도급 또는 다시 하도급의 적정성 여부를 검토할 때 "
+                + "계약상대자가 법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, "
+                + "이를 위반한 경우 해당 하도급 계약 승인을 거절하거나 해당 서류의 보완을 요청할 수 있다.");
+        var neighbor=chunk(99171L,"admrul",title,"제23조(하도급 관리 등)",
+            "제23조(하도급 관리 등) 승인된 하도급계약의 준수실태를 확인하고 승인 받은대로 이행하지 아니한 경우 시정을 요구하여야 한다.");
+        var law=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),
+            new Class<?>[]{LawChunkMapper.class}, (proxy,method,args) ->
+                method.getName().equals("findSemanticChunksByDocumentTitleAndText") && List.of("admrul").equals(args[0])
+                    && List.of(title).equals(args[1]) && ((List<?>)args[2]).contains("하도급 제한 규정")
+                    && Boolean.FALSE.equals(args[3]) ? List.of(neighbor,remedy) : List.of());
+        var service=service(law,null);
+        try {
+            var scope=QuestionSearchPlan.from("공공 소프트웨어사업에서 하도급 승인 심사 중 제51조의 하도급 제한을 위반했을 때 가능한 조치는?");
+            var broad=QuestionSearchPlan.from("정보화사업에서 일반 법령을 위반하면 받을 수 있는 조치는?");
+            assertThat(findLexicalChunks(service,broad,List.of("admrul"),false)).doesNotContain(remedy);
+            assertThat(findLexicalChunks(service,scope,List.of("admrul"),false)).contains(remedy).doesNotContain(neighbor);
+            var generalGuide=chunk(99172L,"official_doc","정보화사업 법제도 안내","법제도 준수",
+                "공공 소프트웨어사업 관련 법령 준수 여부를 점검하고 법제도 미준수 사항에 대한 보완 조치를 검토한다.");
+            assertThat(filterByQuestionIntent(service,List.of(generalGuide,neighbor,remedy),scope.question()))
+                .contains(remedy).doesNotContain(neighbor,generalGuide);
+            String approvalBody="② 제1항에 따라 신청서를 제출받은 국가기관등의 장은 하도급 또는 재하도급의 적정성을 검토하여 "
+                + "10일 이내에 그 승인 여부를 신청인에게 서면으로 알려야 한다.";
+            var rule=chunk(99173L,"law","소프트웨어 진흥법 시행규칙","제14조(하도급의 승인 절차 등)",approvalBody);
+            var wrongRule=chunk(99174L,"law","다른 사업 시행규칙","제14조(하도급의 승인 절차 등)",approvalBody);
+            var display=LawAiAnswerService.class.getDeclaredMethod("selectDisplayEvidenceChunks",
+                List.class,List.class,String.class,boolean.class,int.class);
+            display.setAccessible(true);
+            var selected=(List<LawSemanticChunkRow>)display.invoke(service,List.of(remedy),List.of(wrongRule,rule),scope.question(),true,1);
+            assertThat(selected).containsExactly(remedy,rule);
+            assertThat((List<?>)display.invoke(service,List.of(remedy),List.of(rule),scope.question(),false,1)).hasSize(1);
+            assertThat((List<?>)display.invoke(service,List.of(neighbor),List.of(rule),scope.question(),true,1)).hasSize(1);
+            var answer=LawAiAnswerService.class.getDeclaredMethod("selectAnswerContextChunks",List.class,String.class);
+            answer.setAccessible(true);
+            assertThat((List<LawSemanticChunkRow>)answer.invoke(service,selected,scope.question())).contains(remedy,rule);
+        } finally {service.shutdownExecutors();}
+    }
+
     @Test void configuredDomainTitleCandidatesAvoidTheBroadLawScanButDoNotReplaceEmptyFallback() throws Exception {
         var rule=chunk(99103L,"law","소프트웨어 진흥법","사업 관리 감독","국가기관등의 장이 소프트웨어사업을 추진하는 경우 관련 법령의 준수 여부를 확인한다.");
         var broad=new java.util.concurrent.atomic.AtomicInteger();
