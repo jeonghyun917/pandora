@@ -1734,6 +1734,11 @@ public class LawAiAnswerService {
 			finalScoreByChunkId
 		);
 		var displayCandidates = judgeContextChunks;
+		if (AnswerQuestionAlignmentVerifier.asksAssumedConsultationCorrection(normalized.query())
+			&& judgedEvidence.directEvidenceFound()) {
+			displayCandidates = new java.util.ArrayList<>(judgeContextChunks);
+			displayCandidates.addAll(lexicalChunks.stream().filter(SourceOwnedConsultationExclusion::sourceOwnsScope).toList());
+		}
 		if (targets.contains("law") && judgedEvidence.directEvidenceFound()
 			&& asksConsultationClassification(normalized.query()) && hasConsultationOperativePair(orderedEvidenceChunks)) {
 			displayCandidates = new java.util.ArrayList<>(judgeContextChunks);
@@ -1807,6 +1812,12 @@ public class LawAiAnswerService {
 		);
         grounds=preserveProcurementScopeRole(grounds, judgedEvidence.chunks());
         grounds=markAdministrativeBasisSupport(grounds,normalized.query(),matchedChunkByKey);
+		if (judgedEvidence.directEvidenceFound()) {
+			var consultationScope = linkedAssumedConsultationScope(orderedChunks, orderedChunks, normalized.query()).orElse(null);
+			if (consultationScope != null) grounds = grounds.stream()
+				.map(g -> g.chunkId() == consultationScope.chunkId() && consultationScope.target().equals(g.target())
+					? asRelatedSupport(g) : g).toList();
+		}
 		if (judgedEvidence.directEvidenceFound() && EvidenceJudge.asksSubcontractApprovalConsequence(normalized.query())
 			&& orderedChunks.stream().anyMatch(EvidenceJudge::isSubcontractApprovalRemedySource)) {
 			var applicability = linkedSubcontractApprovalScope(orderedChunks, orderedChunks, normalized.query()).orElse(null);
@@ -3943,6 +3954,7 @@ public class LawAiAnswerService {
 		finalSelected=withConsultationDefinitions(finalSelected,displayChunks,query,true,MAX_ANSWER_CONTEXT_GROUNDS);
 		finalSelected=withSubcontractApprovalProcedure(finalSelected,displayChunks,query,true,MAX_ANSWER_CONTEXT_GROUNDS+1);
 		finalSelected=withSubcontractApprovalScope(finalSelected,displayChunks,query,true,MAX_ANSWER_CONTEXT_GROUNDS+2);
+		finalSelected=withAssumedConsultationScope(finalSelected,displayChunks,query,true,MAX_ANSWER_CONTEXT_GROUNDS+1);
 		if (!lexicalVariantProperties.authoritative() || finalSelected.isEmpty()) {
 			return finalSelected;
 		}
@@ -9306,6 +9318,15 @@ public class LawAiAnswerService {
 		List<String> lawTargets = targets.stream()
 			.filter(this::isLawTarget)
 			.toList();
+		if (lawTargets.contains("admrul") && AnswerQuestionAlignmentVerifier.asksAssumedConsultationCorrection(query)) {
+			var candidates = safeLexicalQuery("assumed consultation corrective scope",
+				() -> lawChunkMapper.findSemanticChunksByDocumentTitleAndText(List.of("admrul"),
+					List.of("전자정부 성과관리 지침"),
+					List.of("사전협의의 대상사업은","사전협의 미이행"),false,18), routing);
+			var remedy = candidates.stream().filter(this::isAssumedConsultationRemedySource).toList();
+			var scope = linkedAssumedConsultationScope(remedy,candidates,query);
+			if (scope.isPresent()) return finishLexicalChunks(List.of(remedy.get(0),scope.get()),query);
+		}
 		if (!ragTargets.isEmpty() && !lawTargets.isEmpty()) {
 			// A family-specific fast path must not suppress other requested sources.
 			if (routing != null && routing.sources().revision() == 0 && !routing.pdfSources().isEmpty()
@@ -12164,8 +12185,38 @@ public class LawAiAnswerService {
         selected = withLinkedPurchaseException(selected,candidates,query,directEvidenceFound,limit);
 		selected = withConsultationDefinitions(selected,candidates,query,directEvidenceFound,Math.min(DEFAULT_LIMIT+2,displayLimit+2));
 		selected = withSubcontractApprovalProcedure(selected,candidates,query,directEvidenceFound,limit);
-		return withSubcontractApprovalScope(selected,candidates,query,directEvidenceFound,limit+1);
+		selected = withSubcontractApprovalScope(selected,candidates,query,directEvidenceFound,limit+1);
+		return withAssumedConsultationScope(selected,candidates,query,directEvidenceFound,limit);
     }
+
+	private boolean isAssumedConsultationRemedySource(LawSemanticChunkRow row) {
+		return row != null && "admrul".equals(row.target()) && "PASS".equals(row.qualityStatus())
+			&& normalizeForMatch(row.title()).equals("전자정부성과관리지침")
+			&& isPreConsultationCorrectionCandidate(row);
+	}
+
+	private java.util.Optional<LawSemanticChunkRow> linkedAssumedConsultationScope(List<LawSemanticChunkRow> selected,
+		List<LawSemanticChunkRow> candidates, String query) {
+		if (candidates == null || !AnswerQuestionAlignmentVerifier.asksAssumedConsultationCorrection(query)) return java.util.Optional.empty();
+		var owners = selected.stream().filter(this::isAssumedConsultationRemedySource).toList();
+		if (owners.size() != 1 || owners.get(0).sourceDate() == null) return java.util.Optional.empty();
+		var owner = owners.get(0);
+		var scopes = candidates.stream().filter(row -> row != null && row.chunkId() != owner.chunkId()
+			&& row.documentId() == owner.documentId() && owner.sourceDate().equals(row.sourceDate())
+			&& java.util.Objects.equals(owner.chunkVersion(),row.chunkVersion())
+			&& SourceOwnedConsultationExclusion.sourceOwnsScope(row)).distinct().toList();
+		return scopes.size() == 1 ? java.util.Optional.of(scopes.get(0)) : java.util.Optional.empty();
+	}
+
+	private List<LawSemanticChunkRow> withAssumedConsultationScope(List<LawSemanticChunkRow> selected,
+		List<LawSemanticChunkRow> candidates, String query, boolean directEvidenceFound, int limit) {
+		if (!directEvidenceFound || selected.size() >= limit) return selected;
+		var scope = linkedAssumedConsultationScope(selected,candidates,query);
+		if (scope.isEmpty() || selected.contains(scope.get())) return selected;
+		var result = new java.util.ArrayList<>(selected);
+		result.add(scope.get());
+		return List.copyOf(result);
+	}
 
 	private static boolean isSubcontractApprovalProcedureSource(LawSemanticChunkRow row) {
 		return row != null && "law".equals(row.target()) && "CURRENT".equals(row.effectiveStatus())

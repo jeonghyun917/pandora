@@ -20,6 +20,10 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final String SUBJECT = "SUBJECT";
 	private static final String RELATION = "RELATION";
 	private static final String CONDITION = "CONDITION";
+	private static final Pattern ASSUMED_CONSULTATION_SCOPE = Pattern.compile(
+		"^제4조의\\s+사전협의\\s+대상이고\\s+제외\\s+대상이\\s+아닌\\s+사업으로\\s+가정합니다[.]\\s+(.{1,160})$");
+	private static final Pattern CONSULTATION_ARTICLE_HEADING = Pattern.compile(
+		"제\\s*[0-9]+\\s*조(?:의\\s*[0-9]+)?\\s*\\([^()]{1,90}\\)");
 	private static final Pattern APPROVAL_REVIEW = Pattern.compile(
 		"(?<![\\p{L}\\p{N}])하도급\\h+승인\\h+심사\\h+중(?![\\p{L}\\p{N}])");
 	private static final String APPROVAL_REMEDY_STAGE = "하도급 또는 다시 하도급의 적정성 여부를 검토할 때";
@@ -183,6 +187,14 @@ public class AnswerQuestionAlignmentVerifier {
 		}
 		if (supportedLinks.isEmpty()) {
 			return AlignmentResult.failed("NO_SUPPORTED_CLAIMS", List.of(SUBJECT, RELATION));
+		}
+		if (question != null && question.length() <= 240) {
+			var assumed = ASSUMED_CONSULTATION_SCOPE.matcher(question.strip());
+			if (assumed.matches()) {
+				var action = assumedConsultationRemedy(assumed.group(1), claimResult, supportedLinks, grounds);
+				return action == null ? AlignmentResult.failed("MISSING_CONDITION", List.of(CONDITION))
+					: AlignmentResult.aligned(action.claim());
+			}
 		}
 		String questionScope = normalize(question);
 		if (STANDARD_DICTIONARY_REQUEST.matcher(questionScope).matches()) {
@@ -933,6 +945,56 @@ public class AnswerQuestionAlignmentVerifier {
 		if (!verbal.matches()) return null;
 		String object = verbal.group("trigger").replaceFirst("[을를]$", "");
 		return new CorrectionQuestion(verbal.group("actor"), verbal.group("recipient"), normalize(object) + "미이행");
+	}
+
+	private static ClaimVerifier.ClaimEvidenceLink assumedConsultationRemedy(String request,
+		ClaimVerifier.VerificationResult result, List<ClaimVerifier.ClaimEvidenceLink> links, List<LawAiAnswerGround> grounds) {
+		var correction = correctionQuestion(request);
+		if (correction == null || !correction.actor().equals("협의기관") || !correction.recipient().equals("신청기관")
+			|| !correction.trigger().equals("사전협의미이행") || grounds == null || links.size() != 4
+			|| result.insufficientEvidence() || !result.unsupportedClaims().isEmpty()
+			|| !result.unsupportedNumericClaims().isEmpty() || !result.contradictedClaims().isEmpty()) return null;
+		for (var operative : links) {
+			if (!correction.matches(operative.claim()) || !normalize(operative.claim()).equals(normalize(operative.evidenceSentence()))) continue;
+			var owners = grounds.stream().filter(g -> g != null && g.number() == operative.groundNumber()).toList();
+			if (owners.size() != 1) continue;
+			var owner = owners.get(0);
+			if (owner.documentId() <= 0 || owner.sourceDate() == null || owner.sourceDate().isBlank()
+				|| !"admrul".equals(owner.target()) || !"CURRENT".equals(owner.effectiveStatus()) || !"direct".equals(owner.evidenceRole())
+				|| !normalize(owner.title()).equals("전자정부성과관리지침")
+				|| !ownsConsultationCorrectionParagraph(owner.matchedChildText(), operative.claim())) continue;
+			for (var scope : grounds) {
+				if (scope == null || scope.number() == owner.number() || scope.chunkId() == owner.chunkId()
+					|| scope.documentId() != owner.documentId() || !owner.sourceDate().equals(scope.sourceDate())
+					|| grounds.stream().filter(g -> g != null && g.number() == scope.number()).count() != 1) continue;
+				var premises = SourceOwnedConsultationExclusion.scopePremises(scope);
+				if (premises.size() == 3 && premises.stream().allMatch(premise -> links.stream().anyMatch(link ->
+					link.groundNumber() == scope.number() && normalize(link.claim()).equals(normalize(premise))
+						&& normalize(link.evidenceSentence()).equals(normalize(premise))))) return operative;
+			}
+		}
+		return null;
+	}
+
+	static boolean asksAssumedConsultationCorrection(String question) {
+		if (question == null || question.length() > 240) return false;
+		var assumed = ASSUMED_CONSULTATION_SCOPE.matcher(question.strip());
+		if (!assumed.matches()) return false;
+		var correction = correctionQuestion(assumed.group(1));
+		return correction != null && correction.actor().equals("협의기관")
+			&& correction.recipient().equals("신청기관") && correction.trigger().equals("사전협의미이행");
+	}
+
+	private static boolean ownsConsultationCorrectionParagraph(String child, String claim) {
+		if (child == null || child.length() > 6000) return false;
+		var headings = CONSULTATION_ARTICLE_HEADING.matcher(child).results().toList();
+		var owned = headings.stream().filter(h -> normalize(h.group()).equals("제18조사전협의이행실태의점검")).toList();
+		if (owned.size() != 1) return false;
+		var heading = owned.get(0);
+		int end = headings.stream().mapToInt(java.util.regex.MatchResult::start)
+			.filter(start -> start > heading.start()).findFirst().orElse(child.length());
+		var paragraph = Pattern.compile("②([^①-⑳]+)").matcher(child.substring(heading.end(), end));
+		return paragraph.find() && normalize(paragraph.group(1)).equals(normalize(claim));
 	}
 
 	private record CorrectionQuestion(String actor, String recipient, String trigger) {

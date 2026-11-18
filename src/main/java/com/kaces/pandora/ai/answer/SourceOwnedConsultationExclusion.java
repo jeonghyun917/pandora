@@ -10,8 +10,9 @@ import com.kaces.pandora.lawdata.chunk.LawSemanticChunkRow;
 final class SourceOwnedConsultationExclusion {
 	private static final Pattern INTRO = Pattern.compile(
 		"제4조\\s*\\(대상사업\\)\\s*①\\s*(사전협의의\\s+대상사업은[^.!?①-⑳]{1,240}\\.)");
-	private static final String HEAD = "제1항에 따른 대상사업 중 다음 각 호의 사업은 제외한다. "
-		+ "다만, 제1호부터 제3호까지 중 어느 하나에 해당하는 사업으로서 해당 연도에 신규로 정보화를 추진하는 사업은 그러하지 아니하다.";
+	private static final String EXCLUSION = "제1항에 따른 대상사업 중 다음 각 호의 사업은 제외한다.";
+	private static final String PROVISO = "다만, 제1호부터 제3호까지 중 어느 하나에 해당하는 사업으로서 해당 연도에 신규로 정보화를 추진하는 사업은 그러하지 아니하다.";
+	private static final String HEAD = EXCLUSION + " " + PROVISO;
 	private static final Pattern PARAGRAPH = Pattern.compile("②\\s*" + Pattern.quote(HEAD).replace(" ", "\\E\\s+\\Q")
 		+ "\\s*(?<list>[^①-⑳]+)(?=③|$)");
 	private static final Pattern ITEM = Pattern.compile("(?<![0-9])([1-9][0-9]?)[.]\\s+");
@@ -45,10 +46,17 @@ final class SourceOwnedConsultationExclusion {
 	static boolean sourceAnswers(String question, LawSemanticChunkRow row) {
 		if (question == null || question.length() > 240 || !QUESTION.matcher(question.strip()).matches()
 			|| row == null || !"PASS".equals(row.qualityStatus())) return false;
-		var ground = new LawAiAnswerGround(1, row.chunkId(), row.documentId(), row.target(), row.title(),
+		return index(List.of(asGround(row))).stream().anyMatch(rule -> rule.matchesQuestion(question));
+	}
+
+	static boolean sourceOwnsScope(LawSemanticChunkRow row) {
+		return row != null && "PASS".equals(row.qualityStatus()) && !scopePremises(asGround(row)).isEmpty();
+	}
+
+	private static LawAiAnswerGround asGround(LawSemanticChunkRow row) {
+		return new LawAiAnswerGround(1, row.chunkId(), row.documentId(), row.target(), row.title(),
 			null, null, row.sourceDate(), row.effectiveStatus(), row.chunkNo(), row.chunkTitle(),
 			null, row.chunkText(), row.sourcePath(), row.sourceUrl(), 0);
-		return index(List.of(ground)).stream().anyMatch(rule -> rule.matchesQuestion(question));
 	}
 
 	static List<Rule> index(List<LawAiAnswerGround> grounds) {
@@ -72,25 +80,42 @@ final class SourceOwnedConsultationExclusion {
 	}
 
 	private static void append(List<Rule> rules, int owner, String intro, String list) {
-		List<Integer> starts = new ArrayList<>();
-		List<Integer> ends = new ArrayList<>();
-		var tokens = ITEM.matcher(list);
-		while (tokens.find()) {
-			if (Integer.parseInt(tokens.group(1)) != starts.size() + 1) return;
-			starts.add(tokens.start());
-			ends.add(tokens.end());
-		}
-		if (starts.size() != 15 || !list.substring(0, starts.get(0)).isBlank()) return;
+		var starts = boundaries(list);
 		for (int i = 3; i < starts.size(); i++) {
 			int end = i + 1 == starts.size() ? list.length() : starts.get(i + 1);
-			String subject = list.substring(ends.get(i), end).strip().replaceAll("\\s+", " ");
+			String item = list.substring(starts.get(i), end).strip();
+			var token = ITEM.matcher(item);
+			if (!token.lookingAt()) continue;
+			String subject = item.substring(token.end()).strip().replaceAll("\\s+", " ");
 			String key = compact(subject).replace("(ApplicationProgrammingInterface,이하API)", "(API)");
 			if (!PROJECT.matcher(subject).matches() || key.contains("다만") || key.contains("제외")) continue;
-			rules.add(new Rule(owner, key, intro + "\n" + HEAD + "\n" + list.substring(starts.get(i), end).strip()));
+			rules.add(new Rule(owner, key, intro + "\n" + HEAD + "\n" + item));
 		}
+	}
+
+	private static List<Integer> boundaries(String list) {
+		List<Integer> starts = new ArrayList<>();
+		var tokens = ITEM.matcher(list);
+		while (tokens.find()) {
+			if (Integer.parseInt(tokens.group(1)) != starts.size() + 1) return List.of();
+			starts.add(tokens.start());
+		}
+		return starts.size() == 15 && list.substring(0, starts.get(0)).isBlank() ? starts : List.of();
 	}
 
 	private static String compact(String text) {
 		return text == null ? "" : text.replaceAll("\\s+", "");
+	}
+
+	static List<String> scopePremises(LawAiAnswerGround ground) {
+		if (ground == null || !"admrul".equals(ground.target()) || !"CURRENT".equals(ground.effectiveStatus())
+			|| !"전자정부성과관리지침".equals(compact(ground.title()))) return List.of();
+		var child = ground.matchedChildText();
+		if (child == null || child.length() > 5000) return List.of();
+		var intro = INTRO.matcher(child.stripLeading());
+		var paragraph = PARAGRAPH.matcher(child);
+		if (!intro.lookingAt() || !paragraph.find() || paragraph.start() != child.indexOf('②')) return List.of();
+		var items = boundaries(paragraph.group("list"));
+		return items.isEmpty() ? List.of() : List.of(intro.group(1), EXCLUSION, PROVISO);
 	}
 }

@@ -41,6 +41,35 @@ class ClaimVerifierTests {
 	}
 
 	@Test
+	void assumedConsultationScopeNeedsBothOwnedRulesAndTheExclusionProviso() {
+		String intro="사전협의의 대상사업은 예산과목 및 계약방식과 관계없이 중앙행정기관등 및 지방자치단체등이 추진하는 다음 각 호의 사업을 말한다.";
+		String exclusion="제1항에 따른 대상사업 중 다음 각 호의 사업은 제외한다.";
+		String proviso="다만, 제1호부터 제3호까지 중 어느 하나에 해당하는 사업으로서 해당 연도에 신규로 정보화를 추진하는 사업은 그러하지 아니하다.";
+		String items=java.util.stream.IntStream.rangeClosed(1,15).mapToObj(i -> i+". 구분 "+i+" 사업")
+			.collect(java.util.stream.Collectors.joining(""));
+		String scopeBody="제4조(대상사업) ① "+intro+" 1. 전자정부사업2. 지역정보화사업② "+exclusion+" "+proviso+items;
+		String action="협의기관의 장은 사전협의 미이행, 사전협의 신청 미등록, 사전협의 검토결과의 미반영, 사업산출물의 사전협의시스템 미등록 등에 대하여 신청기관에 시정을 요구할 수 있으며, 신청기관의 장은 이를 반영하고 이행결과를 협의기관의 장에게 제출하여야 한다.";
+		String title="전자정부 성과관리 지침";
+		var scope=new LawAiAnswerGround(1,87,14,"admrul",title,null,null,"20251219","CURRENT",
+			"제4조","제4조(대상사업)",null,scopeBody,null,null,0);
+		var remedy=new LawAiAnswerGround(2,91,14,"admrul",title,null,null,"20251219","CURRENT",
+			null,"제1조(목적) (6/8)",null,"제17조(이의 제기) ① 별도 규정이다.\n제18조(사전협의 이행실태의 점검) ① 협의기관의 장은 사전협의 이행실태를 점검할 수 있다.\n② "
+				+action+"\n제19조(사전협의시스템 운영) ① 별도 규정이다.",null,null,0);
+		var otherEdition=new LawAiAnswerGround(1,88,15,"admrul",title,null,null,"20261019","CURRENT",
+			"제4조","제4조(대상사업)",null,scopeBody,null,null,0);
+		var service=new AnswerVerificationService(new AnswerGuard(),new ClaimVerifier());
+		String request="제4조의 사전협의 대상이고 제외 대상이 아닌 사업으로 가정합니다. 사전협의 미이행에 대하여 협의기관의 장은 신청기관에 시정을 요구할 수 있나요?";
+		String draft=String.join("\n",intro,exclusion+" "+proviso,action);
+		assertThat(service.verify(request,draft.replace(proviso,""),List.of(scope,remedy)).insufficientEvidence()).isTrue();
+		assertThat(service.verify(request,draft,List.of(otherEdition,remedy)).insufficientEvidence()).isTrue();
+		assertThat(service.verify(request.replace("제외 대상이 아닌","제외 대상인"),draft,List.of(scope,remedy))
+			.insufficientEvidence()).isTrue();
+		var verified=service.verify(request,draft,List.of(scope,remedy));
+		assertThat(verified.insufficientEvidence())
+			.as("%s / %s",verified.alignmentResult().reasonCode(),verified.claimResult().evidenceLinks()).isFalse();
+	}
+
+	@Test
 	void procurementProcedureClaimsRetainTheirGroundAndRejectAlteredOperands() {
 		String title = "공공SW사업 법제도 관리감독 및 지원 가이드";
 		String scope = "대상사업: 국가기관등의 장이 발주하는 소프트웨어사업";
