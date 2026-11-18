@@ -1749,6 +1749,12 @@ public class LawAiAnswerService {
 			displayCandidates.addAll(safeLexicalQuery("subcontract approval procedure support",
 				() -> lawChunkMapper.findSemanticChunksByDocumentTitleAndText(List.of("law"),
 					List.of("소프트웨어 진흥법 시행규칙"), List.of("적정성을 검토", "승인 여부를 신청인"), false, 12), routing));
+			if (AnswerQuestionAlignmentVerifier.asksPublicSubcontractApprovalScope(normalized.query())) {
+				displayCandidates.addAll(safeLexicalQuery("subcontract approval application scope",
+					() -> lawChunkMapper.findSemanticChunksByDocumentTitleAndText(List.of("admrul"),
+						List.of("소프트웨어사업 계약 및 관리감독에 관한 지침"),
+						List.of("국가기관등이 법 제2조에 따른 소프트웨어사업을 수행할 경우"), false, 12), routing));
+			}
 		}
 		List<LawSemanticChunkRow> orderedChunks = selectDisplayEvidenceChunks(
 			orderedEvidenceChunks,displayCandidates,normalized.query(),
@@ -1803,8 +1809,11 @@ public class LawAiAnswerService {
         grounds=markAdministrativeBasisSupport(grounds,normalized.query(),matchedChunkByKey);
 		if (judgedEvidence.directEvidenceFound() && EvidenceJudge.asksSubcontractApprovalConsequence(normalized.query())
 			&& orderedChunks.stream().anyMatch(EvidenceJudge::isSubcontractApprovalRemedySource)) {
+			var applicability = linkedSubcontractApprovalScope(orderedChunks, orderedChunks, normalized.query()).orElse(null);
 			grounds = grounds.stream().map(g -> isSubcontractApprovalProcedureSource(
-				matchedChunkByKey.get(scoreKey(g.target(), g.chunkId()))) ? asRelatedSupport(g) : g).toList();
+				matchedChunkByKey.get(scoreKey(g.target(), g.chunkId())))
+				|| (applicability != null && applicability.chunkId() == g.chunkId() && applicability.target().equals(g.target()))
+				? asRelatedSupport(g) : g).toList();
 		}
 		if (asksConsultationClassification(normalized.query()) && hasConsultationOperativePair(orderedChunks)) {
 			grounds = grounds.stream().map(g -> consultationDefinitionKind(
@@ -3933,6 +3942,7 @@ public class LawAiAnswerService {
 		finalSelected=withLinkedPurchaseException(finalSelected,displayChunks,query,true,MAX_ANSWER_CONTEXT_GROUNDS+1);
 		finalSelected=withConsultationDefinitions(finalSelected,displayChunks,query,true,MAX_ANSWER_CONTEXT_GROUNDS);
 		finalSelected=withSubcontractApprovalProcedure(finalSelected,displayChunks,query,true,MAX_ANSWER_CONTEXT_GROUNDS+1);
+		finalSelected=withSubcontractApprovalScope(finalSelected,displayChunks,query,true,MAX_ANSWER_CONTEXT_GROUNDS+2);
 		if (!lexicalVariantProperties.authoritative() || finalSelected.isEmpty()) {
 			return finalSelected;
 		}
@@ -12151,7 +12161,8 @@ public class LawAiAnswerService {
             directEvidenceFound,limit);
         selected = withLinkedPurchaseException(selected,candidates,query,directEvidenceFound,limit);
 		selected = withConsultationDefinitions(selected,candidates,query,directEvidenceFound,Math.min(DEFAULT_LIMIT+2,displayLimit+2));
-		return withSubcontractApprovalProcedure(selected,candidates,query,directEvidenceFound,limit);
+		selected = withSubcontractApprovalProcedure(selected,candidates,query,directEvidenceFound,limit);
+		return withSubcontractApprovalScope(selected,candidates,query,directEvidenceFound,limit+1);
     }
 
 	private static boolean isSubcontractApprovalProcedureSource(LawSemanticChunkRow row) {
@@ -12169,6 +12180,35 @@ public class LawAiAnswerService {
 		if (procedure.size() != 1) return selected;
 		var result = new java.util.ArrayList<>(selected);
 		result.add(procedure.get(0));
+		return List.copyOf(result);
+	}
+
+	private java.util.Optional<LawSemanticChunkRow> linkedSubcontractApprovalScope(List<LawSemanticChunkRow> selected,
+		List<LawSemanticChunkRow> candidates, String query) {
+		if (candidates == null || !AnswerQuestionAlignmentVerifier.asksPublicSubcontractApprovalScope(query)
+			|| selected.stream().noneMatch(LawAiAnswerService::isSubcontractApprovalProcedureSource)) {
+			return java.util.Optional.empty();
+		}
+		var owners = selected.stream().filter(EvidenceJudge::isSubcontractApprovalRemedySource).toList();
+		if (owners.size() != 1) return java.util.Optional.empty();
+		var owner = owners.get(0);
+		var scopes = candidates.stream().filter(row -> row != null && row.documentId() == owner.documentId()
+			&& row.chunkId() != owner.chunkId() && owner.target().equals(row.target()) && owner.title().equals(row.title())
+			&& owner.effectiveStatus().equals(row.effectiveStatus()) && "PASS".equals(row.qualityStatus())
+			&& java.util.Objects.equals(owner.sourceDate(), row.sourceDate())
+			&& java.util.Objects.equals(owner.chunkVersion(), row.chunkVersion())
+			&& AnswerQuestionAlignmentVerifier.isSubcontractApprovalScope(row.chunkNo(), row.chunkTitle(), row.chunkText()))
+			.distinct().toList();
+		return scopes.size() == 1 ? java.util.Optional.of(scopes.get(0)) : java.util.Optional.empty();
+	}
+
+	private List<LawSemanticChunkRow> withSubcontractApprovalScope(List<LawSemanticChunkRow> selected,
+		List<LawSemanticChunkRow> candidates, String query, boolean directEvidenceFound, int limit) {
+		if (!directEvidenceFound || selected.size() >= limit || !EvidenceJudge.asksSubcontractApprovalConsequence(query)) return selected;
+		var scope = linkedSubcontractApprovalScope(selected, candidates, query);
+		if (scope.isEmpty() || selected.contains(scope.get())) return selected;
+		var result = new java.util.ArrayList<>(selected);
+		result.add(scope.get());
 		return List.copyOf(result);
 	}
 

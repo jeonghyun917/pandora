@@ -23,6 +23,12 @@ public class AnswerQuestionAlignmentVerifier {
 	private static final Pattern APPROVAL_REVIEW = Pattern.compile(
 		"(?<![\\p{L}\\p{N}])하도급\\h+승인\\h+심사\\h+중(?![\\p{L}\\p{N}])");
 	private static final String APPROVAL_REMEDY_STAGE = "하도급 또는 다시 하도급의 적정성 여부를 검토할 때";
+	private static final Pattern APPROVAL_PUBLIC_SCOPE = Pattern.compile("^\\s*공공\\h+소프트웨어사업에서(?=\\s|[,，])");
+	private static final String APPROVAL_SCOPE_CLAUSE =
+		"이지침은국가기관등이법제2조에따른소프트웨어사업을수행할경우에적용한다";
+	private static final Pattern APPROVAL_ABBREVIATED_DUTY = Pattern.compile(
+		"(?<![\\p{L}\\p{N}])(?:법\\h+)?제\\h*51\\h*조의\\h+하도급\\h+제한을\\h+"
+			+ "위반(?:했을\\h+때|한\\h+경우)(?![\\p{L}\\p{N}])");
 	private static final Pattern APPROVAL_RULE_PARAGRAPH = Pattern.compile(
 		"②제1항에따라신청서를제출받은국가기관등의장은하도급또는재하도급의적정성을검토하여"
 			+ "[0-9]{1,3}일이내에그승인여부를신청인에게서면으로알려야한다\\.");
@@ -249,7 +255,7 @@ public class AnswerQuestionAlignmentVerifier {
 				&& normalize(citation.group("article")).equals(normalize(g.chunkNo())))))
 			.flatMap(link -> assess(
 				link,
-				cited ? operativeProfile : approvalReviewProfile(question, link, grounds, operativeProfile),
+				cited ? operativeProfile : approvalReviewProfile(question, link, grounds, supportedLinks, operativeProfile),
 				cited ? "" : subjectContextByGround.getOrDefault(link.groundNumber(), ""),
 				literalAnswerCoverage,
                 scopeRules.stream().filter(rule->rule.owner()==link.groundNumber()).toList()
@@ -300,7 +306,7 @@ public class AnswerQuestionAlignmentVerifier {
 
 	// Project only the applicant-review stage, and only for the claim owned by the referencing provision.
 	private static AlignmentProfile approvalReviewProfile(String question, ClaimVerifier.ClaimEvidenceLink link,
-		List<LawAiAnswerGround> grounds, AlignmentProfile fallback) {
+		List<LawAiAnswerGround> grounds, List<ClaimVerifier.ClaimEvidenceLink> supportedLinks, AlignmentProfile fallback) {
 		var stage = APPROVAL_REVIEW.matcher(question == null ? "" : question);
 		if (!stage.find() || grounds == null) return fallback;
 		int start = stage.start(), end = stage.end();
@@ -324,7 +330,45 @@ public class AnswerQuestionAlignmentVerifier {
 			&& isSubcontractApprovalProcedure(g.title(), g.chunkNo(), g.chunkTitle(), g.matchedChildText()))
 			.toList();
 		if (rules.size() != 1) return fallback;
-		return AlignmentProfile.from(question.substring(0, start) + APPROVAL_REMEDY_STAGE + question.substring(end));
+		String projected = question.substring(0, start) + APPROVAL_REMEDY_STAGE + question.substring(end);
+		var publicScope = APPROVAL_PUBLIC_SCOPE.matcher(projected);
+		if (publicScope.find() && hasExplicitApprovalScope(owner, grounds, supportedLinks)) {
+			// The verified answer states the actual application condition, not coverage of every public project.
+			projected = publicScope.replaceFirst("국가기관등의 장이");
+		}
+		// This abbreviation is interpreted only under the proven Article 20/Rule 14 pairing.
+		projected = APPROVAL_ABBREVIATED_DUTY.matcher(projected)
+			.replaceFirst("법 제51조에 따른 하도급 제한 규정을 위반한 경우");
+		return AlignmentProfile.from(projected);
+	}
+
+	private static boolean hasExplicitApprovalScope(LawAiAnswerGround owner, List<LawAiAnswerGround> grounds,
+		List<ClaimVerifier.ClaimEvidenceLink> supportedLinks) {
+		var scopes = grounds.stream().filter(g -> g != null && g.number() != owner.number()
+			&& g.documentId() > 0 && g.documentId() == owner.documentId() && g.chunkId() != owner.chunkId()
+			&& owner.target().equals(g.target()) && owner.effectiveStatus().equals(g.effectiveStatus())
+			&& java.util.Objects.equals(g.sourceDate(), owner.sourceDate()) && normalize(g.title()).equals(normalize(owner.title()))
+			&& isSubcontractApprovalScope(g.chunkNo(), g.chunkTitle(), g.matchedChildText())).toList();
+		if (scopes.size() != 1) return false;
+		int number = scopes.get(0).number();
+		return grounds.stream().filter(g -> g != null && g.number() == number).count() == 1
+			&& supportedLinks.stream().anyMatch(l -> l.groundNumber() == number
+				&& normalize(l.claim()).equals(APPROVAL_SCOPE_CLAUSE)
+				&& exactApprovalScopeBody(l.evidenceSentence()));
+	}
+
+	static boolean isSubcontractApprovalScope(String article, String heading, String child) {
+		return (normalize(article).equals("제2조") || normalize(heading).startsWith("제2조적용범위"))
+			&& exactApprovalScopeBody(child);
+	}
+
+	static boolean asksPublicSubcontractApprovalScope(String question) {
+		return question != null && APPROVAL_PUBLIC_SCOPE.matcher(question).find();
+	}
+
+	private static boolean exactApprovalScopeBody(String body) {
+		String text = normalize(body);
+		return text.equals(APPROVAL_SCOPE_CLAUSE) || text.equals("제2조적용범위" + APPROVAL_SCOPE_CLAUSE);
 	}
 
 	static boolean isSubcontractApprovalProcedure(String title, String article, String heading, String child) {

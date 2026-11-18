@@ -478,6 +478,14 @@ class LawAiAnswerServiceEvidenceGateTests {
             var answer=LawAiAnswerService.class.getDeclaredMethod("selectAnswerContextChunks",List.class,String.class);
             answer.setAccessible(true);
             assertThat((List<LawSemanticChunkRow>)answer.invoke(service,selected,scope.question())).contains(remedy,rule);
+            var applicability=chunk(99175L,remedy.documentId(),"admrul",title,"제2조(적용범위)",
+                "제2조(적용범위) 이 지침은 국가기관등이 법 제2조에 따른 소프트웨어사업을 수행할 경우에 적용한다.",null);
+            var otherEdition=chunk(99176L,"admrul",title,"제2조(적용범위)",applicability.chunkText());
+            var withScope=(List<LawSemanticChunkRow>)display.invoke(service,List.of(remedy),
+                List.of(otherEdition,rule,applicability),scope.question(),true,1);
+            assertThat(withScope).containsExactly(remedy,rule,applicability);
+            assertThat((List<LawSemanticChunkRow>)answer.invoke(service,withScope,scope.question()))
+                .contains(remedy,rule,applicability);
         } finally {service.shutdownExecutors();}
     }
 

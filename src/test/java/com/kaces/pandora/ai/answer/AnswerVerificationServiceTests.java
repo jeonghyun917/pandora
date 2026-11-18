@@ -36,6 +36,28 @@ class AnswerVerificationServiceTests {
 		}
 		assertThat(service.verify(request, clause, List.of(remedy, rule)).insufficientEvidence())
 			.as("the rule referenced by the operative clause proves the requested approval review stage").isFalse();
+		String abbreviated = request.replace("법 제51조에 따른 하도급 제한 규정을 위반한 경우",
+			"법 제51조의 하도급 제한을 위반했을 때");
+		for (String different : List.of(abbreviated.replace("제51조", "제52조"),
+			abbreviated.replace("하도급 제한을", "계약 서류 제출 기한을"),
+			abbreviated.replace("위반했을 때", "위반하지 않았을 때"))) {
+			assertThat(service.verify(different, clause, List.of(remedy, rule)).insufficientEvidence()).as(different).isTrue();
+		}
+		assertThat(service.verify(abbreviated, clause, List.of(remedy, rule)).insufficientEvidence())
+			.as("the abbreviated reference preserves the same article and prohibited conduct").isFalse();
+		String scopeClause = "이 지침은 국가기관등이 법 제2조에 따른 소프트웨어사업을 수행할 경우에 적용한다.";
+		var scope = new LawAiAnswerGround(3, 97, 9, "admrul", remedy.title(), null, null, null,
+			"CURRENT", "제2조", "적용범위", null, "제2조(적용범위) " + scopeClause, null, null, 0);
+		var unrelatedScope = new LawAiAnswerGround(3, 98, 11, "admrul", remedy.title(), null, null, null,
+			"CURRENT", "제2조", "적용범위", null, scopeClause, null, null, 0);
+		String publicProject = abbreviated.replace("국가기관등의 장이", "공공 소프트웨어사업에서");
+		String scopedAnswer = scopeClause + "\n" + clause;
+		assertThat(service.verify(publicProject, clause, List.of(remedy,rule,scope)).insufficientEvidence()).isTrue();
+		assertThat(service.verify(publicProject, scopedAnswer, List.of(remedy,rule,unrelatedScope)).insufficientEvidence()).isTrue();
+		assertThat(service.verify(publicProject.replace("공공", "민간"), scopedAnswer, List.of(remedy,rule,scope))
+			.insufficientEvidence()).isTrue();
+		assertThat(service.verify(publicProject, scopedAnswer, List.of(remedy,rule,scope)).insufficientEvidence())
+			.as("an explicit same-edition qualification answers the public project question without assuming coverage").isFalse();
 	}
 
 	@Test
