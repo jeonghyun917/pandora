@@ -35,6 +35,8 @@ public record QuestionIntentProfile(
 	);
 	private static final java.util.regex.Pattern PRIVACY_CONTROLLER_ROLE =
 		java.util.regex.Pattern.compile("(?U)개인정보\\s*처리자");
+	private static final java.util.regex.Pattern GENITIVE_HEAD_ROLE_GAP =
+		java.util.regex.Pattern.compile("(?<=[가-힣]의)\\h+(?=장[은이](?![\\p{L}\\p{N}]))");
 	private static final List<String> EXPLICIT_PROCEDURE_CUES = List.of(
 		"절차", "방법", "어떻게", "언제", "시기", "기한", "기간"
 	);
@@ -1093,7 +1095,9 @@ public record QuestionIntentProfile(
 
 	private static List<String> queryTerms(String question) {
 		List<String> terms = new ArrayList<>();
-		for (String token : String.valueOf(question).split("\\s+")) {
+		// The one-character title must stay attached to its owner when stripping a subject/topic particle.
+		String termInput = GENITIVE_HEAD_ROLE_GAP.matcher(String.valueOf(question)).replaceAll("");
+		for (String token : termInput.split("\\s+")) {
 			String term = KoreanQueryNormalizer.normalizeQueryTerm(token);
 			if (term.length() >= 2 && !KoreanQueryNormalizer.isWeakQuestionTerm(term)) {
 				terms.add(term);

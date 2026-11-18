@@ -13,6 +13,27 @@ import org.junit.jupiter.api.Test;
 class AnswerVerificationServiceTests {
 
 	@Test
+	void equivalentActorParticlesDoNotHideAnOtherwiseProvenApprovalCondition() {
+		String clause = "국가기관등의 장은 규칙 제14조제2항에 따라 하도급 또는 다시 하도급의 적정성 여부를 검토할 때 "
+			+ "계약상대자가 법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, "
+			+ "이를 위반한 경우 해당 하도급 계약 승인을 거절하거나 해당 서류의 보완을 요청할 수 있다.";
+		var ground = new LawAiAnswerGround(1, 95, 9, "admrul", "소프트웨어사업 계약 및 관리감독에 관한 지침",
+			null, null, null, "CURRENT", "제20조", "하도급계약의 승인신청 등", null, clause, null, null, 0);
+		String question = "국가기관등의 장이 하도급 또는 다시 하도급의 적정성 여부를 검토할 때, "
+			+ "계약상대자가 법 제51조에 따른 하도급 제한 규정을 위반한 경우 해당 하도급 계약 승인을 거절하거나 "
+			+ "서류의 보완을 요청할 수 있나요?";
+		var service = new AnswerVerificationService(new AnswerGuard(), new ClaimVerifier());
+		assertThat(service.verify(question.replace("장이 ", "장은 "), clause, List.of(ground)).insufficientEvidence()).isFalse();
+		assertThat(service.verify(question.replace("국가기관등의 장이", "신청기관의 장이"), clause, List.of(ground))
+			.insufficientEvidence()).isTrue();
+		assertThat(service.verify(question.replace("법 제51조에 따른 하도급 제한 규정", "모든 정보화사업 법령"),
+			clause, List.of(ground)).insufficientEvidence()).isTrue();
+		assertThat(service.verify(question.replace("하도급 또는 다시 하도급의 적정성 여부를 검토할 때", "사업 완료 후 검사를 할 때"),
+			clause, List.of(ground)).insufficientEvidence()).isTrue();
+		assertThat(service.verify(question, clause, List.of(ground)).insufficientEvidence()).isFalse();
+	}
+
+	@Test
 	void closedPurposeExternalNoticeKeepsTheConsentPremiseAndAllNoticeItemsTogether() {
 		String paragraph = "수집한 개인정보를 수집목적의 범위를 벗어나 이용하기 위해서는 정보주체로부터 "
 			+ "별도의 동의를 받아야 하며, 이 때 ① 개인정보의 이용목적 ② 이용하는 개인정보의 항목 "
