@@ -549,6 +549,52 @@ test('checkpoint reuse requires the same inputs and server artifact', () => {
   assert.equal(isCheckpointCompatible({ results: [{ id: 'old' }] }, identity), false);
 });
 
+test('an explicit scoring contract isolates otherwise identical checkpoint identities', () => {
+  const input = {
+    scope: 'targeted', baseUrl: 'http://127.0.0.1:8080',
+    datasetHashValue: 'dataset-a', selectionHashValue: 'selection-a', selectedCount: 1,
+    baselineManifestId: 'manifest-a',
+    runtimeInfo: {
+      source: 'server', runtimeArtifactSha256: 'jar-a', runtimeInstanceId: 'instance-a',
+      runtimeConfigSha256: 'config-a', indexRevision: 'snapshot-a', lexicalRevision: 'lexical-a',
+      qdrantReady: true, qdrantSearchFailureCount: 0,
+    },
+  };
+  const hash = 'a'.repeat(64);
+  const legacy = buildCheckpointIdentity(input);
+  const versioned = buildCheckpointIdentity({ ...input, evaluationContractSha256: hash });
+  assert.equal(legacy.schemaVersion, 4);
+  assert.equal(Object.hasOwn(legacy, 'evaluationContractSha256'), false);
+  assert.equal(versioned.schemaVersion, 5);
+  assert.equal(versioned.evaluationContractSha256, hash);
+  assert.equal(versioned.datasetHash, legacy.datasetHash);
+  assert.equal(isCheckpointCompatible({ checkpointIdentity: versioned }, versioned), true);
+  assert.equal(isCheckpointCompatible({ checkpointIdentity: legacy }, versioned), false);
+  assert.equal(isCheckpointCompatible({ checkpointIdentity: versioned }, legacy), false);
+  assert.equal(isCheckpointCompatible({
+    checkpointIdentity: { ...versioned, evaluationContractSha256: 'b'.repeat(64) },
+  }, versioned), false);
+  const damaged = { ...versioned, evaluationContractSha256: undefined };
+  assert.equal(isCheckpointCompatible({ checkpointIdentity: damaged }, damaged), false);
+  assert.equal(isCheckpointCompatible({
+    checkpointIdentity: { ...legacy, evaluationContractSha256: hash },
+  }, legacy), false);
+});
+
+test('versioned provenance records a SHA-256 rather than accepting an unbound contract label', () => {
+  const input = { baseUrl: 'http://127.0.0.1:8080', datasetHashValue: 'dataset-a' };
+  const hash = 'a'.repeat(64);
+  const provenance = buildProvenance({ ...input, evaluationContractSha256: hash });
+  assert.equal(provenance.schemaVersion, 5);
+  assert.equal(provenance.evaluationContractSha256, hash);
+  assert.equal(provenance.datasetHash, 'dataset-a');
+  for (const builder of [buildCheckpointIdentity, buildProvenance]) {
+    for (const invalid of ['', 'candidate-v2', 'g'.repeat(64)]) {
+      assert.throws(() => builder({ ...input, evaluationContractSha256: invalid }), /SHA-256/);
+    }
+  }
+});
+
 test('runtime stability detects same-jar restarts and configuration changes', () => {
   const runtime = {
     source: 'server',

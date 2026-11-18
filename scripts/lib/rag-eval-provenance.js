@@ -79,6 +79,16 @@ function assertFullBaselineUniverse(allCases, selectedCases, {
   return true;
 }
 
+function evaluationContractFields(hash) {
+  if (hash === undefined) {
+    return { schemaVersion: 4 };
+  }
+  if (typeof hash !== 'string' || !/^[a-f0-9]{64}$/i.test(hash)) {
+    throw new TypeError('Evaluation contract requires a SHA-256 digest');
+  }
+  return { schemaVersion: 5, evaluationContractSha256: hash.toLowerCase() };
+}
+
 function buildCheckpointIdentity({
   scope,
   baseUrl,
@@ -88,9 +98,10 @@ function buildCheckpointIdentity({
   gateProfile = 'release',
   runtimeInfo,
   baselineManifestId = null,
+  evaluationContractSha256,
 }) {
   return {
-    schemaVersion: 4,
+    ...evaluationContractFields(evaluationContractSha256),
     runScope: scope,
     gateProfile,
     baseUrl: String(baseUrl ?? '').replace(/\/$/, ''),
@@ -127,6 +138,16 @@ function normalizeFailureCount(value) {
 function isCheckpointCompatible(checkpoint, expectedIdentity) {
   const actualIdentity = checkpoint?.checkpointIdentity;
   if (!actualIdentity || !expectedIdentity) {
+    return false;
+  }
+  if ([actualIdentity, expectedIdentity].some((identity) => {
+    if (identity.schemaVersion === 4) {
+      return Object.hasOwn(identity, 'evaluationContractSha256');
+    }
+    return identity.schemaVersion !== 5
+      || typeof identity.evaluationContractSha256 !== 'string'
+      || !/^[a-f0-9]{64}$/.test(identity.evaluationContractSha256);
+  }) || actualIdentity.evaluationContractSha256 !== expectedIdentity.evaluationContractSha256) {
     return false;
   }
   const requiredValues = [
@@ -266,12 +287,13 @@ function buildProvenance({
   gateProfile = 'release',
   runtimeInfo,
   baselineManifestId = null,
+  evaluationContractSha256,
   generatedAt = new Date().toISOString(),
 }) {
   const parsedUrl = new URL(baseUrl);
   const defaultPort = parsedUrl.protocol === 'https:' ? '443' : '80';
   return {
-    schemaVersion: 4,
+    ...evaluationContractFields(evaluationContractSha256),
     runScope: scope,
     gateProfile,
     generatedAt,
