@@ -6932,6 +6932,8 @@ public class LawAiAnswerService {
 
 	private List<LawSemanticChunkRow> filterByQuestionIntent(List<LawSemanticChunkRow> chunks, String query) {
 		String normalizedQuery = normalizeForMatch(query);
+		var ownedExclusions = chunks.stream().filter(row -> SourceOwnedConsultationExclusion.sourceAnswers(query,row)).toList();
+		if (!ownedExclusions.isEmpty()) return ownedExclusions;
 		if (EvidenceJudge.asksSubcontractApprovalConsequence(query)) {
 			var approval = chunks.stream().filter(EvidenceJudge::isSubcontractApprovalRemedySource).toList();
 			if (!approval.isEmpty()) return approval;

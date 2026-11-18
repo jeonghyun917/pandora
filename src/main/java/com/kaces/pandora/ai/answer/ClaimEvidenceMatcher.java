@@ -417,7 +417,7 @@ public class ClaimEvidenceMatcher {
 
 	public EvidenceIndex index(List<LawAiAnswerGround> grounds) {
 		return new EvidenceIndex(evidenceSentences(grounds),SourceOwnedConditionalScope.index(grounds),
-			SourceOwnedNumberedDuty.index(grounds), noticeItems(grounds));
+			SourceOwnedNumberedDuty.index(grounds), noticeItems(grounds), SourceOwnedConsultationExclusion.index(grounds));
 	}
 
 	public Match match(String claim, EvidenceIndex evidenceIndex) {
@@ -439,6 +439,11 @@ public class ClaimEvidenceMatcher {
 			if (noticeKey(claim).equals(item.claimKey())) {
 				return new Match(Status.SUPPORTED, item.owner(), item.literal(), 0, 1.0, 1.0);
 			}
+		}
+		var exclusions = evidenceIndex.consultationExclusions.stream().filter(rule -> rule.matches(claim)).toList();
+		if (exclusions.size() == 1) {
+			var rule = exclusions.get(0);
+			return new Match(Status.SUPPORTED, rule.owner(), rule.literal(), 0, 1.0, 1.0);
 		}
         return ordinary;
     }
@@ -2010,18 +2015,21 @@ public class ClaimEvidenceMatcher {
 		private final List<SourceOwnedConditionalScope.Rule> scopeRules;
 		private final List<SourceOwnedNumberedDuty.Rule> numberedDuties;
 		private final List<NoticeItem> noticeItems;
+		private final List<SourceOwnedConsultationExclusion.Rule> consultationExclusions;
 
 		private EvidenceIndex(List<EvidenceSentence> sentences,List<SourceOwnedConditionalScope.Rule> scopeRules,
-				List<SourceOwnedNumberedDuty.Rule> numberedDuties, List<NoticeItem> noticeItems) {
+				List<SourceOwnedNumberedDuty.Rule> numberedDuties, List<NoticeItem> noticeItems,
+				List<SourceOwnedConsultationExclusion.Rule> consultationExclusions) {
 			this.sentences = sentences == null ? List.of() : List.copyOf(sentences);
 			this.scopeRules=List.copyOf(scopeRules);
 			this.numberedDuties=List.copyOf(numberedDuties);
 			this.noticeItems=List.copyOf(noticeItems);
+			this.consultationExclusions=List.copyOf(consultationExclusions);
 		}
 
 		private EvidenceIndex forGround(int owner) {
 			return new EvidenceIndex(sentences.stream().filter(sentence -> sentence.groundNumber() == owner).toList(),
-				List.of(), List.of(), List.of());
+				List.of(), List.of(), List.of(), List.of());
 		}
 	}
 

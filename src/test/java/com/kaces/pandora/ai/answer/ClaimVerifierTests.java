@@ -8,6 +8,39 @@ import org.junit.jupiter.api.Test;
 class ClaimVerifierTests {
 
 	@Test
+	void numberedConsultationExclusionKeepsTheParentAndDoesNotExtendTheNewProjectProviso() {
+		String head = "제4조(대상사업) ① 사전협의의 대상사업은 중앙행정기관등 및 지방자치단체등이 추진하는 다음 각 호의 사업을 말한다. "
+			+ "② 제1항에 따른 대상사업 중 다음 각 호의 사업은 제외한다. "
+			+ "다만, 제1호부터 제3호까지 중 어느 하나에 해당하는 사업으로서 해당 연도에 신규로 정보화를 추진하는 사업은 그러하지 아니하다.";
+		String items = java.util.stream.IntStream.rangeClosed(1,13)
+			.mapToObj(i -> i + ". 구분 " + i + " 계속사업").collect(java.util.stream.Collectors.joining(""));
+		String body = head + items + "14. 응용 프로그램 프로그래밍 인터페이스(Application Programming Interface, 이하 API) 개발 사업"
+			+ "15. 빅데이터 분석 사업③ 정보시스템 운영의 성과관리 대상은 제23조에서 정한다.";
+		var ground = new LawAiAnswerGround(1, 87, 14, "admrul", "전자정부 성과관리 지침",
+			null,null,null,"CURRENT","제4조","제4조(대상사업)",null,body,null,null,0);
+		var matcher = new ClaimEvidenceMatcher();
+		for (String claim : List.of("구분 1 계속사업은 사전협의 대상에서 제외된다.",
+			"빅데이터 분석 사업은 사전협의 대상에 포함된다.",
+			"빅데이터 분석 사업과 구축 사업은 사전협의 대상에서 제외된다.")) {
+			assertThat(matcher.match(claim,List.of(ground)).status()).as(claim).isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		}
+		assertThat(matcher.match("빅데이터 분석 사업은 사전협의 대상에서 제외된다.",List.of(ground)).status())
+			.isEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		for (String broken : List.of(body.replace("사전협의의", "다른 절차의"), body.replace("14. ", ""))) {
+			var incomplete = new LawAiAnswerGround(1, 87, 14, "admrul", ground.title(),
+				null,null,null,"CURRENT","제4조","제4조(대상사업)",null,broken,null,null,0);
+			assertThat(matcher.match("빅데이터 분석 사업은 사전협의 대상에서 제외된다.",List.of(incomplete)).status())
+				.isNotEqualTo(ClaimEvidenceMatcher.Status.SUPPORTED);
+		}
+		var service = new AnswerVerificationService(new AnswerGuard(),new ClaimVerifier());
+		String question = "빅데이터 분석 사업은 전자정부 성과관리 지침 제4조의 사전협의 대상에서 제외되나요?";
+		String answer = "빅데이터 분석 사업은 사전협의 대상에서 제외된다.";
+		assertThat(service.verify(question.replace("제4조", "제5조"),answer,List.of(ground)).insufficientEvidence()).isTrue();
+		assertThat(service.verify(question.replace("빅데이터 분석", "일반 정보화"),answer,List.of(ground)).insufficientEvidence()).isTrue();
+		assertThat(service.verify(question,answer,List.of(ground)).insufficientEvidence()).isFalse();
+	}
+
+	@Test
 	void procurementProcedureClaimsRetainTheirGroundAndRejectAlteredOperands() {
 		String title = "공공SW사업 법제도 관리감독 및 지원 가이드";
 		String scope = "대상사업: 국가기관등의 장이 발주하는 소프트웨어사업";

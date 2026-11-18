@@ -173,7 +173,9 @@ public class AnswerQuestionAlignmentVerifier {
 		if (claimResult != null && !claimResult.insufficientEvidence() && claimResult.strongClaimCount() == 1
 			&& claimResult.unsupportedClaims().isEmpty() && claimResult.unsupportedNumericClaims().isEmpty()
 			&& claimResult.contradictedClaims().isEmpty() && supportedLinks.size() == 1
-			&& matchesBoundGeneralCommencement(question, supportedLinks.get(0), grounds)) {
+			&& (matchesBoundGeneralCommencement(question, supportedLinks.get(0), grounds)
+				|| SourceOwnedConsultationExclusion.index(grounds).stream()
+					.anyMatch(rule -> rule.answers(question, supportedLinks.get(0))))) {
 			return AlignmentResult.aligned(supportedLinks.get(0).claim());
 		}
 		if (!alignmentProfile.usable()) {
