@@ -13,6 +13,7 @@ const {
   assertEvaluationRuntimeReady,
   assertFullBaselineUniverse,
   RELEASE_EVALUATION_CASE_COUNT,
+  archivePaths,
   buildProvenance,
   buildCheckpointIdentity,
   datasetHash,
@@ -359,6 +360,41 @@ test('full and targeted runs use separate latest and checkpoint files', () => {
     checkpointPath: 'logs/rag-eval-gate-full-checkpoint.json',
   });
   assert.equal(resolveReportPaths('targeted', {}).outputPath, 'logs/rag-eval-gate-targeted-latest.json');
+});
+
+test('versioned artifacts are isolated by contract and selected questions', () => {
+  const contract = 'a'.repeat(64);
+  const selection = 'b'.repeat(64);
+  const context = { schemaVersion: 5, evaluationContractSha256: contract, selectionHash: selection };
+  const root = `logs/contracts/${contract}/${selection}`;
+  const legacyPaths = resolveReportPaths('targeted', {});
+  const versioned = resolveReportPaths('targeted', {}, context);
+  assert.deepEqual(versioned, {
+    outputPath: `${root}/targeted-latest.json`,
+    reportPath: `${root}/targeted-latest.md`,
+    checkpointPath: `${root}/targeted-checkpoint.json`,
+  });
+  assert.notEqual(versioned.checkpointPath, legacyPaths.checkpointPath);
+  assert.notEqual(versioned.checkpointPath, resolveReportPaths('targeted', {}, {
+    ...context, selectionHash: 'c'.repeat(64),
+  }).checkpointPath);
+  assert.notEqual(versioned.checkpointPath, resolveReportPaths('targeted', {}, {
+    ...context, evaluationContractSha256: 'd'.repeat(64),
+  }).checkpointPath);
+  assert.deepEqual(archivePaths('targeted', '20261118-083000-000Z', context), {
+    outputPath: `${root}/targeted-20261118-083000-000Z.json`,
+    reportPath: `${root}/targeted-20261118-083000-000Z.md`,
+  });
+});
+
+test('versioned artifacts reject path overrides and unbound path components', () => {
+  const context = { schemaVersion: 5, evaluationContractSha256: 'a'.repeat(64), selectionHash: 'b'.repeat(64) };
+  for (const variable of ['RAG_EVAL_OUTPUT', 'RAG_EVAL_REPORT', 'RAG_EVAL_CHECKPOINT']) {
+    assert.throws(() => resolveReportPaths('full', { [variable]: './legacy' }, context), /override/);
+  }
+  assert.throws(() => resolveReportPaths('full', {}, { ...context, schemaVersion: 4 }), /identity/);
+  assert.throws(() => resolveReportPaths('full', {}, { ...context, selectionHash: '../legacy' }), /SHA-256/);
+  assert.throws(() => archivePaths('full', '../../legacy', context), /archive ID/);
 });
 
 test('a truncated or duplicate universe cannot write a full release report', () => {

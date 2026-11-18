@@ -13,7 +13,31 @@ function determineRunScope(selectedCases, allCases, caseIds, caseLimit) {
   return !explicitlyTargeted && completeUniverse ? 'full' : 'targeted';
 }
 
-function resolveReportPaths(scope, env = process.env) {
+function versionedArtifactPrefix(scope, identity) {
+  if (identity?.schemaVersion !== 5 || !isCanonicalSha256(identity.evaluationContractSha256)) {
+    throw new Error('Versioned artifact paths require a schema 5 checkpoint identity');
+  }
+  if (!isCanonicalSha256(identity.selectionHash)) {
+    throw new Error('Versioned artifact paths require a canonical selection SHA-256');
+  }
+  if (scope !== 'targeted' && scope !== 'full') {
+    throw new Error('Invalid versioned evaluation scope');
+  }
+  return `logs/contracts/${identity.evaluationContractSha256}/${identity.selectionHash}/${scope}`;
+}
+
+function resolveReportPaths(scope, env = process.env, versionedIdentity) {
+  if (versionedIdentity !== undefined) {
+    if (['RAG_EVAL_OUTPUT', 'RAG_EVAL_REPORT', 'RAG_EVAL_CHECKPOINT'].some((key) => env[key])) {
+      throw new Error('Versioned artifact paths do not permit legacy path overrides');
+    }
+    const prefix = versionedArtifactPrefix(scope, versionedIdentity);
+    return {
+      outputPath: `${prefix}-latest.json`,
+      reportPath: `${prefix}-latest.md`,
+      checkpointPath: `${prefix}-checkpoint.json`,
+    };
+  }
   const safeScope = scope === 'full' ? 'full' : 'targeted';
   const reportPaths = {
     outputPath: env.RAG_EVAL_OUTPUT || `logs/rag-eval-gate-${safeScope}-latest.json`,
@@ -77,6 +101,10 @@ function assertFullBaselineUniverse(allCases, selectedCases, {
     throw new Error('baseline manifest requires the full release universe');
   }
   return true;
+}
+
+function isCanonicalSha256(hash) {
+  return typeof hash === 'string' && /^[a-f0-9]{64}$/.test(hash);
 }
 
 function evaluationContractFields(hash) {
@@ -144,9 +172,7 @@ function isCheckpointCompatible(checkpoint, expectedIdentity) {
     if (identity.schemaVersion === 4) {
       return Object.hasOwn(identity, 'evaluationContractSha256');
     }
-    return identity.schemaVersion !== 5
-      || typeof identity.evaluationContractSha256 !== 'string'
-      || !/^[a-f0-9]{64}$/.test(identity.evaluationContractSha256);
+    return identity.schemaVersion !== 5 || !isCanonicalSha256(identity.evaluationContractSha256);
   }) || actualIdentity.evaluationContractSha256 !== expectedIdentity.evaluationContractSha256) {
     return false;
   }
@@ -330,7 +356,14 @@ function buildProvenance({
   };
 }
 
-function archivePaths(scope, runId) {
+function archivePaths(scope, runId, versionedIdentity) {
+  if (versionedIdentity !== undefined) {
+    const prefix = versionedArtifactPrefix(scope, versionedIdentity);
+    if (typeof runId !== 'string' || !/^\d{8}-\d{6}-\d{3}Z$/.test(runId)) {
+      throw new Error('Invalid versioned archive ID');
+    }
+    return { outputPath: `${prefix}-${runId}.json`, reportPath: `${prefix}-${runId}.md` };
+  }
   return {
     outputPath: `logs/rag-eval-gate-${scope}-${runId}.json`,
     reportPath: `logs/rag-eval-gate-${scope}-${runId}.md`,
