@@ -38,6 +38,13 @@ class AnswerVerificationServiceTests {
 			clause, List.of(ground)).insufficientEvidence()).isTrue();
 		assertThat(service.verify(formatted, clause, List.of(ground)).insufficientEvidence())
 			.as("a trailing output-form instruction is not a legal actor or condition").isFalse();
+		String integratedFormat = question.replace("요청할 수 있나요?", "요청할 수 있는지 조건부 사례로 설명해 주세요.");
+		assertThat(service.verify(integratedFormat.replace("제51조", "제52조"), clause, List.of(ground))
+			.insufficientEvidence()).isTrue();
+		assertThat(service.verify(integratedFormat.replace("위반한 경우", "위반하지 않은 경우"), clause, List.of(ground))
+			.insufficientEvidence()).isTrue();
+		assertThat(service.verify(integratedFormat, clause, List.of(ground)).insufficientEvidence())
+			.as("an integrated terminal format request does not change the requested legal proposition").isFalse();
 		String inflected = question.replace("위반한 경우", "위반했을 때");
 		for (String changed : List.of(
 			inflected.replace("제51조", "제52조"),

@@ -38,7 +38,8 @@ public record QuestionIntentProfile(
 	private static final java.util.regex.Pattern GENITIVE_HEAD_ROLE_GAP =
 		java.util.regex.Pattern.compile("(?<=[가-힣]의)\\h+(?=장[은이](?![\\p{L}\\p{N}]))");
 	private static final java.util.regex.Pattern TRAILING_CONDITIONAL_EXAMPLE_FORMAT =
-		java.util.regex.Pattern.compile("(?<=[?？.!。！])\\s+조건부\\h+사례로\\h+설명해\\h*주세요[?？.!。！]?\\s*\\z");
+		java.util.regex.Pattern.compile("(?:(?<=[?？.!。！])|(?<=수)\\h+있는지)\\s+"
+			+ "조건부\\h+사례로\\h+설명해\\h*주세요[?？.!。！]?\\s*\\z");
 	private static final List<String> EXPLICIT_PROCEDURE_CUES = List.of(
 		"절차", "방법", "어떻게", "언제", "시기", "기한", "기간"
 	);
@@ -1098,7 +1099,7 @@ public record QuestionIntentProfile(
 	private static List<String> queryTerms(String question) {
 		List<String> terms = new ArrayList<>();
 		// The one-character title must stay attached to its owner when stripping a subject/topic particle.
-		// A separate, terminal format instruction is not an evidence-bearing entity.
+		// A terminal format instruction is not an evidence-bearing entity.
 		String termInput = TRAILING_CONDITIONAL_EXAMPLE_FORMAT.matcher(String.valueOf(question)).replaceFirst("");
 		termInput = GENITIVE_HEAD_ROLE_GAP.matcher(termInput).replaceAll("");
 		for (String token : termInput.split("\\s+")) {
