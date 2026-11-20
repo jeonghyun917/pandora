@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "approvalRequestSha256": "f14a0bb39105603e7d01bab6f2668986217369151a470595c9f8dba208af0a19",
+  "authorizationReference": "User reply to request_user_input_async call_b14f4a4104274a3b8f3490e25b2429f4 item 0: 이 정확한 입력과 원문 전송 승인",
+  "approvedAt": "2026-11-20T04:17:33Z",
+  "timestampMeaning": "Time the received explicit approval was recorded; not a claimed client submission timestamp"
+}
