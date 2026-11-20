@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "version": "pandora-qualified-reference-v2",
+  "status": "inactive-proposed-payload",
+  "baselineDatasetSha256": "6b85990a6395c501138628877d4c9efda61c218afde4d0ab5a886f3588ce044c",
+  "overrides": [
+    {
+      "id": "it-compliance-penalty",
+      "patch": {
+        "question": "정보화 사업에서 법·제도를 준수하지 않았을 때 가능한 조치를, 사업 유형과 위반 의무를 임의로 추정하지 않고 공식 원문이 정한 적용대상·위반조건·주체·권한을 밝힌 조건부 사례로 설명해 주세요.",
+        "expectedTerms": ["제51조", "하도급", "보완"],
+        "requiredMatches": 2,
+        "expectedTitleTerms": ["소프트웨어사업 계약 및 관리감독에 관한 지침"],
+        "expectedDocumentTerms": ["소프트웨어사업"],
+        "answerDirection": "적용범위와 승인 심사 단계·제51조 위반·권한 주체·재량을 모두 보존한 원문 조건부 사례만 답하며 실제 미특정 사업에 적용된다고 추정하지 않는다.",
+        "answerVerificationRequired": true,
+        "requiredPropositionGroups": [["이 지침은 국가기관등이 법 제2조에 따른 소프트웨어사업을 수행할 경우에 적용한다"], ["하도급 계약 승인을 거절하거나 해당 서류의 보완을 요청할 수 있다"]],
+        "requiredConditionGroups": [["하도급 또는 다시 하도급의 적정성 여부를 검토할 때"], ["법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, 이를 위반한 경우"]]
+      },
+      "scorer": "qualified-approval"
+    },
+    {
+      "id": "ai-law-enforcement-date",
+      "patch": {
+        "question": "2026년 11월 18일 기준, 인공지능 및 데이터 기반 행정 활성화에 관한 법률의 일반 시행일과 현재 시행 상태는 무엇인가요?",
+        "expectedTerms": ["인공지능", "데이터 기반 행정", "시행일"],
+        "expectedParentTerms": ["시행일"],
+        "answerDirection": "법률 제21392호의 일반 시행일과 지정 기준일의 일반 시행 상태를 각각 답하며 제32조의 별도 지연 시행 예외를 없애지 않는다.",
+        "answerVerificationRequired": true,
+        "requiredPropositionGroups": [["일반 시행일은 2026년 8월 28일", "일반 시행일은 2026-08-28", "시행일은 2026년 8월 28일"]],
+        "requiredConditionGroups": [["2026년 11월 18일 기준 시행 중", "2026-11-18 기준 시행 중", "일반 시행 상태는 2026년 11월 18일 기준 시행 중"]],
+        "forbiddenAnswerTerms": ["공포 즉시 효력 발생", "아직 시행예정", "시행 전 법률"]
+      },
+      "scorer": "reference-commencement"
+    }
+  ],
+  "sourceContracts": {
+    "qualified-approval": {
+      "indexedEdition": "2100000223356",
+      "citation": "https://www.law.go.kr/LSW/admRulLsInfoP.do?admRulSeq=2100000223356&chrClsCd=010201",
+      "qualification": {
+        "owner": {"target": "admrul", "documentId": 18109, "chunkId": 11294119},
+        "heading": "제2조(적용범위)",
+        "literal": "이 지침은 국가기관등이 법 제2조에 따른 소프트웨어사업을 수행할 경우에 적용한다."
+      },
+      "remedy": {
+        "owner": {"target": "admrul", "documentId": 18109, "chunkId": 11294138},
+        "anchors": {
+          "actor": "국가기관등의 장은",
+          "projectScope": "하도급 또는 다시 하도급의 적정성 여부를 검토할 때",
+          "trigger": "법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, 이를 위반한 경우",
+          "action": "하도급 계약 승인을 거절하거나 해당 서류의 보완을 요청",
+          "modality": "요청할 수 있다"
+        }
+      }
+    },
+    "reference-commencement": {
+      "title": "인공지능 및 데이터 기반 행정 활성화에 관한 법률",
+      "lawId": "013792",
+      "edition": "283735",
+      "chunkVersion": 1,
+      "effectiveFrom": "2026-08-28",
+      "asOf": "2026-11-18",
+      "owner": {"target": "law", "documentId": 40384, "chunkId": 11058178}
+    }
+  }
+}
