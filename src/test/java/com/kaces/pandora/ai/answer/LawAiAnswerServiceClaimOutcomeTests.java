@@ -611,9 +611,7 @@ class LawAiAnswerServiceClaimOutcomeTests {
 		when(answerVerificationService.verify(eq(QUESTION),eq(complete),anyList()))
 			.thenReturn(verificationResult(complete,complete,false));
 		var evalCase=envelopeCase(true);
-		var oracleCase=new LawAiEvalRequest.EvalCase("oracle-envelope-fixture",QUESTION,List.of("law"),List.of("연차 유급휴가"),1,
-			List.of("근로기준법"),List.of("requirement"),List.of(),List.of(),List.of(),List.of(),
-			"법정 요건에 따른 부여 의무를 답한다",List.of("OK"),true,List.of(),List.of(),List.of(List.of("법정 요건")),List.of());
+		var oracleCase=oracleEnvelopeCase();
 		for(var result:service.evaluate(new LawAiEvalRequest(List.of(evalCase,oracleCase),List.of(),null)).results()) {
 		assertThat(result.answerVerified()).isTrue();
 		assertThat(result.verifiedAnswer()).isEqualTo(complete.substring(0,1500)+"...");
@@ -638,6 +636,34 @@ class LawAiAnswerServiceClaimOutcomeTests {
 		return new LawAiEvalRequest.EvalCase("envelope-fixture",QUESTION,List.of("law"),List.of("연차 유급휴가"),1,
 			List.of("근로기준법"),List.of("requirement"),List.of(),List.of(),List.of(),List.of(),
 			"법정 요건에 따른 부여 의무를 답한다",List.of("OK"),verifyAnswer,List.of("법정 요건","연차 유급휴가"),List.of());
+	}
+	private static LawAiEvalRequest.EvalCase oracleEnvelopeCase() {
+		return new LawAiEvalRequest.EvalCase("oracle-envelope-fixture",QUESTION,List.of("law"),List.of("연차 유급휴가"),1,
+			List.of("근로기준법"),List.of("requirement"),List.of(),List.of(),List.of(),List.of(),
+			"법정 요건에 따른 부여 의무를 답한다",List.of("OK"),true,List.of(),List.of(),List.of(List.of("법정 요건")),List.of());
+	}
+	@Test
+	void unavailableVerifierDoesNotEmitProofButGenuineRejectionDoesInBothScoringModes() {
+		when(answerClient.answer(anyString(),anyString(),anyInt())).thenReturn(GENERATED_ANSWER);
+		var cases=List.of(envelopeCase(true),oracleEnvelopeCase());
+		org.mockito.Mockito.doThrow(new IllegalStateException("verifier unavailable")).when(answerVerificationService)
+			.verify(eq(QUESTION),eq(GENERATED_ANSWER),anyList());
+		for(var result:service.evaluate(new LawAiEvalRequest(cases,List.of(),null)).results()) {
+			assertThat(result.answerVerified()).isFalse();
+			assertThat(result.verificationEnvelope()).isNull();
+		}
+		org.mockito.Mockito.doReturn(null).when(answerVerificationService).verify(eq(QUESTION),eq(GENERATED_ANSWER),anyList());
+		for(var result:service.evaluate(new LawAiEvalRequest(cases,List.of(),null)).results()) {
+			assertThat(result.answerVerified()).isFalse();
+			assertThat(result.verificationEnvelope()).isNull();
+		}
+		org.mockito.Mockito.doReturn(verificationResult(GENERATED_ANSWER,SAFE_ANSWER,true)).when(answerVerificationService)
+			.verify(eq(QUESTION),eq(GENERATED_ANSWER),anyList());
+		for(var result:service.evaluate(new LawAiEvalRequest(cases,List.of(),null)).results()) {
+			assertThat(result.answerVerified()).isFalse();
+			assertThat(result.verificationEnvelope()).isNotNull();
+			assertThat(result.verificationEnvelope().insufficientEvidence()).isTrue();
+		}
 	}
 	@Test
 	void answerLevelEvaluationUsesTheSameRepairedAndReverifiedAnswer() {

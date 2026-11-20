@@ -41,6 +41,13 @@ class EvaluationVerificationEnvelopeTests {
         var unevaluated=new AnswerVerificationService.Result(verified.guardedAnswer(),verified.claimResult(),
             AnswerQuestionAlignmentVerifier.AlignmentResult.claimOnly());
         assertThat(EvaluationVerificationEnvelope.capture(unevaluated,List.of(ground(1,99))).aligned()).isFalse();
+        var claims=verified.claimResult();
+        var unsafe=new ClaimMatcherShadowResult("독립 주장",ClaimEvidenceMatcher.Status.SUPPORTED,
+            ClaimEvidenceMatcher.Status.INSUFFICIENT,true,"fixture",1,CLAUSE);
+        var shadowed=new ClaimVerifier.VerificationResult(claims.verifiedAnswer(),false,false,List.of(),List.of(),
+            List.of(),claims.evidenceLinks(),List.of(unsafe),1,1);
+        assertThat(EvaluationVerificationEnvelope.capture(new AnswerVerificationService.Result("독립 주장",shadowed,
+            verified.alignmentResult()),List.of(ground(1,99))).unsafeSemanticShadowDisagreementCount()).isEqualTo(1);
     }
     @Test void carriesOnlyAnUnambiguousSourceOwnedReferenceReceipt() {
         var base=new OfficialCommencementEvidence(LocalDate.of(2026,8,28),CLAUSE,"$.법령.부칙.부칙단위[0]",
@@ -49,6 +56,8 @@ class EvaluationVerificationEnvelopeTests {
             LocalDate.of(2027,2,28),LocalDate.of(2026,11,18),LocalDate.of(2026,11,20),"a".repeat(64),base);
         var owned=ground(1,99).withOfficialCommencement(base.withReferencePhase(phase));
         assertThat(EvaluationVerificationEnvelope.capture(result("독립 주장",true,List.of()),List.of(owned)).referencePhase()).isEqualTo(phase);
+        var duplicate=ground(2,99).withOfficialCommencement(base.withReferencePhase(phase));
+        assertThat(EvaluationVerificationEnvelope.capture(result("독립 주장",true,List.of()),List.of(owned,duplicate)).referencePhase()).isNull();
         assertThat(EvaluationVerificationEnvelope.capture(result("독립 주장",true,List.of()),List.of(ground(1,100))).referencePhase()).isNull();
         assertThat(EvaluationVerificationEnvelope.capture(null,List.of())).isNull();
     }

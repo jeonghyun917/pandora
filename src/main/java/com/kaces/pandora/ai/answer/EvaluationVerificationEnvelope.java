@@ -16,6 +16,13 @@ public record EvaluationVerificationEnvelope(
     int unsafeSemanticShadowDisagreementCount,
     OfficialEffectivePhaseEvidence referencePhase
 ) {
+    static EvaluationVerificationEnvelope captureRepair(GroundedAnswerRepairService.Result repair,List<LawAiAnswerGround> grounds) {
+        if(repair==null || repair.diagnostics()==null) return null;
+        String reason=repair.diagnostics().reason();
+        // These are synthetic fail-closed outputs, not verifier-produced evidence.
+        if("INITIAL_VERIFICATION_EXCEPTION".equals(reason) || "INITIAL_VERIFICATION_NULL".equals(reason)) return null;
+        return capture(repair.verification(),grounds);
+    }
     static EvaluationVerificationEnvelope capture(AnswerVerificationService.Result verification,List<LawAiAnswerGround> grounds) {
         if(verification==null || verification.claimResult()==null || verification.alignmentResult()==null || grounds==null)
             return null;

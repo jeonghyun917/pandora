@@ -2723,7 +2723,7 @@ public class LawAiAnswerService {
 					unsafeShadowCount(verification.claimResult().semanticShadowResults()),
 					limitText(verifiedAnswer, 1_500),
 					passed ? "" : appendMessage(supportMessage, oracleResult.message())
-				).withVerification(EvaluationVerificationEnvelope.capture(verification,retrieval.grounds()));
+				).withVerification(EvaluationVerificationEnvelope.captureRepair(repaired,retrieval.grounds()));
 			}
 			List<String> answerTerms = expectedAnswerTerms == null || expectedAnswerTerms.isEmpty()
 				? expectedTerms.stream().limit(4).toList()
@@ -2755,7 +2755,7 @@ public class LawAiAnswerService {
 				unsafeShadowCount(verification.claimResult().semanticShadowResults()),
 				limitText(verifiedAnswer, 1_500),
 				message
-			).withVerification(EvaluationVerificationEnvelope.capture(verification,retrieval.grounds()));
+			).withVerification(EvaluationVerificationEnvelope.captureRepair(repaired,retrieval.grounds()));
 		} catch (RuntimeException exception) {
 			return AnswerEvalResult.failed("Answer-level evaluation failed: " + exception.getMessage());
 		}
