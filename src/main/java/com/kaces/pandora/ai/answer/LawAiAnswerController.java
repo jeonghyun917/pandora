@@ -21,10 +21,16 @@ public class LawAiAnswerController {
 
 	private static final String EVALUATION_CONTRACT_HEADER = "X-Pandora-Evaluation-Contract-SHA256";
 	private final LawAiAnswerService answerService;
+	private final EvaluationContractRegistry evaluationContracts;
 
 	// 메소드 설명: LawAiAnswerController 처리 흐름을 수행합니다.
 	public LawAiAnswerController(LawAiAnswerService answerService) {
+		this(answerService,new EvaluationContractRegistry());
+	}
+	@org.springframework.beans.factory.annotation.Autowired
+	public LawAiAnswerController(LawAiAnswerService answerService,EvaluationContractRegistry evaluationContracts) {
 		this.answerService = answerService;
+		this.evaluationContracts=java.util.Objects.requireNonNull(evaluationContracts);
 	}
 
 	@PostMapping("/answer")
@@ -69,9 +75,9 @@ public class LawAiAnswerController {
 
 	@GetMapping("/debug/evaluation-contracts")
 	public ResponseEntity<EvaluationContractCapabilities> evaluationContracts() {
-		// Keep in sync with the fail-closed evaluation dispatch below. No contract is active yet.
+		// No configured hash means no registered contract, even when resources are bundled.
 		return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON)
-			.body(new EvaluationContractCapabilities(1,EVALUATION_CONTRACT_HEADER,List.of()));
+			.body(new EvaluationContractCapabilities(1,EVALUATION_CONTRACT_HEADER,evaluationContracts.registeredHashes()));
 	}
 
 	public record EvaluationContractCapabilities(int schemaVersion,String contractHeader,List<String> registeredContracts) {}
@@ -112,29 +118,37 @@ public class LawAiAnswerController {
 	// 메소드 설명: evaluate 처리 흐름을 수행합니다.
 	public ResponseEntity<LawAiEvalResponse> evaluate(@RequestBody(required = false) LawAiEvalRequest request,
 		@RequestHeader(name = EVALUATION_CONTRACT_HEADER, required = false) List<String> contractHashes) {
-		rejectUnregisteredEvaluationContract(contractHashes);
+		String contract=selectBoundEvaluationContract(contractHashes,request);
 		// 주요 호출: 외부 컴포넌트나 인프라 기능을 호출합니다.
-		return ResponseEntity.ok()
-			.contentType(MediaType.APPLICATION_JSON)
-			.body(answerService.evaluate(request));
+		var response=ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON);
+		if(contract!=null) response.header(EVALUATION_CONTRACT_HEADER,contract);
+		return response.body(answerService.evaluate(request));
 	}
 
 	@PostMapping("/debug/evaluate/gate")
 	public ResponseEntity<LawAiEvalResponse> evaluateGate(@RequestBody(required = false) LawAiEvalRequest request,
 		@RequestHeader(name = EVALUATION_CONTRACT_HEADER, required = false) List<String> contractHashes) {
-		rejectUnregisteredEvaluationContract(contractHashes);
+		String contract=selectBoundEvaluationContract(contractHashes,request);
+		if(contract!=null) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,
+			"Versioned source-qualified scoring requires the complete evaluate response, not the legacy gate");
 		LawAiEvalResponse response = answerService.evaluate(request);
 		return ResponseEntity.status(response.gatePassed() ? HttpStatus.OK : HttpStatus.CONFLICT)
 			.contentType(MediaType.APPLICATION_JSON)
 			.body(response);
 	}
 
-	private static void rejectUnregisteredEvaluationContract(List<String> hashes) {
-		if (hashes == null) return;
-		if (hashes.size() != 1 || !hashes.get(0).matches("[a-f0-9]{64}")) {
+	private String selectBoundEvaluationContract(List<String> hashes,LawAiEvalRequest request) {
+		if (hashes == null) return null;
+		if (hashes.size() != 1 || hashes.get(0)==null || !hashes.get(0).matches("[a-f0-9]{64}")) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Expected one canonical evaluation contract SHA-256");
 		}
-		// No versioned scoring contract is registered yet. Never score a tagged request as legacy.
-		throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "Evaluation contract is not supported");
+		String hash=hashes.get(0);
+		if(!evaluationContracts.registeredHashes().contains(hash))
+			throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,"Evaluation contract is not supported");
+		try {evaluationContracts.assertRequestBound(hash,request);}
+		catch(IllegalArgumentException mismatch) {
+			throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT,"Request does not match the registered catalogue");
+		}
+		return hash;
 	}
 }

@@ -2,3 +2,4 @@
 /mvnw text eol=lf
 /frontend/index.html text eol=lf
 *.cmd text eol=crlf
+/src/main/resources/rag-evaluation-contracts/*.json -text

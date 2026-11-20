@@ -51,6 +51,8 @@ class LawAiEvaluationContractAccessTests {
 		when(service.evaluate(any())).thenReturn(new LawAiEvalResponse(1, 0, 1, 0, false, 1, List.of("fixture"), 0, 0, List.of()));
 		var mvc = MockMvcBuilders.standaloneSetup(new LawAiAnswerController(service)).build();
 		mvc.perform(post(ROOT).contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isOk());
+		mvc.perform(post(ROOT).contentType(MediaType.APPLICATION_JSON).content("{}"))
+			.andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().doesNotExist(HEADER));
 		mvc.perform(post(ROOT + "/gate").contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isConflict());
 	}
 }
