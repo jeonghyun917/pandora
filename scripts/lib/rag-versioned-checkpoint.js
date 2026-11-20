@@ -1,5 +1,6 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
-const {selectionHash,resolveReportPaths,isCheckpointCompatible}=require('./rag-eval-provenance');
+const {selectionHash}=require('./rag-eval-provenance');
+const {resolveReportPaths,isCheckpointCompatible}=require('./rag-candidate-provenance');
 const {buildBlockingGates}=require('./rag-eval-gates');
 const {selectVersionedStage}=require('./rag-versioned-evaluation');
 function versionedErrorRetryLimit(value=3) {

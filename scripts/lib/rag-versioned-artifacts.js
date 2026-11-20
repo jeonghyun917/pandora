@@ -12,6 +12,7 @@ function prepareApprovalRequest({root=path.resolve(__dirname,'../..'),catalogue,
     baselineSha256:catalogue.baselineDatasetSha256,questionCount:catalogue.cases.length,
     changedCaseIds:Object.keys(catalogue.scoringOverrides),sourceAuditReference:sourceAuditPath,sourceAuditSha256:audit.sha256,
     runtimeArtifactSha256:runtime.runtimeArtifactSha256,runtimeConfigSha256:runtime.runtimeConfigSha256,
+    checkpointPolicy:'candidate-once-v1',evaluationCandidateSha256:runtime.runtimeArtifactSha256,
     runnerSha256:versionedRunnerHash(),requiresExplicitApproval:true};
 }
 function prepareExecutionManifest({root=path.resolve(__dirname,'../..'),catalogue,evaluationContractSha256,

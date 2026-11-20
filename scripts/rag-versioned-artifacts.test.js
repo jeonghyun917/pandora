@@ -11,6 +11,8 @@ test('prepares a stable approval request but never a receipt or registration',()
     const input={root,catalogue:f.catalogue,evaluationContractSha256:HASH,sourceAuditPath:'source.json'};
     const request=prepareApprovalRequest(input);
     assert.equal(request.questionCount,1003);assert.equal(request.requiresExplicitApproval,true);
+    assert.equal(request.checkpointPolicy,'candidate-once-v1');
+    assert.equal(request.evaluationCandidateSha256,f.runtime.runtimeArtifactSha256);
     assert.equal(Object.hasOwn(request,'approvalReceipt'),false);assert.equal(Object.hasOwn(request,'approvedAt'),false);
     assert.deepEqual(prepareApprovalRequest(input),request);assert.deepEqual(fs.readdirSync(root),['source.json']);
   } finally {assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir())+path.sep+'pandora-artifacts-'));fs.rmSync(root,{recursive:true,force:true});}

@@ -78,6 +78,10 @@ function assertVersionedExecutionPreflight({catalogue,evaluationContractSha256,e
     && canonical(executionManifest.sourceAuditSha256) && typeof executionManifest.sourceAuditReference==='string'
     && executionManifest.sourceAuditReference.trim(),'Bound source audit required');
   const expected=executionManifest.runtimeInfo;
+  if(Object.hasOwn(approvalRequest,'checkpointPolicy') || Object.hasOwn(approvalRequest,'evaluationCandidateSha256'))
+    assert.ok(approvalRequest.checkpointPolicy==='candidate-once-v1' && canonical(approvalRequest.evaluationCandidateSha256)
+      && approvalRequest.evaluationCandidateSha256===approvalRequest.runtimeArtifactSha256,
+      'Approved candidate/policy must match the immutable JAR');
   assert.ok(canonical(currentRunnerSha256) && currentRunnerSha256===approvalRequest.runnerSha256
     && currentRunnerSha256===executionManifest.runnerSha256,'Approved runner implementation changed');
   assert.ok(expected?.runtimeArtifactSha256===approvalRequest.runtimeArtifactSha256

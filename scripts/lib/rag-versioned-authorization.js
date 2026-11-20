@@ -7,7 +7,7 @@ const sha256=bytes=>createHash('sha256').update(bytes).digest('hex');
 function versionedRunnerHash() {
   const scripts=path.resolve(__dirname,'..');
   return datasetHash([__filename,path.join(scripts,'rag-eval-gate.js'),path.join(scripts,'rag-eval-versioned.js'),path.join(scripts,'capture-versioned-source-audit.js'),
-    ...['rag-versioned-transport','rag-versioned-artifacts','rag-versioned-workflow','rag-versioned-evaluation','rag-versioned-checkpoint','rag-evaluation-contract-preflight','rag-eval-provenance',
+    ...['rag-candidate-provenance','rag-versioned-transport','rag-versioned-artifacts','rag-versioned-workflow','rag-versioned-evaluation','rag-versioned-checkpoint','rag-evaluation-contract-preflight','rag-eval-provenance',
       'rag-eval-gates','rag-eval-cases','rag-qualified-example-scorer','rag-reference-commencement-scorer'].map(name=>path.join(__dirname,name+'.js'))]);
 }
 function readBoundJson(root,relative) {

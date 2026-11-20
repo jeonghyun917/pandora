@@ -1,6 +1,7 @@
 const assert=require('node:assert/strict');
 const {selectVersionedStage,assertVersionedExecutionPreflight,scoreVersionedResults}=require('./rag-versioned-evaluation');
-const {buildCheckpointIdentity,selectionHash}=require('./rag-eval-provenance');
+const {selectionHash}=require('./rag-eval-provenance');
+const {buildCheckpointIdentity}=require('./rag-candidate-provenance');
 function assertApprovedAudit(actual,approved) {
   assert.deepEqual(actual.sourceOwners,approved.sourceOwners,'Approved source content/version changed');
   for(const key of ['lawDatabaseIndexedCount','ragDatabaseIndexedCount','lawDatabaseContentFingerprint','ragDatabaseContentFingerprint',
@@ -20,7 +21,9 @@ async function runVersionedWorkflow(options) {
   const before=await captureSourceAudit();assertApprovedAudit(before,authorization.sourceAudit);preflight(before.runtimeInfo);
   const identity=buildCheckpointIdentity({scope,baseUrl,datasetHashValue:evaluationContractSha256,
     selectionHashValue:selectionHash(cases),selectedCount:cases.length,gateProfile:'release',runtimeInfo:before.runtimeInfo,
-    baselineManifestId:authorization.identitySha256,evaluationContractSha256});
+    baselineManifestId:authorization.identitySha256,evaluationContractSha256,
+    ...(authorization.approvalRequest.checkpointPolicy==='candidate-once-v1'
+      ? {evaluationCandidateSha256:authorization.approvalRequest.evaluationCandidateSha256}:{} )});
   const context={cases,scope,stage,identity,runtimeInfo:before.runtimeInfo,sourceAuditBefore:before};
   if(stage!=='penalty')await assertPredecessor(context);
   let reserved=false;

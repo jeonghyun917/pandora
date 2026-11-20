@@ -34,3 +34,12 @@ test('an unmet prior checkpoint holds only before the new slot is opened',async(
   await assert.rejects(()=>runVersionedWorkflow(o),/Prior checkpoint/);
   assert.deepEqual(trace,['capability','audit','predecessor']);
 });
+
+test('candidate policy propagates the approved immutable JAR into the checkpoint identity',async()=>{
+  const f=fixture(),trace=[];
+  f.authorization.approvalRequest.checkpointPolicy='candidate-once-v1';
+  f.authorization.approvalRequest.evaluationCandidateSha256=f.runtime.runtimeArtifactSha256;
+  const result=await runVersionedWorkflow(options(f,trace));
+  assert.equal(result.checkpointIdentity.evaluationCandidateSha256,f.runtime.runtimeArtifactSha256);
+  assert.equal(result.versionedEvidence.approvalRequestSha256,f.authorization.approvalRequestSha256);
+});

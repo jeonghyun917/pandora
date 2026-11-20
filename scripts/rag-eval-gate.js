@@ -17,7 +17,6 @@ const {
   isCheckpointCompatible,
   isRuntimeStable,
   resolveReportPaths,
-  reserveVersionedEvaluationSlot,
   selectionHash,
 } = require('./lib/rag-eval-provenance');
 const {
@@ -33,6 +32,7 @@ const {assertPriorVersionedCheckpoint,applyVersionedSafetyGate,versionedErrorRet
 const {preflightVersionedEvaluationContract}=require('./lib/rag-evaluation-contract-preflight');
 const {captureVersionedSourceAudit}=require('./capture-versioned-source-audit');
 const {postVersionedEvaluation,recordVersionedAttempt}=require('./lib/rag-versioned-transport');
+const candidateProvenance=require('./lib/rag-candidate-provenance');
 
 const versionedContractHash=String(process.env.RAG_EVAL_CONTRACT_SHA256??'');
 let activeVersionedCatalogue=null;
@@ -182,7 +182,7 @@ async function runVersionedMain() {
     captureSourceAudit:()=>captureVersionedSourceAudit({root,evaluationContractSha256:versionedContractHash,baseUrl}),
     assertPredecessor:context=>assertPriorVersionedCheckpoint({root,catalogue:loaded.catalogue,stage,identity:context.identity}),
     reserveSlot:context=>{
-      const paths=reserveVersionedEvaluationSlot(context.scope,context.identity,{root});checkpointPath=paths.checkpointPath;return paths;
+      const paths=candidateProvenance.reserveVersionedEvaluationSlot(context.scope,context.identity,{root});checkpointPath=paths.checkpointPath;return paths;
     },
     evaluate:async context=>retryEvaluationErrors(await runEvaluationForCases(context.cases,context.identity)),
     recomputeGate,
@@ -203,7 +203,7 @@ async function runVersionedMain() {
       writeJson(context.paths.checkpointPath,{...result,checkpoint:true});
       writeJson(context.paths.outputPath,result);writeReport(context.paths.reportPath,result,baseUrl);
       if(archiveEnabled()) {
-        const archive=archivePaths(context.scope,runId(result.provenance.generatedAt),context.identity);
+        const archive=candidateProvenance.archivePaths(context.scope,runId(result.provenance.generatedAt),context.identity);
         writeJson(archive.outputPath,result);writeReport(archive.reportPath,result,baseUrl);
       }
     },

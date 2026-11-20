@@ -84,3 +84,31 @@ The original approved baseline has mixed line endings in this execution checkout
 All byte-bound checks deliberately fail closed if a fresh checkout changes those
 bytes; portable baseline packaging is deferred. Do not normalize the original
 files or silently reseal this contract to hide a mismatch.
+
+## Explicitly approved new candidates
+
+The 2026-11-20 user grant permits a separately verified candidate JAR to receive
+its own once-only checkpoint ladder without changing the payload/scorers or
+reopening an old failure. New approval requests declare
+`checkpointPolicy: candidate-once-v1` and `evaluationCandidateSha256` equal to the
+approved runtime JAR SHA. The execution manifest and source audit still bind the
+actual process, corpus and runner; those changes cannot create another slot for
+the same JAR.
+
+Candidate artifacts use
+`logs/contracts/<contract>/candidates/<jar>/<selection>/<scope>-…`.
+Old contract/selection artifacts remain at their original paths. A started legacy
+slot must have a bounded, identifiable terminal result before a different
+candidate can proceed; the old candidate remains consumed. Missing/ambiguous
+legacy ownership fails closed. Predecessors must match the same candidate and
+full execution identity, not merely the same questions. No failed answer is
+loaded into evaluation; only terminal metadata is read for fencing.
+Both formats additionally acquire the same atomic per-JAR/selection/scope claim
+under `candidate-claims` before starting. Thus concurrent legacy/new clients cannot
+each create a different marker and evaluate twice. Checkpoint/latest/archive
+owner and scope metadata must agree; conflicting evidence is not resolved by
+trusting only the latest file. Claims survive partial failures conservatively.
+
+The frozen common provenance module is not modified: a small client extension
+adds candidate namespacing while the existing sealed catalogue remains identical.
+This does not require rebuilding a previously verified backend candidate.
