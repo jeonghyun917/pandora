@@ -3,3 +3,6 @@
 /frontend/index.html text eol=lf
 *.cmd text eol=crlf
 /src/main/resources/rag-evaluation-contracts/*.json -text
+/docs/evidence/rag-quality/evaluation-versions/source-audits/*.json -text
+/docs/evidence/rag-quality/evaluation-versions/approval-requests/*.json -text
+/docs/evidence/rag-quality/evaluation-versions/execution-manifests/*.json -text

@@ -10,6 +10,8 @@ test('seals an exact inactive1003 catalogue without a registration or permission
   assert.equal(catalogue.schemaVersion,1);
   assert.equal(catalogue.cases.length,1003);
   assert.equal(catalogue.cases.some(c=>Object.hasOwn(c,'failureTaxonomy')),false);
+  const proposed=require('./rag-versioned-dataset-preflight').loadVersionedDatasetProposal().cases;
+  assert.deepEqual(catalogue.cases,proposed.map(({failureTaxonomy,...request})=>request));
   assert.deepEqual(catalogue.scoringOverrides,{'it-compliance-penalty':'qualified-approval','ai-law-enforcement-date':'reference-commencement'});
   assert.match(catalogue.preparationSha256,/^[a-f0-9]{64}$/);
   assert.equal(catalogue.authorization,'requires-explicit-registration-and-payload-approval');

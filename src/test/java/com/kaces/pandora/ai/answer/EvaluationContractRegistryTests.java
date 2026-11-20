@@ -7,6 +7,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class EvaluationContractRegistryTests {
+    @Test void operatorEnvironmentPropertyResolvesWithoutChangingGlobalEnvironment() {
+        var environment=new org.springframework.core.env.StandardEnvironment();
+        environment.getPropertySources().addFirst(new org.springframework.core.env.SystemEnvironmentPropertySource(
+            "synthetic-test",Map.of("PANDORA_EVALUATION_CONTRACT_SHA256","a".repeat(64))));
+        assertThat(environment.getProperty("pandora.evaluation.contract-sha256")).isEqualTo("a".repeat(64));
+    }
     private LawAiEvalRequest.EvalCase row(int i) {
         return new LawAiEvalRequest.EvalCase("case-"+i,"Question "+i,List.of("law"),List.of("ground"),1,
             List.of("Example"),List.of(),List.of(),List.of(),List.of(),List.of(),"Explain supported evidence");
@@ -72,6 +78,15 @@ class EvaluationContractRegistryTests {
         var malformed=new LawAiEvalRequest.EvalCase(null,"Question",List.of("law"),List.of(),0,List.of(),List.of(),List.of(),List.of(),List.of(),List.of(),"Explain");
         assertThatThrownBy(()->registry.assertRequestBound(identity,new LawAiEvalRequest(List.of(malformed),List.of(),null)))
             .isInstanceOf(IllegalArgumentException.class);
+    }
+    @Test void omittedCaseSchemaCannotRegisterAndFallBackToServiceDefaults() throws Exception {
+        for(String field:List.of("targets","expectedTerms","requiredMatches","answerDirection","expectedAnswerTerms","requiredConditionGroups")) {
+            var mapper=new tools.jackson.databind.ObjectMapper();
+            var root=mapper.readTree(bytes(catalogue(rows())));
+            ((tools.jackson.databind.node.ObjectNode)root.path("cases").get(0)).remove(field);
+            byte[] raw=mapper.writeValueAsBytes(root);String identity=hash(raw);
+            assertThatThrownBy(()->new EvaluationContractRegistry(identity,path->raw)).isInstanceOf(IllegalArgumentException.class);
+        }
     }
     @Test void sealedRealCatalogueIsLoadableButNotAutomaticallyRegistered() throws Exception {
         String identity="8afcc132da9282d0ef2e27262f850df0f20ad0e0466c7f3806de1beb58b9fc43";

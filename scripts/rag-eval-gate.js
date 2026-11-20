@@ -17,6 +17,7 @@ const {
   isCheckpointCompatible,
   isRuntimeStable,
   resolveReportPaths,
+  reserveVersionedEvaluationSlot,
   selectionHash,
 } = require('./lib/rag-eval-provenance');
 const {
@@ -25,9 +26,19 @@ const {
   buildBaselineManifest,
 } = require('./lib/rag-baseline-manifest');
 const { buildBlockingGates } = require('./lib/rag-eval-gates');
+const {loadVersionedCatalogue,verifyVersionedHttpResponse}=require('./lib/rag-versioned-evaluation');
+const {loadVersionedAuthorization}=require('./lib/rag-versioned-authorization');
+const {runVersionedWorkflow}=require('./lib/rag-versioned-workflow');
+const {assertPriorVersionedCheckpoint,applyVersionedSafetyGate,versionedErrorRetryLimit}=require('./lib/rag-versioned-checkpoint');
+const {preflightVersionedEvaluationContract}=require('./lib/rag-evaluation-contract-preflight');
+const {captureVersionedSourceAudit}=require('./capture-versioned-source-audit');
+const {postVersionedEvaluation,recordVersionedAttempt}=require('./lib/rag-versioned-transport');
 
+const versionedContractHash=String(process.env.RAG_EVAL_CONTRACT_SHA256??'');
+let activeVersionedCatalogue=null;
+const versionedAttemptPaths=[];
 const baseUrl = process.env.RAG_EVAL_BASE_URL || 'http://127.0.0.1:8080';
-const endpoint = `${baseUrl.replace(/\/$/, '')}/api/law-data/ai/debug/evaluate/gate`;
+const endpoint = `${baseUrl.replace(/\/$/, '')}/api/law-data/ai/debug/evaluate${versionedContractHash?'':'/gate'}`;
 const runtimeInfoEndpoint = `${baseUrl.replace(/\/$/, '')}/api/law-data/ai/debug/runtime-info`;
 const casePaths = [
   path.resolve('src/main/resources/rag-evaluation-cases.tsv'),
@@ -35,7 +46,7 @@ const casePaths = [
 ];
 const answerOraclePath = path.resolve('src/main/resources/rag-answer-evaluation-oracles.tsv');
 const datasetPaths = [...casePaths, answerOraclePath];
-const maxEvaluationErrorRetries = Number(process.env.RAG_EVAL_ERROR_RETRIES || 3);
+const maxEvaluationErrorRetries = versionedContractHash?versionedErrorRetryLimit(process.env.RAG_EVAL_ERROR_RETRIES||3):Number(process.env.RAG_EVAL_ERROR_RETRIES || 3);
 const caseBatchSize = Number(process.env.RAG_EVAL_CASE_BATCH_SIZE || 10);
 const requestTimeoutMs = Number(process.env.RAG_EVAL_REQUEST_TIMEOUT_MS || 180000);
 const interBatchSleepMs = Number(process.env.RAG_EVAL_INTER_BATCH_SLEEP_MS || 300);
@@ -48,7 +59,9 @@ const resumeFromCheckpoint = ['1', 'true', 'yes', 'y'].includes(
 );
 const baselineManifestPath = String(process.env.RAG_EVAL_BASELINE_MANIFEST || '').trim();
 
-async function main() {
+async function main({requireVersioned=false}={}) {
+  if(requireVersioned && !versionedContractHash)throw new Error('RAG_EVAL_CONTRACT_SHA256 is required for versioned execution');
+  if(versionedContractHash)return runVersionedMain();
   const evaluationState = loadEvaluationState();
   const { allCases, cases, scope, datasetHashValue, selectionHashValue } = evaluationState;
   if (process.env.RAG_EVAL_REQUIRE_FULL_RELEASE === '1' && scope !== 'full') {
@@ -147,6 +160,64 @@ async function main() {
   }
   const percent = Math.round((body.passRate ?? 0) * 100);
   console.log(`[rag-eval-gate] PASS ${body.passed}/${body.total} (${percent}%)`);
+}
+
+async function runVersionedMain() {
+  const stage=String(process.env.RAG_EVAL_STAGE??'');
+  if(!['penalty','difficult','holdout','full'].includes(stage))throw new Error('Explicit RAG_EVAL_STAGE is required');
+  if(process.env.RAG_EVAL_REQUIRE_FULL_RELEASE==='1' && stage!=='full')throw new Error('Full release requires the full versioned stage');
+  if(resumeFromCheckpoint || caseIds.length || caseLimit!==0 || gateProfile!=='release' || baselineManifestPath
+      || !Number.isSafeInteger(caseBatchSize) || caseBatchSize<1 || caseBatchSize>10
+      || !Number.isSafeInteger(requestTimeoutMs) || requestTimeoutMs<1
+      || ['RAG_EVAL_OUTPUT','RAG_EVAL_REPORT','RAG_EVAL_CHECKPOINT'].some(key=>process.env[key]))
+    throw new Error('Versioned execution forbids legacy overrides/resume and requires bounded batching');
+  const root=process.cwd();
+  const loaded=loadVersionedCatalogue({root,evaluationContractSha256:versionedContractHash});
+  activeVersionedCatalogue=loaded.catalogue;
+  const authorizationOptions={root,catalogue:loaded.catalogue,evaluationContractSha256:versionedContractHash,
+    executionManifestPath:process.env.RAG_EVAL_EXECUTION_MANIFEST,approvalReceiptPath:process.env.RAG_EVAL_PAYLOAD_APPROVAL};
+  const authorization=loadVersionedAuthorization(authorizationOptions);
+  const body=await runVersionedWorkflow({root,catalogue:loaded.catalogue,evaluationContractSha256:versionedContractHash,stage,baseUrl,authorization,
+    preflightContract:()=>preflightVersionedEvaluationContract({baseUrl,evaluationContractSha256:versionedContractHash}),
+    captureSourceAudit:()=>captureVersionedSourceAudit({root,evaluationContractSha256:versionedContractHash,baseUrl}),
+    assertPredecessor:context=>assertPriorVersionedCheckpoint({root,catalogue:loaded.catalogue,stage,identity:context.identity}),
+    reserveSlot:context=>{
+      const paths=reserveVersionedEvaluationSlot(context.scope,context.identity,{root});checkpointPath=paths.checkpointPath;return paths;
+    },
+    evaluate:async context=>retryEvaluationErrors(await runEvaluationForCases(context.cases,context.identity)),
+    recomputeGate,
+    assertInputsStable:()=>{
+      loadVersionedCatalogue({root,evaluationContractSha256:versionedContractHash});
+      if(loadVersionedAuthorization(authorizationOptions).identitySha256!==authorization.identitySha256)
+        throw new Error('Versioned authorization artifacts changed during evaluation');
+    },
+    persist:(result,context)=>{
+      result.provenance=buildProvenance({scope:context.scope,baseUrl,gitCommit:gitOutput(['rev-parse','HEAD']),
+        gitDirty:Boolean(gitOutput(['status','--porcelain'])),datasetHashValue:versionedContractHash,
+        selectionHashValue:context.identity.selectionHash,selectedCount:context.cases.length,totalCaseCount:loaded.catalogue.cases.length,
+        gateProfile:'release',runtimeInfo:context.runtimeInfo,baselineManifestId:authorization.identitySha256,
+        evaluationContractSha256:versionedContractHash});
+      result.originalBaselineDatasetSha256=loaded.catalogue.baselineDatasetSha256;
+      result.evaluationAttemptPaths=[...versionedAttemptPaths];
+      result.breakdown=evaluationBreakdown(result.results);
+      writeJson(context.paths.checkpointPath,{...result,checkpoint:true});
+      writeJson(context.paths.outputPath,result);writeReport(context.paths.reportPath,result,baseUrl);
+      if(archiveEnabled()) {
+        const archive=archivePaths(context.scope,runId(result.provenance.generatedAt),context.identity);
+        writeJson(archive.outputPath,result);writeReport(archive.reportPath,result,baseUrl);
+      }
+    },
+    recordFailure:(error,context)=>{
+      const partial=readJson(context.paths.checkpointPath)||{};
+      const failed={...partial,gatePassed:false,completionStatus:'ERROR',versionedStage:stage,
+        evaluationContractSha256:versionedContractHash,checkpointIdentity:context.identity,
+        evaluationAttemptPaths:[...versionedAttemptPaths],
+        failureType:'VERSIONED_INVOCATION_OR_PROVENANCE_ERROR',error:String(error.message),failedAt:new Date().toISOString()};
+      writeJson(context.paths.checkpointPath,{...failed,checkpoint:true});writeJson(context.paths.outputPath,failed);
+    }});
+  console.log(`[rag-eval-versioned] ${body.gatePassed?'PASS':'FAIL'} ${body.passed}/${body.total} stage=${stage} contract=${versionedContractHash}`);
+  if(!body.gatePassed)process.exitCode=1;
+  return body;
 }
 
 async function loadRuntimeInfo() {
@@ -287,16 +358,20 @@ async function runEvaluation(payload, label = "all") {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
   try {
-    const response = await fetch(endpoint, {
+    const response = versionedContractHash?await postVersionedEvaluation(endpoint,{payload,
+      evaluationContractSha256:versionedContractHash,signal:controller.signal}):await fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      headers: { 'Content-Type': 'application/json; charset=utf-8',...(versionedContractHash?{'X-Pandora-Evaluation-Contract-SHA256':versionedContractHash}:{}) },
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
     const text = await response.text();
     const body = parseJson(text);
+    if(versionedContractHash)versionedAttemptPaths.push(recordVersionedAttempt(checkpointPath,versionedAttemptPaths.length+1,{
+      label,httpStatus:response.status,responseContractSha256:response.headers.get('X-Pandora-Evaluation-Contract-SHA256'),
+      requestedCaseIds:requestedIds,body,unparsedResponse:body?undefined:text}));
     if (!response.ok) {
-      if (response.status === 409 && isCompletedFailingEvaluationResponse(body)) {
+      if (!versionedContractHash && response.status === 409 && isCompletedFailingEvaluationResponse(body)) {
         assertResultIds(requestedIds, body.results, label);
         return { ...body, results: restoreCaseClassification(body.results, requestedCases) };
       }
@@ -314,7 +389,9 @@ async function runEvaluation(payload, label = "all") {
       throw new Error(`evaluation ${label} HTTP ${response.status} ${response.statusText}: ${text.slice(0, 300)}`);
     }
     assertResultIds(requestedIds, body.results, label);
-    return { ...body, results: restoreCaseClassification(body.results, requestedCases) };
+    const results=versionedContractHash?verifyVersionedHttpResponse({response,body,catalogue:activeVersionedCatalogue,
+      requestedCases,evaluationContractSha256:versionedContractHash}):body.results;
+    return { ...body, results: restoreCaseClassification(results, requestedCases) };
   } catch (error) {
     if (error?.name === "AbortError") {
       throw new Error(`evaluation ${label} timed out after ${requestTimeoutMs}ms`);
@@ -476,7 +553,7 @@ function recomputeGate(body) {
   const namedGatesPassed = Object.values(blockingGates)
     .filter((gate) => gate.total > 0)
     .every((gate) => gate.gatePassed);
-  return {
+  const computed={
     ...body,
     total,
     passed,
@@ -487,6 +564,7 @@ function recomputeGate(body) {
     blockingFailureIds: results.filter((result) => result.passed !== true).map((result) => result.id),
     blockingGates,
   };
+  return versionedContractHash?applyVersionedSafetyGate(computed):computed;
 }
 
 function parseJson(text) {
@@ -523,6 +601,10 @@ function isCompletedFailingEvaluationResponse(body) {
 }
 
 function loadCases() {
+  if(versionedContractHash) {
+    if(!activeVersionedCatalogue)throw new Error('Versioned catalogue is unavailable');
+    return activeVersionedCatalogue.cases;
+  }
   return loadEvalCases(casePaths, { answerOraclePath });
 }
 
@@ -634,6 +716,11 @@ function writeReport(filePath, body, baseUrl) {
     `- Workspace Git commit: ${body.provenance?.gitCommit ?? '-'}`,
     `- Workspace Git dirty: ${Boolean(body.provenance?.gitDirty)}`,
     `- Dataset hash: ${body.provenance?.datasetHash ?? '-'}`,
+    ...(body.evaluationContractSha256?[`- Separate evaluation contract: ${body.evaluationContractSha256}`,
+      `- Versioned stage: ${body.versionedStage??'-'}`,
+      '- This result is not a replay or PASS of the original frozen oracle.',
+      `- Unsafe semantic disagreements: ${body.unsafeSemanticShadowDisagreementCount??'unknown'}`,
+      `- Blocking IDs: ${list(body.blockingFailureIds)}`]:[]),
     `- Selection hash: ${body.provenance?.selectionHash ?? '-'}`,
     `- Index version: ${body.provenance?.indexVersion ?? '-'}`,
     `- Embedding model: ${body.provenance?.embeddingModel ?? '-'}`,
@@ -791,7 +878,8 @@ function escapeCell(value) {
   return String(value ?? '-').replace(/\|/g, '\\|').replace(/\n/g, '<br>');
 }
 
-main().catch((error) => {
+if(require.main===module)main().catch((error) => {
   console.error(`[rag-eval-gate] ERROR ${error?.message ?? error}`);
   process.exit(1);
 });
+module.exports={main};

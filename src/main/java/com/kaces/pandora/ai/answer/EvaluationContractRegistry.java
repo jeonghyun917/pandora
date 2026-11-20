@@ -39,6 +39,7 @@ public class EvaluationContractRegistry {
             var entries=root.path("cases");require(entries.isArray() && entries.size()==1003,"Complete1003 catalogue required");
             var byId=new LinkedHashMap<String,LawAiEvalRequest.EvalCase>();var order=new HashMap<String,Integer>();
             for(var entry:entries) {
+                validateCaseSchema(entry);
                 var row=mapper.treeToValue(entry,LawAiEvalRequest.EvalCase.class);
                 require(row!=null && row.id()!=null && !row.id().isBlank() && row.question()!=null && !row.question().isBlank()
                     && !byId.containsKey(row.id()),"Unique complete case identities required");
@@ -48,6 +49,27 @@ public class EvaluationContractRegistry {
             this.cases=Map.copyOf(byId);this.positions=Map.copyOf(order);
         } catch(IllegalArgumentException rejected) {throw rejected;}
         catch(Exception malformed) {throw new IllegalArgumentException("Unable to load configured evaluation contract",malformed);}
+    }
+    private static void validateCaseSchema(JsonNode entry) {
+        require(entry.isObject(),"Complete case object required");
+        for(String name:List.of("id","question","answerDirection"))
+            require(entry.path(name).isTextual(),"Case text field required: "+name);
+        for(String name:List.of("targets","expectedTerms","expectedTitleTerms","expectedSectionTypes","forbiddenTerms",
+            "expectedDocumentTerms","expectedPageNumbers","expectedParentTerms","expectedResultMsgs","expectedAnswerTerms","forbiddenAnswerTerms")) {
+            var values=entry.path(name);require(values.isArray(),"Case array field required: "+name);
+            for(var value:values)require(value.isTextual(),"Case array member must be text");
+        }
+        require(!entry.path("targets").isEmpty(),"Explicit case targets required");
+        require(entry.path("requiredMatches").toString().matches("[0-9]{1,9}"),"Nonnegative case match count required");
+        var verify=entry.path("answerVerificationRequired");
+        require(!verify.isMissingNode() && (verify.isNull() || verify.isBoolean()),"Case verification flag must be boolean or null");
+        for(String name:List.of("requiredPropositionGroups","requiredConditionGroups")) {
+            var groups=entry.path(name);require(groups.isArray(),"Case group field required: "+name);
+            for(var group:groups) {
+                require(group.isArray(),"Case group must be an array");
+                for(var value:group)require(value.isTextual(),"Case group member must be text");
+            }
+        }
     }
     public List<String> registeredHashes() {return selectedHash==null?List.of():List.of(selectedHash);}
     void assertRequestBound(String hash,LawAiEvalRequest request) {
