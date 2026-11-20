@@ -28,7 +28,7 @@ function assertReviewedSplit(name,bytes) {
   assert.equal(sha256(bytes),REVIEWED_SPLITS[name],'reviewed split bytes changed');
   return JSON.parse(bytes);
 }
-function preflightVersionedDataset({root=path.resolve(__dirname,'..')}={}) {
+function loadVersionedDatasetProposal({root=path.resolve(__dirname,'..')}={}) {
   const resource=name=>path.join(root,'src/main/resources',name);
   const inputs=['rag-evaluation-cases.tsv','rag-evaluation-cases.generated.tsv','rag-answer-evaluation-oracles.tsv'].map(resource);
   const descriptorPath=path.join(root,'docs/evidence/rag-quality/evaluation-versions/qualified-reference-v2.json');
@@ -54,10 +54,13 @@ function preflightVersionedDataset({root=path.resolve(__dirname,'..')}={}) {
   const bindingFiles=[...inputs,...splits,descriptorPath,__filename,path.join(__dirname,'lib/rag-versioned-dataset.js'),
     path.join(__dirname,'lib/rag-eval-cases.js'),path.join(__dirname,'lib/rag-eval-provenance.js'),
     path.join(__dirname,'lib/rag-qualified-example-scorer.js'),path.join(__dirname,'lib/rag-reference-commencement-scorer.js')];
-  return {version:descriptor.version,status:descriptor.status,baselineDatasetSha256:baselineSha256,
+  assert.equal(datasetHash(inputs),baselineSha256,'Frozen inputs changed during preparation');
+  const report={version:descriptor.version,status:descriptor.status,baselineDatasetSha256:baselineSha256,
     count:proposed.length,unchangedCount:proposed.length-changed.length,changedIds:changed,
     baselineSelectionSha256:selectionHash(baseline),proposedSelectionSha256:selectionHash(proposed),
     preparationSha256:datasetHash(bindingFiles),checkpointSizes,subsetOrderPreserved:true,liveEligible:false};
+  return {report,cases:proposed,descriptor};
 }
+function preflightVersionedDataset(options) {return loadVersionedDatasetProposal(options).report;}
 if(require.main===module) console.log(JSON.stringify(preflightVersionedDataset(),null,2));
-module.exports={preflightVersionedDataset,assertReviewedBindings,assertReviewedSplit};
+module.exports={preflightVersionedDataset,loadVersionedDatasetProposal,assertReviewedBindings,assertReviewedSplit};
