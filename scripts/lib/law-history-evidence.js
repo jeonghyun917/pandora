@@ -41,4 +41,40 @@ function proveGeneralEffectivePhase(html, request) {
     limitation: 'General effective-history phase only; delayed provisions require their own commencement proof.' };
 }
 
-module.exports = { proveGeneralEffectivePhase };
+// Join a captured, existing Java commencement receipt with its original detail.
+// This is evidence preparation, not a replacement for live server verification.
+function bindGeneralPhaseToCommencement(html, request, source, receipt) {
+  const phase = proveGeneralEffectivePhase(html, request);
+  if (!phase || !source || !receipt || source.target !== 'law'
+      || !['documentId','chunkId','chunkVersion'].every(key => Number.isSafeInteger(source[key]) && source[key] > 0)
+      || !['target','documentId','chunkId','chunkVersion','edition'].every(key => source[key] === receipt[key])
+      || source.edition !== phase.edition || receipt.effectiveFrom !== phase.effectiveFrom
+      || typeof source.rawJson !== 'string' || source.rawJson.length > 2097152
+      || createHash('sha256').update(source.rawJson).digest('hex') !== receipt.sourceSha256
+      || typeof receipt.clause !== 'string' || !receipt.clause.trim()) return null;
+  let law;
+  try { law = JSON.parse(source.rawJson)?.법령; } catch { return null; }
+  const basic = law?.기본정보;
+  if (!basic || basic.법령ID !== phase.lawId || basic.공포번호 !== phase.number
+      || basic.공포일자 !== phase.promulgation || basic.시행일자 !== phase.effectiveFrom) return null;
+  const units = law?.부칙?.부칙단위;
+  if (!Array.isArray(units) || units.length > 1000) return null;
+  const owners = units.map((unit,index) => ({unit,index})).filter(({unit}) =>
+    unit?.부칙공포번호 === phase.number && unit?.부칙공포일자 === phase.promulgation);
+  if (owners.length !== 1) return null;
+  const {unit,index} = owners[0];
+  if (receipt.sourcePath !== `$.법령.부칙.부칙단위[${index}]` || !Array.isArray(unit.부칙내용)) return null;
+  const lines = unit.부칙내용.flat(1);
+  if (lines.some(line => typeof line !== 'string')) return null;
+  const clauses = lines.map(line => line.trim()).filter(line => /^제[0-9]+조\s*\(시행일\)\s*\S/u.test(line));
+  // Preserve every exception in the original clause; do not use a shortened quote.
+  if (clauses.length !== 1 || receipt.clause !== clauses[0]) return null;
+  const evidence = { scope:'general-phase', phase,
+    owner:{target:source.target,documentId:source.documentId,chunkId:source.chunkId,
+      chunkVersion:source.chunkVersion,edition:source.edition},
+    commencement:{effectiveFrom:receipt.effectiveFrom,clause:receipt.clause,
+      sourcePath:receipt.sourcePath,sourceSha256:receipt.sourceSha256} };
+  return {...evidence,evidenceSha256:createHash('sha256').update(JSON.stringify(evidence)).digest('hex')};
+}
+
+module.exports = { proveGeneralEffectivePhase, bindGeneralPhaseToCommencement };
