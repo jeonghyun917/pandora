@@ -76,7 +76,8 @@ public record LawAiEvalResponse(
 		List<AttributedClaim> attributedClaims,
 		List<ClaimMatcherShadowResult> semanticShadowDisagreements,
 		int unsafeSemanticShadowDisagreementCount,
-		String verifiedAnswer
+		String verifiedAnswer,
+		EvaluationVerificationEnvelope verificationEnvelope
 	) {
 	}
 }

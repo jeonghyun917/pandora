@@ -2477,7 +2477,8 @@ public class LawAiAnswerService {
 			List.of(),
 			List.of(),
 			0,
-			""
+			"",
+			null
 		);
 	}
 
@@ -2612,7 +2613,8 @@ public class LawAiAnswerService {
 			LawAiEvalResponse.attributeClaims(answerEval.evidenceLinks(), retrieval.grounds()),
 			answerEval.semanticShadowDisagreements(),
 			answerEval.unsafeSemanticShadowDisagreementCount(),
-			answerEval.verifiedAnswer()
+			answerEval.verifiedAnswer(),
+			answerEval.verificationEnvelope()
 		);
 	}
 
@@ -2721,7 +2723,7 @@ public class LawAiAnswerService {
 					unsafeShadowCount(verification.claimResult().semanticShadowResults()),
 					limitText(verifiedAnswer, 1_500),
 					passed ? "" : appendMessage(supportMessage, oracleResult.message())
-				);
+				).withVerification(EvaluationVerificationEnvelope.capture(verification,retrieval.grounds()));
 			}
 			List<String> answerTerms = expectedAnswerTerms == null || expectedAnswerTerms.isEmpty()
 				? expectedTerms.stream().limit(4).toList()
@@ -2753,7 +2755,7 @@ public class LawAiAnswerService {
 				unsafeShadowCount(verification.claimResult().semanticShadowResults()),
 				limitText(verifiedAnswer, 1_500),
 				message
-			);
+			).withVerification(EvaluationVerificationEnvelope.capture(verification,retrieval.grounds()));
 		} catch (RuntimeException exception) {
 			return AnswerEvalResult.failed("Answer-level evaluation failed: " + exception.getMessage());
 		}
@@ -4314,8 +4316,21 @@ public class LawAiAnswerService {
 		List<ClaimMatcherShadowResult> semanticShadowDisagreements,
 		int unsafeSemanticShadowDisagreementCount,
 		String verifiedAnswer,
-		String message
+		String message,
+		EvaluationVerificationEnvelope verificationEnvelope
 	) {
+		private AnswerEvalResult(boolean passed,List<String> matchedTerms,List<String> missingTerms,
+			List<String> forbiddenMatchedTerms,List<String> unsupportedClaims,List<String> contradictedClaims,
+			List<ClaimVerifier.ClaimEvidenceLink> evidenceLinks,List<ClaimMatcherShadowResult> semanticShadowDisagreements,
+			int unsafeSemanticShadowDisagreementCount,String verifiedAnswer,String message) {
+			this(passed,matchedTerms,missingTerms,forbiddenMatchedTerms,unsupportedClaims,contradictedClaims,
+				evidenceLinks,semanticShadowDisagreements,unsafeSemanticShadowDisagreementCount,verifiedAnswer,message,null);
+		}
+		private AnswerEvalResult withVerification(EvaluationVerificationEnvelope envelope) {
+			return new AnswerEvalResult(passed,matchedTerms,missingTerms,forbiddenMatchedTerms,unsupportedClaims,
+				contradictedClaims,evidenceLinks,semanticShadowDisagreements,unsafeSemanticShadowDisagreementCount,
+				verifiedAnswer,message,envelope);
+		}
 		private AnswerEvalResult(
 			boolean passed,
 			List<String> matchedTerms,

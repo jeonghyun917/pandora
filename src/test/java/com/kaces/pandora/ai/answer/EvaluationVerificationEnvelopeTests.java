@@ -37,6 +37,10 @@ class EvaluationVerificationEnvelopeTests {
         assertThat(envelope.verifiedAnswer()).isEqualTo(ClaimVerifier.INSUFFICIENT_EVIDENCE_MESSAGE);
         var duplicate=EvaluationVerificationEnvelope.capture(result("독립 주장",true,List.of()),List.of(ground(1,99),ground(1,100)));
         assertThat(duplicate.attributedClaims()).isEmpty();
+        var verified=result("독립 주장",true,List.of());
+        var unevaluated=new AnswerVerificationService.Result(verified.guardedAnswer(),verified.claimResult(),
+            AnswerQuestionAlignmentVerifier.AlignmentResult.claimOnly());
+        assertThat(EvaluationVerificationEnvelope.capture(unevaluated,List.of(ground(1,99))).aligned()).isFalse();
     }
     @Test void carriesOnlyAnUnambiguousSourceOwnedReferenceReceipt() {
         var base=new OfficialCommencementEvidence(LocalDate.of(2026,8,28),CLAUSE,"$.법령.부칙.부칙단위[0]",

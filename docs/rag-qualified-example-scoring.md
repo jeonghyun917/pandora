@@ -48,6 +48,21 @@ contract. Live evaluation requires explicit server/runner integration and its
 own verified contract identity. The frozen dataset, old checkpoints, original
 oracle and release-blocking gates remain unchanged.
 
+## Trusted evaluation transport
+
+Evaluation case reports now append `verificationEnvelope` when the real
+claim-and-alignment verifier executed. Schema1 carries the untruncated verified
+answer, independent alignment/insufficiency, unsupported/numeric/contradicted
+claims, links and unique owner attributions, unsafe disagreement count, and an
+unambiguous source-bound reference receipt when present. No oracle verdict is
+included. Skipped, metadata-only and generation-error paths leave it null.
+Unevaluated claim-only alignment is not reported as evaluated alignment.
+
+Legacy `passed`, `answerVerified` and the1500-character-plus-ellipsis display
+remain unchanged. New source-qualified scorers must consume the nested complete
+envelope, never infer verification from those legacy combined/truncated fields.
+Adding this transport registers no contract and authorizes no external payload.
+
 ## Reference-qualified general commencement candidate
 
 `scripts/lib/rag-reference-commencement-scorer.js` is a separate offline subtype,

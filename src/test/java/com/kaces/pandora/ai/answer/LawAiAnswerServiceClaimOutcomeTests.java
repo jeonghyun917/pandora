@@ -605,6 +605,41 @@ class LawAiAnswerServiceClaimOutcomeTests {
 	}
 
 	@Test
+	void evaluationEnvelopeRetainsFullVerifiedAnswerWithoutChangingLegacyTruncation() throws Exception {
+		String complete=(REPAIRED_ANSWER+" ").repeat(90).trim();
+		when(answerClient.answer(anyString(),anyString(),anyInt())).thenReturn(complete);
+		when(answerVerificationService.verify(eq(QUESTION),eq(complete),anyList()))
+			.thenReturn(verificationResult(complete,complete,false));
+		var evalCase=envelopeCase(true);
+		var oracleCase=new LawAiEvalRequest.EvalCase("oracle-envelope-fixture",QUESTION,List.of("law"),List.of("연차 유급휴가"),1,
+			List.of("근로기준법"),List.of("requirement"),List.of(),List.of(),List.of(),List.of(),
+			"법정 요건에 따른 부여 의무를 답한다",List.of("OK"),true,List.of(),List.of(),List.of(List.of("법정 요건")),List.of());
+		for(var result:service.evaluate(new LawAiEvalRequest(List.of(evalCase,oracleCase),List.of(),null)).results()) {
+		assertThat(result.answerVerified()).isTrue();
+		assertThat(result.verifiedAnswer()).isEqualTo(complete.substring(0,1500)+"...");
+		assertThat(result.verificationEnvelope()).isNotNull();
+		assertThat(result.verificationEnvelope().verifiedAnswer()).isEqualTo(complete);
+		assertThat(result.verificationEnvelope().attributedClaims()).hasSize(1);
+		assertThat(result.verificationEnvelope().aligned()).isTrue();
+		var json=new tools.jackson.databind.ObjectMapper().valueToTree(result);
+		assertThat(json.path("verificationEnvelope").path("verifiedAnswer").asString()).isEqualTo(complete);
+		}
+	}
+	@Test
+	void skippedAndFailedGenerationCannotFabricateAVerificationEnvelope() {
+		var skipped=service.evaluate(new LawAiEvalRequest(List.of(envelopeCase(false)),List.of(),null)).results().get(0);
+		assertThat(skipped.verificationEnvelope()).isNull();
+		when(answerClient.answer(anyString(),anyString(),anyInt())).thenThrow(new IllegalStateException("fixture unavailable"));
+		var failed=service.evaluate(new LawAiEvalRequest(List.of(envelopeCase(true)),List.of(),null)).results().get(0);
+		assertThat(failed.answerVerified()).isFalse();
+		assertThat(failed.verificationEnvelope()).isNull();
+	}
+	private static LawAiEvalRequest.EvalCase envelopeCase(boolean verifyAnswer) {
+		return new LawAiEvalRequest.EvalCase("envelope-fixture",QUESTION,List.of("law"),List.of("연차 유급휴가"),1,
+			List.of("근로기준법"),List.of("requirement"),List.of(),List.of(),List.of(),List.of(),
+			"법정 요건에 따른 부여 의무를 답한다",List.of("OK"),verifyAnswer,List.of("법정 요건","연차 유급휴가"),List.of());
+	}
+	@Test
 	void answerLevelEvaluationUsesTheSameRepairedAndReverifiedAnswer() {
 		when(answerClient.answer(anyString(), anyString(), anyInt())).thenReturn(GENERATED_ANSWER);
 		when(answerClient.rewrite(eq(QUESTION), anyList())).thenReturn(REPAIRED_ANSWER);
