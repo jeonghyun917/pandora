@@ -1754,13 +1754,13 @@ public class LawAiAnswerService {
 					List.of("법인ㆍ단체 또는 기관", "기타공공기관"), false, 16), routing));
 		}
 		if (targets.contains("law") && judgedEvidence.directEvidenceFound()
-			&& EvidenceJudge.asksSubcontractApprovalConsequence(normalized.query())
+			&& EvidenceJudge.needsSubcontractApprovalExample(normalized.query())
 			&& orderedEvidenceChunks.stream().anyMatch(EvidenceJudge::isSubcontractApprovalRemedySource)) {
 			displayCandidates = new java.util.ArrayList<>(displayCandidates);
 			displayCandidates.addAll(safeLexicalQuery("subcontract approval procedure support",
 				() -> lawChunkMapper.findSemanticChunksByDocumentTitleAndText(List.of("law"),
 					List.of("소프트웨어 진흥법 시행규칙"), List.of("적정성을 검토", "승인 여부를 신청인"), false, 12), routing));
-			if (AnswerQuestionAlignmentVerifier.asksPublicSubcontractApprovalScope(normalized.query())) {
+			if (AnswerQuestionAlignmentVerifier.needsExplicitApprovalQualification(normalized.query())) {
 				displayCandidates.addAll(safeLexicalQuery("subcontract approval application scope",
 					() -> lawChunkMapper.findSemanticChunksByDocumentTitleAndText(List.of("admrul"),
 						List.of("소프트웨어사업 계약 및 관리감독에 관한 지침"),
@@ -1824,7 +1824,7 @@ public class LawAiAnswerService {
 				.map(g -> g.chunkId() == consultationScope.chunkId() && consultationScope.target().equals(g.target())
 					? asRelatedSupport(g) : g).toList();
 		}
-		if (judgedEvidence.directEvidenceFound() && EvidenceJudge.asksSubcontractApprovalConsequence(normalized.query())
+		if (judgedEvidence.directEvidenceFound() && EvidenceJudge.needsSubcontractApprovalExample(normalized.query())
 			&& orderedChunks.stream().anyMatch(EvidenceJudge::isSubcontractApprovalRemedySource)) {
 			var applicability = linkedSubcontractApprovalScope(orderedChunks, orderedChunks, normalized.query()).orElse(null);
 			grounds = grounds.stream().map(g -> isSubcontractApprovalProcedureSource(
@@ -3866,6 +3866,14 @@ public class LawAiAnswerService {
 	private String answerFocusInstruction(String query) {
 		List<String> configuredInstructions = QuestionSearchPlan.from(query).answerFocusInstructions();
 		String normalized = normalizeForMatch(query);
+		if (ConditionalExampleOverview.requested(query)) {
+			return """
+				- 실제 사업의 적용대상이나 위반 의무를 추정하지 말고, 제공된 원문의 조건부 사례 하나만 설명하세요.
+				- 적용범위를 명시한 문장과 그 범위의 위반 조건·조치 주체·권한 강도를 모두 가진 조치 문장을 각각 원문 그대로 보존하세요.
+				- 두 문장에 없는 자동 제재·모든 사업 적용·의무나 별도의 결론을 추가하지 마세요.
+				- 연결을 입증하는 보조 절차에서 별도의 기한·의무를 가져와 답변에 추가하지 마세요.
+				""".stripIndent().trim();
+		}
 		if (isProjectReviewPreConsultationRelationQuestion(normalized)) {
 			return """
 				- 위 두 근거 문장만 그대로 답하세요: '국가기관 등이 발주하는 모든 SW사업(상용SW포함)' 및 '사전협의의 대상사업은 예산과목 및 계약방식과 관계없이 대상기관이 추진하는 모든 정보화사업임'.
@@ -6953,7 +6961,7 @@ public class LawAiAnswerService {
 		String normalizedQuery = normalizeForMatch(query);
 		var ownedExclusions = chunks.stream().filter(row -> SourceOwnedConsultationExclusion.sourceAnswers(query,row)).toList();
 		if (!ownedExclusions.isEmpty()) return ownedExclusions;
-		if (EvidenceJudge.asksSubcontractApprovalConsequence(query)) {
+		if (EvidenceJudge.needsSubcontractApprovalExample(query)) {
 			var approval = chunks.stream().filter(EvidenceJudge::isSubcontractApprovalRemedySource).toList();
 			if (!approval.isEmpty()) return approval;
 		}
@@ -9377,7 +9385,7 @@ public class LawAiAnswerService {
 		boolean strictDocumentEvidenceLookup = isStrictDocumentEvidenceAnchorQuestion(query, normalizedQuery)
 			&& !documentTitleAnchors.isEmpty();
 		if (lawTargets.contains("admrul") && documentTitleAnchors.isEmpty()
-			&& EvidenceJudge.asksSubcontractApprovalConsequence(query)) {
+			&& EvidenceJudge.needsSubcontractApprovalExample(query)) {
 			// Recall the operative provision first; Article 51 by itself is not the approval remedy.
 			var approval = safeLexicalQuery("subcontract approval remedy",
 				() -> lawChunkMapper.findSemanticChunksByDocumentTitleAndText(List.of("admrul"),
@@ -12258,7 +12266,7 @@ public class LawAiAnswerService {
 
 	private List<LawSemanticChunkRow> withSubcontractApprovalProcedure(List<LawSemanticChunkRow> selected,
 		List<LawSemanticChunkRow> candidates, String query, boolean directEvidenceFound, int limit) {
-		if (!directEvidenceFound || !EvidenceJudge.asksSubcontractApprovalConsequence(query) || candidates == null
+		if (!directEvidenceFound || !EvidenceJudge.needsSubcontractApprovalExample(query) || candidates == null
 			|| selected.size() >= limit || selected.stream().noneMatch(EvidenceJudge::isSubcontractApprovalRemedySource)
 			|| selected.stream().anyMatch(LawAiAnswerService::isSubcontractApprovalProcedureSource)) return selected;
 		var procedure = candidates.stream().filter(LawAiAnswerService::isSubcontractApprovalProcedureSource).distinct().toList();
@@ -12270,7 +12278,7 @@ public class LawAiAnswerService {
 
 	private java.util.Optional<LawSemanticChunkRow> linkedSubcontractApprovalScope(List<LawSemanticChunkRow> selected,
 		List<LawSemanticChunkRow> candidates, String query) {
-		if (candidates == null || !AnswerQuestionAlignmentVerifier.asksPublicSubcontractApprovalScope(query)
+		if (candidates == null || !AnswerQuestionAlignmentVerifier.needsExplicitApprovalQualification(query)
 			|| selected.stream().noneMatch(LawAiAnswerService::isSubcontractApprovalProcedureSource)) {
 			return java.util.Optional.empty();
 		}
@@ -12289,7 +12297,7 @@ public class LawAiAnswerService {
 
 	private List<LawSemanticChunkRow> withSubcontractApprovalScope(List<LawSemanticChunkRow> selected,
 		List<LawSemanticChunkRow> candidates, String query, boolean directEvidenceFound, int limit) {
-		if (!directEvidenceFound || selected.size() >= limit || !EvidenceJudge.asksSubcontractApprovalConsequence(query)) return selected;
+		if (!directEvidenceFound || selected.size() >= limit || !EvidenceJudge.needsSubcontractApprovalExample(query)) return selected;
 		var scope = linkedSubcontractApprovalScope(selected, candidates, query);
 		if (scope.isEmpty() || selected.contains(scope.get())) return selected;
 		var result = new java.util.ArrayList<>(selected);

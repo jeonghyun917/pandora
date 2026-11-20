@@ -422,6 +422,9 @@ public class AnswerQuestionAlignmentVerifier {
 	static boolean asksPublicSubcontractApprovalScope(String question) {
 		return question != null && APPROVAL_PUBLIC_SCOPE.matcher(question).find();
 	}
+	static boolean needsExplicitApprovalQualification(String question) {
+		return asksPublicSubcontractApprovalScope(question) || ConditionalExampleOverview.requested(question);
+	}
 
 	private static boolean exactApprovalScopeBody(String body) {
 		String text = normalize(body);

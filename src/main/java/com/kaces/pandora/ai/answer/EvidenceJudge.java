@@ -1785,6 +1785,13 @@ public class EvidenceJudge {
 			return new JudgedChunk(chunk, score, topicAligned || owned, relevant || owned, owned,
 				owned ? 1 : 0, owned ? 1 : 0);
 		}
+		if (ConditionalExampleOverview.requested(profile.normalizedQuestion())) {
+			// This is one conditional norm as an example, never proof that a real project is covered.
+			boolean owned=!tableOfContents && !suppressEvidenceNoise && isSubcontractApprovalRemedySource(chunk)
+				&& !missingRequestedArticleOwnership(profile,chunk,documentTitle)
+				&& DirectEvidenceSelectionPolicy.matchesExplicitAuthority(chunk,profile.explicitDocumentTitles());
+			return new JudgedChunk(chunk,score,owned,owned,owned,owned?1:0,owned?1:0);
+		}
 		String procurementQuery = profile.normalizedQuestion();
 		boolean asksCommercialDirectPurchase = procurementQuery.contains("직접구매")
 			&& containsAny(procurementQuery, List.of("상용sw", "상용소프트웨어"));
@@ -3366,7 +3373,7 @@ public class EvidenceJudge {
 
 	static boolean subcontractRemedyOutsideQuestion(String question, LawSemanticChunkRow chunk) {
 		if (!containsPenaltyConsequenceCue(question) || question.contains("하도급")
-			|| (question.contains("소프트웨어진흥법") && question.contains("제51조"))) {
+			|| (question.contains("소프트웨어진흥법") && question.contains("제51조")) || ConditionalExampleOverview.requested(question)) {
 			return false;
 		}
 		String body = normalize(chunk.chunkText());
@@ -3390,19 +3397,22 @@ public class EvidenceJudge {
 			|| !normalize(chunk.title()).equals("소프트웨어사업계약및관리감독에관한지침")) return false;
 		String body = normalize(chunk.chunkText());
 		return body.startsWith("제20조하도급계약의승인신청등")
-			&& body.contains("규칙제14조제2항에따라하도급또는다시하도급의적정성여부를검토할때")
+			&& body.contains("국가기관등의장은규칙제14조제2항에따라하도급또는다시하도급의적정성여부를검토할때")
 			&& body.contains("법제51조에따른하도급제한규정을준수하였는지여부를확인하여야하며이를위반한경우"
 				+ "해당하도급계약승인을거절하거나해당서류의보완을요청할수있다");
 	}
 
 	private static boolean postApprovalInspectionOutsideReview(String question, LawSemanticChunkRow chunk) {
-		if (!asksSubcontractApprovalConsequence(question)) return false;
+		if (!needsSubcontractApprovalExample(question)) return false;
 		String body = normalize(chunk.chunkText());
 		return "admrul".equals(chunk.target())
 			&& normalize(chunk.title()).equals("소프트웨어사업계약및관리감독에관한지침")
 			&& body.startsWith("제23조하도급관리등")
 			&& body.contains("승인된하도급및다시하도급계약의준수실태")
 			&& body.contains("승인받은대로이행하지아니한경우");
+	}
+	static boolean needsSubcontractApprovalExample(String question) {
+		return asksSubcontractApprovalConsequence(question) || ConditionalExampleOverview.requested(question);
 	}
 
 	static boolean isSecurityContractConsequenceOutsideQuestion(

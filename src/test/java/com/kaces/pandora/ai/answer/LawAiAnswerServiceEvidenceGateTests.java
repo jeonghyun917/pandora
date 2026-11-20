@@ -571,6 +571,47 @@ class LawAiAnswerServiceEvidenceGateTests {
         } finally {service.shutdownExecutors();}
     }
 
+    @Test void explicitConditionalOverviewCarriesTheQualifiedExampleAcrossLookupJudgeAndContext() throws Exception {
+        String title="소프트웨어사업 계약 및 관리감독에 관한 지침";
+        var remedy=chunk(99510,99500,"admrul",title,"제20조(하도급계약의 승인신청 등)",
+            "제20조(하도급계약의 승인신청 등) ② "+ConditionalExampleOverviewTests.REMEDY,null);
+        var rule=chunk(99511,"law","소프트웨어 진흥법 시행규칙","제14조(하도급의 승인 절차 등)",ConditionalExampleOverviewTests.PROCEDURE);
+        var scope=chunk(99512,99500,"admrul",title,"제2조(적용범위)","제2조(적용범위) "+ConditionalExampleOverviewTests.SCOPE,null);
+        var otherScope=chunk(99513,99501,"admrul",title,"제2조(적용범위)",scope.chunkText(),null);
+        var law=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),
+            new Class<?>[]{LawChunkMapper.class},(proxy,method,args)->
+                method.getName().equals("findSemanticChunksByDocumentTitleAndText") && List.of("admrul").equals(args[0])
+                    && List.of(title).equals(args[1]) && ((List<?>)args[2]).contains("하도급 제한 규정")
+                    ? List.of(remedy) : List.of());
+        var service=service(law,null);
+        try {
+            String question=ConditionalExampleOverviewTests.REQUEST;
+            var recalled=findLexicalChunks(service,QuestionSearchPlan.from(question),List.of("admrul"),false);
+            assertThat(recalled).contains(remedy);
+            var intended=filterByQuestionIntent(service,recalled,question);
+            assertThat(intended).containsExactly(remedy);
+            var judged=new EvidenceJudge().judge(question,intended,Map.of(),1);
+            assertThat(judged.directEvidenceCount()).isEqualTo(1);
+            var display=LawAiAnswerService.class.getDeclaredMethod("selectDisplayEvidenceChunks",List.class,List.class,String.class,boolean.class,int.class);
+            display.setAccessible(true);
+            var selected=(List<LawSemanticChunkRow>)display.invoke(service,judged.chunks(),List.of(otherScope,rule,scope),question,true,1);
+            assertThat(selected).containsExactly(remedy,rule,scope);
+            var answer=LawAiAnswerService.class.getDeclaredMethod("selectAnswerContextChunks",List.class,String.class);
+            answer.setAccessible(true);
+            var context=(List<LawSemanticChunkRow>)answer.invoke(service,selected,question);
+            assertThat(context).contains(remedy,rule,scope).doesNotContain(otherScope);
+            var grounds=new ParentContextAssembler().toGrounds(context,Map.of(),Map.of(),LawSemanticChunkRow::chunkText,"direct");
+            var checked=new AnswerVerificationService(new AnswerGuard(),new ClaimVerifier()).verify(question,
+                ConditionalExampleOverviewTests.SCOPE+"\n"+ConditionalExampleOverviewTests.REMEDY,grounds);
+            assertThat(checked.insufficientEvidence()).isFalse();
+            for(String general:List.of("정보화사업에서 일반 법령을 위반하면 받을 수 있는 조치는?",
+                question.replace("정보화 사업에서","민간 소프트웨어사업에서"))) {
+                assertThat(findLexicalChunks(service,QuestionSearchPlan.from(general),List.of("admrul"),false)).doesNotContain(remedy);
+                assertThat(new EvidenceJudge().judge(general,List.of(remedy),Map.of(),1).directEvidenceCount()).isZero();
+            }
+        } finally {service.shutdownExecutors();}
+    }
+
     @Test void configuredDomainTitleCandidatesAvoidTheBroadLawScanButDoNotReplaceEmptyFallback() throws Exception {
         var rule=chunk(99103L,"law","소프트웨어 진흥법","사업 관리 감독","국가기관등의 장이 소프트웨어사업을 추진하는 경우 관련 법령의 준수 여부를 확인한다.");
         var broad=new java.util.concurrent.atomic.AtomicInteger();
