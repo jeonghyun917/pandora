@@ -1,0 +1,36 @@
+{
+  "gatePassed": false,
+  "completionStatus": "ERROR",
+  "versionedStage": "penalty",
+  "evaluationContractSha256": "8afcc132da9282d0ef2e27262f850df0f20ad0e0466c7f3806de1beb58b9fc43",
+  "checkpointIdentity": {
+    "schemaVersion": 5,
+    "evaluationContractSha256": "8afcc132da9282d0ef2e27262f850df0f20ad0e0466c7f3806de1beb58b9fc43",
+    "runScope": "targeted",
+    "gateProfile": "release",
+    "baseUrl": "http://127.0.0.1:8080",
+    "datasetHash": "8afcc132da9282d0ef2e27262f850df0f20ad0e0466c7f3806de1beb58b9fc43",
+    "selectionHash": "879f9e6181f01ebc6ec8fa262fc0f6d10313fa402c76ff14eec5b9a200945590",
+    "baselineManifestId": "e9b194c54439bcfcc4e0210b93dbb013cc2cd10e20ba777f8d093ec084db9855",
+    "selectedCaseCount": 1,
+    "indexVersion": "law_chunks+rag_chunks_v4",
+    "embeddingModel": "text-embedding-3-small",
+    "answerModel": "gpt-5-mini",
+    "lawCollection": "law_chunks",
+    "ragCollection": "rag_chunks_v4",
+    "runtimeInfoSource": "server",
+    "runtimeArtifactSha256": "00815e5c645d0d3a4438a162d76a7fa72325121dcbf2a522fb67bcb524d31a6d",
+    "runtimeInstanceId": "cbf321ca-7b60-4836-8b00-329eda449c5b",
+    "runtimeConfigSha256": "47d394b4ea5aa5261c62f9c7343a7963f10b0bd41efc1637f6b101ae302b5c32",
+    "indexRevision": "e39713ce571b7502f930a6efe517c93ccc63d3147d04545314085d3e60d95fa5",
+    "lexicalRevision": "4500a4da1ff54f0f25c95119a6a2647ae51381c0b4d31b52376344603e48f665",
+    "qdrantReady": true,
+    "qdrantSearchFailureCount": 0
+  },
+  "evaluationAttemptPaths": [
+    "logs\\contracts\\8afcc132da9282d0ef2e27262f850df0f20ad0e0466c7f3806de1beb58b9fc43\\879f9e6181f01ebc6ec8fa262fc0f6d10313fa402c76ff14eec5b9a200945590\\targeted-checkpoint-attempt-0001.json"
+  ],
+  "failureType": "VERSIONED_INVOCATION_OR_PROVENANCE_ERROR",
+  "error": "The operation was aborted due to timeout",
+  "failedAt": "2026-11-20T04:19:58.136Z"
+}

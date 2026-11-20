@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-11-20T04:19:53.079Z",
+  "promotionEligible": false,
+  "label": "all",
+  "httpStatus": 200,
+  "responseContractSha256": "8afcc132da9282d0ef2e27262f850df0f20ad0e0466c7f3806de1beb58b9fc43",
+  "requestedCaseIds": [
+    "it-compliance-penalty"
+  ],
+  "body": {
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
+    "passRate": 0,
+    "gatePassed": false,
+    "minimumPassed": 1,
+    "blockingFailureIds": [
+      "it-compliance-penalty"
+    ],
+    "semanticShadowDisagreementCount": 0,
+    "unsafeSemanticShadowDisagreementCount": 0,
+    "results": [
+      {
+        "id": "it-compliance-penalty",
+        "question": "정보화 사업에서 법·제도를 준수하지 않았을 때 가능한 조치를, 사업 유형과 위반 의무를 임의로 추정하지 않고 공식 원문이 정한 적용대상·위반조건·주체·권한을 밝힌 조건부 사례로 설명해 주세요.",
+        "targets": [
+          "official_doc",
+          "internal_doc",
+          "admrul",
+          "law"
+        ],
+        "passed": false,
+        "requiredMatches": 2,
+        "matchedTerms": [],
+        "missingTerms": [
+          "제51조",
+          "하도급",
+          "보완"
+        ],
+        "matchedTitleTerms": [],
+        "missingTitleTerms": [
+          "소프트웨어사업 계약 및 관리감독에 관한 지침"
+        ],
+        "matchedSectionTypes": [],
+        "missingSectionTypes": [
+          "penalty"
+        ],
+        "matchedDocumentTerms": [],
+        "missingDocumentTerms": [
+          "소프트웨어사업"
+        ],
+        "matchedPageNumbers": [],
+        "missingPageNumbers": [],
+        "matchedParentTerms": [],
+        "missingParentTerms": [],
+        "forbiddenMatchedTerms": [],
+        "topMatchedTerms": [],
+        "answerDirection": "적용범위와 승인 심사 단계·제51조 위반·권한 주체·재량을 모두 보존한 원문 조건부 사례만 답하며 실제 미특정 사업에 적용된다고 추정하지 않는다.",
+        "expectedResultMsgs": [
+          "OK"
+        ],
+        "resultMsg": "NO_GROUNDS",
+        "message": "진단: 약한 근거로 답변하지 않도록 최종 신뢰도 게이트에서 중단했습니다.\n사유: 질문의 핵심 의도에 직접 답하는 근거가 없어 답변 생성을 중단했습니다.\nJudge 정책: direct / topicAligned 1건 / relevant 1건 / direct 1건\n단계별 건수: 후보 232건 / 랭킹 232건 / 의도필터 1건 / Judge후보 1건 / Judge통과 1건 / 최종근거 0건\n확인: DEBUG에서 후보 문서와 Judge 정책을 보고 검색 실패인지, 직접근거 부족인지, 청크 품질 문제인지 구분할 수 있습니다. | answer-level verification was not executed",
+        "selected": [],
+        "answerVerificationRequired": true,
+        "answerVerified": false,
+        "matchedAnswerTerms": [],
+        "missingAnswerTerms": [],
+        "forbiddenAnswerMatchedTerms": [],
+        "unsupportedAnswerClaims": [],
+        "contradictedAnswerClaims": [],
+        "claimEvidenceLinks": [],
+        "attributedClaims": [],
+        "semanticShadowDisagreements": [],
+        "unsafeSemanticShadowDisagreementCount": 0,
+        "verifiedAnswer": "",
+        "verificationEnvelope": null
+      }
+    ]
+  }
+}
