@@ -183,6 +183,11 @@ public class AnswerQuestionAlignmentVerifier {
 				? AlignmentResult.aligned(supportedLinks.get(0).claim())
 				: AlignmentResult.failed("REFERENCE_COMMENCEMENT_UNPROVEN",List.of(CONDITION));
 		}
+		if (ConditionalExampleOverview.requested(question)) {
+			var example=qualifiedApprovalExample(claimResult,grounds);
+			return example.map(AlignmentResult::aligned)
+				.orElseGet(()->AlignmentResult.failed("QUALIFIED_EXAMPLE_UNPROVEN",List.of(SUBJECT,CONDITION)));
+		}
 		if (claimResult != null && !claimResult.insufficientEvidence() && claimResult.strongClaimCount() == 1
 			&& claimResult.unsupportedClaims().isEmpty() && claimResult.unsupportedNumericClaims().isEmpty()
 			&& claimResult.contradictedClaims().isEmpty() && supportedLinks.size() == 1
@@ -328,31 +333,32 @@ public class AnswerQuestionAlignmentVerifier {
 	}
 
 	// Project only the applicant-review stage, and only for the claim owned by the referencing provision.
+	static java.util.Optional<String> qualifiedApprovalExample(ClaimVerifier.VerificationResult claims,
+		List<LawAiAnswerGround> grounds) {
+		if (claims==null || grounds==null || claims.insufficientEvidence() || claims.strongClaimCount()!=2
+			|| claims.supportedStrongClaimCount()!=2 || claims.evidenceLinks().size()!=2
+			|| !claims.unsupportedClaims().isEmpty() || !claims.unsupportedNumericClaims().isEmpty()
+			|| !claims.contradictedClaims().isEmpty() || claims.semanticShadowResults().stream().anyMatch(ClaimMatcherShadowResult::unsafeDisagreement))
+			return java.util.Optional.empty();
+		var links=claims.evidenceLinks();
+		if (links.stream().anyMatch(l->!SUPPORTED.equals(l.relation())) || links.get(0).groundNumber()==links.get(1).groundNumber()
+			|| !normalize(claims.verifiedAnswer()).equals(normalize(links.get(0).claim()+"\n"+links.get(1).claim())))
+			return java.util.Optional.empty();
+		var owner=qualifiedApprovalRemedyOwner(links.get(1),grounds).orElse(null);
+		if (owner==null || owner.documentId()<=0 || owner.chunkId()<=0 || owner.sourceDate()==null || owner.sourceDate().isBlank()
+			|| !hasCurrentApprovalProcedure(grounds) || !hasExplicitApprovalScope(owner,grounds,links)
+			|| !normalize(links.get(0).claim()).equals(APPROVAL_SCOPE_CLAUSE)) return java.util.Optional.empty();
+		return java.util.Optional.of(links.get(1).claim());
+	}
+
 	private static AlignmentProfile approvalReviewProfile(String question, ClaimVerifier.ClaimEvidenceLink link,
 		List<LawAiAnswerGround> grounds, List<ClaimVerifier.ClaimEvidenceLink> supportedLinks, AlignmentProfile fallback) {
 		var stage = APPROVAL_REVIEW.matcher(question == null ? "" : question);
 		if (!stage.find() || grounds == null) return fallback;
 		int start = stage.start(), end = stage.end();
 		if (stage.find()) return fallback;
-		String claim = normalize(link.claim());
-		if (!claim.startsWith("국가기관등의장은규칙제14조제2항에따라" + normalize(APPROVAL_REMEDY_STAGE))
-			|| !claim.contains("법제51조에따른하도급제한규정")
-			|| !claim.endsWith("이를위반한경우해당하도급계약승인을거절하거나해당서류의보완을요청할수있다")
-			|| !claim.equals(normalize(link.evidenceSentence()))) return fallback;
-		var owners = grounds.stream().filter(g -> g != null && g.number() == link.groundNumber()).toList();
-		if (owners.size() != 1) return fallback;
-		var owner = owners.get(0);
-		if (!"admrul".equals(owner.target()) || !"CURRENT".equals(owner.effectiveStatus())
-			|| !"direct".equals(owner.evidenceRole())
-			|| !normalize(owner.title()).equals("소프트웨어사업계약및관리감독에관한지침")
-			|| !(normalize(owner.chunkNo()).equals("제20조")
-				|| normalize(owner.chunkTitle()).startsWith("제20조하도급계약의승인신청"))
-			|| !normalize(owner.matchedChildText()).contains(claim)) return fallback;
-		var rules = grounds.stream().filter(g -> g != null && g.number() != owner.number()
-			&& "law".equals(g.target()) && "CURRENT".equals(g.effectiveStatus())
-			&& isSubcontractApprovalProcedure(g.title(), g.chunkNo(), g.chunkTitle(), g.matchedChildText()))
-			.toList();
-		if (rules.size() != 1) return fallback;
+		var owner=qualifiedApprovalRemedyOwner(link,grounds).orElse(null);
+		if (owner==null || !hasCurrentApprovalProcedure(grounds)) return fallback;
 		String projected = question.substring(0, start) + APPROVAL_REMEDY_STAGE + question.substring(end);
 		var publicScope = APPROVAL_PUBLIC_SCOPE.matcher(projected);
 		if (publicScope.find() && hasExplicitApprovalScope(owner, grounds, supportedLinks)) {
@@ -363,6 +369,34 @@ public class AnswerQuestionAlignmentVerifier {
 		projected = APPROVAL_ABBREVIATED_DUTY.matcher(projected)
 			.replaceFirst("법 제51조에 따른 하도급 제한 규정을 위반한 경우");
 		return AlignmentProfile.from(projected);
+	}
+
+	private static java.util.Optional<LawAiAnswerGround> qualifiedApprovalRemedyOwner(ClaimVerifier.ClaimEvidenceLink link,
+		List<LawAiAnswerGround> grounds) {
+		if (link==null || grounds==null) return java.util.Optional.empty();
+		String claim = normalize(link.claim());
+		if (!claim.startsWith("국가기관등의장은규칙제14조제2항에따라" + normalize(APPROVAL_REMEDY_STAGE))
+			|| !claim.contains("법제51조에따른하도급제한규정")
+			|| !claim.endsWith("이를위반한경우해당하도급계약승인을거절하거나해당서류의보완을요청할수있다")
+			|| !claim.equals(normalize(link.evidenceSentence()))) return java.util.Optional.empty();
+		var owners = grounds.stream().filter(g -> g != null && g.number() == link.groundNumber()).toList();
+		if (owners.size() != 1) return java.util.Optional.empty();
+		var owner = owners.get(0);
+		if (!"admrul".equals(owner.target()) || !"CURRENT".equals(owner.effectiveStatus())
+			|| !"direct".equals(owner.evidenceRole())
+			|| !normalize(owner.title()).equals("소프트웨어사업계약및관리감독에관한지침")
+			|| !(normalize(owner.chunkNo()).equals("제20조")
+				|| normalize(owner.chunkTitle()).startsWith("제20조하도급계약의승인신청"))
+			|| !normalize(owner.matchedChildText()).contains(claim)) return java.util.Optional.empty();
+		return java.util.Optional.of(owner);
+	}
+
+	private static boolean hasCurrentApprovalProcedure(List<LawAiAnswerGround> grounds) {
+		var rules = grounds.stream().filter(g -> g != null
+			&& "law".equals(g.target()) && "CURRENT".equals(g.effectiveStatus())
+			&& isSubcontractApprovalProcedure(g.title(), g.chunkNo(), g.chunkTitle(), g.matchedChildText()))
+			.toList();
+		return rules.size()==1;
 	}
 
 	private static boolean hasExplicitApprovalScope(LawAiAnswerGround owner, List<LawAiAnswerGround> grounds,
