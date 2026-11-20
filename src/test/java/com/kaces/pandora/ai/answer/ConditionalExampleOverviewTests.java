@@ -23,6 +23,17 @@ class ConditionalExampleOverviewTests {
             ground(3,97,9,"admrul",title,"20260413","제2조",SCOPE));
     }
     final AnswerVerificationService verifier=new AnswerVerificationService(new AnswerGuard(),new ClaimVerifier());
+    @Test void productionShadowProfileRequiresCompleteOwnedNormsRatherThanAnUnsafeDisagreement() {
+        var parser=new KoreanEvidenceAtomParser();
+        var shadowVerifier=new ClaimVerifier(new ClaimEvidenceMatcher(),new SemanticEvidenceMatcher(parser),parser,
+            new com.kaces.pandora.semantic.config.LawAiVerificationProperties(true,false,20));
+        var service=new AnswerVerificationService(new AnswerGuard(),shadowVerifier);
+        var result=service.verify(REQUEST,SCOPE+"\n"+REMEDY,grounds());
+		assertThat(result.claimResult().semanticShadowResults().stream()
+			.filter(ClaimMatcherShadowResult::unsafeDisagreement).count()).isZero();
+        assertThat(result.insufficientEvidence()).isFalse();
+        assertThat(service.verify(REQUEST,SCOPE+"\n"+REMEDY.replace("적정성 여부를 검토할 때 ",""),grounds()).insufficientEvidence()).isTrue();
+    }
     @Test void recognizesOnlyAnExplicitNonAssumptiveGenericExampleIntent() {
         assertThat(ConditionalExampleOverview.requested(REQUEST)).isTrue();
         assertThat(ConditionalExampleOverview.requested("정보시스템 사업의 관련 법령 미준수 시 조치를 "+PURPOSE)).isTrue();

@@ -176,7 +176,7 @@ public class ClaimVerifier {
 			SemanticEvidenceMatcher.SemanticMatch semanticMatch = (
 				verificationProperties.semanticShadowEnabled() || verificationProperties.semanticAuthoritative()
 			)
-				? semanticEvidenceMatcher.match(evidenceAtomParser.parse(sentence), semanticIndex)
+				? semanticEvidenceMatcher.matchText(sentence, semanticIndex)
 				: null;
 			if (verificationProperties.semanticShadowEnabled()
 				&& semanticMatch != null

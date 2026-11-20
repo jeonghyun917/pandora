@@ -63,6 +63,8 @@ public class SemanticEvidenceMatcher {
 				.allMatch(atom -> atom.conditions().isEmpty() && atom.exceptions().isEmpty());
 			for (String evidence : evidenceTexts) {
 				for (ClaimEvidenceAtomizer.SourceFragment fragment : atomizer.sourceFragments(evidence)) {
+					List<String> originals = fragment.literalOnly() ? List.of()
+						: atomizer.atomizeSourceForAlignment(fragment.text());
 					for (EvidenceAtom atom : fragment.literalOnly() ? List.of(parser.parse(fragment.text()))
 						: atomizer.parseSourceAtomsForAlignment(fragment.text(), parser)) {
 						if (ClaimEvidenceAtomizer.hasUnownedInlineAnnotation(atom.sourceText(), fragment.literalOnly())) { continue; }
@@ -72,7 +74,9 @@ public class SemanticEvidenceMatcher {
 							continue;
 						}
 						atoms.add(new IndexedAtom(ground.number(), atom.sourceText(), atom,
-							membershipContextUnrestricted, fragment.literalOnly() || literalItems.contains(canonicalText)));
+							membershipContextUnrestricted, fragment.literalOnly() || literalItems.contains(canonicalText),
+                            originals.stream().filter(raw -> SourceOwnedCheckingConsequence.literal(raw)
+                                .equals(atom.sourceText())).findFirst().orElse(null)));
 					}
 				}
 			}
@@ -142,8 +146,18 @@ public class SemanticEvidenceMatcher {
 	}
 
 	public SemanticMatch match(EvidenceAtom claim, EvidenceIndex evidenceIndex) {
+        return match(claim, evidenceIndex, null);
+    }
+
+    public SemanticMatch matchText(String originalClaim, EvidenceIndex evidenceIndex) {
+        return match(parser.parse(originalClaim), evidenceIndex, originalClaim);
+    }
+
+    private SemanticMatch match(EvidenceAtom claim, EvidenceIndex evidenceIndex, String originalClaim) {
         SemanticMatch ordinary=matchOrdinary(claim,evidenceIndex);
         if(ordinary.status()!=ClaimEvidenceMatcher.Status.INSUFFICIENT || claim==null || evidenceIndex==null)return ordinary;
+        SemanticMatch pair = matchCheckingConsequence(claim, evidenceIndex, originalClaim);
+        if (pair.status() != ClaimEvidenceMatcher.Status.INSUFFICIENT) { return pair; }
         for(var bound:SourceOwnedConditionalScope.bind(claim.sourceText(),evidenceIndex.scopeRules())){
             SemanticMatch literal=matchOrdinary(parser.parse(bound.operativeLiteral()),evidenceIndex);
             if(literal.status()!=ClaimEvidenceMatcher.Status.SUPPORTED)continue;
@@ -153,6 +167,46 @@ public class SemanticEvidenceMatcher {
                 return new SemanticMatch(owned.status(),owned.alignedSlots(),owned.groundNumber(),owned.evidenceSentence(),owned.coverage(),"SOURCE_OWNED_CONDITIONAL_RULE");
         }
         return ordinary;
+    }
+
+    private SemanticMatch matchCheckingConsequence(EvidenceAtom claim, EvidenceIndex index, String originalClaim) {
+        if (originalClaim == null || claim.parseStatus() != EvidenceAtom.ParseStatus.AMBIGUOUS
+            || !claim.reasonCodes().equals(List.of("AMBIGUOUS_MIXED_MODALITY"))) {
+            return SemanticMatch.insufficient("NOT_COMPLETE_CHECKING_PAIR");
+        }
+        var parsed = SourceOwnedCheckingConsequence.parse(originalClaim, parser);
+        if (parsed.isEmpty()) { return SemanticMatch.insufficient("NOT_COMPLETE_CHECKING_PAIR"); }
+        var pair = parsed.get();
+        for (IndexedAtom source : index.atoms()) {
+            if (source.literalOnly() || source.groundNumber() <= 0
+                || source.originalSentence() == null
+                || !pair.literal().equals(SourceOwnedCheckingConsequence.literal(source.originalSentence()))) { continue; }
+            var owned = SourceOwnedCheckingConsequence.parse(source.originalSentence(), parser);
+            if (owned.isEmpty()) { continue; }
+            var localAtoms = List.of(new IndexedAtom(source.groundNumber(), source.sentence(), owned.get().duty()),
+                new IndexedAtom(source.groundNumber(), source.sentence(), owned.get().consequence()));
+            var local = new EvidenceIndex(localAtoms);
+            var globalAtoms = new ArrayList<>(index.atoms());
+            globalAtoms.addAll(localAtoms);
+            var global = new EvidenceIndex(globalAtoms);
+            Set<String> aligned = new LinkedHashSet<>();
+            boolean supported = true;
+            for (EvidenceAtom component : List.of(pair.duty(), pair.consequence())) {
+                SemanticMatch ownerMatch = matchOrdinary(component, local);
+                SemanticMatch globalMatch = matchOrdinary(component, global);
+                if (globalMatch.status() == ClaimEvidenceMatcher.Status.CONFLICTED
+                    || globalMatch.status() == ClaimEvidenceMatcher.Status.CONTRADICTED) { return globalMatch; }
+                if (ownerMatch.status() != ClaimEvidenceMatcher.Status.SUPPORTED
+                    || ownerMatch.groundNumber() != source.groundNumber()
+                    || globalMatch.status() != ClaimEvidenceMatcher.Status.SUPPORTED) { supported = false; break; }
+                aligned.addAll(ownerMatch.alignedSlots());
+            }
+            if (supported) {
+                return new SemanticMatch(ClaimEvidenceMatcher.Status.SUPPORTED, aligned, source.groundNumber(),
+                    source.sentence(), 1.0d, "SOURCE_OWNED_CHECKING_CONSEQUENCE_PAIR");
+            }
+        }
+        return SemanticMatch.insufficient("NO_SOURCE_OWNED_CHECKING_PAIR");
     }
 
     private SemanticMatch matchOrdinary(EvidenceAtom claim,EvidenceIndex evidenceIndex) {
@@ -470,7 +524,11 @@ public class SemanticEvidenceMatcher {
 	}
 
 	public record IndexedAtom(int groundNumber, String sentence, EvidenceAtom atom,
-		boolean membershipContextUnrestricted, boolean literalOnly) {
+		boolean membershipContextUnrestricted, boolean literalOnly, String originalSentence) {
+        public IndexedAtom(int groundNumber, String sentence, EvidenceAtom atom,
+            boolean membershipContextUnrestricted, boolean literalOnly) {
+            this(groundNumber, sentence, atom, membershipContextUnrestricted, literalOnly, null);
+        }
 		public IndexedAtom(int groundNumber, String sentence, EvidenceAtom atom, boolean membershipContextUnrestricted) {
 			this(groundNumber, sentence, atom, membershipContextUnrestricted, false);
 		}
