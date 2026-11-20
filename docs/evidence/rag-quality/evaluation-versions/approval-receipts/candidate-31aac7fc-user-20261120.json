@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "approvalRequestSha256": "5058784818bcddfbcf0068fbaec67f40984b88c4c383dd57e6592ad7b70c6877",
+  "authorizationReference": "User explicit request and reply to request_user_input_async call_2409bca57d884ac98400b89588acdec1 item 0: 새 후보별 고유 체크포인트 승인. Evaluate repaired candidate31aac7fc after implementing and verifying the once-per-candidate path; preserve failed records and unchanged questions, source, oracle and verifier.",
+  "approvedAt": "2026-11-20T05:03:00Z",
+  "timestampMeaning": "Time the received scope grant was recorded, not a claimed client submission time",
+  "approvedCandidateCommit": "31aac7fcf18443bdaf03c45afd23e99f4f3faddd",
+  "approvedCandidateSha256": "881f6a1120668d39369ba3d80b4be79a93b5d4a90deb78ec20ac8015a3f5aff1",
+  "approvedEvaluationContractSha256": "8afcc132da9282d0ef2e27262f850df0f20ad0e0466c7f3806de1beb58b9fc43",
+  "grantMeaning": "The user approved implementing this bounded client path before evaluation of this named immutable candidate; this does not claim the newly generated request hash was separately displayed or answered. Source owner text hashes and corpus fingerprints were compared equal to the previous approved snapshot."
+}

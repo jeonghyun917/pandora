@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "evaluationContractSha256": "8afcc132da9282d0ef2e27262f850df0f20ad0e0466c7f3806de1beb58b9fc43",
+  "approvalRequestReference": "docs/evidence/rag-quality/evaluation-versions/approval-requests/5058784818bcddfbcf0068fbaec67f40984b88c4c383dd57e6592ad7b70c6877.json",
+  "approvalRequestSha256": "5058784818bcddfbcf0068fbaec67f40984b88c4c383dd57e6592ad7b70c6877",
+  "sourceAuditReference": "docs\\evidence\\rag-quality\\evaluation-versions\\source-audits\\205a369c0c70b316fa7b3f9a1916714c2c74d1bdb71c2d7697702a13f4e0ce05.json",
+  "sourceAuditSha256": "205a369c0c70b316fa7b3f9a1916714c2c74d1bdb71c2d7697702a13f4e0ce05",
+  "sourceOwners": [
+    {
+      "activationStatus": "ACTIVE",
+      "documentId": 18109,
+      "chunkTextSha256": "c8344e3f720524091faf54a99b4cfa2aed94ecd1fb3e516141e51650ef371d52",
+      "useYn": "Y",
+      "qualityStatus": "PASS",
+      "chunkVersion": 2,
+      "edition": "2100000223356",
+      "effectiveStatus": "CURRENT",
+      "chunkId": 11294119,
+      "target": "admrul"
+    },
+    {
+      "activationStatus": "ACTIVE",
+      "documentId": 18109,
+      "chunkTextSha256": "4d755d4476bec091815fad20b496da8d60ed44b548e77b461079a89131558053",
+      "useYn": "Y",
+      "qualityStatus": "PASS",
+      "chunkVersion": 2,
+      "edition": "2100000223356",
+      "effectiveStatus": "CURRENT",
+      "chunkId": 11294138,
+      "target": "admrul"
+    },
+    {
+      "activationStatus": "ACTIVE",
+      "documentId": 40384,
+      "chunkTextSha256": "5e125b67075e3b3a47ff91b2c6cd4d382ae70bb861492201f929e8f09a5c7ced",
+      "useYn": "Y",
+      "qualityStatus": "PASS",
+      "chunkVersion": 1,
+      "edition": "283735",
+      "effectiveStatus": "CURRENT",
+      "chunkId": 11058178,
+      "target": "law"
+    }
+  ],
+  "runnerSha256": "523c49bd205be66f855c5e100f06201e9989b98fabf2da620388d8a1eb0a1173",
+  "runtimeInfo": {
+    "indexVersion": "law_chunks+rag_chunks_v4",
+    "embeddingModel": "text-embedding-3-small",
+    "answerModel": "gpt-5-mini",
+    "lawCollection": "law_chunks",
+    "ragCollection": "rag_chunks_v4",
+    "runtimeArtifactKind": "jar",
+    "runtimeArtifactSha256": "881f6a1120668d39369ba3d80b4be79a93b5d4a90deb78ec20ac8015a3f5aff1",
+    "runtimeArtifactSize": 69083176,
+    "runtimeArtifactPath": "C:\\dev\\workspace-egov\\pandora\\target\\pandora-0.0.1-SNAPSHOT.jar",
+    "runtimeArtifactModifiedAt": "2026-11-20T04:28:34.734302600Z",
+    "runtimeInstanceId": "5083991e-9afc-468e-9d28-dcbff1f5cf30",
+    "runtimeConfigSha256": "47d394b4ea5aa5261c62f9c7343a7963f10b0bd41efc1637f6b101ae302b5c32",
+    "indexRevision": "e39713ce571b7502f930a6efe517c93ccc63d3147d04545314085d3e60d95fa5",
+    "lexicalRevision": "4500a4da1ff54f0f25c95119a6a2647ae51381c0b4d31b52376344603e48f665",
+    "lawQdrantExactPointCount": 211658,
+    "ragQdrantExactPointCount": 84248,
+    "lawDatabaseIndexedCount": 211658,
+    "ragDatabaseIndexedCount": 84248,
+    "lawDatabaseContentFingerprint": "F6C6321AECBA5CFA385E33371EAD50FB4A0CADF1793C1468FF267FABAEFF916D",
+    "ragDatabaseContentFingerprint": "4C9C89D6D9E2BCEEFEEF49B2C94DAD25146D84863CEDC5DA165068579EA98540",
+    "qdrantReady": true,
+    "qdrantSearchFailureCount": 0,
+    "source": "server"
+  }
+}
