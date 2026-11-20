@@ -5,7 +5,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -15,6 +17,17 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class LawAiEvaluationContractAccessTests {
 	private static final String HEADER = "X-Pandora-Evaluation-Contract-SHA256";
 	private static final String ROOT = "/api/law-data/ai/debug/evaluate";
+
+	@Test
+	void capabilitiesAreReadOnlyAndDoNotAdvertiseAnUnregisteredContract() throws Exception {
+		var service=mock(LawAiAnswerService.class);
+		var mvc=MockMvcBuilders.standaloneSetup(new LawAiAnswerController(service)).build();
+		mvc.perform(get("/api/law-data/ai/debug/evaluation-contracts"))
+			.andExpect(status().isOk()).andExpect(jsonPath("$.schemaVersion").value(1))
+			.andExpect(jsonPath("$.contractHeader").value(HEADER))
+			.andExpect(jsonPath("$.registeredContracts").isEmpty());
+		verifyNoInteractions(service);
+	}
 
 	@Test
 	void explicitUnknownContractsNeverEnterLegacyEvaluation() throws Exception {

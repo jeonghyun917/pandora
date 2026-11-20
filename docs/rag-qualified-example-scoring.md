@@ -71,3 +71,24 @@ RED `31d779` → focused GREEN `e9bd9b`; complete Node regression `b11058`:
 `6f1fb448d3b6676b3c8b80e3453079d36ebdf9d6d4a1a2f7a545e37543fdba84`.
 This is not a live quality PASS. No serving JAR change is needed for this
 offline-only scorer.
+
+## Contract availability preflight
+
+`GET /api/law-data/ai/debug/evaluation-contracts` is read-only and does not enter
+retrieval, generation or evaluation. Its schema-1 response reports the exact
+contract header and registered SHA-256 values. The list is currently empty,
+consistent with the existing 422 fence; exposing this endpoint activates no
+scorer or dataset.
+
+`scripts/lib/rag-evaluation-contract-preflight.js` makes one GET to that server
+origin, with no case/question payload, credentials, redirects or retries. It
+requires a canonical selected hash, the expected schema/header, and unique
+canonical registered hashes containing the selected hash. An absent/unknown
+contract, malformed response or HTTP error fails before a future caller may
+reserve an evaluation slot. It does not itself reserve a slot or enable a new
+runner mode. The runtime/corpus and exact external-payload preflights remain
+required before the existing one-shot reservation and any evaluation request.
+
+RED `497ef1/c29b5c` → focused `147d9d/dcc592`. Complete Node `891be7/b57fb6`
+passes 211/fail0; complete backend `1e27ee/2ab433` exits 0. Existing malformed
+contract 400, unknown contract 422 and legacy gate behavior are retained.

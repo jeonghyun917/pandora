@@ -67,6 +67,15 @@ public class LawAiAnswerController {
 			.body(answerService.runtimeInfo());
 	}
 
+	@GetMapping("/debug/evaluation-contracts")
+	public ResponseEntity<EvaluationContractCapabilities> evaluationContracts() {
+		// Keep in sync with the fail-closed evaluation dispatch below. No contract is active yet.
+		return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON)
+			.body(new EvaluationContractCapabilities(1,EVALUATION_CONTRACT_HEADER,List.of()));
+	}
+
+	public record EvaluationContractCapabilities(int schemaVersion,String contractHeader,List<String> registeredContracts) {}
+
 	@GetMapping("/debug/failures")
 	public ResponseEntity<java.util.List<LawAiSearchFailureRow>> failures(
 		@RequestParam(required = false) Integer limit,
