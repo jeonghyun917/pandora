@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "kind": "versioned-evaluation-payload-approval-request",
+  "evaluationContractSha256": "8afcc132da9282d0ef2e27262f850df0f20ad0e0466c7f3806de1beb58b9fc43",
+  "baselineSha256": "6b85990a6395c501138628877d4c9efda61c218afde4d0ab5a886f3588ce044c",
+  "questionCount": 1003,
+  "changedCaseIds": [
+    "it-compliance-penalty",
+    "ai-law-enforcement-date"
+  ],
+  "sourceAuditReference": "docs/evidence/rag-quality/evaluation-versions/source-audits/d84bc8f3d5ebd738034c1530efe69508acad2dce5d0ee55da8da1a3b385901d2.json",
+  "sourceAuditSha256": "d84bc8f3d5ebd738034c1530efe69508acad2dce5d0ee55da8da1a3b385901d2",
+  "runtimeArtifactSha256": "b025e08f2c4756628d66ef0da64993585d8aee273c89e201fd8db4e849c95fc0",
+  "runtimeConfigSha256": "47d394b4ea5aa5261c62f9c7343a7963f10b0bd41efc1637f6b101ae302b5c32",
+  "checkpointPolicy": "candidate-once-v1",
+  "evaluationCandidateSha256": "b025e08f2c4756628d66ef0da64993585d8aee273c89e201fd8db4e849c95fc0",
+  "runnerSha256": "523c49bd205be66f855c5e100f06201e9989b98fabf2da620388d8a1eb0a1173",
+  "requiresExplicitApproval": true
+}

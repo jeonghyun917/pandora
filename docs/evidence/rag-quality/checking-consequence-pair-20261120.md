@@ -43,3 +43,24 @@ establish penalty, Difficult12, holdout57 or full1003 PASS.
 Review exclusions were runtime/evaluation eligibility, pending test outcomes and
 unrelated legacy behavior. Runtime/eligibility remain explicit separate checks;
 legacy behavior is preserved rather than silently expanded into this correction.
+
+## Deployed identity and exact next step
+
+Product5570c3013dfa7d67dc4305230222bd2ac635bdd3 pushed1d0423. Official staged
+package929cd4/b023c0 exit0, JARb025e08f2c4756628d66ef0da64993585d8aee273c89e201fd8db4e849c95fc0
+(69088391 bytes). Status817b5c→officialstop e2818c→listener absent→officialdeploy
+b7b30c/36848c, KEEP supervisor SESSION8389 alive;8080PID46252/runtime
+beb3c613-f0a4-44f2-b184-82de38eb74f0. Healthb0deb2 HTTP200, DB=Q211658/84248,
+readytrue/fail0, unchanged config47d394b4/indexe39713ce/lexical4500a4da and protected
+Atlas42844/Q8492. Registered evaluation contracts empty.
+
+Read-only source auditd84bc8f3d5ebd738034c1530efe69508acad2dce5d0ee55da8da1a3b385901d2
+has3owners; comparison691d9a confirms equality with205a369c source owners and corpus
+counts/fingerprints. Exact candidate approval request
+40e6193fde2d4f576ba9de5e0b67184f541ee3e014082092ba9d51ec18d2b995 binds this new
+JAR and unchanged8afcc132 catalogue/runner. An asynchronous exact-approval question
+was sent. No receipt is fabricated from the previous named31aac7fc approval.
+No contract registration, external model request, checkpoint reservation or later
+ladder stage has been executed for this new JAR. After actual approval: preserve
+its receipt, officially register the unchanged JAR, bind the execution manifest,
+then once-only penalty and PASS-only successor ladder. Reservation stays paused.

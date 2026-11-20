@@ -31,5 +31,5 @@ mixed or annotated source; contradictory global evidence must never become PASS.
 
 - [x] Add failing whole-pair matcher and production-shadow profile tests; expect INSUFFICIENT/unsafe before implementation. Preserve the passing ambiguity characterization.
 - [x] Implement the bounded pair recognizer and owner-local/global-conflict checks; all mutations and detached conclusions stay unsupported. Focused285/f0 before review; review correction286/f0/e0.
-- [ ] One fresh safety review and at most one fix pass. Stable full backend once. Commit/push exact owned files, preserve old JAR and official deploy/health; no source/data/Atlas changes.
+- [x] One fresh safety review and one fix pass; stable backend2274/f0/e0/skip85. Product5570c301 pushed and officially deployed JARb025e08f with health verified; no source/data/Atlas changes.
 - [ ] If authorized per-candidate conditions are satisfied, bind a distinct verified candidate and unchanged payload/source, then once-only penalty→Difficult12→holdout57→full1003 only after prior PASS. Keep every failure immutable; no full completion claim without actual required evidence.
