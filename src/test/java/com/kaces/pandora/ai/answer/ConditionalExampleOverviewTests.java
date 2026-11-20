@@ -56,4 +56,31 @@ class ConditionalExampleOverviewTests {
             REQUEST.replace("정보화 사업에서","민간 소프트웨어사업에서"),REQUEST.replace("법·제도를","법 제52조를")))
             assertThat(verifier.verify(question,draft,all).insufficientEvidence()).isTrue();
     }
+    @Test void unknownScriptRestrictionsDoNotDisappearWhenRecognizingTheRequest() {
+        for(String question:List.of("民間 "+REQUEST,REQUEST.replace("정보화 사업에서","정보화 사업(民間專用)에서"),
+            "PrivateΩ "+REQUEST,REQUEST.replace("정보화 사업에서","정보화 사업\u200b에서"))) {
+            assertThat(ConditionalExampleOverview.requested(question)).as(question).isFalse();
+            assertThat(verifier.verify(question,SCOPE+"\n"+REMEDY,grounds()).insufficientEvidence()).isTrue();
+        }
+    }
+    @Test void literalSourceProofDoesNotEraseInsertedQualifiersOrMeaningfulSigns() {
+        for(String draft:List.of(SCOPE.replace("소프트웨어사업","소프트웨어사업(民間專用)")+"\n"+REMEDY,
+            SCOPE+"\n"+REMEDY.replace("보완을 요청","보완(民間專用)을 요청"),
+            SCOPE+"\n"+REMEDY.replace("요청할 수 있다","요청할 수 없다")))
+            assertThat(verifier.verify(REQUEST,draft,grounds()).insufficientEvidence()).as(draft).isTrue();
+    }
+    @Test void everySourceInTheQualifiedProofHasPositiveUniqueIdentities() {
+        var original=grounds();
+        for(int index=0;index<original.size();index++) {
+            var owner=original.get(index);
+            for(int broken=0;broken<3;broken++) {
+                var invalid=ground(broken==0?0:owner.number(),broken==1?0:owner.chunkId(),broken==2?0:owner.documentId(),
+                    owner.target(),owner.title(),owner.sourceDate(),owner.chunkNo(),owner.matchedChildText());
+                var inputs=new java.util.ArrayList<>(original);inputs.set(index,invalid);
+                assertThat(verifier.verify(REQUEST,SCOPE+"\n"+REMEDY,inputs).insufficientEvidence()).as("source%s identity%s",index,broken).isTrue();
+            }
+        }
+        var duplicate=new java.util.ArrayList<>(original);duplicate.add(original.get(2));
+        assertThat(verifier.verify(REQUEST,SCOPE+"\n"+REMEDY,duplicate).insufficientEvidence()).isTrue();
+    }
 }

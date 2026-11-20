@@ -35,4 +35,10 @@ class ReferenceCommencementVerificationTests {
         var all=verifier.verify(QUESTION,answer+" 모든 조문이 시행 중이다.",List.of(ground(true)));
         assertThat(all.claimResult().unsupportedClaims()).isNotEmpty();
     }
+    @Test void unknownScriptQualifiersCannotDisappearFromTheNamedReferenceRequest() {
+        String answer=ground(true).officialCommencement().officialDateStatement(TITLE)+"\n"
+            +ground(true).officialCommencement().officialReferenceStatement(TITLE);
+        String restricted=QUESTION.replace(TITLE,TITLE+"(民間專用)");
+        assertThat(verifier.verify(restricted,answer,List.of(ground(true))).insufficientEvidence()).isTrue();
+    }
 }

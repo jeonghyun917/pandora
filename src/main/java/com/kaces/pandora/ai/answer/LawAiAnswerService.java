@@ -4021,7 +4021,7 @@ public class LawAiAnswerService {
 	private boolean isForcedExcludedAnswerContextChunk(LawSemanticChunkRow chunk, String query) {
 		String normalizedQuery = normalizeForMatch(query);
 		if (EvidenceJudge.outsideCommercialPurchaseScope(normalizedQuery, chunk)
-			|| EvidenceJudge.subcontractRemedyOutsideQuestion(normalizedQuery, chunk)
+			|| EvidenceJudge.subcontractRemedyOutsideQuestion(query, chunk)
 			|| EvidenceJudge.rfpDisclosureOutsideAttachmentQuestion(normalizedQuery, chunk)
 			|| EvidenceJudge.rfpNeighborOutsideScoringQuestion(normalizedQuery, chunk)) {
 			return true;
@@ -8561,7 +8561,8 @@ public class LawAiAnswerService {
 		Map<String, Double> scores, int limit, Map<Long, OfficialCommencementEvidence> proofs,
 		java.util.concurrent.atomic.AtomicBoolean historyAttempted) {
 		String normalized = normalizeForMatch(query);
-		if (lawChunkMapper == null || !OfficialCommencementEvidence.isLookup(normalized)) {
+		if (lawChunkMapper == null || !(OfficialCommencementEvidence.isCurrentLookup(normalized)
+			|| ReferenceCommencementRequest.parseQuestion(query).isPresent())) {
 			return evidenceJudge.judge(query, chunks, scores, limit);
 		}
 		var candidates = new LinkedHashMap<Long, LawSemanticChunkRow>();
@@ -8575,7 +8576,7 @@ public class LawAiAnswerService {
 		try {
 			var sources = lawChunkMapper.findCommencementSources(List.copyOf(candidates.keySet()));
 			if (sources != null) {
-				if (ReferenceCommencementRequest.parse(normalized).isPresent()) {
+				if (ReferenceCommencementRequest.parseQuestion(query).isPresent()) {
 					// At most one public history request for the exact named law in this retrieval.
 					if (effectiveHistoryService != null) {
 						for (var source : sources) {
@@ -8584,7 +8585,7 @@ public class LawAiAnswerService {
 								.or(()->OfficialCommencementEvidence.resolveFromDetail(anchor,source));
 							if (bound.isEmpty()) continue;
 							if (historyAttempted.compareAndSet(false,true)) {
-								effectiveHistoryService.resolve(normalized,anchor,source).ifPresent(phase ->
+								effectiveHistoryService.resolve(query,anchor,source).ifPresent(phase ->
 									proofs.put(source.chunkId(),bound.get().withReferencePhase(phase)));
 							}
 							break;
@@ -12856,7 +12857,8 @@ public class LawAiAnswerService {
 			return null;
 		}
 		// A reference-status response must capture its own official history receipt.
-		if (ReferenceCommencementRequest.parse(normalizeForMatch(question)).isPresent()) return null;
+		if (ReferenceCommencementRequest.parse(normalizeForMatch(question)).isPresent()
+			|| ConditionalExampleOverview.requested(question)) return null;
 		int limit = request == null || request.limit() == null ? DEFAULT_LIMIT : request.limit();
 		int safeLimit = Math.max(1, Math.min(limit, MAX_LIMIT));
 		List<String> targets = answerTargets(request == null ? null : request.targets(), request == null ? null : request.target())

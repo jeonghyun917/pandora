@@ -17,8 +17,8 @@ class OfficialEffectiveHistoryService {
         this.clock=java.util.Objects.requireNonNull(clock);
         this.reader=java.util.Objects.requireNonNull(reader);
     }
-    Optional<OfficialEffectivePhaseEvidence> resolve(String normalized,LawSemanticChunkRow anchor,LawCommencementSourceRow source) {
-        var request=ReferenceCommencementRequest.parse(normalized);
+    Optional<OfficialEffectivePhaseEvidence> resolve(String question,LawSemanticChunkRow anchor,LawCommencementSourceRow source) {
+        var request=ReferenceCommencementRequest.parseQuestion(question);
         if(request.isEmpty() || anchor==null || source==null || request.get().referenceDate().isAfter(java.time.LocalDate.now(clock))
             || !request.get().matchesTitle(com.kaces.pandora.common.text.KoreanQueryNormalizer.normalizeForMatch(anchor.title()))
             || OfficialCommencementEvidence.resolve(anchor,source).or(()->OfficialCommencementEvidence.resolveFromDetail(anchor,source)).isEmpty())

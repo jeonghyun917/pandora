@@ -612,6 +612,21 @@ class LawAiAnswerServiceEvidenceGateTests {
         } finally {service.shutdownExecutors();}
     }
 
+    @Test void conditionalOverviewJudgeRetainsRestrictionsBeforeBuildingItsLossySearchProfile() {
+        var remedy=chunk(99520,"admrul","소프트웨어사업 계약 및 관리감독에 관한 지침","제20조(하도급계약의 승인신청 등)",
+            "제20조(하도급계약의 승인신청 등) ② "+ConditionalExampleOverviewTests.REMEDY);
+        String restricted=ConditionalExampleOverviewTests.REQUEST.replace("정보화 사업에서","정보화 사업(民間專用)에서");
+        assertThat(new EvidenceJudge().judge(restricted,List.of(remedy),Map.of(),1).directEvidenceCount()).isZero();
+    }
+
+    @Test void explicitOverviewDoesNotPopulateTheLossyQuestionCache() throws Exception {
+        var service=service();
+        try {
+            var key=LawAiAnswerService.class.getDeclaredMethod("answerCacheKey",LawAiAnswerRequest.class);key.setAccessible(true);
+            assertThat(key.invoke(service,new LawAiAnswerRequest("admrul",null,ConditionalExampleOverviewTests.REQUEST,5,false))).isNull();
+        } finally {service.shutdownExecutors();}
+    }
+
     @Test void configuredDomainTitleCandidatesAvoidTheBroadLawScanButDoNotReplaceEmptyFallback() throws Exception {
         var rule=chunk(99103L,"law","소프트웨어 진흥법","사업 관리 감독","국가기관등의 장이 소프트웨어사업을 추진하는 경우 관련 법령의 준수 여부를 확인한다.");
         var broad=new java.util.concurrent.atomic.AtomicInteger();

@@ -20,7 +20,8 @@ class OfficialEffectiveHistoryServiceTests {
         var calls=new AtomicInteger();
         var service=new OfficialEffectiveHistoryService(CLOCK,uri -> {calls.incrementAndGet();return "";});
         for(String question:java.util.List.of("예시법의시행일은언제인가요",QUESTION.replace("18일","32일"),
-            QUESTION.replace("2026년11월18일","2027년11월18일"),QUESTION.replace("예시법","다른법")))
+            QUESTION.replace("2026년11월18일","2027년11월18일"),QUESTION.replace("예시법","다른법"),
+            QUESTION.replace("예시법","예시법(民間專用)"), QUESTION.replace("예시법","예시법\u200b")))
             assertThat(service.resolve(question,OfficialEffectivePhaseEvidenceTests.anchor("283735"),
                 OfficialEffectivePhaseEvidenceTests.row(OfficialEffectivePhaseEvidenceTests.RAW))).isEmpty();
         assertThat(service.resolve(QUESTION,OfficialEffectivePhaseEvidenceTests.anchor("283735"),

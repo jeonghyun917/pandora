@@ -28,8 +28,9 @@ public class AnswerQuestionAlignmentVerifier {
 		"(?<![\\p{L}\\p{N}])하도급\\h+승인\\h+심사\\h+중(?![\\p{L}\\p{N}])");
 	private static final String APPROVAL_REMEDY_STAGE = "하도급 또는 다시 하도급의 적정성 여부를 검토할 때";
 	private static final Pattern APPROVAL_PUBLIC_SCOPE = Pattern.compile("^\\s*공공\\h+소프트웨어사업에서(?=\\s|[,，])");
-	private static final String APPROVAL_SCOPE_CLAUSE =
-		"이지침은국가기관등이법제2조에따른소프트웨어사업을수행할경우에적용한다";
+	private static final String APPROVAL_SCOPE_LITERAL =
+		"이 지침은 국가기관등이 법 제2조에 따른 소프트웨어사업을 수행할 경우에 적용한다.";
+	private static final String APPROVAL_SCOPE_CLAUSE = normalize(APPROVAL_SCOPE_LITERAL);
 	private static final Pattern APPROVAL_ABBREVIATED_DUTY = Pattern.compile(
 		"(?<![\\p{L}\\p{N}])(?:법\\h+)?제\\h*51\\h*조의\\h+하도급\\h+제한을\\h+"
 			+ "위반(?:했을\\h+때|한\\h+경우)(?![\\p{L}\\p{N}])");
@@ -175,7 +176,8 @@ public class AnswerQuestionAlignmentVerifier {
 				.filter(link -> SUPPORTED.equals(link.relation()))
 				.toList();
 		if (ReferenceCommencementRequest.parse(normalize(question)).isPresent()) {
-			boolean safe = claimResult != null && !claimResult.insufficientEvidence()
+			boolean safe = ReferenceCommencementRequest.parseQuestion(question).isPresent()
+				&& claimResult != null && !claimResult.insufficientEvidence()
 				&& claimResult.strongClaimCount() == 2 && supportedLinks.size() == 2
 				&& claimResult.unsupportedClaims().isEmpty() && claimResult.unsupportedNumericClaims().isEmpty()
 				&& claimResult.contradictedClaims().isEmpty();
@@ -340,15 +342,35 @@ public class AnswerQuestionAlignmentVerifier {
 			|| !claims.unsupportedClaims().isEmpty() || !claims.unsupportedNumericClaims().isEmpty()
 			|| !claims.contradictedClaims().isEmpty() || claims.semanticShadowResults().stream().anyMatch(ClaimMatcherShadowResult::unsafeDisagreement))
 			return java.util.Optional.empty();
+		if (grounds.stream().anyMatch(g->g==null || g.number()<=0 || g.documentId()<=0 || g.chunkId()<=0)
+			|| grounds.stream().map(LawAiAnswerGround::number).distinct().count()!=grounds.size()) return java.util.Optional.empty();
 		var links=claims.evidenceLinks();
 		if (links.stream().anyMatch(l->!SUPPORTED.equals(l.relation())) || links.get(0).groundNumber()==links.get(1).groundNumber()
-			|| !normalize(claims.verifiedAnswer()).equals(normalize(links.get(0).claim()+"\n"+links.get(1).claim())))
+			|| !literalKey(claims.verifiedAnswer()).equals(literalKey(links.get(0).claim()+"\n"+links.get(1).claim())))
 			return java.util.Optional.empty();
 		var owner=qualifiedApprovalRemedyOwner(links.get(1),grounds).orElse(null);
 		if (owner==null || owner.documentId()<=0 || owner.chunkId()<=0 || owner.sourceDate()==null || owner.sourceDate().isBlank()
 			|| !hasCurrentApprovalProcedure(grounds) || !hasExplicitApprovalScope(owner,grounds,links)
 			|| !normalize(links.get(0).claim()).equals(APPROVAL_SCOPE_CLAUSE)) return java.util.Optional.empty();
+		var scope=grounds.stream().filter(g->g.number()==links.get(0).groundNumber()).findFirst().orElse(null);
+		String expectedScope=literalKey(APPROVAL_SCOPE_LITERAL);
+		if (scope==null || !literalKey(owner.title()).equals(literalKey("소프트웨어사업 계약 및 관리감독에 관한 지침"))
+			|| !literalKey(scope.title()).equals(literalKey(owner.title()))
+			|| !literalKey(links.get(0).claim()).equals(expectedScope)
+			|| !scopeLiteralKey(links.get(0).evidenceSentence()).equals(expectedScope)
+			|| !scopeLiteralKey(scope.matchedChildText()).equals(expectedScope)
+			|| !literalKey(links.get(1).claim()).equals(literalKey(links.get(1).evidenceSentence()))
+			|| !literalKey(owner.matchedChildText()).contains(literalKey(links.get(1).claim()))
+			|| grounds.stream().noneMatch(g->"law".equals(g.target())
+				&& isSubcontractApprovalProcedure(g.title(),g.chunkNo(),g.chunkTitle(),g.matchedChildText())
+				&& literalKey(g.title()).equals(literalKey("소프트웨어 진흥법 시행규칙")))) return java.util.Optional.empty();
 		return java.util.Optional.of(links.get(1).claim());
+	}
+	private static String literalKey(String value) {
+		return java.text.Normalizer.normalize(value==null?"":value,java.text.Normalizer.Form.NFC).replaceAll("(?U)\\s+","");
+	}
+	private static String scopeLiteralKey(String value) {
+		return literalKey(value).replaceFirst("^제2조\\(적용범위\\)","");
 	}
 
 	private static AlignmentProfile approvalReviewProfile(String question, ClaimVerifier.ClaimEvidenceLink link,

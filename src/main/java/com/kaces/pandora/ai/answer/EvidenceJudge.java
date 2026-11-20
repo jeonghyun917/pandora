@@ -63,7 +63,12 @@ public class EvidenceJudge {
 			return new Result(List.of(), Map.of(), false, false, false, false, 0, 0, 0, "empty");
 		}
 		EvidenceQuestionProfile profile = buildQuestionProfile(question);
+		boolean conditionalOverview=ConditionalExampleOverview.requested(question);
 		String query = profile.normalizedQuestion();
+		if (ReferenceCommencementRequest.parse(query).isPresent()
+			&& ReferenceCommencementRequest.parseQuestion(question).isEmpty()) {
+			return new Result(List.of(), Map.of(), false, false, false, false, 0, 0, 0, "reference_request_unproven");
+		}
 		boolean collectionNoticeOnly = query.contains("수집")
 			&& !containsAny(query, List.of("제공", "제3자", "목적외"))
 			&& QuestionIntentProfile.from(question).matchedPolicyIds().contains("privacy_consent_notice");
@@ -87,7 +92,7 @@ public class EvidenceJudge {
 				|| !isSwRecommendationDispatchSupport(chunk))
 			.filter(chunk -> !AutonomyFollowUpEvidence.outsideRecommendationScope(profile.normalizedQuestion(), chunk))
 			.filter(chunk -> !outsideCommercialPurchaseScope(query, chunk))
-			.filter(chunk -> !subcontractRemedyOutsideQuestion(query, chunk))
+			.filter(chunk -> !subcontractRemedyOutsideQuestion(question, chunk))
 			.filter(chunk -> !postApprovalInspectionOutsideReview(question, chunk))
 			.filter(chunk -> !rfpDisclosureOutsideAttachmentQuestion(query, chunk))
 			.filter(chunk -> !rfpNeighborOutsideScoringQuestion(query, chunk))
@@ -99,7 +104,7 @@ public class EvidenceJudge {
 		List<JudgedChunk> judgedChunks = searchableChunks.stream()
 			.map(chunk -> judgeChunk(profile, chunk, baseScoreByChunkId.getOrDefault(scoreKey(chunk), 0.0),
 				unverifiedCommencement(profile, chunk, commencementEvidence),
-				requiresCommencementOwnership(profile, chunk) && verifiedCommencement(profile, chunk, commencementEvidence)))
+				requiresCommencementOwnership(profile, chunk) && verifiedCommencement(profile, chunk, commencementEvidence),conditionalOverview))
 			.sorted(Comparator.comparingDouble(JudgedChunk::score).reversed())
 			.toList();
 		int delivery = query.indexOf("전달");
@@ -922,7 +927,7 @@ public class EvidenceJudge {
 
 	// 메소드 설명: judgeChunk 처리 흐름을 수행합니다.
 	private JudgedChunk judgeChunk(EvidenceQuestionProfile profile, LawSemanticChunkRow chunk, double baseScore,
-		boolean unverifiedCommencement, boolean verifiedCommencement) {
+		boolean unverifiedCommencement, boolean verifiedCommencement, boolean conditionalOverview) {
 		String body = normalize(chunk.chunkText());
 		String documentTitle = normalize(chunk.title());
 		String parentSectionTitle = normalize(chunk.parentSectionTitle());
@@ -1785,7 +1790,7 @@ public class EvidenceJudge {
 			return new JudgedChunk(chunk, score, topicAligned || owned, relevant || owned, owned,
 				owned ? 1 : 0, owned ? 1 : 0);
 		}
-		if (ConditionalExampleOverview.requested(profile.normalizedQuestion())) {
+		if (conditionalOverview) {
 			// This is one conditional norm as an example, never proof that a real project is covered.
 			boolean owned=!tableOfContents && !suppressEvidenceNoise && isSubcontractApprovalRemedySource(chunk)
 				&& !missingRequestedArticleOwnership(profile,chunk,documentTitle)
@@ -3372,8 +3377,9 @@ public class EvidenceJudge {
 	}
 
 	static boolean subcontractRemedyOutsideQuestion(String question, LawSemanticChunkRow chunk) {
-		if (!containsPenaltyConsequenceCue(question) || question.contains("하도급")
-			|| (question.contains("소프트웨어진흥법") && question.contains("제51조")) || ConditionalExampleOverview.requested(question)) {
+		String query=normalize(question);
+		if (!containsPenaltyConsequenceCue(query) || query.contains("하도급")
+			|| (query.contains("소프트웨어진흥법") && query.contains("제51조")) || ConditionalExampleOverview.requested(question)) {
 			return false;
 		}
 		String body = normalize(chunk.chunkText());

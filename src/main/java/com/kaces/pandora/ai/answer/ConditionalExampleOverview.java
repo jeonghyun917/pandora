@@ -12,7 +12,10 @@ final class ConditionalExampleOverview {
         "^공식원문이정한적용대상위반조건주체권한을밝힌조건부(?:사례|예시)로설명해주세요$");
     static boolean requested(String question) {
         if(question==null || question.length()>400) return false;
-        String normalized=com.kaces.pandora.common.text.KoreanQueryNormalizer.normalizeForMatch(question);
+        String original=java.text.Normalizer.normalize(question,java.text.Normalizer.Form.NFC);
+        // Search normalization is lossy. Unknown scripts/format controls may carry restrictions.
+        if(!original.matches("(?U)[가-힣A-Za-z0-9\\s·ㆍ,，.。?？!！:：()「」『』\"'-]+")) return false;
+        String normalized=com.kaces.pandora.common.text.KoreanQueryNormalizer.normalizeForMatch(original);
         int boundary=normalized.indexOf(PURPOSE);
         return boundary>0 && boundary==normalized.lastIndexOf(PURPOSE)
             && TOPIC.matcher(normalized.substring(0,boundary)).matches()
