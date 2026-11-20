@@ -174,6 +174,15 @@ public class AnswerQuestionAlignmentVerifier {
 			: claimResult.evidenceLinks().stream()
 				.filter(link -> SUPPORTED.equals(link.relation()))
 				.toList();
+		if (ReferenceCommencementRequest.parse(normalize(question)).isPresent()) {
+			boolean safe = claimResult != null && !claimResult.insufficientEvidence()
+				&& claimResult.strongClaimCount() == 2 && supportedLinks.size() == 2
+				&& claimResult.unsupportedClaims().isEmpty() && claimResult.unsupportedNumericClaims().isEmpty()
+				&& claimResult.contradictedClaims().isEmpty();
+			return safe && matchesBoundReferenceCommencement(question,supportedLinks,grounds)
+				? AlignmentResult.aligned(supportedLinks.get(0).claim())
+				: AlignmentResult.failed("REFERENCE_COMMENCEMENT_UNPROVEN",List.of(CONDITION));
+		}
 		if (claimResult != null && !claimResult.insufficientEvidence() && claimResult.strongClaimCount() == 1
 			&& claimResult.unsupportedClaims().isEmpty() && claimResult.unsupportedNumericClaims().isEmpty()
 			&& claimResult.contradictedClaims().isEmpty() && supportedLinks.size() == 1
@@ -1140,6 +1149,21 @@ public class AnswerQuestionAlignmentVerifier {
 
 	private static String normalize(String value) {
 		return KoreanQueryNormalizer.normalizeForMatch(value);
+	}
+
+	private static boolean matchesBoundReferenceCommencement(String question,
+		List<ClaimVerifier.ClaimEvidenceLink> links,List<LawAiAnswerGround> grounds) {
+		if (grounds == null || links.size() != 2 || links.get(0).groundNumber() != links.get(1).groundNumber()) return false;
+		return grounds.stream().filter(g -> g != null && "law".equals(g.target()) && "CURRENT".equals(g.effectiveStatus())
+			&& g.number() == links.get(0).groundNumber()).anyMatch(g -> {
+				var proof=g.officialCommencement();
+				if (proof == null || proof.anchorHash() == null || !proof.covers(g.matchedChildText())
+					|| proof.referencePhase()==null || !proof.referencePhase().matchesGround(g)
+					|| !java.util.Objects.equals(proof.sourcePath(),g.sourcePath()) || !proof.matchesReferenceLookup(normalize(question),g.title())) return false;
+				var expected=List.of(normalize(proof.officialDateStatement(g.title())),normalize(proof.officialReferenceStatement(g.title())));
+				return java.util.stream.IntStream.range(0,2).allMatch(i -> expected.get(i).equals(normalize(links.get(i).claim()))
+					&& expected.get(i).equals(normalize(links.get(i).evidenceSentence())));
+			});
 	}
 
 	private static boolean matchesBoundGeneralCommencement(String question,

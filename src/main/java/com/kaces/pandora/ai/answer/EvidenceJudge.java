@@ -99,7 +99,7 @@ public class EvidenceJudge {
 		List<JudgedChunk> judgedChunks = searchableChunks.stream()
 			.map(chunk -> judgeChunk(profile, chunk, baseScoreByChunkId.getOrDefault(scoreKey(chunk), 0.0),
 				unverifiedCommencement(profile, chunk, commencementEvidence),
-				requiresCommencementOwnership(profile, chunk) && verifiedCommencement(chunk, commencementEvidence)))
+				requiresCommencementOwnership(profile, chunk) && verifiedCommencement(profile, chunk, commencementEvidence)))
 			.sorted(Comparator.comparingDouble(JudgedChunk::score).reversed())
 			.toList();
 		int delivery = query.indexOf("전달");
@@ -4021,12 +4021,14 @@ public class EvidenceJudge {
 		if (!requiresCommencementOwnership(profile, chunk)) {
 			return false;
 		}
-		return !verifiedCommencement(chunk, evidence);
+		return !verifiedCommencement(profile, chunk, evidence);
 	}
 
-	private boolean verifiedCommencement(LawSemanticChunkRow chunk, Map<Long, OfficialCommencementEvidence> evidence) {
+	private boolean verifiedCommencement(EvidenceQuestionProfile profile, LawSemanticChunkRow chunk, Map<Long, OfficialCommencementEvidence> evidence) {
 		var proof = evidence.get(chunk.chunkId());
-		return proof != null && proof.covers(chunk.chunkText());
+		return proof != null && proof.covers(chunk.chunkText())
+			&& (ReferenceCommencementRequest.parse(profile.normalizedQuestion()).isEmpty()
+				|| proof.matchesReferenceLookup(profile.normalizedQuestion(),chunk.title()));
 	}
 
 	private record JudgedChunk(

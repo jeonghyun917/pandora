@@ -248,6 +248,62 @@ class LawAiAnswerServiceEvidenceGateTests {
 		} finally { service.shutdownExecutors(); }
 	}
 
+	@Test
+	void datedGeneralCommencementRequiresFreshOwnedHistoryBeforeSelection() throws Exception {
+		var anchor=OfficialEffectivePhaseEvidenceTests.anchor("283735");
+		var row=OfficialEffectivePhaseEvidenceTests.row(OfficialEffectivePhaseEvidenceTests.RAW);
+		var mapper=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),
+			new Class<?>[]{LawChunkMapper.class},(proxy,method,args)-> {
+				if(method.getName().equals("findCommencementSources") && List.of(99L).equals(args[0])) return List.of(row);
+				throw new AssertionError("Unexpected mapper call: "+method.getName());
+			});
+		var service=service(mapper);
+		try {
+			String question="2026년 11월 18일 기준, 예시법의 일반 시행일과 현재 시행 상태는 무엇인가요?";
+			var method=LawAiAnswerService.class.getDeclaredMethod("judgeWithCommencementEvidence",String.class,List.class,Map.class,int.class,Map.class);
+			method.setAccessible(true);
+			var proofs=new java.util.HashMap<Long,OfficialCommencementEvidence>();
+			var closed=(EvidenceJudge.Result)method.invoke(service,question,List.of(anchor),Map.of(),5,proofs);
+			assertThat(closed.directEvidenceCount()).isZero();
+			assertThat(proofs).isEmpty();
+			String html=OfficialEffectivePhaseEvidenceTests.history();
+			service.configureEffectiveHistoryService(new OfficialEffectiveHistoryService(java.time.Clock.fixed(
+				java.time.Instant.parse("2026-11-20T00:00:00Z"),java.time.ZoneOffset.UTC),uri->html));
+			var result=(EvidenceJudge.Result)method.invoke(service,question,List.of(anchor),Map.of(),5,proofs);
+			assertThat(result.directEvidenceCount()).isEqualTo(1);
+			assertThat(proofs.get(99L).referencePhase()).isNotNull();
+			assertThat(service.weakEvidenceRejectionReason(QuestionSearchPlan.from(question),result,List.of(anchor),proofs)).isNull();
+		} finally {service.shutdownExecutors();}
+	}
+
+	@Test
+	void fallbackJudgingCannotRetryAnUnavailableOfficialHistory() throws Exception {
+		var anchor=OfficialEffectivePhaseEvidenceTests.anchor("283735");
+		var row=OfficialEffectivePhaseEvidenceTests.row(OfficialEffectivePhaseEvidenceTests.RAW);
+		var mapper=(LawChunkMapper)java.lang.reflect.Proxy.newProxyInstance(LawChunkMapper.class.getClassLoader(),
+			new Class<?>[]{LawChunkMapper.class},(proxy,method,args)-> {
+				if(method.getName().equals("findCommencementSources")) return List.of(row);
+				throw new AssertionError("Unexpected mapper call: "+method.getName());
+			});
+		var service=service(mapper);
+		try {
+			var calls=new java.util.concurrent.atomic.AtomicInteger();
+			service.configureEffectiveHistoryService(new OfficialEffectiveHistoryService(java.time.Clock.fixed(
+				java.time.Instant.parse("2026-11-20T00:00:00Z"),java.time.ZoneOffset.UTC),uri->{calls.incrementAndGet();return "invalid";}));
+			var method=LawAiAnswerService.class.getDeclaredMethod("judgeWithCommencementEvidence",String.class,List.class,Map.class,int.class,Map.class,java.util.concurrent.atomic.AtomicBoolean.class);
+			method.setAccessible(true);
+			var attempts=new java.util.concurrent.atomic.AtomicBoolean();
+			var proofs=new java.util.HashMap<Long,OfficialCommencementEvidence>();
+			String question="2026년 11월 18일 기준, 예시법의 일반 시행일과 현재 시행 상태는 무엇인가요?";
+			for(int pass=0;pass<2;pass++) {
+				proofs.clear(); // Matches retrieval's fallback rebuilding boundary.
+				var result=(EvidenceJudge.Result)method.invoke(service,question,List.of(anchor),Map.of(),5,proofs,attempts);
+				assertThat(result.directEvidenceCount()).isZero();
+			}
+			assertThat(calls.get()).isEqualTo(1);
+		} finally {service.shutdownExecutors();}
+	}
+
     @Test void explicitPreconsultationCorrectionNormIsASearchCandidateNotAutomaticGeneralScopeProof() throws Exception {
         String norm="협의기관의 장은 사전협의 미이행, 사전협의 신청 미등록, 사전협의 검토결과의 미반영, 사업산출물의 사전협의시스템 미등록 등에 대하여 신청기관에 시정을 요구할 수 있으며, 신청기관의 장은 이를 반영하고 이행결과를 협의기관의 장에게 제출하여야 한다.";
         var correction=chunk(99401L,"admrul","전자정부 성과관리 지침","사전협의 이행실태의 점검",norm);

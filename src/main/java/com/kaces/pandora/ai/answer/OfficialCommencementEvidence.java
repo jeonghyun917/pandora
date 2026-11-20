@@ -14,7 +14,29 @@ import tools.jackson.databind.ObjectMapper;
 
 /** A complete commencement clause tied to the official promulgation identity. */
 record OfficialCommencementEvidence(LocalDate effectiveDate, String clause, String sourcePath,
-	@com.fasterxml.jackson.annotation.JsonIgnore String anchorHash) {
+	@com.fasterxml.jackson.annotation.JsonIgnore String anchorHash,
+	OfficialEffectivePhaseEvidence referencePhase) {
+	OfficialCommencementEvidence(LocalDate effectiveDate, String clause, String sourcePath, String anchorHash) {
+		this(effectiveDate,clause,sourcePath,anchorHash,null);
+	}
+	OfficialCommencementEvidence withReferencePhase(OfficialEffectivePhaseEvidence phase) {
+		if (phase == null || !this.equals(phase.commencement()) || !effectiveDate.equals(phase.effectiveFrom())
+			|| phase.referenceDate().isBefore(phase.effectiveFrom()) || !phase.referenceDate().isBefore(phase.effectiveUntilExclusive())
+			|| phase.referenceDate().isAfter(phase.observedAt()) || !phase.sourceSha256().matches("[a-f0-9]{64}")) return this;
+		return new OfficialCommencementEvidence(effectiveDate,clause,sourcePath,anchorHash,phase);
+	}
+	String officialReferenceStatement(String title) {
+		if (referencePhase == null) return "";
+		var date=referencePhase.referenceDate();
+		return "%s의 일반 시행 상태는 %d년 %d월 %d일 기준 시행 중이다.".formatted(title,date.getYear(),date.getMonthValue(),date.getDayOfMonth());
+	}
+	boolean matchesReferenceLookup(String normalized, String title) {
+		return referencePhase != null && referencePhase.effectiveFrom().equals(effectiveDate)
+			&& referencePhase.commencement().clause().equals(clause)
+			&& java.util.Objects.equals(referencePhase.commencement().sourcePath(),sourcePath)
+			&& ReferenceCommencementRequest.parse(normalized).filter(request -> request.referenceDate().equals(referencePhase.referenceDate())
+				&& request.matchesTitle(com.kaces.pandora.common.text.KoreanQueryNormalizer.normalizeForMatch(title))).isPresent();
+	}
 	OfficialCommencementEvidence(LocalDate effectiveDate, String clause) {
 		this(effectiveDate, clause, null, null);
 	}
@@ -30,8 +52,13 @@ record OfficialCommencementEvidence(LocalDate effectiveDate, String clause, Stri
 			&& List.of("최초", "종전", "과거", "당시", "역대").stream().noneMatch(normalized::contains)
 			&& !HISTORIC_YEAR.matcher(normalized).find();
 	}
+	static boolean isLookup(String normalized) {
+		return isCurrentLookup(normalized) || ReferenceCommencementRequest.parse(normalized).isPresent();
+	}
 
 	static boolean matchesLookupTitle(String query, String title) {
+		var reference=ReferenceCommencementRequest.parse(query);
+		if (reference.isPresent()) return reference.get().matchesTitle(title);
 		if (title.length() < 4 || !isCurrentLookup(query)) return false;
 		if (query.contains(title)) return true;
 		String ending = "에관한법률";
@@ -167,7 +194,7 @@ record OfficialCommencementEvidence(LocalDate effectiveDate, String clause, Stri
 
 	Optional<OfficialCommencementEvidence> projectCitation(String exactBody) {
 		if (sourcePath == null || !covers(exactBody)) return Optional.empty();
-		return Optional.of(new OfficialCommencementEvidence(effectiveDate, clause, sourcePath, hash(clause)));
+		return Optional.of(new OfficialCommencementEvidence(effectiveDate, clause, sourcePath, hash(clause),referencePhase));
 	}
 
 	private static String hash(String value) {

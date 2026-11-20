@@ -42,6 +42,7 @@ public record LawAiAnswerGround(
 		if (proof == null || !"law".equals(target) || !proof.covers(matchedChildText)) {
 			return this;
 		}
+		if (proof.referencePhase()!=null && !proof.referencePhase().matchesGround(this)) return this;
 		return attachCommencement(proof, matchedChildText);
 	}
 
@@ -58,6 +59,8 @@ public record LawAiAnswerGround(
 			|| !"CURRENT".equals(effectiveStatus) || !effectiveStatus.equals(exactSource.effectiveStatus())
 			|| chunkId != exactSource.chunkId() || documentId != exactSource.documentId()
 			|| !Objects.equals(title, exactSource.title()) || !Objects.equals(sourcePath, exactSource.sourcePath())) return this;
+		if (proof.referencePhase()!=null && (!proof.referencePhase().matchesOwner(exactSource)
+			|| !proof.referencePhase().matchesGround(this))) return this;
 		return proof.projectCitation(exactSource.chunkText())
 			.map(citation -> attachCommencement(citation, citation.clause())).orElse(this);
 	}

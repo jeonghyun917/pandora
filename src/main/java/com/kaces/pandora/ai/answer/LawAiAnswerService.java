@@ -208,6 +208,11 @@ public class LawAiAnswerService {
 	private LawAiLexicalVariantProperties lexicalVariantProperties =
 		new LawAiLexicalVariantProperties(false, false, 4, 60.0);
 	private final Map<String, CachedAnswer> answerCache = new ConcurrentHashMap<>();
+	private OfficialEffectiveHistoryService effectiveHistoryService;
+	@Autowired
+	void configureEffectiveHistoryService(OfficialEffectiveHistoryService service) {
+		this.effectiveHistoryService = java.util.Objects.requireNonNull(service);
+	}
 	private final ExecutorService streamExecutor;
 	private final ExecutorService searchExecutor;
 
@@ -1522,12 +1527,13 @@ public class LawAiAnswerService {
 			: enrichWithParentContext(judgeCandidateChunks, normalized.query(), timing, routing);
 		long judgeStart = System.nanoTime();
 		var commencementProofs = new HashMap<Long, OfficialCommencementEvidence>();
+		var historyAttempted = new java.util.concurrent.atomic.AtomicBoolean();
 		EvidenceJudge.Result judgedEvidence = judgeWithCommencementEvidence(
 			normalized.query(),
 			judgeContextChunks,
 			combinedScoreByChunkId,
 			normalized.display(),
-			commencementProofs
+			commencementProofs,historyAttempted
 		);
 		timing.judgeMs.set(elapsedMillis(judgeStart));
 		Map<String, Double> finalScoreByChunkId = judgedEvidence.scoreByChunkId();
@@ -1577,7 +1583,7 @@ public class LawAiAnswerService {
 					judgeContextChunks,
 					combinedScoreByChunkId,
 					normalized.display(),
-					commencementProofs
+					commencementProofs,historyAttempted
 				);
 				timing.judgeMs.addAndGet(elapsedMillis(fallbackJudgeStart));
 				finalScoreByChunkId = judgedEvidence.scoreByChunkId();
@@ -1676,7 +1682,7 @@ public class LawAiAnswerService {
 		if (!evidenceAfterNoiseFilter.isEmpty()) {
 			evidenceChunks = evidenceAfterNoiseFilter;
 		}
-		if (OfficialCommencementEvidence.isCurrentLookup(normalizeForMatch(normalized.query()))
+		if (OfficialCommencementEvidence.isLookup(normalizeForMatch(normalized.query()))
 			&& judgeContextChunks.stream().anyMatch(chunk -> evidenceJudge.requiresCommencementOwnership(normalized.query(), chunk))) {
 			evidenceChunks = retainVerifiedCommencement(evidenceChunks, commencementProofs);
 			if (evidenceChunks.isEmpty()) {
@@ -3309,7 +3315,7 @@ public class LawAiAnswerService {
 
 	private boolean shouldJudgeExactCandidateText(String query) {
 		QuestionIntentProfile profile = QuestionIntentProfile.from(query);
-		return OfficialCommencementEvidence.isCurrentLookup(normalizeForMatch(query))
+		return OfficialCommencementEvidence.isLookup(normalizeForMatch(query))
 			|| isAutonomyPreConsultationProcedureQuestion(profile.normalizedQuestion())
 			|| isPseudonymAdditionalInfoQuestion(profile.normalizedQuestion())
 			|| isPublicDataCustomSupportQuestion(profile.normalizedQuestion())
@@ -3682,6 +3688,7 @@ public class LawAiAnswerService {
 		String officialDates = retrieval.grounds().stream().filter(ground -> ground.officialCommencement() != null)
 			.map(ground -> "[근거 " + ground.number() + " 공식 시행 메타데이터] "
 				+ ground.officialCommencement().officialDateStatement(ground.title()) + "\n"
+				+ ground.officialCommencement().officialReferenceStatement(ground.title()) + "\n"
 				+ ground.officialCommencement().clause())
 			.collect(java.util.stream.Collectors.joining("\n\n"));
 		if (!officialDates.isBlank()) {
@@ -8539,8 +8546,14 @@ public class LawAiAnswerService {
 
 	private EvidenceJudge.Result judgeWithCommencementEvidence(String query, List<LawSemanticChunkRow> chunks,
 		Map<String, Double> scores, int limit, Map<Long, OfficialCommencementEvidence> proofs) {
+		return judgeWithCommencementEvidence(query,chunks,scores,limit,proofs,new java.util.concurrent.atomic.AtomicBoolean());
+	}
+
+	private EvidenceJudge.Result judgeWithCommencementEvidence(String query, List<LawSemanticChunkRow> chunks,
+		Map<String, Double> scores, int limit, Map<Long, OfficialCommencementEvidence> proofs,
+		java.util.concurrent.atomic.AtomicBoolean historyAttempted) {
 		String normalized = normalizeForMatch(query);
-		if (lawChunkMapper == null || !OfficialCommencementEvidence.isCurrentLookup(normalized)) {
+		if (lawChunkMapper == null || !OfficialCommencementEvidence.isLookup(normalized)) {
 			return evidenceJudge.judge(query, chunks, scores, limit);
 		}
 		var candidates = new LinkedHashMap<Long, LawSemanticChunkRow>();
@@ -8554,6 +8567,23 @@ public class LawAiAnswerService {
 		try {
 			var sources = lawChunkMapper.findCommencementSources(List.copyOf(candidates.keySet()));
 			if (sources != null) {
+				if (ReferenceCommencementRequest.parse(normalized).isPresent()) {
+					// At most one public history request for the exact named law in this retrieval.
+					if (effectiveHistoryService != null) {
+						for (var source : sources) {
+							var anchor=candidates.get(source.chunkId());
+							var bound=OfficialCommencementEvidence.resolve(anchor,source)
+								.or(()->OfficialCommencementEvidence.resolveFromDetail(anchor,source));
+							if (bound.isEmpty()) continue;
+							if (historyAttempted.compareAndSet(false,true)) {
+								effectiveHistoryService.resolve(normalized,anchor,source).ifPresent(phase ->
+									proofs.put(source.chunkId(),bound.get().withReferencePhase(phase)));
+							}
+							break;
+						}
+					}
+					return evidenceJudge.judge(query,chunks,scores,limit,proofs);
+				}
 				var provedDocuments = new HashSet<Long>();
 				for (var source : sources) {
 					OfficialCommencementEvidence.resolve(candidates.get(source.chunkId()), source)
@@ -8583,7 +8613,9 @@ public class LawAiAnswerService {
 		Map<Long, OfficialCommencementEvidence> proofs) {
 		return !proofs.isEmpty() && retainVerifiedCommencement(chunks, proofs).stream()
 			.anyMatch(chunk -> "CURRENT".equals(chunk.effectiveStatus())
-				&& evidenceJudge.requiresCommencementOwnership(question, chunk));
+				&& evidenceJudge.requiresCommencementOwnership(question, chunk)
+				&& (ReferenceCommencementRequest.parse(normalizeForMatch(question)).isEmpty()
+					|| proofs.get(chunk.chunkId()).matchesReferenceLookup(normalizeForMatch(question),chunk.title())));
 	}
 
 	private List<LawSemanticChunkRow> retainVerifiedCommencement(List<LawSemanticChunkRow> chunks,
@@ -12815,6 +12847,8 @@ public class LawAiAnswerService {
 		if (question.isBlank()) {
 			return null;
 		}
+		// A reference-status response must capture its own official history receipt.
+		if (ReferenceCommencementRequest.parse(normalizeForMatch(question)).isPresent()) return null;
 		int limit = request == null || request.limit() == null ? DEFAULT_LIMIT : request.limit();
 		int safeLimit = Math.max(1, Math.min(limit, MAX_LIMIT));
 		List<String> targets = answerTargets(request == null ? null : request.targets(), request == null ? null : request.target())

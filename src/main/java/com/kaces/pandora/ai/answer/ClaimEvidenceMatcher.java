@@ -987,6 +987,11 @@ public class ClaimEvidenceMatcher {
 				addEvidenceFragments(unique, ground.number(),
 					ground.officialCommencement().officialDateStatement(ground.title()),
 					null, anchorContext, false, List.of(), List.of(), List.of());
+				if (ground.officialCommencement().referencePhase() != null) {
+					addEvidenceFragments(unique, ground.number(),
+						ground.officialCommencement().officialReferenceStatement(ground.title()),
+						null, anchorContext, false, List.of(), List.of(), List.of());
+				}
 				addEvidenceFragments(unique, ground.number(), ground.officialCommencement().clause(),
 					null, anchorContext, false, List.of(), List.of(), List.of());
 				continue;
