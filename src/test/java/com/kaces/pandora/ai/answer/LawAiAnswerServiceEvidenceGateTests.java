@@ -592,6 +592,7 @@ class LawAiAnswerServiceEvidenceGateTests {
             assertThat(intended).containsExactly(remedy);
             var judged=new EvidenceJudge().judge(question,intended,Map.of(),1);
             assertThat(judged.directEvidenceCount()).isEqualTo(1);
+            assertThat(service.weakEvidenceRejectionReason(QuestionSearchPlan.from(question),judged)).isNull();
             var display=LawAiAnswerService.class.getDeclaredMethod("selectDisplayEvidenceChunks",List.class,List.class,String.class,boolean.class,int.class);
             display.setAccessible(true);
             var selected=(List<LawSemanticChunkRow>)display.invoke(service,judged.chunks(),List.of(otherScope,rule,scope),question,true,1);
@@ -617,6 +618,28 @@ class LawAiAnswerServiceEvidenceGateTests {
             "제20조(하도급계약의 승인신청 등) ② "+ConditionalExampleOverviewTests.REMEDY);
         String restricted=ConditionalExampleOverviewTests.REQUEST.replace("정보화 사업에서","정보화 사업(民間專用)에서");
         assertThat(new EvidenceJudge().judge(restricted,List.of(remedy),Map.of(),1).directEvidenceCount()).isZero();
+    }
+
+    @Test void finalIntentGateUsesTheSameOwnedOverviewRuleWithoutAdmittingGenericOrAlteredSources() {
+        var service=service((LawChunkMapper)null,null);
+        try {
+            String question="정보시스템 사업의 관련 법령 미준수 시 조치를 "+ConditionalExampleOverviewTests.PURPOSE;
+            String title="소프트웨어사업 계약 및 관리감독에 관한 지침";
+            var remedy=chunk(99525,"admrul",title,"제20조(하도급계약의 승인신청 등)",
+                "제20조(하도급계약의 승인신청 등) ② "+ConditionalExampleOverviewTests.REMEDY);
+            var judge=new EvidenceJudge();
+            assertThat(service.weakEvidenceRejectionReason(QuestionSearchPlan.from(question),judge.judge(question,List.of(remedy),Map.of(),1))).isNull();
+            for(var altered:List.of(
+                chunk(99526,"admrul",title,"제20조",remedy.chunkText().replace("법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, ","")),
+                chunk(99527,"admrul","다른 기관 지침","제20조",remedy.chunkText()),
+                chunk(99528,"admrul",title,"제20조",remedy.chunkText().replace("요청할 수 있다","요청하여야 한다"))))
+                assertThat(service.weakEvidenceRejectionReason(QuestionSearchPlan.from(question),judge.judge(question,List.of(altered),Map.of(),1)))
+                    .as("altered source %s",altered.chunkId()).isNotNull();
+            String general="정보화 사업에서 일반 법령을 위반하면 받을 수 있는 조치는?";
+            var generic=judge.judge(general,List.of(remedy),Map.of(),1);
+            assertThat(generic.directEvidenceCount()).isZero();
+            assertThat(generic.chunks()).isEmpty();
+        } finally {service.shutdownExecutors();}
     }
 
     @Test void explicitOverviewDoesNotPopulateTheLossyQuestionCache() throws Exception {

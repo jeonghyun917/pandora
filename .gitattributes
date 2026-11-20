@@ -6,3 +6,5 @@
 /docs/evidence/rag-quality/evaluation-versions/source-audits/*.json -text
 /docs/evidence/rag-quality/evaluation-versions/approval-requests/*.json -text
 /docs/evidence/rag-quality/evaluation-versions/execution-manifests/*.json -text
+/docs/evidence/rag-quality/evaluation-versions/approval-receipts/*.json -text
+/docs/evidence/rag-quality/evaluation-versions/runs/**/*.json -text

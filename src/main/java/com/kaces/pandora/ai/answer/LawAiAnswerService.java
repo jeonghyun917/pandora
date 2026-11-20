@@ -6316,6 +6316,9 @@ public class LawAiAnswerService {
 		if (chunk == null) {
 			return false;
 		}
+		if (ConditionalExampleOverview.requested(query)) {
+			return EvidenceJudge.isSubcontractApprovalRemedySource(chunk);
+		}
 		String normalizedQuery = normalizeForMatch(query);
 		List<String> terms = queryTerms(query);
 		if (isPrivacyRetentionDestructionQuestion(normalizedQuery)) {
