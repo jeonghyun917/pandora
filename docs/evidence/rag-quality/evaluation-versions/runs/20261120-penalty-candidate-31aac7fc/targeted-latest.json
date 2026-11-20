@@ -1,0 +1,617 @@
+{
+  "total": 1,
+  "passed": 0,
+  "failed": 1,
+  "passRate": 0,
+  "gatePassed": false,
+  "minimumPassed": 1,
+  "blockingFailureIds": [
+    "it-compliance-penalty"
+  ],
+  "semanticShadowDisagreementCount": 1,
+  "unsafeSemanticShadowDisagreementCount": 1,
+  "results": [
+    {
+      "id": "it-compliance-penalty",
+      "question": "정보화 사업에서 법·제도를 준수하지 않았을 때 가능한 조치를, 사업 유형과 위반 의무를 임의로 추정하지 않고 공식 원문이 정한 적용대상·위반조건·주체·권한을 밝힌 조건부 사례로 설명해 주세요.",
+      "targets": [
+        "official_doc",
+        "internal_doc",
+        "admrul",
+        "law"
+      ],
+      "passed": false,
+      "requiredMatches": 2,
+      "matchedTerms": [
+        "제51조",
+        "하도급",
+        "보완"
+      ],
+      "missingTerms": [],
+      "matchedTitleTerms": [
+        "소프트웨어사업 계약 및 관리감독에 관한 지침"
+      ],
+      "missingTitleTerms": [],
+      "matchedSectionTypes": [
+        "penalty"
+      ],
+      "missingSectionTypes": [],
+      "matchedDocumentTerms": [
+        "소프트웨어사업"
+      ],
+      "missingDocumentTerms": [],
+      "matchedPageNumbers": [],
+      "missingPageNumbers": [],
+      "matchedParentTerms": [],
+      "missingParentTerms": [],
+      "forbiddenMatchedTerms": [],
+      "topMatchedTerms": [
+        "제51조",
+        "하도급",
+        "보완"
+      ],
+      "answerDirection": "적용범위와 승인 심사 단계·제51조 위반·권한 주체·재량을 모두 보존한 원문 조건부 사례만 답하며 실제 미특정 사업에 적용된다고 추정하지 않는다.",
+      "expectedResultMsgs": [],
+      "resultMsg": "OK",
+      "message": "OK | answer claims are not supported by selected grounds | missing proposition groups=이 지침은 국가기관등이 법 제2조에 따른 소프트웨어사업을 수행할 경우에 적용한다;하도급 계약 승인을 거절하거나 해당 서류의 보완을 요청할 수 있다; missing condition groups=하도급 또는 다시 하도급의 적정성 여부를 검토할 때;법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, 이를 위반한 경우",
+      "selected": [
+        {
+          "rank": 1,
+          "chunkId": 11294138,
+          "documentId": 18109,
+          "target": "admrul",
+          "title": "소프트웨어사업 계약 및 관리감독에 관한 지침",
+          "categoryName": "고시",
+          "agencyName": "과학기술정보통신부",
+          "chunkNo": "제20조",
+          "chunkTitle": "제20조(하도급계약의 승인신청 등)",
+          "parentSectionTitle": "제20조(하도급계약의 승인신청 등)",
+          "sectionType": "exception",
+          "pageNo": null,
+          "sourcePath": "$.AdmRulService.조문내용",
+          "vectorRank": null,
+          "lexicalRank": null,
+          "bm25VariantRanks": {},
+          "fusedRank": null,
+          "coverageFusedRank": null,
+          "coverageAnchorCandidateKey": null,
+          "coverageReason": null,
+          "documentExpansionRank": null,
+          "documentExpansionAnchorType": null,
+          "documentExpansionReason": null,
+          "documentExpansionOverlap": null,
+          "documentExpansionSeedTermCount": null,
+          "documentExpansionSeedBm25Score": null,
+          "documentExpansionSeedBm25Rank": null,
+          "vectorScore": 0,
+          "bm25Score": 0,
+          "rrfScore": 0,
+          "keywordScore": 0.525,
+          "metadataScore": 10.840000000000002,
+          "combinedScore": 11.365000000000002,
+          "baseScore": 0.525,
+          "finalScore": 22.584999999999997,
+          "selected": true,
+          "matchedTerms": [
+            "사업",
+            "법제",
+            "위반"
+          ],
+          "matchedAuditGroupIndexes": [],
+          "matchedAuditAliases": [],
+          "snippet": "제20조(하도급계약의 승인신청 등) — 제외한 경우에 한함)2. 소프트웨어사업자가 하도급법 제2조제2항의 원사업자인 경우 : 하도급법 제3조의2에 따른 소프트웨어사업 표준하도급계약서"
+        },
+        {
+          "rank": 2,
+          "chunkId": 11190122,
+          "documentId": 2810,
+          "target": "law",
+          "title": "소프트웨어 진흥법 시행규칙",
+          "categoryName": "과학기술정보통신부령",
+          "agencyName": "과학기술정보통신부",
+          "chunkNo": "제14조 등",
+          "chunkTitle": "제14조(하도급의 승인 절차 등) 등",
+          "parentSectionTitle": "제14조(하도급의 승인 절차 등) 등",
+          "sectionType": "definition",
+          "pageNo": null,
+          "sourcePath": "$.법령.조문.조문단위[13]",
+          "vectorRank": null,
+          "lexicalRank": null,
+          "bm25VariantRanks": {},
+          "fusedRank": null,
+          "coverageFusedRank": null,
+          "coverageAnchorCandidateKey": null,
+          "coverageReason": null,
+          "documentExpansionRank": null,
+          "documentExpansionAnchorType": null,
+          "documentExpansionReason": null,
+          "documentExpansionOverlap": null,
+          "documentExpansionSeedTermCount": null,
+          "documentExpansionSeedBm25Score": null,
+          "documentExpansionSeedBm25Rank": null,
+          "vectorScore": 0,
+          "bm25Score": 0,
+          "rrfScore": 0,
+          "keywordScore": 0,
+          "metadataScore": 0,
+          "combinedScore": 0,
+          "baseScore": 0,
+          "finalScore": 0,
+          "selected": true,
+          "matchedTerms": [
+            "사업",
+            "법제"
+          ],
+          "matchedAuditGroupIndexes": [],
+          "matchedAuditAliases": [],
+          "snippet": "제14조(하도급의 승인 절차 등) 등 제14조(하도급의 승인 절차 등) 등 ① 소프트웨어사업자는 법 제51조제5항에 따라 국가기관등의 장으로부터 하도급하려는 경우 또는 다시 하도급(이하 \"재하도급\"이라 한다)하려는 경우에 대하여 승인을 받으려면 별지 제21호서식의 소프트웨어사업 하도급ㆍ재하도급 계약 승인신청서에 다음 각 호의 서류를 첨부하여 국가기관등의 장에게 제출해야 한다. 1. 하도급 또는 재하도급 계약서안 사본 2. 하도급 또는 재하도급 사업 수행 계획서(하도급 금액 산출 명세서 및 사업 추진 일정표를 포함한다) 3. 하도급계약 적정성 판단 자기평가표 ② 제1항에 따라 신청서를 제출받은 국가기관등의 장은 하도급 또는 재하도급의 적정성을 검토하여 10일 이내에 그 승인 여부를 신청인에게 서면으로 알려야 한다. 다만, 적..."
+        },
+        {
+          "rank": 3,
+          "chunkId": 11294119,
+          "documentId": 18109,
+          "target": "admrul",
+          "title": "소프트웨어사업 계약 및 관리감독에 관한 지침",
+          "categoryName": "고시",
+          "agencyName": "과학기술정보통신부",
+          "chunkNo": "제2조",
+          "chunkTitle": "제2조(적용범위)",
+          "parentSectionTitle": "제2조(적용범위)",
+          "sectionType": "target_scope",
+          "pageNo": null,
+          "sourcePath": "$.AdmRulService.조문내용",
+          "vectorRank": null,
+          "lexicalRank": null,
+          "bm25VariantRanks": {},
+          "fusedRank": null,
+          "coverageFusedRank": null,
+          "coverageAnchorCandidateKey": null,
+          "coverageReason": null,
+          "documentExpansionRank": null,
+          "documentExpansionAnchorType": null,
+          "documentExpansionReason": null,
+          "documentExpansionOverlap": null,
+          "documentExpansionSeedTermCount": null,
+          "documentExpansionSeedBm25Score": null,
+          "documentExpansionSeedBm25Rank": null,
+          "vectorScore": 0,
+          "bm25Score": 0,
+          "rrfScore": 0,
+          "keywordScore": 0,
+          "metadataScore": 0,
+          "combinedScore": 0,
+          "baseScore": 0,
+          "finalScore": 0,
+          "selected": true,
+          "matchedTerms": [
+            "사업",
+            "법제"
+          ],
+          "matchedAuditGroupIndexes": [],
+          "matchedAuditAliases": [],
+          "snippet": "제2조(적용범위) 제2조(적용범위) 이 지침은 국가기관등이 법 제2조에 따른 소프트웨어사업을 수행할 경우에 적용한다."
+        }
+      ],
+      "answerVerificationRequired": true,
+      "answerVerified": false,
+      "matchedAnswerTerms": [],
+      "missingAnswerTerms": [
+        "이 지침은 국가기관등이 법 제2조에 따른 소프트웨어사업을 수행할 경우에 적용한다",
+        "하도급 계약 승인을 거절하거나 해당 서류의 보완을 요청할 수 있다",
+        "하도급 또는 다시 하도급의 적정성 여부를 검토할 때",
+        "법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, 이를 위반한 경우"
+      ],
+      "forbiddenAnswerMatchedTerms": [],
+      "unsupportedAnswerClaims": [],
+      "contradictedAnswerClaims": [],
+      "claimEvidenceLinks": [
+        {
+          "claim": "이 지침은 국가기관등이 법 제2조에 따른 소프트웨어사업을 수행할 경우에 적용한다.",
+          "relation": "SUPPORTED",
+          "groundNumber": 3,
+          "evidenceSentence": "제2조(적용범위) 이 지침은 국가기관등이 법 제2조에 따른 소프트웨어사업을 수행할 경우에 적용한다.",
+          "overlapCount": 7,
+          "coverage": 1,
+          "score": 13.5
+        },
+        {
+          "claim": "국가기관등의 장은 규칙 제14조제2항에 따라 하도급 또는 다시 하도급의 적정성 여부를 검토할 때 계약상대자가 법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, 이를 위반한 경우 해당 하도급 계약 승인을 거절하거나 해당 서류의 보완을 요청할 수 있다.",
+          "relation": "SUPPORTED",
+          "groundNumber": 1,
+          "evidenceSentence": "국가기관등의 장은 규칙 제14조제2항에 따라 하도급 또는 다시 하도급의 적정성 여부를 검토할 때 계약상대자가 법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, 이를 위반한 경우 해당 하도급 계약 승인을 거절하거나 해당 서류의 보완을 요청할 수 있다.",
+          "overlapCount": 27,
+          "coverage": 1,
+          "score": 33.5
+        }
+      ],
+      "attributedClaims": [
+        {
+          "link": {
+            "claim": "이 지침은 국가기관등이 법 제2조에 따른 소프트웨어사업을 수행할 경우에 적용한다.",
+            "relation": "SUPPORTED",
+            "groundNumber": 3,
+            "evidenceSentence": "제2조(적용범위) 이 지침은 국가기관등이 법 제2조에 따른 소프트웨어사업을 수행할 경우에 적용한다.",
+            "overlapCount": 7,
+            "coverage": 1,
+            "score": 13.5
+          },
+          "target": "admrul",
+          "documentId": 18109,
+          "chunkId": 11294119
+        },
+        {
+          "link": {
+            "claim": "국가기관등의 장은 규칙 제14조제2항에 따라 하도급 또는 다시 하도급의 적정성 여부를 검토할 때 계약상대자가 법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, 이를 위반한 경우 해당 하도급 계약 승인을 거절하거나 해당 서류의 보완을 요청할 수 있다.",
+            "relation": "SUPPORTED",
+            "groundNumber": 1,
+            "evidenceSentence": "국가기관등의 장은 규칙 제14조제2항에 따라 하도급 또는 다시 하도급의 적정성 여부를 검토할 때 계약상대자가 법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, 이를 위반한 경우 해당 하도급 계약 승인을 거절하거나 해당 서류의 보완을 요청할 수 있다.",
+            "overlapCount": 27,
+            "coverage": 1,
+            "score": 33.5
+          },
+          "target": "admrul",
+          "documentId": 18109,
+          "chunkId": 11294138
+        }
+      ],
+      "semanticShadowDisagreements": [
+        {
+          "claim": "국가기관등의 장은 규칙 제14조제2항에 따라 하도급 또는 다시 하도급의 적정성 여부를 검토할 때 계약상대자가 법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, 이를 위반한 경우 해당 하도급 계약 승인을 거절하거나 해당 서류의 보완을 요청할 수 있다.",
+          "controlStatus": "SUPPORTED",
+          "semanticStatus": "INSUFFICIENT",
+          "unsafeDisagreement": true,
+          "semanticReasonCode": "CLAIM_PARSE_INCOMPLETE",
+          "groundNumber": 0,
+          "evidenceSentence": ""
+        }
+      ],
+      "unsafeSemanticShadowDisagreementCount": 1,
+      "verifiedAnswer": "제공된 근거만으로는 답변을 확정하기 어렵습니다. 관련 법령명이나 문서 범위를 더 구체적으로 입력해 주세요.",
+      "verificationEnvelope": {
+        "schemaVersion": 1,
+        "verifiedAnswer": "제공된 근거만으로는 답변을 확정하기 어렵습니다. 관련 법령명이나 문서 범위를 더 구체적으로 입력해 주세요.",
+        "aligned": false,
+        "insufficientEvidence": true,
+        "unsupportedAnswerClaims": [],
+        "unsupportedNumericClaims": [],
+        "contradictedAnswerClaims": [],
+        "claimEvidenceLinks": [
+          {
+            "claim": "이 지침은 국가기관등이 법 제2조에 따른 소프트웨어사업을 수행할 경우에 적용한다.",
+            "relation": "SUPPORTED",
+            "groundNumber": 3,
+            "evidenceSentence": "제2조(적용범위) 이 지침은 국가기관등이 법 제2조에 따른 소프트웨어사업을 수행할 경우에 적용한다.",
+            "overlapCount": 7,
+            "coverage": 1,
+            "score": 13.5
+          },
+          {
+            "claim": "국가기관등의 장은 규칙 제14조제2항에 따라 하도급 또는 다시 하도급의 적정성 여부를 검토할 때 계약상대자가 법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, 이를 위반한 경우 해당 하도급 계약 승인을 거절하거나 해당 서류의 보완을 요청할 수 있다.",
+            "relation": "SUPPORTED",
+            "groundNumber": 1,
+            "evidenceSentence": "국가기관등의 장은 규칙 제14조제2항에 따라 하도급 또는 다시 하도급의 적정성 여부를 검토할 때 계약상대자가 법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, 이를 위반한 경우 해당 하도급 계약 승인을 거절하거나 해당 서류의 보완을 요청할 수 있다.",
+            "overlapCount": 27,
+            "coverage": 1,
+            "score": 33.5
+          }
+        ],
+        "attributedClaims": [
+          {
+            "link": {
+              "claim": "이 지침은 국가기관등이 법 제2조에 따른 소프트웨어사업을 수행할 경우에 적용한다.",
+              "relation": "SUPPORTED",
+              "groundNumber": 3,
+              "evidenceSentence": "제2조(적용범위) 이 지침은 국가기관등이 법 제2조에 따른 소프트웨어사업을 수행할 경우에 적용한다.",
+              "overlapCount": 7,
+              "coverage": 1,
+              "score": 13.5
+            },
+            "target": "admrul",
+            "documentId": 18109,
+            "chunkId": 11294119
+          },
+          {
+            "link": {
+              "claim": "국가기관등의 장은 규칙 제14조제2항에 따라 하도급 또는 다시 하도급의 적정성 여부를 검토할 때 계약상대자가 법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, 이를 위반한 경우 해당 하도급 계약 승인을 거절하거나 해당 서류의 보완을 요청할 수 있다.",
+              "relation": "SUPPORTED",
+              "groundNumber": 1,
+              "evidenceSentence": "국가기관등의 장은 규칙 제14조제2항에 따라 하도급 또는 다시 하도급의 적정성 여부를 검토할 때 계약상대자가 법 제51조에 따른 하도급 제한 규정을 준수하였는지 여부를 확인하여야 하며, 이를 위반한 경우 해당 하도급 계약 승인을 거절하거나 해당 서류의 보완을 요청할 수 있다.",
+              "overlapCount": 27,
+              "coverage": 1,
+              "score": 33.5
+            },
+            "target": "admrul",
+            "documentId": 18109,
+            "chunkId": 11294138
+          }
+        ],
+        "unsafeSemanticShadowDisagreementCount": 1,
+        "referencePhase": null
+      },
+      "legacyPassed": false,
+      "versionedScoring": {
+        "kind": "qualified-approval",
+        "passed": false
+      }
+    }
+  ],
+  "retryAttempts": [],
+  "blockingGates": {
+    "curated": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "passRate": 0,
+      "gatePassed": false,
+      "blockingFailureIds": [
+        "it-compliance-penalty"
+      ]
+    },
+    "answerOracle": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "passRate": 0,
+      "gatePassed": false,
+      "blockingFailureIds": [
+        "it-compliance-penalty"
+      ]
+    },
+    "noGrounds": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "passRate": 0,
+      "gatePassed": false,
+      "blockingFailureIds": []
+    },
+    "unsafeSemanticShadow": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "passRate": 0,
+      "gatePassed": false,
+      "blockingFailureIds": [
+        "it-compliance-penalty"
+      ]
+    }
+  },
+  "checkpointIdentity": {
+    "schemaVersion": 5,
+    "evaluationContractSha256": "8afcc132da9282d0ef2e27262f850df0f20ad0e0466c7f3806de1beb58b9fc43",
+    "runScope": "targeted",
+    "gateProfile": "release",
+    "baseUrl": "http://127.0.0.1:8080",
+    "datasetHash": "8afcc132da9282d0ef2e27262f850df0f20ad0e0466c7f3806de1beb58b9fc43",
+    "selectionHash": "879f9e6181f01ebc6ec8fa262fc0f6d10313fa402c76ff14eec5b9a200945590",
+    "baselineManifestId": "1987c743911f0bcb4de227ed3b34fbd9bd646314d777263d7c199c76fb42cb35",
+    "selectedCaseCount": 1,
+    "indexVersion": "law_chunks+rag_chunks_v4",
+    "embeddingModel": "text-embedding-3-small",
+    "answerModel": "gpt-5-mini",
+    "lawCollection": "law_chunks",
+    "ragCollection": "rag_chunks_v4",
+    "runtimeInfoSource": "server",
+    "runtimeArtifactSha256": "881f6a1120668d39369ba3d80b4be79a93b5d4a90deb78ec20ac8015a3f5aff1",
+    "runtimeInstanceId": "5083991e-9afc-468e-9d28-dcbff1f5cf30",
+    "runtimeConfigSha256": "47d394b4ea5aa5261c62f9c7343a7963f10b0bd41efc1637f6b101ae302b5c32",
+    "indexRevision": "e39713ce571b7502f930a6efe517c93ccc63d3147d04545314085d3e60d95fa5",
+    "lexicalRevision": "4500a4da1ff54f0f25c95119a6a2647ae51381c0b4d31b52376344603e48f665",
+    "qdrantReady": true,
+    "qdrantSearchFailureCount": 0,
+    "evaluationCandidateSha256": "881f6a1120668d39369ba3d80b4be79a93b5d4a90deb78ec20ac8015a3f5aff1"
+  },
+  "versionedStage": "penalty",
+  "evaluationContractSha256": "8afcc132da9282d0ef2e27262f850df0f20ad0e0466c7f3806de1beb58b9fc43",
+  "versionedEvidence": {
+    "executionManifestSha256": "4f630d1ae0cf3322897bf1e292e3e4213bc38d80ba5cd52b1bf868cd27da1982",
+    "approvalRequestSha256": "5058784818bcddfbcf0068fbaec67f40984b88c4c383dd57e6592ad7b70c6877",
+    "approvalReceiptSha256": "3903ea281c7de42ba9cd10cb85a97e85729429db5ba934a7a0ae88553aa60f52",
+    "sourceAuditBefore": {
+      "schemaVersion": 1,
+      "evaluationContractSha256": "8afcc132da9282d0ef2e27262f850df0f20ad0e0466c7f3806de1beb58b9fc43",
+      "auditMode": "read-only-db-consistent-snapshot",
+      "capturedAt": "2026-11-20T05:05:30.996358500Z",
+      "sourceOwners": [
+        {
+          "effectiveStatus": "CURRENT",
+          "edition": "2100000223356",
+          "chunkVersion": 2,
+          "qualityStatus": "PASS",
+          "useYn": "Y",
+          "chunkTextSha256": "c8344e3f720524091faf54a99b4cfa2aed94ecd1fb3e516141e51650ef371d52",
+          "documentId": 18109,
+          "activationStatus": "ACTIVE",
+          "target": "admrul",
+          "chunkId": 11294119
+        },
+        {
+          "effectiveStatus": "CURRENT",
+          "edition": "2100000223356",
+          "chunkVersion": 2,
+          "qualityStatus": "PASS",
+          "useYn": "Y",
+          "chunkTextSha256": "4d755d4476bec091815fad20b496da8d60ed44b548e77b461079a89131558053",
+          "documentId": 18109,
+          "activationStatus": "ACTIVE",
+          "target": "admrul",
+          "chunkId": 11294138
+        },
+        {
+          "effectiveStatus": "CURRENT",
+          "edition": "283735",
+          "chunkVersion": 1,
+          "qualityStatus": "PASS",
+          "useYn": "Y",
+          "chunkTextSha256": "5e125b67075e3b3a47ff91b2c6cd4d382ae70bb861492201f929e8f09a5c7ced",
+          "documentId": 40384,
+          "activationStatus": "ACTIVE",
+          "target": "law",
+          "chunkId": 11058178
+        }
+      ],
+      "lawDatabaseIndexedCount": 211658,
+      "ragDatabaseIndexedCount": 84248,
+      "lawDatabaseContentFingerprint": "F6C6321AECBA5CFA385E33371EAD50FB4A0CADF1793C1468FF267FABAEFF916D",
+      "ragDatabaseContentFingerprint": "4C9C89D6D9E2BCEEFEEF49B2C94DAD25146D84863CEDC5DA165068579EA98540",
+      "auditToolSha256": "310e50f19c56ca2833effc42362530f41835a32c5621d807c79e6628ae1226c1",
+      "probeClasspathSha256": "45746db908cf4b85b46d97dabdf356d164777935bd3ea507063d3d6e799085ff",
+      "runtimeInfo": {
+        "indexVersion": "law_chunks+rag_chunks_v4",
+        "embeddingModel": "text-embedding-3-small",
+        "answerModel": "gpt-5-mini",
+        "lawCollection": "law_chunks",
+        "ragCollection": "rag_chunks_v4",
+        "runtimeArtifactKind": "jar",
+        "runtimeArtifactSha256": "881f6a1120668d39369ba3d80b4be79a93b5d4a90deb78ec20ac8015a3f5aff1",
+        "runtimeArtifactSize": 69083176,
+        "runtimeArtifactPath": "C:\\dev\\workspace-egov\\pandora\\target\\pandora-0.0.1-SNAPSHOT.jar",
+        "runtimeArtifactModifiedAt": "2026-11-20T04:28:34.734302600Z",
+        "runtimeInstanceId": "5083991e-9afc-468e-9d28-dcbff1f5cf30",
+        "runtimeConfigSha256": "47d394b4ea5aa5261c62f9c7343a7963f10b0bd41efc1637f6b101ae302b5c32",
+        "indexRevision": "e39713ce571b7502f930a6efe517c93ccc63d3147d04545314085d3e60d95fa5",
+        "lexicalRevision": "4500a4da1ff54f0f25c95119a6a2647ae51381c0b4d31b52376344603e48f665",
+        "lawQdrantExactPointCount": 211658,
+        "ragQdrantExactPointCount": 84248,
+        "lawDatabaseIndexedCount": 211658,
+        "ragDatabaseIndexedCount": 84248,
+        "lawDatabaseContentFingerprint": "F6C6321AECBA5CFA385E33371EAD50FB4A0CADF1793C1468FF267FABAEFF916D",
+        "ragDatabaseContentFingerprint": "4C9C89D6D9E2BCEEFEEF49B2C94DAD25146D84863CEDC5DA165068579EA98540",
+        "qdrantReady": true,
+        "qdrantSearchFailureCount": 0,
+        "source": "server"
+      }
+    },
+    "sourceAuditAfter": {
+      "schemaVersion": 1,
+      "evaluationContractSha256": "8afcc132da9282d0ef2e27262f850df0f20ad0e0466c7f3806de1beb58b9fc43",
+      "auditMode": "read-only-db-consistent-snapshot",
+      "capturedAt": "2026-11-20T05:05:55.059683200Z",
+      "sourceOwners": [
+        {
+          "target": "admrul",
+          "activationStatus": "ACTIVE",
+          "documentId": 18109,
+          "chunkTextSha256": "c8344e3f720524091faf54a99b4cfa2aed94ecd1fb3e516141e51650ef371d52",
+          "useYn": "Y",
+          "qualityStatus": "PASS",
+          "chunkVersion": 2,
+          "edition": "2100000223356",
+          "effectiveStatus": "CURRENT",
+          "chunkId": 11294119
+        },
+        {
+          "target": "admrul",
+          "activationStatus": "ACTIVE",
+          "documentId": 18109,
+          "chunkTextSha256": "4d755d4476bec091815fad20b496da8d60ed44b548e77b461079a89131558053",
+          "useYn": "Y",
+          "qualityStatus": "PASS",
+          "chunkVersion": 2,
+          "edition": "2100000223356",
+          "effectiveStatus": "CURRENT",
+          "chunkId": 11294138
+        },
+        {
+          "target": "law",
+          "activationStatus": "ACTIVE",
+          "documentId": 40384,
+          "chunkTextSha256": "5e125b67075e3b3a47ff91b2c6cd4d382ae70bb861492201f929e8f09a5c7ced",
+          "useYn": "Y",
+          "qualityStatus": "PASS",
+          "chunkVersion": 1,
+          "edition": "283735",
+          "effectiveStatus": "CURRENT",
+          "chunkId": 11058178
+        }
+      ],
+      "lawDatabaseIndexedCount": 211658,
+      "ragDatabaseIndexedCount": 84248,
+      "lawDatabaseContentFingerprint": "F6C6321AECBA5CFA385E33371EAD50FB4A0CADF1793C1468FF267FABAEFF916D",
+      "ragDatabaseContentFingerprint": "4C9C89D6D9E2BCEEFEEF49B2C94DAD25146D84863CEDC5DA165068579EA98540",
+      "auditToolSha256": "310e50f19c56ca2833effc42362530f41835a32c5621d807c79e6628ae1226c1",
+      "probeClasspathSha256": "45746db908cf4b85b46d97dabdf356d164777935bd3ea507063d3d6e799085ff",
+      "runtimeInfo": {
+        "indexVersion": "law_chunks+rag_chunks_v4",
+        "embeddingModel": "text-embedding-3-small",
+        "answerModel": "gpt-5-mini",
+        "lawCollection": "law_chunks",
+        "ragCollection": "rag_chunks_v4",
+        "runtimeArtifactKind": "jar",
+        "runtimeArtifactSha256": "881f6a1120668d39369ba3d80b4be79a93b5d4a90deb78ec20ac8015a3f5aff1",
+        "runtimeArtifactSize": 69083176,
+        "runtimeArtifactPath": "C:\\dev\\workspace-egov\\pandora\\target\\pandora-0.0.1-SNAPSHOT.jar",
+        "runtimeArtifactModifiedAt": "2026-11-20T04:28:34.734302600Z",
+        "runtimeInstanceId": "5083991e-9afc-468e-9d28-dcbff1f5cf30",
+        "runtimeConfigSha256": "47d394b4ea5aa5261c62f9c7343a7963f10b0bd41efc1637f6b101ae302b5c32",
+        "indexRevision": "e39713ce571b7502f930a6efe517c93ccc63d3147d04545314085d3e60d95fa5",
+        "lexicalRevision": "4500a4da1ff54f0f25c95119a6a2647ae51381c0b4d31b52376344603e48f665",
+        "lawQdrantExactPointCount": 211658,
+        "ragQdrantExactPointCount": 84248,
+        "lawDatabaseIndexedCount": 211658,
+        "ragDatabaseIndexedCount": 84248,
+        "lawDatabaseContentFingerprint": "F6C6321AECBA5CFA385E33371EAD50FB4A0CADF1793C1468FF267FABAEFF916D",
+        "ragDatabaseContentFingerprint": "4C9C89D6D9E2BCEEFEEF49B2C94DAD25146D84863CEDC5DA165068579EA98540",
+        "qdrantReady": true,
+        "qdrantSearchFailureCount": 0,
+        "source": "server"
+      }
+    }
+  },
+  "provenance": {
+    "schemaVersion": 5,
+    "evaluationContractSha256": "8afcc132da9282d0ef2e27262f850df0f20ad0e0466c7f3806de1beb58b9fc43",
+    "runScope": "targeted",
+    "gateProfile": "release",
+    "generatedAt": "2026-11-20T05:05:56.666Z",
+    "baseUrl": "http://127.0.0.1:8080",
+    "executionPort": 8080,
+    "gitCommit": "c36df153c4bf6fdcf16c2e7d7bae35fef44a35fd",
+    "gitDirty": true,
+    "datasetHash": "8afcc132da9282d0ef2e27262f850df0f20ad0e0466c7f3806de1beb58b9fc43",
+    "selectionHash": "879f9e6181f01ebc6ec8fa262fc0f6d10313fa402c76ff14eec5b9a200945590",
+    "baselineManifestId": "1987c743911f0bcb4de227ed3b34fbd9bd646314d777263d7c199c76fb42cb35",
+    "selectedCaseCount": 1,
+    "totalCaseCount": 1003,
+    "indexVersion": "law_chunks+rag_chunks_v4",
+    "embeddingModel": "text-embedding-3-small",
+    "answerModel": "gpt-5-mini",
+    "lawCollection": "law_chunks",
+    "ragCollection": "rag_chunks_v4",
+    "runtimeArtifactKind": "jar",
+    "runtimeArtifactSha256": "881f6a1120668d39369ba3d80b4be79a93b5d4a90deb78ec20ac8015a3f5aff1",
+    "runtimeArtifactSize": 69083176,
+    "runtimeInstanceId": "5083991e-9afc-468e-9d28-dcbff1f5cf30",
+    "runtimeConfigSha256": "47d394b4ea5aa5261c62f9c7343a7963f10b0bd41efc1637f6b101ae302b5c32",
+    "indexRevision": "e39713ce571b7502f930a6efe517c93ccc63d3147d04545314085d3e60d95fa5",
+    "lexicalRevision": "4500a4da1ff54f0f25c95119a6a2647ae51381c0b4d31b52376344603e48f665",
+    "qdrantReady": true,
+    "qdrantSearchFailureCount": 0,
+    "runtimeInfoSource": "server",
+    "runtimeInfoReadAttempts": null
+  },
+  "originalBaselineDatasetSha256": "6b85990a6395c501138628877d4c9efda61c218afde4d0ab5a886f3588ce044c",
+  "evaluationAttemptPaths": [
+    "logs\\contracts\\8afcc132da9282d0ef2e27262f850df0f20ad0e0466c7f3806de1beb58b9fc43\\candidates\\881f6a1120668d39369ba3d80b4be79a93b5d4a90deb78ec20ac8015a3f5aff1\\879f9e6181f01ebc6ec8fa262fc0f6d10313fa402c76ff14eec5b9a200945590\\targeted-checkpoint-attempt-0001.json"
+  ],
+  "breakdown": {
+    "curated": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "passRate": 0
+    },
+    "generated": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "passRate": 0
+    },
+    "answerVerification": {
+      "required": 1,
+      "passed": 0,
+      "failed": 1,
+      "unsupportedClaimCases": 0
+    }
+  }
+}

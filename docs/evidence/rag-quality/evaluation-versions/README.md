@@ -72,3 +72,25 @@ Health12ab9a confirms HTTP200, DB=Q211658/84248, readytrue/fail0 and unchanged
 Atlas42844/Qdrant8492. Registry was returned to default-empty after the consumed
 contract; no automatic restart of an ended quality failure. The old approval's
 JAR/execution identities must not be silently replaced with this repaired JAR.
+
+## Approved candidate-once path and first repaired candidate
+
+The user's 2026-11-20 direct request and call_2409bca57d884ac98400b89588acdec1/0
+grant explicitly permit separate once-only checkpoints for distinct verified
+candidates. Client61dd1ddf implements that path; stable Node281/f0, reviewer2
+Important findings reproduced and fixed in one pass. Backend31aac7fc was not
+rebuilt. New source-audit205a369c matches all previously approved raw owner/corpus
+fingerprints; candidate request50587848 and scope receipt plus execution4f630d1a
+are preserved in c36df153. The receipt transparently records the scope grant, not
+a fabricated separate reply to a hash generated after that grant.
+
+Candidate31aac7fc penalty ran once (661ec5/766354), qualityFAIL0/1, no retries.
+Unlike the previous candidate, it returned OK with all three intended grounds and
+both source claims controlSUPPORTED/unsupported0. It still refused: the full
+checking duty plus conditional discretionary consequence produced semantic unsafe1
+CLAIM_PARSE_INCOMPLETE. All strict gates remain failed. Before/after audits show
+the same instance5083991e… and readytrue/fail0; no end-audit error this time.
+Exact evidence under `runs/20261120-penalty-candidate-31aac7fc/` has started SHA
+7f5e8891…, HTTP attempt69beeae9…, terminal8fb61124…. Previous failures and consumed
+slots remain unchanged. Difficult/holdout/full were not entered. Local parser
+diagnosis continues without rerunning either failed evaluation or lowering guards.
