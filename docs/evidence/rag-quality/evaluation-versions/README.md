@@ -23,9 +23,13 @@ input bytes, descriptor, loaders, scorer implementations and subset manifests.
 `liveEligible=false` is unconditional. This preparation hash is not a registered
 server contract or external-payload approval.
 
-Remaining before a model request: exact server request binding and versioned
+Implemented and deployed in `aac30a41`: exact server request binding and versioned
 dispatch, complete-envelope runner scoring, immutable payload/contract identity,
-its explicit transmission authorization, source/corpus/runtime preflight and an
-exclusive one-shot checkpoint slot. Original failed evaluations must not be
+read-only source audit and exclusive one-shot checkpoint workflow. Registry stays
+empty. Final source audit is `0ab8d89efc3049e69253e17413a2b13971f13e7273e2b3fb109c50073e02853f`;
+the immutable approval request is `f14a0bb39105603e7d01bab6f2668986217369151a470595c9f8dba208af0a19`.
+Still required: its explicit transmission authorization, official registration,
+fresh instance-bound execution manifest and live preflight. No receipt, model
+call or real slot has been created. Original failed evaluations must not be
 replayed. A future new-version result must be reported under its new identity,
 never attributed to the old baseline oracle or claimed as the old full gate.
