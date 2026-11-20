@@ -47,3 +47,27 @@ The current server continues rejecting every unregistered versioned evaluation
 contract. Live evaluation requires explicit server/runner integration and its
 own verified contract identity. The frozen dataset, old checkpoints, original
 oracle and release-blocking gates remain unchanged.
+
+## Reference-qualified general commencement candidate
+
+`scripts/lib/rag-reference-commencement-scorer.js` is a separate offline subtype,
+not a replacement for the original future-status oracle. It consumes the full
+server verifier envelope plus the server-bound official effective-phase receipt.
+The reviewed contract fixes the law title/ID/edition, source owner/version,
+general commencement date and explicit reference date. Both separately supported
+date/status facts must be present and independently attributed to that owner;
+the entire answer must be accounted for. Missing receipt, wrong owner/version,
+wrong year/date, partial or additional claims, unsafe disagreement or failed
+verification rejects the candidate. It never infers all-provision status.
+
+The receipt must come from the trusted server's source-owned resolver, not a
+model, client-authored assertion or a truncated legacy report. HTTP runtime,
+contract and corpus provenance still need their own preflight before live use.
+The scorer itself makes no request and registers no live contract.
+
+RED `31d779` → focused GREEN `e9bd9b`; complete Node regression `b11058`:
+208 tests, zero failures/skips. Model-free staged-product/source integration
+`711841` accepts two supported claims, unsupported0, with full envelope hash
+`6f1fb448d3b6676b3c8b80e3453079d36ebdf9d6d4a1a2f7a545e37543fdba84`.
+This is not a live quality PASS. No serving JAR change is needed for this
+offline-only scorer.
